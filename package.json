@@ -1,0 +1,11 @@
+{
+  "name": "dash0-cli",
+  "version": "1.0.0",
+  "description": "CLI and MCP server to interact with Dash0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
