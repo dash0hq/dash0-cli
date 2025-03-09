@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+
+set -eou pipefail
+
+# This small utility can be used to execute the locally build CLI without
+# having to constantly reconstruct the ./build/cli/dash0.js path.
+#
+# In production this file is not used.
+
+./build/cli/dash0.js "$@"
