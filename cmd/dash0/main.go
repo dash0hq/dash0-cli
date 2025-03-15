@@ -6,6 +6,7 @@ import (
 
 	"github.com/dash0/dash0-cli/internal/config"
 	"github.com/dash0/dash0-cli/internal/mcp"
+    "github.com/dash0/dash0-cli/internal/metrics"
 	"github.com/dash0/dash0-cli/pkg/log"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +31,7 @@ func init() {
 	// Register subcommands
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(mcp.NewMCPCmd(version))
+	rootCmd.AddCommand(metrics.NewMetricsCmd())
 
 	// Add version command
 	rootCmd.AddCommand(newVersionCmd())

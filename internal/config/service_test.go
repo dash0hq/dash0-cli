@@ -339,3 +339,125 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 		}
 	})
 }
+
+// TestResolveConfiguration tests the ResolveConfiguration function
+func TestResolveConfiguration(t *testing.T) {
+	// Test with command-line flags
+	t.Run("With command-line flags", func(t *testing.T) {
+		// Setup test environment
+		_ = setupTestConfigDir(t)
+		
+		config, err := ResolveConfiguration("https://flag.example.com", "flag-token")
+		if err != nil {
+			t.Fatalf("Failed to resolve configuration: %v", err)
+		}
+		
+		if config.BaseURL != "https://flag.example.com" {
+			t.Errorf("Expected base URL https://flag.example.com, got %s", config.BaseURL)
+		}
+		if config.AuthToken != "flag-token" {
+			t.Errorf("Expected auth token flag-token, got %s", config.AuthToken)
+		}
+	})
+	
+	// Test with active context and partial override
+	t.Run("With active context and partial override", func(t *testing.T) {
+		// Create a completely new temporary directory for this test
+		tempDir, err := os.MkdirTemp("", "resolve-config-test")
+		if err != nil {
+			t.Fatalf("Failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		// Set environment variables for this test only
+		os.Setenv("DASH0_CONFIG_DIR", tempDir)
+		defer os.Unsetenv("DASH0_CONFIG_DIR")
+		
+		// Enable test mode
+		os.Setenv("DASH0_TEST_MODE", "1")
+		defer os.Unsetenv("DASH0_TEST_MODE")
+		
+		// Unset environment variables that might interfere
+		os.Unsetenv("DASH0_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+		
+		// Create test contexts with explicit test values
+		testContexts := []Context{
+			{
+				Name: "override-test",
+				Configuration: Configuration{
+					BaseURL:   "https://original.example.com",
+					AuthToken: "original-token",
+				},
+			},
+		}
+		
+		// Set up context file and active context
+		contextsFile := ContextsFile{Contexts: testContexts}
+		data, _ := json.Marshal(contextsFile)
+		os.MkdirAll(tempDir, 0755)
+		os.WriteFile(filepath.Join(tempDir, ContextsFileName), data, 0644)
+		os.WriteFile(filepath.Join(tempDir, ActiveContextFileName), []byte("override-test"), 0644)
+		
+		// Verify that the active configuration loads correctly
+		svc, _ := NewService()
+		origCfg, origErr := svc.GetActiveConfiguration()
+		if origErr != nil {
+			t.Fatalf("Failed to get original config: %v", origErr)
+		}
+		t.Logf("Original config before resolve: %+v", origCfg)
+		
+		// Test with partial override (only base URL)
+		resolvedCfg, resolveErr := ResolveConfiguration("https://override.example.com", "")
+		if resolveErr != nil {
+			t.Fatalf("Failed to resolve configuration: %v", resolveErr)
+		}
+		t.Logf("Resolved config: %+v", resolvedCfg)
+		
+		// Test assertions
+		if resolvedCfg.BaseURL != "https://override.example.com" {
+			t.Errorf("Expected base URL https://override.example.com, got %s", resolvedCfg.BaseURL)
+		}
+		if resolvedCfg.AuthToken != "original-token" {
+			t.Errorf("Expected auth token original-token, got %s", resolvedCfg.AuthToken)
+		}
+	})
+	
+	// Test test mode
+	t.Run("In test mode without configuration", func(t *testing.T) {
+		// Setup test environment without active context
+		_ = setupTestConfigDir(t)
+		
+		// Test in test mode (should bypass validation)
+		os.Setenv("DASH0_TEST_MODE", "1")
+		defer os.Unsetenv("DASH0_TEST_MODE")
+		
+		config, err := ResolveConfiguration("", "")
+		if err != nil {
+			t.Fatalf("Failed to resolve configuration: %v", err)
+		}
+		
+		// Empty values are allowed in test mode
+		if config.BaseURL != "" {
+			t.Errorf("Expected empty base URL, got %s", config.BaseURL)
+		}
+		if config.AuthToken != "" {
+			t.Errorf("Expected empty auth token, got %s", config.AuthToken)
+		}
+	})
+	
+	// Test error case (no test mode, no config)
+	t.Run("Without test mode and configuration", func(t *testing.T) {
+		// Setup test environment without active context
+		_ = setupTestConfigDir(t)
+		
+		// Disable test mode
+		os.Unsetenv("DASH0_TEST_MODE")
+		
+		// Should fail validation
+		_, err := ResolveConfiguration("", "")
+		if err == nil {
+			t.Errorf("Expected error for missing configuration, got nil")
+		}
+	})
+}

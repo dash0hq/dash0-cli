@@ -70,6 +70,49 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	return &activeContext.Configuration, nil
 }
 
+// ResolveConfiguration loads configuration with override handling
+// It handles test mode detection, configuration loading, and validation of base URL and auth token
+// Parameters:
+//   - baseURL: Command-line flag for base URL (empty if not provided)
+//   - authToken: Command-line flag for auth token (empty if not provided)
+//
+// Returns:
+//   - Configuration with all overrides applied
+//   - Error if configuration couldn't be loaded or is invalid outside of test mode
+func ResolveConfiguration(baseURL, authToken string) (*Configuration, error) {
+	// Create result configuration starting with an empty config
+	result := &Configuration{}
+
+	// Try to get the active configuration for defaults
+	configService, err := NewService()
+	if err == nil {
+		// Only attempt to load if service creation was successful
+		cfg, err := configService.GetActiveConfiguration()
+		if err == nil && cfg != nil {
+			// Use active configuration as a base
+			result.BaseURL = cfg.BaseURL
+			result.AuthToken = cfg.AuthToken
+		}
+	}
+
+	// Override with command-line flags if provided (only if non-empty)
+	if baseURL != "" {
+		result.BaseURL = baseURL
+	}
+
+	if authToken != "" {
+		result.AuthToken = authToken
+	}
+
+	// Final validation (skip in test mode)
+	testMode := os.Getenv("DASH0_TEST_MODE") == "1"
+	if !testMode && (result.BaseURL == "" || result.AuthToken == "") {
+		return nil, fmt.Errorf("base-url and auth-token are required; provide them as flags or configure a context")
+	}
+
+	return result, nil
+}
+
 // GetActiveContext returns the currently active context
 func (s *Service) GetActiveContext() (*Context, error) {
 	activeContextName, err := s.getActiveContextName()

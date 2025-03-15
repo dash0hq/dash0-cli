@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/dash0/dash0-cli/internal/config"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -21,41 +20,15 @@ func NewMCPCmd(version string) *cobra.Command {
 		Short: "Start an MCP server",
 		Long:  `Start a Model Control Protocol (MCP) server that provides tools for AI agents`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Get configuration, prioritizing command-line flags
-			var cfg *config.Configuration
-
-			// Check if we're in test mode
-			testMode := os.Getenv("DASH0_TEST_MODE") == "1"
-
-			// Try to get the active configuration if flags aren't specified
-			if !testMode && (baseURL == "" || authToken == "") {
-				configService, err := config.NewService()
-				if err != nil {
-					return fmt.Errorf("failed to initialize config service: %w", err)
-				}
-
-				cfg, err = configService.GetActiveConfiguration()
-				if err != nil {
-					// Only error if we actually need the config values
-					if baseURL == "" || authToken == "" {
-						return fmt.Errorf("failed to get active configuration: %w", err)
-					}
-				}
+			// Resolve configuration with overrides
+			cfg, err := config.ResolveConfiguration(baseURL, authToken)
+			if err != nil {
+				return err
 			}
-
-			// Override with command-line flags if provided
-			if baseURL == "" && cfg != nil {
-				baseURL = cfg.BaseURL
-			}
-
-			if authToken == "" && cfg != nil {
-				authToken = cfg.AuthToken
-			}
-
-			// Final validation (skip in test mode)
-			if !testMode && (baseURL == "" || authToken == "") {
-				return fmt.Errorf("base-url and auth-token are required; provide them as flags or configure a context")
-			}
+			
+			// Use resolved configuration values
+			baseURL = cfg.BaseURL
+			authToken = cfg.AuthToken
 
 			// Create a new MCP server with logging
 			s := server.NewMCPServer(

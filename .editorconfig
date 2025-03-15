@@ -9,14 +9,3 @@ tab_width = 2
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-# We enforce spaces for yml files, as the indentation carries semantics and many templating
-# systems, e.g., Helm, expects 2-space indentation.
-[{*.yaml,*.yml}]
-indent_style = space
-indent_size = 2
-
-# Mixing spacing style for markdown files creates all kinds of funky results
-[*.md]
-indent_style = space
-indent_size = 2
-
