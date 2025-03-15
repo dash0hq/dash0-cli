@@ -87,3 +87,15 @@ docker_manifests:
     image_templates:
       - "ghcr.io/dash0hq/cli:latest-amd64"
       - "ghcr.io/dash0hq/cli:latest-arm64"
+
+brews:
+  - name: dash0
+    tap:
+      owner: dash0hq
+      name: dash0-cli
+    commit_author:
+      name: bripkens
+      email: ben.blackmore@dash0.com
+    folder: Formula
+    homepage: https://github.com/dash0hq/dash0-cli
+    description: CLI to interact with Dash0
