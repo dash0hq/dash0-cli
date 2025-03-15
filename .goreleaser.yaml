@@ -90,12 +90,12 @@ docker_manifests:
 
 brews:
   - name: dash0
-    tap:
+    repository:
       owner: dash0hq
       name: dash0-cli
     commit_author:
       name: bripkens
       email: ben.blackmore@dash0.com
-    folder: Formula
+    directory: Formula
     homepage: https://github.com/dash0hq/dash0-cli
     description: CLI to interact with Dash0
