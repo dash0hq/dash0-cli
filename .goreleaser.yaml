@@ -1,0 +1,77 @@
+project_name: dash0
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: dash0
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - ppc64le
+      - s390x
+    dir: ./
+    main: ./cmd/dash0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}}
+
+checksum:
+  name_template: "checksums.txt"
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+release:
+  prerelease: "false"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+dockers:
+  - image_templates:
+      - "dash0/cli:{{ .Version }}"
+      - "dash0/cli:latest"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+
+brews:
+  - name: dash0
+    homepage: "https://github.com/dash0/dash0-cli"
+    description: "Command line interface for interacting with Dash0 services"
+    tap:
+      owner: dash0
+      name: homebrew-tap
+    folder: Formula
+    install: |
+      bin.install "dash0"
+    test: |
+      system "#{bin}/dash0 --version"
