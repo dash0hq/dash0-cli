@@ -1,8 +1,8 @@
 # Dash0 CLI Development Guide
 
 ## Commands
-- Build: `go build -o dash0 ./cmd/dash0`
-- Test all: `go test -v ./...`
+- Build: `make build`
+- Test all: `make test`
 - Test specific: `go test -v ./internal/config -run TestServiceAddContext`
 - Run locally: `./dash0 [command]`
 
