@@ -1,11 +1,10 @@
 package mcp
 
 import (
-	"context"
 	"fmt"
+	"github.com/dash0/dash0-cli/internal/mcp/tools"
 
 	"github.com/dash0/dash0-cli/internal/config"
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +24,7 @@ func NewMCPCmd(version string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			
+
 			// Use resolved configuration values
 			baseURL = cfg.BaseURL
 			authToken = cfg.AuthToken
@@ -38,15 +37,7 @@ func NewMCPCmd(version string) *cobra.Command {
 				server.WithLogging(),
 			)
 
-			// Add hello world tool
-			helloWorldTool := mcp.NewTool("hello_world",
-				mcp.WithDescription("A tool that responds with hello world"),
-			)
-
-			// Register hello world handler
-			s.AddTool(helloWorldTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return mcp.NewToolResultText("Hello, World!"), nil
-			})
+			tools.AddTools(s)
 
 			// Start the server - this will block until the server is stopped
 			if err := server.ServeStdio(s); err != nil {
