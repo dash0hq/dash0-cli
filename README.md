@@ -10,7 +10,7 @@ Requires Go 1.22 or higher.
 
 ```bash
 # Clone the repository
-git clone https://github.com/dash0/dash0-cli.git
+git clone git@github.com:dash0hq/dash0-cli.git
 cd dash0-cli/go-cli
 
 # Build and install
