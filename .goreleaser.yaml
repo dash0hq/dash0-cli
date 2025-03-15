@@ -53,14 +53,37 @@ changelog:
 
 dockers:
   - image_templates:
-      - "ghcr.io/dash0hq/cli:{{ .Tag }}"
-      - "ghcr.io/dash0hq/cli:v{{ .Major }}"
-      - "ghcr.io/dash0hq/cli:v{{ .Major }}.{{ .Minor }}"
-      - "ghcr.io/dash0hq/cli:latest"
+      - "ghcr.io/dash0hq/cli:{{ .Tag }}-amd64"
+      - "ghcr.io/dash0hq/cli:latest-amd64"
     dockerfile: Dockerfile
+    use: buildx
     build_flag_templates:
+      - "--platform=linux/amd64"
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
+  - image_templates:
+      - "ghcr.io/dash0hq/cli:{{ .Tag }}-arm64"
+      - "ghcr.io/dash0hq/cli:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/dash0hq/cli:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/dash0hq/cli:{{ .Tag }}-amd64"
+      - "ghcr.io/dash0hq/cli:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/dash0hq/cli:latest"
+    image_templates:
+      - "ghcr.io/dash0hq/cli:latest-amd64"
+      - "ghcr.io/dash0hq/cli:latest-arm64"
