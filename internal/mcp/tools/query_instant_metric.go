@@ -20,6 +20,7 @@ func addQueryInstantMetricTool(server *server.MCPServer) {
 	tool := mcp.NewTool(
 		"dash0__query_instant_metric",
 		mcp.WithDescription("Query the instant value of a metric from the Dash0 API. You can query Dash0's synthetic metrics to learn about spans and logs for any service. To query spans, you can use the `dash0_spans_total` metrics. Do query logs, you can use `dash0_logs_total`. You can group by a variety of span and log attributes to break down the data. Here a variety of labels you can group by `otel_scope_name`, `otel_scope_version`, `otel_log_time`, `otel_log_body`, `otel_log_severity_number`, `otel_log_severity_range`, `otel_log_severity_text`, `otel_trace_id`, `otel_span_id`, `otel_parent_id`, `otel_span_start_time`, `otel_span_duration`, `otel_span_end_time`, `otel_span_name`, `otel_span_kind`, `otel_span_status_code`, `otel_span_status_message`."),
+    mcp.WithString("query", mcp.Description("PromQL query to execute")),
 	)
 
 	server.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
