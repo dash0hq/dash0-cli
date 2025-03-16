@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dash0/dash0-cli/internal/config"
-	"github.com/dash0/dash0-cli/internal/mcp"
-    "github.com/dash0/dash0-cli/internal/metrics"
-	"github.com/dash0/dash0-cli/pkg/log"
+	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-cli/internal/log"
+	"github.com/dash0hq/dash0-cli/internal/mcp"
+	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/spf13/cobra"
 )
 

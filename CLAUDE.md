@@ -18,6 +18,9 @@
 ## Project Structure
 - `/cmd/dash0`: Main entrypoint
 - `/internal/config`: Configuration management
-- `/pkg/log`: Shared logging utilities
+- `/internal/mcp/tools`: Contains MCP tool implementations. The tools are registered via `tools.go`
+- `/internal/metrics`: Commands and utilities to retrieve metrics from Dash0
+- `/internal/api/types`: Contains Type Definitions for request and response bodies for the Dash0 API
+- `/internal/log`: Shared logging utilities
 
 Organize code by domain, make interfaces for testability, and follow standard Go package layout.

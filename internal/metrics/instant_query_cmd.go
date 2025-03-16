@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/dash0/dash0-cli/internal/config"
-	"github.com/dash0/dash0-cli/pkg/log"
+	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,7 @@ func newInstantQueryCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			
+
 			// Use resolved configuration values
 			baseURL = cfg.BaseURL
 			authToken = cfg.AuthToken

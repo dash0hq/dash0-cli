@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/dash0/dash0-cli/pkg/log"
+	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/spf13/cobra"
 )
 
@@ -52,7 +52,7 @@ func maskToken(token string) string {
 	if len(token) <= 8 {
 		return "********"
 	}
-	
+
 	return token[:4] + "..." + token[len(token)-4:]
 }
 

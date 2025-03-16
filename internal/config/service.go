@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dash0/dash0-cli/pkg/log"
+	"github.com/dash0hq/dash0-cli/internal/log"
 )
 
 const (

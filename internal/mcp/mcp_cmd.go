@@ -2,9 +2,9 @@ package mcp
 
 import (
 	"fmt"
-	"github.com/dash0/dash0-cli/internal/mcp/tools"
+	"github.com/dash0hq/dash0-cli/internal/mcp/tools"
 
-	"github.com/dash0/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
