@@ -7,4 +7,6 @@ func AddTools(server *server.MCPServer) {
 	addQueryInstantMetricTool(server)
 	addGetFailedChecksTool(server)
 	addGetMetricCatalogTool(server)
+	addGetServiceCatalogTool(server)
+	addGetOperationsTool(server)
 }
