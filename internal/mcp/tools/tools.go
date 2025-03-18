@@ -10,4 +10,5 @@ func AddTools(server *server.MCPServer) {
 	addGetMetricCatalogTool(server)
 	addGetServiceCatalogTool(server)
 	addGetOperationsTool(server)
+	addTraceTriageTool(server)
 }
