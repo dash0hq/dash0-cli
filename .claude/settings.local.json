@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod tidy:*)",
+      "Bash(grep:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/ben/projects/dash0/repos/terraform-provider-dash0"
+    ]
+  }
+}
