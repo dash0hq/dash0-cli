@@ -43,7 +43,7 @@ func NewMetricsCmd() *cobra.Command {
 
 // newInstantQueryCmd creates a new instant query command
 func newInstantQueryCmd() *cobra.Command {
-	var baseURL string
+	var apiUrl string
 	var authToken string
 	var queryExpr string
 	var dataset string
@@ -55,13 +55,13 @@ func newInstantQueryCmd() *cobra.Command {
 		Long:  `Query the instant value of a metric from the Dash0 API`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Resolve configuration with overrides
-			cfg, err := config.ResolveConfiguration(baseURL, authToken)
+			cfg, err := config.ResolveConfiguration(apiUrl, authToken)
 			if err != nil {
 				return err
 			}
 
 			// Use resolved configuration values
-			baseURL = cfg.BaseURL
+			apiUrl = cfg.ApiUrl
 			authToken = cfg.AuthToken
 
 			// Validate required parameters
@@ -73,9 +73,9 @@ func newInstantQueryCmd() *cobra.Command {
 			timestamp := time.Now().Unix()
 
 			// Build the query URL
-			apiURL, err := url.Parse(baseURL)
+			apiURL, err := url.Parse(apiUrl)
 			if err != nil {
-				return fmt.Errorf("invalid base URL: %w", err)
+				return fmt.Errorf("invalid API URL: %w", err)
 			}
 			apiURL.Path = "/api/prometheus/api/v1/query"
 
@@ -165,7 +165,7 @@ func newInstantQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&queryExpr, "query", "", "PromQL query expression (required)")
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Dataset to query (optional)")
 	cmd.Flags().StringVar(&queryTime, "time", "", "Evaluation timestamp (optional, defaults to now). Supports relative time ranges")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Base URL for the Dash0 API (overrides active context)")
+	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API (overrides active context)")
 	cmd.Flags().StringVar(&authToken, "auth-token", "", "Auth token for the Dash0 API (overrides active context)")
 
 	cmd.MarkFlagRequired("query")

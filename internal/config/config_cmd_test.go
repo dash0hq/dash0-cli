@@ -43,7 +43,7 @@ func TestShowCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
@@ -64,8 +64,8 @@ func TestShowCmd(t *testing.T) {
 	}
 	
 	// Verify output contains expected data
-	if !bytes.Contains([]byte(output), []byte("Base URL: https://test1.example.com")) {
-		t.Errorf("Expected output to contain Base URL: https://test1.example.com, got: %s", output)
+	if !bytes.Contains([]byte(output), []byte("API URL: https://test1.example.com")) {
+		t.Errorf("Expected output to contain API URL: https://test1.example.com, got: %s", output)
 	}
 }
 
@@ -79,14 +79,14 @@ func TestListContextCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				BaseURL:   "https://test2.example.com",
+				ApiUrl:   "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -127,7 +127,7 @@ func TestAddContextCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 	
 	// Execute add command
-	output, err := executeCommand(rootCmd, "config", "context", "add", "--name", "new-context", "--base-url", "https://new.example.com", "--auth-token", "new-token")
+	output, err := executeCommand(rootCmd, "config", "context", "add", "--name", "new-context", "--api-url", "https://new.example.com", "--auth-token", "new-token")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -157,8 +157,8 @@ func TestAddContextCmd(t *testing.T) {
 		t.Errorf("Expected context name new-context, got %s", contexts[0].Name)
 	}
 	
-	if contexts[0].Configuration.BaseURL != "https://new.example.com" {
-		t.Errorf("Expected base URL https://new.example.com, got %s", contexts[0].Configuration.BaseURL)
+	if contexts[0].Configuration.ApiUrl != "https://new.example.com" {
+		t.Errorf("Expected API URL https://new.example.com, got %s", contexts[0].Configuration.ApiUrl)
 	}
 }
 
@@ -172,14 +172,14 @@ func TestRemoveContextCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				BaseURL:   "https://test2.example.com",
+				ApiUrl:   "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -234,14 +234,14 @@ func TestSelectContextCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				BaseURL:   "https://test2.example.com",
+				ApiUrl:   "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},

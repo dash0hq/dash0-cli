@@ -64,14 +64,14 @@ func TestServiceGetContexts(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				BaseURL:   "https://test2.example.com",
+				ApiUrl:   "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -99,8 +99,8 @@ func TestServiceGetContexts(t *testing.T) {
 		if ctx.Name != testContexts[i].Name {
 			t.Errorf("Expected context name %s, got %s", testContexts[i].Name, ctx.Name)
 		}
-		if ctx.Configuration.BaseURL != testContexts[i].Configuration.BaseURL {
-			t.Errorf("Expected base URL %s, got %s", testContexts[i].Configuration.BaseURL, ctx.Configuration.BaseURL)
+		if ctx.Configuration.ApiUrl != testContexts[i].Configuration.ApiUrl {
+			t.Errorf("Expected API URL %s, got %s", testContexts[i].Configuration.ApiUrl, ctx.Configuration.ApiUrl)
 		}
 		if ctx.Configuration.AuthToken != testContexts[i].Configuration.AuthToken {
 			t.Errorf("Expected auth token %s, got %s", testContexts[i].Configuration.AuthToken, ctx.Configuration.AuthToken)
@@ -118,14 +118,14 @@ func TestServiceGetActiveContext(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				BaseURL:   "https://test2.example.com",
+				ApiUrl:   "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -149,8 +149,8 @@ func TestServiceGetActiveContext(t *testing.T) {
 	if context.Name != "test2" {
 		t.Errorf("Expected active context name test2, got %s", context.Name)
 	}
-	if context.Configuration.BaseURL != "https://test2.example.com" {
-		t.Errorf("Expected base URL https://test2.example.com, got %s", context.Configuration.BaseURL)
+	if context.Configuration.ApiUrl != "https://test2.example.com" {
+		t.Errorf("Expected API URL https://test2.example.com, got %s", context.Configuration.ApiUrl)
 	}
 	if context.Configuration.AuthToken != "token2" {
 		t.Errorf("Expected auth token token2, got %s", context.Configuration.AuthToken)
@@ -172,7 +172,7 @@ func TestServiceAddContext(t *testing.T) {
 	newContext := Context{
 		Name: "new-context",
 		Configuration: Configuration{
-			BaseURL:   "https://new.example.com",
+			ApiUrl:   "https://new.example.com",
 			AuthToken: "new-token",
 		},
 	}
@@ -217,14 +217,14 @@ func TestServiceRemoveContext(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				BaseURL:   "https://test1.example.com",
+				ApiUrl:   "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				BaseURL:   "https://test2.example.com",
+				ApiUrl:   "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -276,10 +276,10 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 	
 	// Test with environment variables
 	t.Run("With environment variables", func(t *testing.T) {
-		os.Setenv("DASH0_URL", "https://env.example.com")
+		os.Setenv("DASH0_API_URL", "https://env.example.com")
 		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
 		defer func() {
-			os.Unsetenv("DASH0_URL")
+			os.Unsetenv("DASH0_API_URL")
 			os.Unsetenv("DASH0_AUTH_TOKEN")
 		}()
 		
@@ -293,8 +293,8 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 		
-		if config.BaseURL != "https://env.example.com" {
-			t.Errorf("Expected base URL https://env.example.com, got %s", config.BaseURL)
+		if config.ApiUrl != "https://env.example.com" {
+			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl)
 		}
 		if config.AuthToken != "env-token" {
 			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
@@ -304,7 +304,7 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 	// Test with active context
 	t.Run("With active context", func(t *testing.T) {
 		// Unset environment variables
-		os.Unsetenv("DASH0_URL")
+		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
 		
 		// Create test contexts
@@ -312,7 +312,7 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 			{
 				Name: "test1",
 				Configuration: Configuration{
-					BaseURL:   "https://test1.example.com",
+					ApiUrl:   "https://test1.example.com",
 					AuthToken: "token1",
 				},
 			},
@@ -331,8 +331,8 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 		
-		if config.BaseURL != "https://test1.example.com" {
-			t.Errorf("Expected base URL https://test1.example.com, got %s", config.BaseURL)
+		if config.ApiUrl != "https://test1.example.com" {
+			t.Errorf("Expected API URL https://test1.example.com, got %s", config.ApiUrl)
 		}
 		if config.AuthToken != "token1" {
 			t.Errorf("Expected auth token token1, got %s", config.AuthToken)
@@ -352,8 +352,8 @@ func TestResolveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to resolve configuration: %v", err)
 		}
 		
-		if config.BaseURL != "https://flag.example.com" {
-			t.Errorf("Expected base URL https://flag.example.com, got %s", config.BaseURL)
+		if config.ApiUrl != "https://flag.example.com" {
+			t.Errorf("Expected API URL https://flag.example.com, got %s", config.ApiUrl)
 		}
 		if config.AuthToken != "flag-token" {
 			t.Errorf("Expected auth token flag-token, got %s", config.AuthToken)
@@ -378,7 +378,7 @@ func TestResolveConfiguration(t *testing.T) {
 		defer os.Unsetenv("DASH0_TEST_MODE")
 		
 		// Unset environment variables that might interfere
-		os.Unsetenv("DASH0_URL")
+		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
 		
 		// Create test contexts with explicit test values
@@ -386,7 +386,7 @@ func TestResolveConfiguration(t *testing.T) {
 			{
 				Name: "override-test",
 				Configuration: Configuration{
-					BaseURL:   "https://original.example.com",
+					ApiUrl:   "https://original.example.com",
 					AuthToken: "original-token",
 				},
 			},
@@ -407,7 +407,7 @@ func TestResolveConfiguration(t *testing.T) {
 		}
 		t.Logf("Original config before resolve: %+v", origCfg)
 		
-		// Test with partial override (only base URL)
+		// Test with partial override (only API URL)
 		resolvedCfg, resolveErr := ResolveConfiguration("https://override.example.com", "")
 		if resolveErr != nil {
 			t.Fatalf("Failed to resolve configuration: %v", resolveErr)
@@ -415,8 +415,8 @@ func TestResolveConfiguration(t *testing.T) {
 		t.Logf("Resolved config: %+v", resolvedCfg)
 		
 		// Test assertions
-		if resolvedCfg.BaseURL != "https://override.example.com" {
-			t.Errorf("Expected base URL https://override.example.com, got %s", resolvedCfg.BaseURL)
+		if resolvedCfg.ApiUrl != "https://override.example.com" {
+			t.Errorf("Expected API URL https://override.example.com, got %s", resolvedCfg.ApiUrl)
 		}
 		if resolvedCfg.AuthToken != "original-token" {
 			t.Errorf("Expected auth token original-token, got %s", resolvedCfg.AuthToken)
@@ -438,8 +438,8 @@ func TestResolveConfiguration(t *testing.T) {
 		}
 		
 		// Empty values are allowed in test mode
-		if config.BaseURL != "" {
-			t.Errorf("Expected empty base URL, got %s", config.BaseURL)
+		if config.ApiUrl != "" {
+			t.Errorf("Expected empty API URL, got %s", config.ApiUrl)
 		}
 		if config.AuthToken != "" {
 			t.Errorf("Expected empty auth token, got %s", config.AuthToken)

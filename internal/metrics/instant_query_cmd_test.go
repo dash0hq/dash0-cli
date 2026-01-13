@@ -53,7 +53,7 @@ func TestQueryInstantCmd(t *testing.T) {
 
 	// Create and execute the command
 	cmd := newInstantQueryCmd()
-	cmd.SetArgs([]string{"--query", "test_query", "--base-url", server.URL, "--auth-token", "test_token"})
+	cmd.SetArgs([]string{"--query", "test_query", "--api-url", server.URL, "--auth-token", "test_token"})
 
 	// Execute should succeed
 	err := cmd.Execute()
@@ -81,7 +81,7 @@ func TestQueryInstantCmdError(t *testing.T) {
 
 	// Create and execute the command
 	cmd := newInstantQueryCmd()
-	cmd.SetArgs([]string{"--query", "test_query", "--base-url", server.URL, "--auth-token", "test_token"})
+	cmd.SetArgs([]string{"--query", "test_query", "--api-url", server.URL, "--auth-token", "test_token"})
 
 	// Execute should fail with the expected error
 	err := cmd.Execute()

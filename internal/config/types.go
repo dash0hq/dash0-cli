@@ -2,7 +2,7 @@ package config
 
 // Configuration represents a Dash0 configuration
 type Configuration struct {
-	BaseURL   string `json:"baseUrl" yaml:"baseUrl"`
+	ApiUrl    string `json:"apiUrl" yaml:"apiUrl"`
 	AuthToken string `json:"authToken" yaml:"authToken"`
 }
 

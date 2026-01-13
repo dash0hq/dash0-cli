@@ -39,7 +39,7 @@ func newShowCmd() *cobra.Command {
 				return fmt.Errorf("failed to get active configuration: %w", err)
 			}
 
-			fmt.Printf("Base URL: %s\n", config.BaseURL)
+			fmt.Printf("API URL: %s\n", config.ApiUrl)
 			fmt.Printf("Auth Token: %s\n", maskToken(config.AuthToken))
 
 			return nil
@@ -75,26 +75,26 @@ func newContextCmd() *cobra.Command {
 
 // newAddContextCmd creates a new add context command
 func newAddContextCmd() *cobra.Command {
-	var baseURL, authToken, name string
+	var apiUrl, authToken, name string
 
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new configuration context",
-		Long:  `Add a new named configuration context with base URL and auth token`,
+		Long:  `Add a new named configuration context with API URL and auth token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
 				return err
 			}
 
-			if name == "" || baseURL == "" || authToken == "" {
-				return fmt.Errorf("name, base-url, and auth-token are required")
+			if name == "" || apiUrl == "" || authToken == "" {
+				return fmt.Errorf("name, api-url, and auth-token are required")
 			}
 
 			context := Context{
 				Name: name,
 				Configuration: Configuration{
-					BaseURL:   baseURL,
+					ApiUrl:    apiUrl,
 					AuthToken: authToken,
 				},
 			}
@@ -111,7 +111,7 @@ func newAddContextCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Name of the context")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Base URL for the Dash0 API")
+	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API")
 	cmd.Flags().StringVar(&authToken, "auth-token", "", "Authentication token for the Dash0 API")
 
 	return cmd

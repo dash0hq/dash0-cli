@@ -50,13 +50,13 @@ func NewService() (*Service, error) {
 // GetActiveConfiguration returns the currently active configuration
 func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	// Check environment variables first
-	baseURL := os.Getenv("DASH0_URL")
+	apiUrl := os.Getenv("DASH0_API_URL")
 	authToken := os.Getenv("DASH0_AUTH_TOKEN")
 
-	if baseURL != "" && authToken != "" {
+	if apiUrl != "" && authToken != "" {
 		log.Logger.Debug().Msg("Using configuration from environment variables")
 		return &Configuration{
-			BaseURL:   baseURL,
+			ApiUrl:    apiUrl,
 			AuthToken: authToken,
 		}, nil
 	}
@@ -71,15 +71,15 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 }
 
 // ResolveConfiguration loads configuration with override handling
-// It handles test mode detection, configuration loading, and validation of base URL and auth token
+// It handles test mode detection, configuration loading, and validation of API URL and auth token
 // Parameters:
-//   - baseURL: Command-line flag for base URL (empty if not provided)
+//   - apiUrl: Command-line flag for API URL (empty if not provided)
 //   - authToken: Command-line flag for auth token (empty if not provided)
 //
 // Returns:
 //   - Configuration with all overrides applied
 //   - Error if configuration couldn't be loaded or is invalid outside of test mode
-func ResolveConfiguration(baseURL, authToken string) (*Configuration, error) {
+func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 	// Create result configuration starting with an empty config
 	result := &Configuration{}
 
@@ -90,14 +90,14 @@ func ResolveConfiguration(baseURL, authToken string) (*Configuration, error) {
 		cfg, err := configService.GetActiveConfiguration()
 		if err == nil && cfg != nil {
 			// Use active configuration as a base
-			result.BaseURL = cfg.BaseURL
+			result.ApiUrl = cfg.ApiUrl
 			result.AuthToken = cfg.AuthToken
 		}
 	}
 
 	// Override with command-line flags if provided (only if non-empty)
-	if baseURL != "" {
-		result.BaseURL = baseURL
+	if apiUrl != "" {
+		result.ApiUrl = apiUrl
 	}
 
 	if authToken != "" {
@@ -106,8 +106,8 @@ func ResolveConfiguration(baseURL, authToken string) (*Configuration, error) {
 
 	// Final validation (skip in test mode)
 	testMode := os.Getenv("DASH0_TEST_MODE") == "1"
-	if !testMode && (result.BaseURL == "" || result.AuthToken == "") {
-		return nil, fmt.Errorf("base-url and auth-token are required; provide them as flags or configure a context")
+	if !testMode && (result.ApiUrl == "" || result.AuthToken == "") {
+		return nil, fmt.Errorf("api-url and auth-token are required; provide them as flags or configure a context")
 	}
 
 	return result, nil

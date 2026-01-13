@@ -35,7 +35,7 @@ The CLI supports multiple named configuration contexts, similar to kubectl.
 dash0 config show
 
 # Add a new configuration context
-dash0 config context add --name dev --base-url https://api.eu-west-1.aws.dash0-dev.com --auth-token your-token
+dash0 config context add --name dev --api-url https://api.eu-west-1.aws.dash0-dev.com --auth-token your-token
 
 # List available contexts
 dash0 config context list
@@ -48,7 +48,7 @@ dash0 config context remove --name dev
 ```
 
 Configuration precedence:
-1. Environment variables: `DASH0_URL` and `DASH0_AUTH_TOKEN`
+1. Environment variables: `DASH0_API_URL` and `DASH0_AUTH_TOKEN`
 2. Active configuration context
 
 ## Development
