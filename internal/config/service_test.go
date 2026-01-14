@@ -23,44 +23,44 @@ func setupTestConfigDir(t *testing.T) string {
 	return tempDir
 }
 
-// createTestContextsFile creates a test contexts file in the specified directory
-func createTestContextsFile(t *testing.T, configDir string, contexts []Context) {
+// createTestProfilesFile creates a test profiles file in the specified directory
+func createTestProfilesFile(t *testing.T, configDir string, profiles []Profile) {
 	t.Helper()
-	
-	// Create contexts file
-	contextsFile := ContextsFile{Contexts: contexts}
-	data, err := json.MarshalIndent(contextsFile, "", "  ")
+
+	// Create profiles file
+	profilesFile := ProfilesFile{Profiles: profiles}
+	data, err := json.MarshalIndent(profilesFile, "", "  ")
 	if err != nil {
-		t.Fatalf("Failed to marshal contexts file: %v", err)
+		t.Fatalf("Failed to marshal profiles file: %v", err)
 	}
-	
+
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("Failed to create directory: %v", err)
 	}
-	
-	contextsFilePath := filepath.Join(configDir, ContextsFileName)
-	if err := os.WriteFile(contextsFilePath, data, 0644); err != nil {
-		t.Fatalf("Failed to write contexts file: %v", err)
+
+	profilesFilePath := filepath.Join(configDir, ProfilesFileName)
+	if err := os.WriteFile(profilesFilePath, data, 0644); err != nil {
+		t.Fatalf("Failed to write profiles file: %v", err)
 	}
 }
 
-// setActiveContext sets the active context for testing
-func setActiveContext(t *testing.T, configDir, contextName string) {
+// setActiveProfile sets the active profile for testing
+func setActiveProfile(t *testing.T, configDir, profileName string) {
 	t.Helper()
-	
-	activeContextPath := filepath.Join(configDir, ActiveContextFileName)
-	if err := os.WriteFile(activeContextPath, []byte(contextName), 0644); err != nil {
-		t.Fatalf("Failed to write active context: %v", err)
+
+	activeProfilePath := filepath.Join(configDir, ActiveProfileFileName)
+	if err := os.WriteFile(activeProfilePath, []byte(profileName), 0644); err != nil {
+		t.Fatalf("Failed to write active profile: %v", err)
 	}
 }
 
-// TestServiceGetContexts tests the GetContexts method
-func TestServiceGetContexts(t *testing.T) {
+// TestServiceGetProfiles tests the GetProfiles method
+func TestServiceGetProfiles(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -76,45 +76,45 @@ func TestServiceGetContexts(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	
-	// Create service and test GetContexts
+
+	createTestProfilesFile(t, configDir, testProfiles)
+
+	// Create service and test GetProfiles
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	contexts, err := service.GetContexts()
+
+	profiles, err := service.GetProfiles()
 	if err != nil {
-		t.Fatalf("Failed to get contexts: %v", err)
+		t.Fatalf("Failed to get profiles: %v", err)
 	}
-	
+
 	// Validate result
-	if len(contexts) != len(testContexts) {
-		t.Errorf("Expected %d contexts, got %d", len(testContexts), len(contexts))
+	if len(profiles) != len(testProfiles) {
+		t.Errorf("Expected %d profiles, got %d", len(testProfiles), len(profiles))
 	}
-	
-	for i, ctx := range contexts {
-		if ctx.Name != testContexts[i].Name {
-			t.Errorf("Expected context name %s, got %s", testContexts[i].Name, ctx.Name)
+
+	for i, p := range profiles {
+		if p.Name != testProfiles[i].Name {
+			t.Errorf("Expected profile name %s, got %s", testProfiles[i].Name, p.Name)
 		}
-		if ctx.Configuration.ApiUrl != testContexts[i].Configuration.ApiUrl {
-			t.Errorf("Expected API URL %s, got %s", testContexts[i].Configuration.ApiUrl, ctx.Configuration.ApiUrl)
+		if p.Configuration.ApiUrl != testProfiles[i].Configuration.ApiUrl {
+			t.Errorf("Expected API URL %s, got %s", testProfiles[i].Configuration.ApiUrl, p.Configuration.ApiUrl)
 		}
-		if ctx.Configuration.AuthToken != testContexts[i].Configuration.AuthToken {
-			t.Errorf("Expected auth token %s, got %s", testContexts[i].Configuration.AuthToken, ctx.Configuration.AuthToken)
+		if p.Configuration.AuthToken != testProfiles[i].Configuration.AuthToken {
+			t.Errorf("Expected auth token %s, got %s", testProfiles[i].Configuration.AuthToken, p.Configuration.AuthToken)
 		}
 	}
 }
 
-// TestServiceGetActiveContext tests the GetActiveContext method
-func TestServiceGetActiveContext(t *testing.T) {
+// TestServiceGetActiveProfile tests the GetActiveProfile method
+func TestServiceGetActiveProfile(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -130,90 +130,90 @@ func TestServiceGetActiveContext(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	setActiveContext(t, configDir, "test2")
-	
-	// Create service and test GetActiveContext
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test2")
+
+	// Create service and test GetActiveProfile
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	context, err := service.GetActiveContext()
+
+	profile, err := service.GetActiveProfile()
 	if err != nil {
-		t.Fatalf("Failed to get active context: %v", err)
+		t.Fatalf("Failed to get active profile: %v", err)
 	}
-	
+
 	// Validate result
-	if context.Name != "test2" {
-		t.Errorf("Expected active context name test2, got %s", context.Name)
+	if profile.Name != "test2" {
+		t.Errorf("Expected active profile name test2, got %s", profile.Name)
 	}
-	if context.Configuration.ApiUrl != "https://test2.example.com" {
-		t.Errorf("Expected API URL https://test2.example.com, got %s", context.Configuration.ApiUrl)
+	if profile.Configuration.ApiUrl != "https://test2.example.com" {
+		t.Errorf("Expected API URL https://test2.example.com, got %s", profile.Configuration.ApiUrl)
 	}
-	if context.Configuration.AuthToken != "token2" {
-		t.Errorf("Expected auth token token2, got %s", context.Configuration.AuthToken)
+	if profile.Configuration.AuthToken != "token2" {
+		t.Errorf("Expected auth token token2, got %s", profile.Configuration.AuthToken)
 	}
 }
 
-// TestServiceAddContext tests the AddContext method
-func TestServiceAddContext(t *testing.T) {
+// TestServiceAddProfile tests the AddProfile method
+func TestServiceAddProfile(t *testing.T) {
 	// Setup test environment
 	_ = setupTestConfigDir(t)
-	
+
 	// Create service
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	// Add a new context
-	newContext := Context{
-		Name: "new-context",
+
+	// Add a new profile
+	newProfile := Profile{
+		Name: "new-profile",
 		Configuration: Configuration{
 			ApiUrl:   "https://new.example.com",
 			AuthToken: "new-token",
 		},
 	}
-	
-	err = service.AddContext(newContext)
+
+	err = service.AddProfile(newProfile)
 	if err != nil {
-		t.Fatalf("Failed to add context: %v", err)
+		t.Fatalf("Failed to add profile: %v", err)
 	}
-	
+
 	// Validate result
-	contexts, err := service.GetContexts()
+	profiles, err := service.GetProfiles()
 	if err != nil {
-		t.Fatalf("Failed to get contexts: %v", err)
+		t.Fatalf("Failed to get profiles: %v", err)
 	}
-	
-	if len(contexts) != 1 {
-		t.Errorf("Expected 1 context, got %d", len(contexts))
+
+	if len(profiles) != 1 {
+		t.Errorf("Expected 1 profile, got %d", len(profiles))
 	}
-	
-	if contexts[0].Name != "new-context" {
-		t.Errorf("Expected context name new-context, got %s", contexts[0].Name)
+
+	if profiles[0].Name != "new-profile" {
+		t.Errorf("Expected profile name new-profile, got %s", profiles[0].Name)
 	}
-	
-	// Check if this context was set as active (it should be, as it's the first one)
-	activeContext, err := service.GetActiveContext()
+
+	// Check if this profile was set as active (it should be, as it's the first one)
+	activeProfile, err := service.GetActiveProfile()
 	if err != nil {
-		t.Fatalf("Failed to get active context: %v", err)
+		t.Fatalf("Failed to get active profile: %v", err)
 	}
-	
-	if activeContext.Name != "new-context" {
-		t.Errorf("Expected active context name new-context, got %s", activeContext.Name)
+
+	if activeProfile.Name != "new-profile" {
+		t.Errorf("Expected active profile name new-profile, got %s", activeProfile.Name)
 	}
 }
 
-// TestServiceRemoveContext tests the RemoveContext method
-func TestServiceRemoveContext(t *testing.T) {
+// TestServiceRemoveProfile tests the RemoveProfile method
+func TestServiceRemoveProfile(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -229,43 +229,43 @@ func TestServiceRemoveContext(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	setActiveContext(t, configDir, "test2")
-	
-	// Create service and remove a context
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test2")
+
+	// Create service and remove a profile
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	err = service.RemoveContext("test2")
+
+	err = service.RemoveProfile("test2")
 	if err != nil {
-		t.Fatalf("Failed to remove context: %v", err)
+		t.Fatalf("Failed to remove profile: %v", err)
 	}
-	
+
 	// Validate result
-	contexts, err := service.GetContexts()
+	profiles, err := service.GetProfiles()
 	if err != nil {
-		t.Fatalf("Failed to get contexts: %v", err)
+		t.Fatalf("Failed to get profiles: %v", err)
 	}
-	
-	if len(contexts) != 1 {
-		t.Errorf("Expected 1 context, got %d", len(contexts))
+
+	if len(profiles) != 1 {
+		t.Errorf("Expected 1 profile, got %d", len(profiles))
 	}
-	
-	if contexts[0].Name != "test1" {
-		t.Errorf("Expected context name test1, got %s", contexts[0].Name)
+
+	if profiles[0].Name != "test1" {
+		t.Errorf("Expected profile name test1, got %s", profiles[0].Name)
 	}
-	
-	// Check if active context was updated
-	activeContext, err := service.GetActiveContext()
+
+	// Check if active profile was updated
+	activeProfile, err := service.GetActiveProfile()
 	if err != nil {
-		t.Fatalf("Failed to get active context: %v", err)
+		t.Fatalf("Failed to get active profile: %v", err)
 	}
-	
-	if activeContext.Name != "test1" {
-		t.Errorf("Expected active context name test1, got %s", activeContext.Name)
+
+	if activeProfile.Name != "test1" {
+		t.Errorf("Expected active profile name test1, got %s", activeProfile.Name)
 	}
 }
 
@@ -301,14 +301,14 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 		}
 	})
 	
-	// Test with active context
-	t.Run("With active context", func(t *testing.T) {
+	// Test with active profile
+	t.Run("With active profile", func(t *testing.T) {
 		// Unset environment variables
 		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
-		
-		// Create test contexts
-		testContexts := []Context{
+
+		// Create test profiles
+		testProfiles := []Profile{
 			{
 				Name: "test1",
 				Configuration: Configuration{
@@ -317,9 +317,9 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 				},
 			},
 		}
-		
-		createTestContextsFile(t, configDir, testContexts)
-		setActiveContext(t, configDir, "test1")
+
+		createTestProfilesFile(t, configDir, testProfiles)
+		setActiveProfile(t, configDir, "test1")
 		
 		service, err := NewService()
 		if err != nil {
@@ -360,8 +360,8 @@ func TestResolveConfiguration(t *testing.T) {
 		}
 	})
 	
-	// Test with active context and partial override
-	t.Run("With active context and partial override", func(t *testing.T) {
+	// Test with active profile and partial override
+	t.Run("With active profile and partial override", func(t *testing.T) {
 		// Create a completely new temporary directory for this test
 		tempDir, err := os.MkdirTemp("", "resolve-config-test")
 		if err != nil {
@@ -372,17 +372,17 @@ func TestResolveConfiguration(t *testing.T) {
 		// Set environment variables for this test only
 		os.Setenv("DASH0_CONFIG_DIR", tempDir)
 		defer os.Unsetenv("DASH0_CONFIG_DIR")
-		
+
 		// Enable test mode
 		os.Setenv("DASH0_TEST_MODE", "1")
 		defer os.Unsetenv("DASH0_TEST_MODE")
-		
+
 		// Unset environment variables that might interfere
 		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
-		
-		// Create test contexts with explicit test values
-		testContexts := []Context{
+
+		// Create test profiles with explicit test values
+		testProfiles := []Profile{
 			{
 				Name: "override-test",
 				Configuration: Configuration{
@@ -391,13 +391,13 @@ func TestResolveConfiguration(t *testing.T) {
 				},
 			},
 		}
-		
-		// Set up context file and active context
-		contextsFile := ContextsFile{Contexts: testContexts}
-		data, _ := json.Marshal(contextsFile)
+
+		// Set up profile file and active profile
+		profilesFile := ProfilesFile{Profiles: testProfiles}
+		data, _ := json.Marshal(profilesFile)
 		os.MkdirAll(tempDir, 0755)
-		os.WriteFile(filepath.Join(tempDir, ContextsFileName), data, 0644)
-		os.WriteFile(filepath.Join(tempDir, ActiveContextFileName), []byte("override-test"), 0644)
+		os.WriteFile(filepath.Join(tempDir, ProfilesFileName), data, 0644)
+		os.WriteFile(filepath.Join(tempDir, ActiveProfileFileName), []byte("override-test"), 0644)
 		
 		// Verify that the active configuration loads correctly
 		svc, _ := NewService()

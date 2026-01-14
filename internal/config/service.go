@@ -13,17 +13,17 @@ import (
 const (
 	// ConfigDirName is the name of the directory containing Dash0 configuration
 	ConfigDirName = ".dash0"
-	// ContextsFileName is the name of the file containing context configurations
-	ContextsFileName = "contexts.json"
-	// ActiveContextFileName is the name of the file containing the active context name
-	ActiveContextFileName = "activeContext"
+	// ProfilesFileName is the name of the file containing profile configurations
+	ProfilesFileName = "profiles.json"
+	// ActiveProfileFileName is the name of the file containing the active profile name
+	ActiveProfileFileName = "activeProfile"
 )
 
 var (
-	// ErrNoActiveContext is returned when there is no active context
-	ErrNoActiveContext = errors.New("no active context configured")
-	// ErrContextNotFound is returned when a requested context is not found
-	ErrContextNotFound = errors.New("context not found")
+	// ErrNoActiveProfile is returned when there is no active profile
+	ErrNoActiveProfile = errors.New("no active profile configured")
+	// ErrProfileNotFound is returned when a requested profile is not found
+	ErrProfileNotFound = errors.New("profile not found")
 )
 
 // Service handles configuration operations
@@ -61,13 +61,13 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 		}, nil
 	}
 
-	// Otherwise, try to get configuration from the active context
-	activeContext, err := s.GetActiveContext()
+	// Otherwise, try to get configuration from the active profile
+	activeProfile, err := s.GetActiveProfile()
 	if err != nil {
 		return nil, err
 	}
 
-	return &activeContext.Configuration, nil
+	return &activeProfile.Configuration, nil
 }
 
 // ResolveConfiguration loads configuration with override handling
@@ -107,80 +107,80 @@ func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 	// Final validation (skip in test mode)
 	testMode := os.Getenv("DASH0_TEST_MODE") == "1"
 	if !testMode && (result.ApiUrl == "" || result.AuthToken == "") {
-		return nil, fmt.Errorf("api-url and auth-token are required; provide them as flags or configure a context")
+		return nil, fmt.Errorf("api-url and auth-token are required; provide them as flags or configure a profile")
 	}
 
 	return result, nil
 }
 
-// GetActiveContext returns the currently active context
-func (s *Service) GetActiveContext() (*Context, error) {
-	activeContextName, err := s.getActiveContextName()
+// GetActiveProfile returns the currently active profile
+func (s *Service) GetActiveProfile() (*Profile, error) {
+	activeProfileName, err := s.getActiveProfileName()
 	if err != nil {
 		return nil, err
 	}
 
-	contexts, err := s.GetContexts()
+	profiles, err := s.GetProfiles()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, context := range contexts {
-		if context.Name == activeContextName {
-			return &context, nil
+	for _, profile := range profiles {
+		if profile.Name == activeProfileName {
+			return &profile, nil
 		}
 	}
 
-	return nil, ErrContextNotFound
+	return nil, ErrProfileNotFound
 }
 
-// GetContexts returns all available contexts
-func (s *Service) GetContexts() ([]Context, error) {
-	contextsFilePath := filepath.Join(s.configDir, ContextsFileName)
-	if _, err := os.Stat(contextsFilePath); os.IsNotExist(err) {
-		return []Context{}, nil
+// GetProfiles returns all available profiles
+func (s *Service) GetProfiles() ([]Profile, error) {
+	profilesFilePath := filepath.Join(s.configDir, ProfilesFileName)
+	if _, err := os.Stat(profilesFilePath); os.IsNotExist(err) {
+		return []Profile{}, nil
 	}
 
-	data, err := os.ReadFile(contextsFilePath)
+	data, err := os.ReadFile(profilesFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read contexts file: %w", err)
+		return nil, fmt.Errorf("failed to read profiles file: %w", err)
 	}
 
-	var contextsFile ContextsFile
-	if err := json.Unmarshal(data, &contextsFile); err != nil {
-		return nil, fmt.Errorf("failed to parse contexts file: %w", err)
+	var profilesFile ProfilesFile
+	if err := json.Unmarshal(data, &profilesFile); err != nil {
+		return nil, fmt.Errorf("failed to parse profiles file: %w", err)
 	}
 
-	return contextsFile.Contexts, nil
+	return profilesFile.Profiles, nil
 }
 
-// AddContext adds a new context to the configuration
-func (s *Service) AddContext(context Context) error {
-	contexts, err := s.GetContexts()
+// AddProfile adds a new profile to the configuration
+func (s *Service) AddProfile(profile Profile) error {
+	profiles, err := s.GetProfiles()
 	if err != nil {
 		return err
 	}
 
-	// Check if context already exists
-	for i, existing := range contexts {
-		if existing.Name == context.Name {
-			// Replace existing context
-			contexts[i] = context
-			return s.saveContexts(contexts)
+	// Check if profile already exists
+	for i, existing := range profiles {
+		if existing.Name == profile.Name {
+			// Replace existing profile
+			profiles[i] = profile
+			return s.saveProfiles(profiles)
 		}
 	}
 
-	// Add new context
-	contexts = append(contexts, context)
+	// Add new profile
+	profiles = append(profiles, profile)
 
-	err = s.saveContexts(contexts)
+	err = s.saveProfiles(profiles)
 	if err != nil {
 		return err
 	}
 
-	// If this is the first context, make it active
-	if len(contexts) == 1 {
-		if err := s.SetActiveContext(context.Name); err != nil {
+	// If this is the first profile, make it active
+	if len(profiles) == 1 {
+		if err := s.SetActiveProfile(profile.Name); err != nil {
 			return err
 		}
 	}
@@ -188,65 +188,65 @@ func (s *Service) AddContext(context Context) error {
 	return nil
 }
 
-// RemoveContext removes a context from the configuration
-func (s *Service) RemoveContext(contextName string) error {
-	contexts, err := s.GetContexts()
+// RemoveProfile removes a profile from the configuration
+func (s *Service) RemoveProfile(profileName string) error {
+	profiles, err := s.GetProfiles()
 	if err != nil {
 		return err
 	}
 
 	var found bool
-	var newContexts []Context
-	for _, context := range contexts {
-		if context.Name != contextName {
-			newContexts = append(newContexts, context)
+	var newProfiles []Profile
+	for _, profile := range profiles {
+		if profile.Name != profileName {
+			newProfiles = append(newProfiles, profile)
 		} else {
 			found = true
 		}
 	}
 
 	if !found {
-		return ErrContextNotFound
+		return ErrProfileNotFound
 	}
 
-	// Check if removing the active context
-	activeContextName, err := s.getActiveContextName()
-	if err == nil && activeContextName == contextName {
-		// Set a new active context if possible, otherwise clear it
-		if len(newContexts) > 0 {
-			if err := s.SetActiveContext(newContexts[0].Name); err != nil {
+	// Check if removing the active profile
+	activeProfileName, err := s.getActiveProfileName()
+	if err == nil && activeProfileName == profileName {
+		// Set a new active profile if possible, otherwise clear it
+		if len(newProfiles) > 0 {
+			if err := s.SetActiveProfile(newProfiles[0].Name); err != nil {
 				return err
 			}
 		} else {
-			if err := os.Remove(filepath.Join(s.configDir, ActiveContextFileName)); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("failed to remove active context file: %w", err)
+			if err := os.Remove(filepath.Join(s.configDir, ActiveProfileFileName)); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove active profile file: %w", err)
 			}
 		}
 	}
 
-	return s.saveContexts(newContexts)
+	return s.saveProfiles(newProfiles)
 }
 
-// SetActiveContext sets the active context
-func (s *Service) SetActiveContext(contextName string) error {
-	// During testing we may need to bypass context validation
+// SetActiveProfile sets the active profile
+func (s *Service) SetActiveProfile(profileName string) error {
+	// During testing we may need to bypass profile validation
 	if os.Getenv("DASH0_TEST_MODE") != "1" {
-		// Verify the context exists
-		contexts, err := s.GetContexts()
+		// Verify the profile exists
+		profiles, err := s.GetProfiles()
 		if err != nil {
 			return err
 		}
 
 		var found bool
-		for _, context := range contexts {
-			if context.Name == contextName {
+		for _, profile := range profiles {
+			if profile.Name == profileName {
 				found = true
 				break
 			}
 		}
 
 		if !found {
-			return ErrContextNotFound
+			return ErrProfileNotFound
 		}
 	}
 
@@ -255,51 +255,51 @@ func (s *Service) SetActiveContext(contextName string) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Write the active context name
-	activeContextPath := filepath.Join(s.configDir, ActiveContextFileName)
-	if err := os.WriteFile(activeContextPath, []byte(contextName), 0644); err != nil {
-		return fmt.Errorf("failed to write active context: %w", err)
+	// Write the active profile name
+	activeProfilePath := filepath.Join(s.configDir, ActiveProfileFileName)
+	if err := os.WriteFile(activeProfilePath, []byte(profileName), 0644); err != nil {
+		return fmt.Errorf("failed to write active profile: %w", err)
 	}
 
 	return nil
 }
 
-// getActiveContextName returns the name of the active context
-func (s *Service) getActiveContextName() (string, error) {
-	activeContextPath := filepath.Join(s.configDir, ActiveContextFileName)
-	if _, err := os.Stat(activeContextPath); os.IsNotExist(err) {
-		return "", ErrNoActiveContext
+// getActiveProfileName returns the name of the active profile
+func (s *Service) getActiveProfileName() (string, error) {
+	activeProfilePath := filepath.Join(s.configDir, ActiveProfileFileName)
+	if _, err := os.Stat(activeProfilePath); os.IsNotExist(err) {
+		return "", ErrNoActiveProfile
 	}
 
-	data, err := os.ReadFile(activeContextPath)
+	data, err := os.ReadFile(activeProfilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read active context: %w", err)
+		return "", fmt.Errorf("failed to read active profile: %w", err)
 	}
 
-	activeContextName := string(data)
-	if activeContextName == "" {
-		return "", ErrNoActiveContext
+	activeProfileName := string(data)
+	if activeProfileName == "" {
+		return "", ErrNoActiveProfile
 	}
 
-	return activeContextName, nil
+	return activeProfileName, nil
 }
 
-// saveContexts saves the contexts to the configuration file
-func (s *Service) saveContexts(contexts []Context) error {
+// saveProfiles saves the profiles to the configuration file
+func (s *Service) saveProfiles(profiles []Profile) error {
 	// Ensure config directory exists
 	if err := os.MkdirAll(s.configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	contextsFile := ContextsFile{Contexts: contexts}
-	data, err := json.MarshalIndent(contextsFile, "", "  ")
+	profilesFile := ProfilesFile{Profiles: profiles}
+	data, err := json.MarshalIndent(profilesFile, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal contexts: %w", err)
+		return fmt.Errorf("failed to marshal profiles: %w", err)
 	}
 
-	contextsFilePath := filepath.Join(s.configDir, ContextsFileName)
-	if err := os.WriteFile(contextsFilePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write contexts file: %w", err)
+	profilesFilePath := filepath.Join(s.configDir, ProfilesFileName)
+	if err := os.WriteFile(profilesFilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write profiles file: %w", err)
 	}
 
 	return nil

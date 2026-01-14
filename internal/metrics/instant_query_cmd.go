@@ -165,8 +165,8 @@ func newInstantQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&queryExpr, "query", "", "PromQL query expression (required)")
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Dataset to query (optional)")
 	cmd.Flags().StringVar(&queryTime, "time", "", "Evaluation timestamp (optional, defaults to now). Supports relative time ranges")
-	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API (overrides active context)")
-	cmd.Flags().StringVar(&authToken, "auth-token", "", "Auth token for the Dash0 API (overrides active context)")
+	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
+	cmd.Flags().StringVar(&authToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
 
 	cmd.MarkFlagRequired("query")
 

@@ -6,13 +6,13 @@ type Configuration struct {
 	AuthToken string `json:"authToken" yaml:"authToken"`
 }
 
-// Context represents a configuration context
-type Context struct {
+// Profile represents a configuration profile
+type Profile struct {
 	Name          string        `json:"name" yaml:"name"`
 	Configuration Configuration `json:"configuration" yaml:"configuration"`
 }
 
-// ContextsFile represents the file storing multiple contexts
-type ContextsFile struct {
-	Contexts []Context `json:"contexts" yaml:"contexts"`
+// ProfilesFile represents the file storing multiple profiles
+type ProfilesFile struct {
+	Profiles []Profile `json:"profiles" yaml:"profiles"`
 }

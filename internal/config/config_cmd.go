@@ -17,7 +17,7 @@ func NewConfigCmd() *cobra.Command {
 
 	// Add subcommands
 	cmd.AddCommand(newShowCmd())
-	cmd.AddCommand(newContextCmd())
+	cmd.AddCommand(newProfileCmd())
 
 	return cmd
 }
@@ -56,31 +56,31 @@ func maskToken(token string) string {
 	return token[:4] + "..." + token[len(token)-4:]
 }
 
-// newContextCmd creates a new context command
-func newContextCmd() *cobra.Command {
+// newProfileCmd creates a new profile command
+func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "context",
-		Short: "Manage configuration contexts",
-		Long:  `Add, list, remove, and select configuration contexts`,
+		Use:   "profile",
+		Short: "Manage configuration profiles",
+		Long:  `Add, list, remove, and select configuration profiles`,
 	}
 
 	// Add subcommands
-	cmd.AddCommand(newAddContextCmd())
-	cmd.AddCommand(newListContextCmd())
-	cmd.AddCommand(newRemoveContextCmd())
-	cmd.AddCommand(newSelectContextCmd())
+	cmd.AddCommand(newAddProfileCmd())
+	cmd.AddCommand(newListProfileCmd())
+	cmd.AddCommand(newRemoveProfileCmd())
+	cmd.AddCommand(newSelectProfileCmd())
 
 	return cmd
 }
 
-// newAddContextCmd creates a new add context command
-func newAddContextCmd() *cobra.Command {
+// newAddProfileCmd creates a new add profile command
+func newAddProfileCmd() *cobra.Command {
 	var apiUrl, authToken, name string
 
 	cmd := &cobra.Command{
 		Use:   "add",
-		Short: "Add a new configuration context",
-		Long:  `Add a new named configuration context with API URL and auth token`,
+		Short: "Add a new configuration profile",
+		Long:  `Add a new named configuration profile with API URL and auth token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
@@ -91,7 +91,7 @@ func newAddContextCmd() *cobra.Command {
 				return fmt.Errorf("name, api-url, and auth-token are required")
 			}
 
-			context := Context{
+			profile := Profile{
 				Name: name,
 				Configuration: Configuration{
 					ApiUrl:    apiUrl,
@@ -99,59 +99,59 @@ func newAddContextCmd() *cobra.Command {
 				},
 			}
 
-			if err := configService.AddContext(context); err != nil {
-				return fmt.Errorf("failed to add context: %w", err)
+			if err := configService.AddProfile(profile); err != nil {
+				return fmt.Errorf("failed to add profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Context added successfully")
-			fmt.Printf("Context '%s' added successfully\n", name)
+			log.Logger.Info().Str("name", name).Msg("Profile added successfully")
+			fmt.Printf("Profile '%s' added successfully\n", name)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Name of the context")
+	cmd.Flags().StringVar(&name, "name", "", "Name of the profile")
 	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API")
 	cmd.Flags().StringVar(&authToken, "auth-token", "", "Authentication token for the Dash0 API")
 
 	return cmd
 }
 
-// newListContextCmd creates a new list context command
-func newListContextCmd() *cobra.Command {
+// newListProfileCmd creates a new list profile command
+func newListProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List all configuration contexts",
-		Long:    `Display a list of all available configuration contexts`,
+		Short:   "List all configuration profiles",
+		Long:    `Display a list of all available configuration profiles`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
 				return err
 			}
 
-			contexts, err := configService.GetContexts()
+			profiles, err := configService.GetProfiles()
 			if err != nil {
-				return fmt.Errorf("failed to get contexts: %w", err)
+				return fmt.Errorf("failed to get profiles: %w", err)
 			}
 
-			if len(contexts) == 0 {
-				fmt.Println("No contexts configured")
+			if len(profiles) == 0 {
+				fmt.Println("No profiles configured")
 				return nil
 			}
 
-			activeContextName := ""
-			activeContext, err := configService.GetActiveContext()
-			if err == nil && activeContext != nil {
-				activeContextName = activeContext.Name
+			activeProfileName := ""
+			activeProfile, err := configService.GetActiveProfile()
+			if err == nil && activeProfile != nil {
+				activeProfileName = activeProfile.Name
 			}
 
-			fmt.Println("Available contexts:")
-			for _, context := range contexts {
-				if context.Name == activeContextName {
-					fmt.Printf("* %s\n", context.Name)
+			fmt.Println("Available profiles:")
+			for _, profile := range profiles {
+				if profile.Name == activeProfileName {
+					fmt.Printf("* %s\n", profile.Name)
 				} else {
-					fmt.Printf("  %s\n", context.Name)
+					fmt.Printf("  %s\n", profile.Name)
 				}
 			}
 
@@ -162,14 +162,14 @@ func newListContextCmd() *cobra.Command {
 	return cmd
 }
 
-// newRemoveContextCmd creates a new remove context command
-func newRemoveContextCmd() *cobra.Command {
+// newRemoveProfileCmd creates a new remove profile command
+func newRemoveProfileCmd() *cobra.Command {
 	var name string
 
 	cmd := &cobra.Command{
 		Use:   "remove",
-		Short: "Remove a configuration context",
-		Long:  `Remove a named configuration context`,
+		Short: "Remove a configuration profile",
+		Long:  `Remove a named configuration profile`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
@@ -180,30 +180,30 @@ func newRemoveContextCmd() *cobra.Command {
 				return fmt.Errorf("name is required")
 			}
 
-			if err := configService.RemoveContext(name); err != nil {
-				return fmt.Errorf("failed to remove context: %w", err)
+			if err := configService.RemoveProfile(name); err != nil {
+				return fmt.Errorf("failed to remove profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Context removed successfully")
-			fmt.Printf("Context '%s' removed successfully\n", name)
+			log.Logger.Info().Str("name", name).Msg("Profile removed successfully")
+			fmt.Printf("Profile '%s' removed successfully\n", name)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Name of the context to remove")
+	cmd.Flags().StringVar(&name, "name", "", "Name of the profile to remove")
 
 	return cmd
 }
 
-// newSelectContextCmd creates a new select context command
-func newSelectContextCmd() *cobra.Command {
+// newSelectProfileCmd creates a new select profile command
+func newSelectProfileCmd() *cobra.Command {
 	var name string
 
 	cmd := &cobra.Command{
 		Use:   "select",
-		Short: "Select a configuration context",
-		Long:  `Set the active configuration context`,
+		Short: "Select a configuration profile",
+		Long:  `Set the active configuration profile`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
@@ -214,18 +214,18 @@ func newSelectContextCmd() *cobra.Command {
 				return fmt.Errorf("name is required")
 			}
 
-			if err := configService.SetActiveContext(name); err != nil {
-				return fmt.Errorf("failed to select context: %w", err)
+			if err := configService.SetActiveProfile(name); err != nil {
+				return fmt.Errorf("failed to select profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Context selected successfully")
-			fmt.Printf("Context '%s' is now active\n", name)
+			log.Logger.Info().Str("name", name).Msg("Profile selected successfully")
+			fmt.Printf("Profile '%s' is now active\n", name)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Name of the context to select")
+	cmd.Flags().StringVar(&name, "name", "", "Name of the profile to select")
 
 	return cmd
 }

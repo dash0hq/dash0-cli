@@ -28,28 +28,28 @@ docker run --rm dash0/cli --help
 
 ### Configuration
 
-The CLI supports multiple named configuration contexts, similar to kubectl.
+The CLI supports multiple named configuration profiles, similar to the AWS CLI.
 
 ```bash
 # Show current configuration
 dash0 config show
 
-# Add a new configuration context
-dash0 config context add --name dev --api-url https://api.eu-west-1.aws.dash0-dev.com --auth-token your-token
+# Add a new configuration profile
+dash0 config profile add --name dev --api-url https://api.eu-west-1.aws.dash0-dev.com --auth-token your-token
 
-# List available contexts
-dash0 config context list
+# List available profiles
+dash0 config profile list
 
-# Select a context
-dash0 config context select --name dev
+# Select a profile
+dash0 config profile select --name dev
 
-# Remove a context
-dash0 config context remove --name dev
+# Remove a profile
+dash0 config profile remove --name dev
 ```
 
 Configuration precedence:
 1. Environment variables: `DASH0_API_URL` and `DASH0_AUTH_TOKEN`
-2. Active configuration context
+2. Active configuration profile
 
 ## Development
 

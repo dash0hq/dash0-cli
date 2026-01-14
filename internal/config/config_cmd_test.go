@@ -37,9 +37,9 @@ func executeCommand(root *cobra.Command, args ...string) (output string, err err
 func TestShowCmd(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -48,9 +48,9 @@ func TestShowCmd(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	setActiveContext(t, configDir, "test1")
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
 	
 	// Create root command and add config command
 	rootCmd := &cobra.Command{Use: "dash0"}
@@ -69,13 +69,13 @@ func TestShowCmd(t *testing.T) {
 	}
 }
 
-// TestListContextCmd tests the list context command
-func TestListContextCmd(t *testing.T) {
+// TestListProfileCmd tests the list profile command
+func TestListProfileCmd(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -91,84 +91,84 @@ func TestListContextCmd(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	setActiveContext(t, configDir, "test2")
-	
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test2")
+
 	// Create root command and add config command
 	rootCmd := &cobra.Command{Use: "dash0"}
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
-	
+
 	// Execute list command
-	output, err := executeCommand(rootCmd, "config", "context", "list")
+	output, err := executeCommand(rootCmd, "config", "profile", "list")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	// Verify output contains expected data
 	if !bytes.Contains([]byte(output), []byte("* test2")) {
-		t.Errorf("Expected output to contain active context marker (* test2), got: %s", output)
+		t.Errorf("Expected output to contain active profile marker (* test2), got: %s", output)
 	}
-	
+
 	if !bytes.Contains([]byte(output), []byte("test1")) {
 		t.Errorf("Expected output to contain test1, got: %s", output)
 	}
 }
 
-// TestAddContextCmd tests the add context command
-func TestAddContextCmd(t *testing.T) {
+// TestAddProfileCmd tests the add profile command
+func TestAddProfileCmd(t *testing.T) {
 	// Setup test environment
 	_ = setupTestConfigDir(t)
-	
+
 	// Create root command and add config command
 	rootCmd := &cobra.Command{Use: "dash0"}
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
-	
+
 	// Execute add command
-	output, err := executeCommand(rootCmd, "config", "context", "add", "--name", "new-context", "--api-url", "https://new.example.com", "--auth-token", "new-token")
+	output, err := executeCommand(rootCmd, "config", "profile", "add", "--name", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Context 'new-context' added successfully")) {
+	if !bytes.Contains([]byte(output), []byte("Profile 'new-profile' added successfully")) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
-	
-	// Verify context was added
+
+	// Verify profile was added
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	contexts, err := service.GetContexts()
+
+	profiles, err := service.GetProfiles()
 	if err != nil {
-		t.Fatalf("Failed to get contexts: %v", err)
+		t.Fatalf("Failed to get profiles: %v", err)
 	}
-	
-	if len(contexts) != 1 {
-		t.Errorf("Expected 1 context, got %d", len(contexts))
+
+	if len(profiles) != 1 {
+		t.Errorf("Expected 1 profile, got %d", len(profiles))
 		return // Avoid index out of range error
 	}
-	
-	if contexts[0].Name != "new-context" {
-		t.Errorf("Expected context name new-context, got %s", contexts[0].Name)
+
+	if profiles[0].Name != "new-profile" {
+		t.Errorf("Expected profile name new-profile, got %s", profiles[0].Name)
 	}
-	
-	if contexts[0].Configuration.ApiUrl != "https://new.example.com" {
-		t.Errorf("Expected API URL https://new.example.com, got %s", contexts[0].Configuration.ApiUrl)
+
+	if profiles[0].Configuration.ApiUrl != "https://new.example.com" {
+		t.Errorf("Expected API URL https://new.example.com, got %s", profiles[0].Configuration.ApiUrl)
 	}
 }
 
-// TestRemoveContextCmd tests the remove context command
-func TestRemoveContextCmd(t *testing.T) {
+// TestRemoveProfileCmd tests the remove profile command
+func TestRemoveProfileCmd(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -184,53 +184,53 @@ func TestRemoveContextCmd(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	setActiveContext(t, configDir, "test1")
-	
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
+
 	// Create root command and add config command
 	rootCmd := &cobra.Command{Use: "dash0"}
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
-	
+
 	// Execute remove command
-	output, err := executeCommand(rootCmd, "config", "context", "remove", "--name", "test2")
+	output, err := executeCommand(rootCmd, "config", "profile", "remove", "--name", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Context 'test2' removed successfully")) {
+	if !bytes.Contains([]byte(output), []byte("Profile 'test2' removed successfully")) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
-	
-	// Verify context was removed
+
+	// Verify profile was removed
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	contexts, err := service.GetContexts()
+
+	profiles, err := service.GetProfiles()
 	if err != nil {
-		t.Fatalf("Failed to get contexts: %v", err)
+		t.Fatalf("Failed to get profiles: %v", err)
 	}
-	
-	if len(contexts) != 1 {
-		t.Errorf("Expected 1 context, got %d", len(contexts))
+
+	if len(profiles) != 1 {
+		t.Errorf("Expected 1 profile, got %d", len(profiles))
 	}
-	
-	if contexts[0].Name != "test1" {
-		t.Errorf("Expected context name test1, got %s", contexts[0].Name)
+
+	if profiles[0].Name != "test1" {
+		t.Errorf("Expected profile name test1, got %s", profiles[0].Name)
 	}
 }
 
-// TestSelectContextCmd tests the select context command
-func TestSelectContextCmd(t *testing.T) {
+// TestSelectProfileCmd tests the select profile command
+func TestSelectProfileCmd(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
-	// Create test contexts
-	testContexts := []Context{
+
+	// Create test profiles
+	testProfiles := []Profile{
 		{
 			Name: "test1",
 			Configuration: Configuration{
@@ -246,38 +246,38 @@ func TestSelectContextCmd(t *testing.T) {
 			},
 		},
 	}
-	
-	createTestContextsFile(t, configDir, testContexts)
-	setActiveContext(t, configDir, "test1")
-	
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
+
 	// Create root command and add config command
 	rootCmd := &cobra.Command{Use: "dash0"}
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
-	
+
 	// Execute select command
-	output, err := executeCommand(rootCmd, "config", "context", "select", "--name", "test2")
+	output, err := executeCommand(rootCmd, "config", "profile", "select", "--name", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Context 'test2' is now active")) {
+	if !bytes.Contains([]byte(output), []byte("Profile 'test2' is now active")) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
-	
-	// Verify active context was updated
+
+	// Verify active profile was updated
 	service, err := NewService()
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}
-	
-	activeContext, err := service.GetActiveContext()
+
+	activeProfile, err := service.GetActiveProfile()
 	if err != nil {
-		t.Fatalf("Failed to get active context: %v", err)
+		t.Fatalf("Failed to get active profile: %v", err)
 	}
-	
-	if activeContext.Name != "test2" {
-		t.Errorf("Expected active context name test2, got %s", activeContext.Name)
+
+	if activeProfile.Name != "test2" {
+		t.Errorf("Expected active profile name test2, got %s", activeProfile.Name)
 	}
 }
