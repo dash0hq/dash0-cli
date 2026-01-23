@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	res "github.com/dash0hq/dash0-cli/internal/resource"
 	"github.com/spf13/cobra"
@@ -35,6 +36,14 @@ func runExport(ctx context.Context, id string, flags *res.ExportFlags) error {
 	dashboard, err := apiClient.GetDashboard(ctx, id, client.DatasetPtr(flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err)
+	}
+
+	// Ensure the dashboard ID is preserved for upsert semantics on apply
+	if dashboard.Metadata.Dash0Extensions == nil {
+		dashboard.Metadata.Dash0Extensions = &dash0.DashboardMetadataExtensions{}
+	}
+	if dashboard.Metadata.Dash0Extensions.Id == nil {
+		dashboard.Metadata.Dash0Extensions.Id = &id
 	}
 
 	// If file is specified, write to file; otherwise write to stdout

@@ -37,6 +37,11 @@ func runExport(ctx context.Context, id string, flags *res.ExportFlags) error {
 		return client.HandleAPIError(err)
 	}
 
+	// Ensure the rule ID is preserved for upsert semantics on apply
+	if rule.Id == nil {
+		rule.Id = &id
+	}
+
 	if flags.File != "" {
 		if err := res.WriteDefinitionFile(flags.File, rule); err != nil {
 			return fmt.Errorf("failed to write check rule to file: %w", err)

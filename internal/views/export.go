@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	res "github.com/dash0hq/dash0-cli/internal/resource"
 	"github.com/spf13/cobra"
@@ -35,6 +36,14 @@ func runExport(ctx context.Context, id string, flags *res.ExportFlags) error {
 	view, err := apiClient.GetView(ctx, id, client.DatasetPtr(flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err)
+	}
+
+	// Ensure the view ID is preserved for upsert semantics on apply
+	if view.Metadata.Labels == nil {
+		view.Metadata.Labels = &dash0.ViewLabels{}
+	}
+	if view.Metadata.Labels.Dash0Comid == nil {
+		view.Metadata.Labels.Dash0Comid = &id
 	}
 
 	if flags.File != "" {

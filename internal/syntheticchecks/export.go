@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	res "github.com/dash0hq/dash0-cli/internal/resource"
 	"github.com/spf13/cobra"
@@ -35,6 +36,14 @@ func runExport(ctx context.Context, id string, flags *res.ExportFlags) error {
 	check, err := apiClient.GetSyntheticCheck(ctx, id, client.DatasetPtr(flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err)
+	}
+
+	// Ensure the check ID is preserved for upsert semantics on apply
+	if check.Metadata.Labels == nil {
+		check.Metadata.Labels = &dash0.SyntheticCheckLabels{}
+	}
+	if check.Metadata.Labels.Dash0Comid == nil {
+		check.Metadata.Labels.Dash0Comid = &id
 	}
 
 	if flags.File != "" {
