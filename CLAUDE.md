@@ -1,5 +1,8 @@
 # Dash0 CLI Development Guide
 
+This repository provides a CLI utility to perform various tasks related with Dash0, enabling users via terminal,
+AI agents and CI/CD workflows to perform tasks like creating, updating and deleting a number of resources in Dash0 like dashboards, alerting rules, views and more.
+
 ## Commands
 - Build: `make build`
 - Test all: `make test`
@@ -23,3 +26,7 @@
 - `/internal/log`: Shared logging utilities
 
 Organize code by domain, make interfaces for testability, and follow standard Go package layout.
+
+## Documentation
+
+Available commands are explained in @README.md . The description of what commands do is kept short and to the point. Providing a sample invocation as shell snippet, and when the output is longer than 4 lines, truncate it meaningfully to 4 lines or less.

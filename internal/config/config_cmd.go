@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/spf13/cobra"
@@ -34,13 +35,34 @@ func newShowCmd() *cobra.Command {
 				return err
 			}
 
+			// Check if environment variables are being used
+			envApiUrl := os.Getenv("DASH0_API_URL")
+			envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
+
+			activeProfile, err := configService.GetActiveProfile()
+			fmt.Printf("Profile:    ")
+			if err != nil {
+				fmt.Printf("(none)\n")
+			} else {
+				fmt.Printf("%s\n", activeProfile.Name)
+			}
+
 			config, err := configService.GetActiveConfiguration()
 			if err != nil {
 				return fmt.Errorf("failed to get active configuration: %w", err)
 			}
 
-			fmt.Printf("API URL: %s\n", config.ApiUrl)
-			fmt.Printf("Auth Token: %s\n", maskToken(config.AuthToken))
+			fmt.Printf("API URL:    %s", config.ApiUrl)
+			if envApiUrl != "" {
+				fmt.Printf("    (from DASH0_API_URL environment variable)")
+			}
+			fmt.Println()
+
+			fmt.Printf("Auth Token: %s", maskToken(config.AuthToken))
+			if envAuthToken != "" {
+				fmt.Printf("    (from DASH0_AUTH_TOKEN environment variable)")
+			}
+			fmt.Println()
 
 			return nil
 		},
@@ -49,11 +71,11 @@ func newShowCmd() *cobra.Command {
 
 // maskToken masks all but the first and last 4 characters of a token
 func maskToken(token string) string {
-	if len(token) <= 8 {
+	if len(token) <= 12 {
 		return "********"
 	}
 
-	return token[:4] + "..." + token[len(token)-4:]
+	return "..." + token[len(token)-7:]
 }
 
 // newProfileCmd creates a new profile command

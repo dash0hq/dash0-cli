@@ -1,14 +1,15 @@
 .PHONY: build clean test install
 
-BINARY_NAME=dash0
+BUILD_DIR=./build
+BINARY_NAME=dash0ctl
 GOOS?=$(shell go env GOOS)
 GOARCH?=$(shell go env GOARCH)
 
 build:
-	go build -o $(BINARY_NAME) ./cmd/dash0
+	mkdir -p $(BUILD_DIR) && go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
 
 test:
 	go test -v ./...
 
 install: build
-	mv $(BINARY_NAME) $(GOPATH)/bin/
+	mv $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/

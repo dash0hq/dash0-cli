@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/dash0hq/dash0-cli/internal/log"
 )
 
 const (
@@ -49,25 +47,22 @@ func NewService() (*Service, error) {
 
 // GetActiveConfiguration returns the currently active configuration
 func (s *Service) GetActiveConfiguration() (*Configuration, error) {
-	// Check environment variables first
-	apiUrl := os.Getenv("DASH0_API_URL")
-	authToken := os.Getenv("DASH0_AUTH_TOKEN")
-
-	if apiUrl != "" && authToken != "" {
-		log.Logger.Debug().Msg("Using configuration from environment variables")
-		return &Configuration{
-			ApiUrl:    apiUrl,
-			AuthToken: authToken,
-		}, nil
-	}
-
-	// Otherwise, try to get configuration from the active profile
 	activeProfile, err := s.GetActiveProfile()
 	if err != nil {
 		return nil, err
 	}
 
-	return &activeProfile.Configuration, nil
+	activeConfiguration := &activeProfile.Configuration
+	apiUrl := os.Getenv("DASH0_API_URL")
+	if apiUrl != "" {
+		activeConfiguration.ApiUrl = apiUrl
+	}
+	authToken := os.Getenv("DASH0_AUTH_TOKEN")
+	if authToken != "" {
+		activeConfiguration.AuthToken = authToken
+	}
+
+	return activeConfiguration, nil
 }
 
 // ResolveConfiguration loads configuration with override handling
