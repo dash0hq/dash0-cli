@@ -191,22 +191,43 @@ View exported to view.yaml
 | `--dataset` | `-d` | Specify dataset to operate on |
 | `--output` | `-o` | Output format: `table`, `json`, `yaml` |
 
-## Development
+### Shell Completions
 
-### Build
+Enable tab completion for your shell:
 
+**Bash** (requires `bash-completion`):
 ```bash
-make build
+# Current session
+source <(dash0ctl completion bash)
+
+# Permanent (Linux)
+dash0ctl completion bash > /etc/bash_completion.d/dash0ctl
+
+# Permanent (macOS with Homebrew)
+dash0ctl completion bash > $(brew --prefix)/etc/bash_completion.d/dash0ctl
 ```
 
-### Test
-
+**Zsh**:
 ```bash
-make test
+# Current session
+source <(dash0ctl completion zsh)
+
+# Permanent (Linux)
+dash0ctl completion zsh > "${fpath[1]}/_dash0ctl"
+
+# Permanent (macOS with Homebrew)
+dash0ctl completion zsh > $(brew --prefix)/share/zsh/site-functions/_dash0ctl
 ```
 
-### Build for multiple platforms
-
+**Fish**:
 ```bash
-make build-all
+# Current session
+dash0ctl completion fish | source
+
+# Permanent
+dash0ctl completion fish > ~/.config/fish/completions/dash0ctl.fish
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions.
