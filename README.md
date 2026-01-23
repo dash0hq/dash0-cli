@@ -35,8 +35,8 @@ $ dash0ctl config profile add --name dev --api-url https://api.eu-west-1.aws.das
 Profile "dev" added and set as active
 
 $ dash0ctl config profile list
-  NAME  API URL
-* dev   https://api.eu-west-1.aws.dash0.com
+  NAME  API URL                                  AUTH TOKEN
+* dev   https://api.eu-west-1.aws.dash0-dev.com  ...ULSzVkM
 
 $ dash0ctl config show
   Profile:    dev

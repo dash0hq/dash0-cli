@@ -46,20 +46,33 @@ func NewService() (*Service, error) {
 }
 
 // GetActiveConfiguration returns the currently active configuration
+// Environment variables take precedence over the active profile
 func (s *Service) GetActiveConfiguration() (*Configuration, error) {
+	envApiUrl := os.Getenv("DASH0_API_URL")
+	envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
+
+	// If both env vars are set, use them directly without requiring a profile
+	if envApiUrl != "" && envAuthToken != "" {
+		return &Configuration{
+			ApiUrl:    envApiUrl,
+			AuthToken: envAuthToken,
+		}, nil
+	}
+
+	// Otherwise, start with the active profile
 	activeProfile, err := s.GetActiveProfile()
 	if err != nil {
 		return nil, err
 	}
 
 	activeConfiguration := &activeProfile.Configuration
-	apiUrl := os.Getenv("DASH0_API_URL")
-	if apiUrl != "" {
-		activeConfiguration.ApiUrl = apiUrl
+
+	// Override with env vars if set
+	if envApiUrl != "" {
+		activeConfiguration.ApiUrl = envApiUrl
 	}
-	authToken := os.Getenv("DASH0_AUTH_TOKEN")
-	if authToken != "" {
-		activeConfiguration.AuthToken = authToken
+	if envAuthToken != "" {
+		activeConfiguration.AuthToken = envAuthToken
 	}
 
 	return activeConfiguration, nil

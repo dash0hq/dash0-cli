@@ -10,16 +10,22 @@ import (
 // setupTestConfigDir creates a temporary directory for testing and returns its path
 func setupTestConfigDir(t *testing.T) string {
 	t.Helper()
-	
+
 	// Create a temp directory
 	tempDir := t.TempDir()
-	
+
 	// Override the config path for testing
 	os.Setenv("DASH0_CONFIG_DIR", tempDir)
-	
+
 	// Enable test mode to bypass some validations
 	os.Setenv("DASH0_TEST_MODE", "1")
-	
+
+	// Cleanup env vars after test
+	t.Cleanup(func() {
+		os.Unsetenv("DASH0_CONFIG_DIR")
+		os.Unsetenv("DASH0_TEST_MODE")
+	})
+
 	return tempDir
 }
 

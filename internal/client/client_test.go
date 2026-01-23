@@ -38,6 +38,11 @@ func TestNewClient_MissingConfig(t *testing.T) {
 	os.Unsetenv("DASH0_AUTH_TOKEN")
 	os.Unsetenv("DASH0_TEST_MODE")
 
+	// Use a temporary empty config directory to ensure no profile is loaded
+	tempDir := t.TempDir()
+	os.Setenv("DASH0_CONFIG_DIR", tempDir)
+	defer os.Unsetenv("DASH0_CONFIG_DIR")
+
 	// Without test mode, missing config should return an error
 	client, err := NewClient("", "")
 	assert.Error(t, err)

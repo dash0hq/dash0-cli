@@ -168,13 +168,38 @@ func newListProfileCmd() *cobra.Command {
 				activeProfileName = activeProfile.Name
 			}
 
-			fmt.Println("Available profiles:")
+			// Calculate column widths (including 2 chars for active marker "* ")
+			nameWidth := len("NAME")
+			apiUrlWidth := len("API URL")
+			authTokenWidth := len("AUTH TOKEN")
+
 			for _, profile := range profiles {
-				if profile.Name == activeProfileName {
-					fmt.Printf("* %s\n", profile.Name)
-				} else {
-					fmt.Printf("  %s\n", profile.Name)
+				if len(profile.Name) > nameWidth {
+					nameWidth = len(profile.Name)
 				}
+				if len(profile.Configuration.ApiUrl) > apiUrlWidth {
+					apiUrlWidth = len(profile.Configuration.ApiUrl)
+				}
+				maskedToken := maskToken(profile.Configuration.AuthToken)
+				if len(maskedToken) > authTokenWidth {
+					authTokenWidth = len(maskedToken)
+				}
+			}
+
+			// Print header
+			fmt.Printf("  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", "AUTH TOKEN")
+
+			// Print rows
+			for _, profile := range profiles {
+				marker := " "
+				if profile.Name == activeProfileName {
+					marker = "*"
+				}
+				fmt.Printf("%s %-*s  %-*s  %s\n",
+					marker,
+					nameWidth, profile.Name,
+					apiUrlWidth, profile.Configuration.ApiUrl,
+					maskToken(profile.Configuration.AuthToken))
 			}
 
 			return nil
