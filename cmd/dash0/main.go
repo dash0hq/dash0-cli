@@ -22,7 +22,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "dash0ctl",
+	Use:     "dash0",
 	Short:   "Dash0 CLI",
 	Long:    `Command line interface for interacting with Dash0 services`,
 	Version: version,
@@ -50,9 +50,9 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version information",
-		Long:  `Display the version and build information for dash0ctl`,
+		Long:  `Display the version and build information for dash0`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("dash0ctl version %s (built on %s)\n", version, date)
+			fmt.Printf("dash0 version %s (built on %s)\n", version, date)
 		},
 	}
 }

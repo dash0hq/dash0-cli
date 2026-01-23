@@ -1,7 +1,7 @@
 .PHONY: build clean test install
 
 BUILD_DIR=./build
-BINARY_NAME=dash0ctl
+BINARY_NAME=dash0
 GOOS?=$(shell go env GOOS)
 GOARCH?=$(shell go env GOARCH)
 

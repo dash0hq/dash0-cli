@@ -42,13 +42,13 @@ Supported resource types:
 
 If a resource exists, it will be updated. If it doesn't exist, it will be created.`,
 		Example: `  # Apply a single resource
-  dash0ctl apply -f dashboard.yaml
+  dash0 apply -f dashboard.yaml
 
   # Apply multiple resources from a single file
-  dash0ctl apply -f resources.yaml
+  dash0 apply -f resources.yaml
 
   # Validate without applying
-  dash0ctl apply -f resources.yaml --dry-run`,
+  dash0 apply -f resources.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flags.File == "" {
 				return fmt.Errorf("file is required; use -f to specify the file")

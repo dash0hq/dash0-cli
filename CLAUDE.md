@@ -29,8 +29,8 @@ Organize code by domain, make interfaces for testability, and follow standard Go
 
 ## Documentation
 
-Available commands are explained in @README.md . The description of what commands do is kept short and to the point. Providing a sample invocation as shell snippet, and when the output is longer than 4 lines, truncate it meaningfully to 4 lines or less. When modifying `dash0ctl` in ways that affect the outpout displayed to users, always validate that the documentation about the commands is correct.
+Available commands are explained in @README.md . The description of what commands do is kept short and to the point. Providing a sample invocation as shell snippet, and when the output is longer than 4 lines, truncate it meaningfully to 4 lines or less. When modifying `dash0` in ways that affect the outpout displayed to users, always validate that the documentation about the commands is correct.
 
 ## Validation of changes
 
-When modifying `dash0ctl` in ways that affect the outpout displayed to users, always built the tool anew and validate the output.
+When modifying `dash0` in ways that affect the outpout displayed to users, always built the tool anew and validate the output.
