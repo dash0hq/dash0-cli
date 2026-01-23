@@ -53,7 +53,10 @@ func runGet(ctx context.Context, id string, flags *resource.GetFlags) error {
 	default:
 		// For table format, print key details
 		fmt.Printf("Kind: %s\n", dashboard.Kind)
-		fmt.Printf("Name: %s\n", dashboard.Metadata.Name)
+		displayName := extractDisplayName(dashboard)
+		if displayName != "" {
+			fmt.Printf("Name: %s\n", displayName)
+		}
 		if dashboard.Metadata.CreatedAt != nil {
 			fmt.Printf("Created: %s\n", dashboard.Metadata.CreatedAt.Format("2006-01-02 15:04:05"))
 		}

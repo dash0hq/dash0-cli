@@ -68,16 +68,16 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 
 func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem) error {
 	columns := []output.Column{
-		{Header: "ID", Width: 36, Value: func(item interface{}) string {
-			v := item.(*dash0.ViewApiListItem)
-			return v.Id
-		}},
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			v := item.(*dash0.ViewApiListItem)
 			if v.Name != nil {
 				return *v.Name
 			}
 			return ""
+		}},
+		{Header: "ID", Width: 36, Value: func(item interface{}) string {
+			v := item.(*dash0.ViewApiListItem)
+			return v.Id
 		}},
 	}
 

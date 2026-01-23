@@ -29,6 +29,12 @@ func newListCmd() *cobra.Command {
 	return cmd
 }
 
+// dashboardListItem holds the display information for a dashboard
+type dashboardListItem struct {
+	Id          string
+	DisplayName string
+}
+
 func runList(ctx context.Context, flags *resource.ListFlags) error {
 	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
 	if err != nil {
@@ -38,10 +44,10 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 	// Fetch dashboards using iterator
 	iter := apiClient.ListDashboardsIter(ctx, client.DatasetPtr(flags.Dataset))
 
-	var dashboards []*dash0.DashboardApiListItem
+	var listItems []*dash0.DashboardApiListItem
 	count := 0
 	for iter.Next() {
-		dashboards = append(dashboards, iter.Current())
+		listItems = append(listItems, iter.Current())
 		count++
 		if !flags.All && flags.Limit > 0 && count >= flags.Limit {
 			break
@@ -62,24 +68,58 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		return formatter.Print(dashboards)
+		return formatter.Print(listItems)
 	default:
+		// Fetch full dashboard details to get display names
+		dashboards := make([]dashboardListItem, 0, len(listItems))
+		for _, item := range listItems {
+			displayName := getDisplayName(ctx, apiClient, item.Id, flags.Dataset)
+			dashboards = append(dashboards, dashboardListItem{
+				Id:          item.Id,
+				DisplayName: displayName,
+			})
+		}
 		return printDashboardTable(formatter, dashboards)
 	}
 }
 
-func printDashboardTable(f *output.Formatter, dashboards []*dash0.DashboardApiListItem) error {
+// getDisplayName fetches the full dashboard and extracts spec.display.name
+func getDisplayName(ctx context.Context, apiClient dash0.Client, id string, dataset string) string {
+	dashboard, err := apiClient.GetDashboard(ctx, id, client.DatasetPtr(dataset))
+	if err != nil {
+		return "" // Fall back to empty if we can't fetch
+	}
+	return extractDisplayName(dashboard)
+}
+
+// extractDisplayName extracts the display name from a dashboard definition
+func extractDisplayName(dashboard *dash0.DashboardDefinition) string {
+	if dashboard == nil || dashboard.Spec == nil {
+		return ""
+	}
+
+	display, ok := dashboard.Spec["display"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	name, ok := display["name"].(string)
+	if !ok {
+		return ""
+	}
+
+	return name
+}
+
+func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem) error {
 	columns := []output.Column{
-		{Header: "ID", Width: 36, Value: func(item interface{}) string {
-			d := item.(*dash0.DashboardApiListItem)
-			return d.Id
-		}},
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
-			d := item.(*dash0.DashboardApiListItem)
-			if d.Name != nil {
-				return *d.Name
-			}
-			return ""
+			d := item.(dashboardListItem)
+			return d.DisplayName
+		}},
+		{Header: "ID", Width: 36, Value: func(item interface{}) string {
+			d := item.(dashboardListItem)
+			return d.Id
 		}},
 	}
 

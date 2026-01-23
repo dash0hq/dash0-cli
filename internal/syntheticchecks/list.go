@@ -68,16 +68,16 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 
 func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChecksApiListItem) error {
 	columns := []output.Column{
-		{Header: "ID", Width: 36, Value: func(item interface{}) string {
-			c := item.(*dash0.SyntheticChecksApiListItem)
-			return c.Id
-		}},
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			c := item.(*dash0.SyntheticChecksApiListItem)
 			if c.Name != nil {
 				return *c.Name
 			}
 			return ""
+		}},
+		{Header: "ID", Width: 36, Value: func(item interface{}) string {
+			c := item.(*dash0.SyntheticChecksApiListItem)
+			return c.Id
 		}},
 	}
 

@@ -55,8 +55,8 @@ func WriteDefinitionFile(path string, data interface{}) error {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		output = append(output, '\n')
-	default: // Default to YAML
-		output, err = yaml.Marshal(data)
+	default: // Default to YAML with 2-space indent (Kubernetes standard)
+		output, err = marshalYAML(data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal YAML: %w", err)
 		}
@@ -79,12 +79,26 @@ func WriteToStdout(format string, data interface{}) error {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		fmt.Println(string(output))
-	default: // Default to YAML
-		output, err := yaml.Marshal(data)
+	default: // Default to YAML with 2-space indent (Kubernetes standard)
+		output, err := marshalYAML(data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal YAML: %w", err)
 		}
 		fmt.Print(string(output))
 	}
 	return nil
+}
+
+// marshalYAML marshals data to YAML with 2-space indentation (Kubernetes standard)
+func marshalYAML(data interface{}) ([]byte, error) {
+	var buf strings.Builder
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(data); err != nil {
+		return nil, err
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, err
+	}
+	return []byte(buf.String()), nil
 }

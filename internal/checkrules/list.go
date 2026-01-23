@@ -68,16 +68,16 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 
 func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRuleApiListItem) error {
 	columns := []output.Column{
-		{Header: "ID", Width: 36, Value: func(item interface{}) string {
-			r := item.(*dash0.PrometheusAlertRuleApiListItem)
-			return r.Id
-		}},
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			r := item.(*dash0.PrometheusAlertRuleApiListItem)
 			if r.Name != nil {
 				return *r.Name
 			}
 			return ""
+		}},
+		{Header: "ID", Width: 36, Value: func(item interface{}) string {
+			r := item.(*dash0.PrometheusAlertRuleApiListItem)
+			return r.Id
 		}},
 	}
 

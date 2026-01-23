@@ -15,7 +15,6 @@ func NewCheckRulesCmd() *cobra.Command {
 	cmd.AddCommand(newCreateCmd())
 	cmd.AddCommand(newUpdateCmd())
 	cmd.AddCommand(newDeleteCmd())
-	cmd.AddCommand(newApplyCmd())
 	cmd.AddCommand(newExportCmd())
 
 	return cmd

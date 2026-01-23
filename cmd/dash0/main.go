@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
@@ -32,6 +33,7 @@ func init() {
 	log.SetupLogger()
 
 	// Register subcommands
+	rootCmd.AddCommand(apply.NewApplyCmd())
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
