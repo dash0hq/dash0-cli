@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/dash0hq/dash0-cli/internal/log"
 )
 
 const (
@@ -48,26 +46,36 @@ func NewService() (*Service, error) {
 }
 
 // GetActiveConfiguration returns the currently active configuration
+// Environment variables take precedence over the active profile
 func (s *Service) GetActiveConfiguration() (*Configuration, error) {
-	// Check environment variables first
-	apiUrl := os.Getenv("DASH0_API_URL")
-	authToken := os.Getenv("DASH0_AUTH_TOKEN")
+	envApiUrl := os.Getenv("DASH0_API_URL")
+	envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
 
-	if apiUrl != "" && authToken != "" {
-		log.Logger.Debug().Msg("Using configuration from environment variables")
+	// If both env vars are set, use them directly without requiring a profile
+	if envApiUrl != "" && envAuthToken != "" {
 		return &Configuration{
-			ApiUrl:    apiUrl,
-			AuthToken: authToken,
+			ApiUrl:    envApiUrl,
+			AuthToken: envAuthToken,
 		}, nil
 	}
 
-	// Otherwise, try to get configuration from the active profile
+	// Otherwise, start with the active profile
 	activeProfile, err := s.GetActiveProfile()
 	if err != nil {
 		return nil, err
 	}
 
-	return &activeProfile.Configuration, nil
+	activeConfiguration := &activeProfile.Configuration
+
+	// Override with env vars if set
+	if envApiUrl != "" {
+		activeConfiguration.ApiUrl = envApiUrl
+	}
+	if envAuthToken != "" {
+		activeConfiguration.AuthToken = envAuthToken
+	}
+
+	return activeConfiguration, nil
 }
 
 // ResolveConfiguration loads configuration with override handling

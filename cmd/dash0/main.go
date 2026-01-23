@@ -4,9 +4,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
+	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
+	"github.com/dash0hq/dash0-cli/internal/views"
 	"github.com/spf13/cobra"
 )
 
@@ -28,8 +33,13 @@ func init() {
 	log.SetupLogger()
 
 	// Register subcommands
+	rootCmd.AddCommand(apply.NewApplyCmd())
+	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
+	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
+	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
+	rootCmd.AddCommand(views.NewViewsCmd())
 
 	// Add version command
 	rootCmd.AddCommand(newVersionCmd())
@@ -40,9 +50,9 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version information",
-		Long:  `Display the version and build information for the Dash0 CLI`,
+		Long:  `Display the version and build information for dash0`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("Dash0 CLI version %s (built on %s)\n", version, date)
+			fmt.Printf("dash0 version %s (built on %s)\n", version, date)
 		},
 	}
 }

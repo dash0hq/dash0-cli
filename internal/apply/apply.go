@@ -1,0 +1,389 @@
+package apply
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	dash0 "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/client"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+)
+
+// Flags for the apply command
+type applyFlags struct {
+	ApiUrl    string
+	AuthToken string
+	Dataset   string
+	File      string
+	DryRun    bool
+}
+
+// NewApplyCmd creates the top-level apply command
+func NewApplyCmd() *cobra.Command {
+	var flags applyFlags
+
+	cmd := &cobra.Command{
+		Use:   "apply -f <file>",
+		Short: "Apply resource definitions from a file",
+		Long: `Apply resource definitions from a YAML or JSON file.
+The file may contain multiple documents separated by "---".
+Each document must have a "kind" field specifying the resource type.
+
+Supported resource types:
+  - Dashboard
+  - CheckRule (or PrometheusRule CRD)
+  - SyntheticCheck
+  - View
+
+If a resource exists, it will be updated. If it doesn't exist, it will be created.`,
+		Example: `  # Apply a single resource
+  dash0 apply -f dashboard.yaml
+
+  # Apply multiple resources from a single file
+  dash0 apply -f resources.yaml
+
+  # Validate without applying
+  dash0 apply -f resources.yaml --dry-run`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if flags.File == "" {
+				return fmt.Errorf("file is required; use -f to specify the file")
+			}
+			return runApply(cmd.Context(), &flags)
+		},
+	}
+
+	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to the file containing resource definitions (required)")
+	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate the file without applying changes")
+	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
+	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
+	cmd.Flags().StringVarP(&flags.Dataset, "dataset", "d", "", "Dataset to operate on")
+
+	return cmd
+}
+
+// resourceDocument represents a parsed YAML document with its kind
+type resourceDocument struct {
+	Kind string `yaml:"kind"`
+	raw  []byte
+}
+
+// PrometheusRule represents the Prometheus Operator PrometheusRule CRD
+type PrometheusRule struct {
+	APIVersion string                 `yaml:"apiVersion" json:"apiVersion"`
+	Kind       string                 `yaml:"kind" json:"kind"`
+	Metadata   PrometheusRuleMetadata `yaml:"metadata" json:"metadata"`
+	Spec       PrometheusRuleSpec     `yaml:"spec" json:"spec"`
+}
+
+// PrometheusRuleMetadata contains metadata for a PrometheusRule
+type PrometheusRuleMetadata struct {
+	Name        string            `yaml:"name,omitempty" json:"name,omitempty"`
+	Namespace   string            `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
+}
+
+// PrometheusRuleSpec contains the spec for a PrometheusRule
+type PrometheusRuleSpec struct {
+	Groups []PrometheusRuleGroup `yaml:"groups" json:"groups"`
+}
+
+// PrometheusRuleGroup represents a group of alerting rules
+type PrometheusRuleGroup struct {
+	Name     string            `yaml:"name" json:"name"`
+	Interval string            `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Rules    []PrometheusRule_ `yaml:"rules" json:"rules"`
+}
+
+// PrometheusRule_ represents an individual alerting rule within a group
+type PrometheusRule_ struct {
+	Alert       string            `yaml:"alert,omitempty" json:"alert,omitempty"`
+	Expr        string            `yaml:"expr" json:"expr"`
+	For         string            `yaml:"for,omitempty" json:"for,omitempty"`
+	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
+}
+
+func runApply(ctx context.Context, flags *applyFlags) error {
+	// Read and parse the file
+	documents, err := readMultiDocumentYAML(flags.File)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	if len(documents) == 0 {
+		return fmt.Errorf("no documents found in file")
+	}
+
+	// Validate all documents first
+	for i, doc := range documents {
+		if doc.Kind == "" {
+			return fmt.Errorf("document %d: missing 'kind' field", i+1)
+		}
+		if !isValidKind(doc.Kind) {
+			return fmt.Errorf("document %d: unsupported kind %q (supported: Dashboard, CheckRule, PrometheusRule, SyntheticCheck, View)", i+1, doc.Kind)
+		}
+	}
+
+	if flags.DryRun {
+		fmt.Printf("Dry run: %d document(s) validated successfully\n", len(documents))
+		for i, doc := range documents {
+			fmt.Printf("  %d. %s\n", i+1, doc.Kind)
+		}
+		return nil
+	}
+
+	// Create API client
+	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	if err != nil {
+		return err
+	}
+
+	// Apply each document
+	var applied []string
+	for i, doc := range documents {
+		name, err := applyDocument(ctx, apiClient, doc, flags.Dataset)
+		if err != nil {
+			// Report what was applied before the error
+			if len(applied) > 0 {
+				fmt.Println("Applied before error:")
+				for _, a := range applied {
+					fmt.Printf("  - %s\n", a)
+				}
+			}
+			return fmt.Errorf("document %d (%s): %w", i+1, doc.Kind, err)
+		}
+		applied = append(applied, fmt.Sprintf("%s %q", doc.Kind, name))
+		fmt.Printf("%s %q applied successfully\n", doc.Kind, name)
+	}
+
+	return nil
+}
+
+func readMultiDocumentYAML(filePath string) ([]resourceDocument, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var documents []resourceDocument
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+
+	for {
+		var node yaml.Node
+		err := decoder.Decode(&node)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse YAML: %w", err)
+		}
+
+		// Skip empty documents
+		if node.Kind == 0 {
+			continue
+		}
+
+		// Extract the kind field
+		var kindDoc struct {
+			Kind string `yaml:"kind"`
+		}
+		if err := node.Decode(&kindDoc); err != nil {
+			return nil, fmt.Errorf("failed to decode document: %w", err)
+		}
+
+		// Re-encode the node to get the raw bytes for this document
+		var buf bytes.Buffer
+		encoder := yaml.NewEncoder(&buf)
+		encoder.SetIndent(2)
+		if err := encoder.Encode(&node); err != nil {
+			return nil, fmt.Errorf("failed to re-encode document: %w", err)
+		}
+		encoder.Close()
+
+		documents = append(documents, resourceDocument{
+			Kind: kindDoc.Kind,
+			raw:  buf.Bytes(),
+		})
+	}
+
+	// Handle single-document files without YAML document markers
+	if len(documents) == 0 && len(data) > 0 {
+		// Try parsing as a single document
+		var kindDoc struct {
+			Kind string `yaml:"kind"`
+		}
+		if err := yaml.Unmarshal(data, &kindDoc); err == nil && kindDoc.Kind != "" {
+			documents = append(documents, resourceDocument{
+				Kind: kindDoc.Kind,
+				raw:  data,
+			})
+		}
+	}
+
+	return documents, nil
+}
+
+func isValidKind(kind string) bool {
+	switch normalizeKind(kind) {
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeKind(kind string) string {
+	// Normalize common variations
+	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
+	k = strings.ReplaceAll(k, "_", "")
+	return k
+}
+
+func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocument, dataset string) (string, error) {
+	datasetPtr := client.DatasetPtr(dataset)
+
+	switch normalizeKind(doc.Kind) {
+	case "dashboard":
+		var dashboard dash0.DashboardDefinition
+		if err := yaml.Unmarshal(doc.raw, &dashboard); err != nil {
+			return "", fmt.Errorf("failed to parse Dashboard: %w", err)
+		}
+		result, err := apiClient.ImportDashboard(ctx, &dashboard, datasetPtr)
+		if err != nil {
+			return "", client.HandleAPIError(err)
+		}
+		return result.Metadata.Name, nil
+
+	case "checkrule":
+		var rule dash0.PrometheusAlertRule
+		if err := yaml.Unmarshal(doc.raw, &rule); err != nil {
+			return "", fmt.Errorf("failed to parse CheckRule: %w", err)
+		}
+		result, err := apiClient.ImportCheckRule(ctx, &rule, datasetPtr)
+		if err != nil {
+			return "", client.HandleAPIError(err)
+		}
+		return result.Name, nil
+
+	case "prometheusrule":
+		var promRule PrometheusRule
+		if err := yaml.Unmarshal(doc.raw, &promRule); err != nil {
+			return "", fmt.Errorf("failed to parse PrometheusRule: %w", err)
+		}
+		return applyPrometheusRule(ctx, apiClient, &promRule, datasetPtr)
+
+	case "syntheticcheck":
+		var check dash0.SyntheticCheckDefinition
+		if err := yaml.Unmarshal(doc.raw, &check); err != nil {
+			return "", fmt.Errorf("failed to parse SyntheticCheck: %w", err)
+		}
+		result, err := apiClient.ImportSyntheticCheck(ctx, &check, datasetPtr)
+		if err != nil {
+			return "", client.HandleAPIError(err)
+		}
+		return result.Metadata.Name, nil
+
+	case "view":
+		var view dash0.ViewDefinition
+		if err := yaml.Unmarshal(doc.raw, &view); err != nil {
+			return "", fmt.Errorf("failed to parse View: %w", err)
+		}
+		result, err := apiClient.ImportView(ctx, &view, datasetPtr)
+		if err != nil {
+			return "", client.HandleAPIError(err)
+		}
+		return result.Metadata.Name, nil
+
+	default:
+		return "", fmt.Errorf("unsupported kind: %s", doc.Kind)
+	}
+}
+
+// applyPrometheusRule extracts rules from a PrometheusRule CRD and applies each as a CheckRule
+func applyPrometheusRule(ctx context.Context, apiClient dash0.Client, promRule *PrometheusRule, datasetPtr *string) (string, error) {
+	var appliedNames []string
+
+	// Extract ID from metadata labels for upsert semantics
+	var ruleID string
+	if promRule.Metadata.Labels != nil {
+		ruleID = promRule.Metadata.Labels["dash0.com/id"]
+	}
+
+	for _, group := range promRule.Spec.Groups {
+		for _, rule := range group.Rules {
+			// Skip recording rules (those without alert name)
+			if rule.Alert == "" {
+				continue
+			}
+
+			// Convert PrometheusRule rule to Dash0 CheckRule
+			checkRule := convertToCheckRule(&rule, group.Interval, ruleID)
+
+			result, err := apiClient.ImportCheckRule(ctx, checkRule, datasetPtr)
+			if err != nil {
+				if len(appliedNames) > 0 {
+					return strings.Join(appliedNames, ", "), fmt.Errorf("applied %v, then failed on %q: %w", appliedNames, rule.Alert, client.HandleAPIError(err))
+				}
+				return "", client.HandleAPIError(err)
+			}
+			appliedNames = append(appliedNames, result.Name)
+		}
+	}
+
+	if len(appliedNames) == 0 {
+		return "", fmt.Errorf("no alerting rules found in PrometheusRule (recording rules are not supported)")
+	}
+
+	return strings.Join(appliedNames, ", "), nil
+}
+
+// convertToCheckRule converts a Prometheus alerting rule to a Dash0 CheckRule
+func convertToCheckRule(rule *PrometheusRule_, groupInterval string, ruleID string) *dash0.PrometheusAlertRule {
+	checkRule := &dash0.PrometheusAlertRule{
+		Name:       rule.Alert,
+		Expression: rule.Expr,
+	}
+
+	// Set ID for upsert semantics
+	if ruleID != "" {
+		checkRule.Id = &ruleID
+	}
+
+	// Set labels and annotations as pointers
+	if len(rule.Labels) > 0 {
+		checkRule.Labels = &rule.Labels
+	}
+	if len(rule.Annotations) > 0 {
+		checkRule.Annotations = &rule.Annotations
+	}
+
+	// Set 'for' duration
+	if rule.For != "" {
+		forDuration := dash0.Duration(rule.For)
+		checkRule.For = &forDuration
+	}
+
+	// Use group interval if specified
+	if groupInterval != "" {
+		interval := dash0.Duration(groupInterval)
+		checkRule.Interval = &interval
+	}
+
+	// Extract summary and description from annotations if present
+	if rule.Annotations != nil {
+		if summary, ok := rule.Annotations["summary"]; ok {
+			checkRule.Summary = &summary
+		}
+		if description, ok := rule.Annotations["description"]; ok {
+			checkRule.Description = &description
+		}
+	}
+
+	return checkRule
+}
