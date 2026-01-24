@@ -33,6 +33,8 @@ func newListCmd() *cobra.Command {
 type dashboardListItem struct {
 	Id          string
 	DisplayName string
+	Dataset     string
+	Origin      *string
 }
 
 func runList(ctx context.Context, flags *resource.ListFlags) error {
@@ -77,9 +79,11 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 			dashboards = append(dashboards, dashboardListItem{
 				Id:          item.Id,
 				DisplayName: displayName,
+				Dataset:     item.Dataset,
+				Origin:      item.Origin,
 			})
 		}
-		return printDashboardTable(formatter, dashboards)
+		return printDashboardTable(formatter, dashboards, format)
 	}
 }
 
@@ -111,7 +115,7 @@ func extractDisplayName(dashboard *dash0.DashboardDefinition) string {
 	return name
 }
 
-func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem) error {
+func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			d := item.(dashboardListItem)
@@ -121,6 +125,22 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem) er
 			d := item.(dashboardListItem)
 			return d.Id
 		}},
+	}
+
+	if format == output.FormatWide {
+		columns = append(columns,
+			output.Column{Header: "DATASET", Width: 15, Value: func(item interface{}) string {
+				d := item.(dashboardListItem)
+				return d.Dataset
+			}},
+			output.Column{Header: "ORIGIN", Width: 30, Value: func(item interface{}) string {
+				d := item.(dashboardListItem)
+				if d.Origin != nil {
+					return *d.Origin
+				}
+				return ""
+			}},
+		)
 	}
 
 	// Convert to []interface{}
