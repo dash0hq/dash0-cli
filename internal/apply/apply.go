@@ -242,6 +242,7 @@ func normalizeKind(kind string) string {
 	// Normalize common variations
 	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
 	k = strings.ReplaceAll(k, "_", "")
+	k = strings.TrimPrefix(k, "dash0")
 	return k
 }
 
@@ -254,6 +255,12 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		if err := yaml.Unmarshal(doc.raw, &dashboard); err != nil {
 			return "", fmt.Errorf("failed to parse Dashboard: %w", err)
 		}
+		// Set origin to dash0-cli
+		if dashboard.Metadata.Dash0Extensions == nil {
+			dashboard.Metadata.Dash0Extensions = &dash0.DashboardMetadataExtensions{}
+		}
+		origin := "dash0-cli"
+		dashboard.Metadata.Dash0Extensions.Origin = &origin
 		result, err := apiClient.ImportDashboard(ctx, &dashboard, datasetPtr)
 		if err != nil {
 			return "", client.HandleAPIError(err)
@@ -265,6 +272,12 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		if err := yaml.Unmarshal(doc.raw, &rule); err != nil {
 			return "", fmt.Errorf("failed to parse CheckRule: %w", err)
 		}
+		// Set origin to dash0-cli
+		if rule.Labels == nil {
+			labels := make(map[string]string)
+			rule.Labels = &labels
+		}
+		(*rule.Labels)["dash0.com/origin"] = "dash0-cli"
 		result, err := apiClient.ImportCheckRule(ctx, &rule, datasetPtr)
 		if err != nil {
 			return "", client.HandleAPIError(err)
@@ -283,6 +296,12 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		if err := yaml.Unmarshal(doc.raw, &check); err != nil {
 			return "", fmt.Errorf("failed to parse SyntheticCheck: %w", err)
 		}
+		// Set origin to dash0-cli
+		if check.Metadata.Labels == nil {
+			check.Metadata.Labels = &dash0.SyntheticCheckLabels{}
+		}
+		origin := "dash0-cli"
+		check.Metadata.Labels.Dash0Comorigin = &origin
 		result, err := apiClient.ImportSyntheticCheck(ctx, &check, datasetPtr)
 		if err != nil {
 			return "", client.HandleAPIError(err)
@@ -294,6 +313,12 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		if err := yaml.Unmarshal(doc.raw, &view); err != nil {
 			return "", fmt.Errorf("failed to parse View: %w", err)
 		}
+		// Set origin to dash0-cli
+		if view.Metadata.Labels == nil {
+			view.Metadata.Labels = &dash0.ViewLabels{}
+		}
+		origin := "dash0-cli"
+		view.Metadata.Labels.Dash0Comorigin = &origin
 		result, err := apiClient.ImportView(ctx, &view, datasetPtr)
 		if err != nil {
 			return "", client.HandleAPIError(err)
@@ -362,6 +387,13 @@ func convertToCheckRule(rule *PrometheusRule_, groupInterval string, ruleID stri
 	if len(rule.Annotations) > 0 {
 		checkRule.Annotations = &rule.Annotations
 	}
+
+	// Set origin to dash0-cli
+	if checkRule.Labels == nil {
+		labels := make(map[string]string)
+		checkRule.Labels = &labels
+	}
+	(*checkRule.Labels)["dash0.com/origin"] = "dash0-cli"
 
 	// Set 'for' duration
 	if rule.For != "" {
