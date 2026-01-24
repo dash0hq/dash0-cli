@@ -33,6 +33,13 @@ func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error 
 		return fmt.Errorf("failed to read view definition: %w", err)
 	}
 
+	// Set origin to dash0-cli
+	if view.Metadata.Labels == nil {
+		view.Metadata.Labels = &dash0.ViewLabels{}
+	}
+	origin := "dash0-cli"
+	view.Metadata.Labels.Dash0Comorigin = &origin
+
 	if flags.DryRun {
 		fmt.Println("Dry run: view definition is valid")
 		return nil

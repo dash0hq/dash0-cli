@@ -32,6 +32,13 @@ func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 		return fmt.Errorf("failed to read synthetic check definition: %w", err)
 	}
 
+	// Set origin to dash0-cli
+	if check.Metadata.Labels == nil {
+		check.Metadata.Labels = &dash0.SyntheticCheckLabels{}
+	}
+	origin := "dash0-cli"
+	check.Metadata.Labels.Dash0Comorigin = &origin
+
 	if flags.DryRun {
 		fmt.Println("Dry run: synthetic check definition is valid")
 		return nil

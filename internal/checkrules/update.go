@@ -33,6 +33,13 @@ func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error 
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}
 
+	// Set origin to dash0-cli
+	if rule.Labels == nil {
+		labels := make(map[string]string)
+		rule.Labels = &labels
+	}
+	(*rule.Labels)["dash0.com/origin"] = "dash0-cli"
+
 	if flags.DryRun {
 		fmt.Println("Dry run: check rule definition is valid")
 		return nil

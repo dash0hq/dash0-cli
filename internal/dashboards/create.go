@@ -33,6 +33,13 @@ func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
+	// Set origin to dash0-cli
+	if dashboard.Metadata.Dash0Extensions == nil {
+		dashboard.Metadata.Dash0Extensions = &dash0.DashboardMetadataExtensions{}
+	}
+	origin := "dash0-cli"
+	dashboard.Metadata.Dash0Extensions.Origin = &origin
+
 	if flags.DryRun {
 		fmt.Println("Dry run: dashboard definition is valid")
 		return nil
