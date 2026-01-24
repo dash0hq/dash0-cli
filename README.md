@@ -226,7 +226,28 @@ View exported to view.yaml
 | `--api-url` | | Override API URL from profile |
 | `--auth-token` | | Override auth token from profile |
 | `--dataset` | `-d` | Specify dataset to operate on |
-| `--output` | `-o` | Output format: `table`, `json`, `yaml` |
+| `--output` | `-o` | Output format: `table`, `wide`, `json`, `yaml` |
+
+### Output Formats
+
+The `list` commands support four output formats:
+
+- **`table`** (default): Compact view with essential columns (name and ID)
+- **`wide`**: Similar to `table`, with additional columns (dataset and origin)
+- **`json`**: Full resource data in JSON format
+- **`yaml`**: Full resource data in YAML format
+
+```bash
+$ dash0 dashboards list
+NAME                                      ID
+Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab
+
+$ dash0 dashboards list -o wide
+NAME                                      ID                                    DATASET          ORIGIN
+Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab  default          gitops/prod
+```
+
+The `wide` format includes the `DATASET` column even though `dash0` operates commands on a single dataset at a time. This makes it easier to merge and compare outputs from commands run against different datasets.
 
 ### Shell Completions
 

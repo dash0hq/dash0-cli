@@ -62,11 +62,11 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(views)
 	default:
-		return printViewTable(formatter, views)
+		return printViewTable(formatter, views, format)
 	}
 }
 
-func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem) error {
+func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			v := item.(*dash0.ViewApiListItem)
@@ -79,6 +79,22 @@ func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem) error {
 			v := item.(*dash0.ViewApiListItem)
 			return v.Id
 		}},
+	}
+
+	if format == output.FormatWide {
+		columns = append(columns,
+			output.Column{Header: "DATASET", Width: 15, Value: func(item interface{}) string {
+				v := item.(*dash0.ViewApiListItem)
+				return v.Dataset
+			}},
+			output.Column{Header: "ORIGIN", Width: 30, Value: func(item interface{}) string {
+				v := item.(*dash0.ViewApiListItem)
+				if v.Origin != nil {
+					return *v.Origin
+				}
+				return ""
+			}},
+		)
 	}
 
 	data := make([]interface{}, len(views))
