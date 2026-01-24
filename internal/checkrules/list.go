@@ -62,11 +62,11 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(rules)
 	default:
-		return printCheckRuleTable(formatter, rules)
+		return printCheckRuleTable(formatter, rules, format)
 	}
 }
 
-func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRuleApiListItem) error {
+func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRuleApiListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			r := item.(*dash0.PrometheusAlertRuleApiListItem)
@@ -79,6 +79,22 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRule
 			r := item.(*dash0.PrometheusAlertRuleApiListItem)
 			return r.Id
 		}},
+	}
+
+	if format == output.FormatWide {
+		columns = append(columns,
+			output.Column{Header: "DATASET", Width: 15, Value: func(item interface{}) string {
+				r := item.(*dash0.PrometheusAlertRuleApiListItem)
+				return string(r.Dataset)
+			}},
+			output.Column{Header: "ORIGIN", Width: 30, Value: func(item interface{}) string {
+				r := item.(*dash0.PrometheusAlertRuleApiListItem)
+				if r.Origin != nil {
+					return *r.Origin
+				}
+				return ""
+			}},
+		)
 	}
 
 	data := make([]interface{}, len(rules))

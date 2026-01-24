@@ -62,11 +62,11 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(checks)
 	default:
-		return printSyntheticCheckTable(formatter, checks)
+		return printSyntheticCheckTable(formatter, checks, format)
 	}
 }
 
-func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChecksApiListItem) error {
+func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChecksApiListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
 			c := item.(*dash0.SyntheticChecksApiListItem)
@@ -79,6 +79,22 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChec
 			c := item.(*dash0.SyntheticChecksApiListItem)
 			return c.Id
 		}},
+	}
+
+	if format == output.FormatWide {
+		columns = append(columns,
+			output.Column{Header: "DATASET", Width: 15, Value: func(item interface{}) string {
+				c := item.(*dash0.SyntheticChecksApiListItem)
+				return c.Dataset
+			}},
+			output.Column{Header: "ORIGIN", Width: 30, Value: func(item interface{}) string {
+				c := item.(*dash0.SyntheticChecksApiListItem)
+				if c.Origin != nil {
+					return *c.Origin
+				}
+				return ""
+			}},
+		)
 	}
 
 	data := make([]interface{}, len(checks))
