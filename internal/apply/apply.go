@@ -255,12 +255,12 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		if err := yaml.Unmarshal(doc.raw, &dashboard); err != nil {
 			return "", fmt.Errorf("failed to parse Dashboard: %w", err)
 		}
-		// Set origin to dash0-cli
+		// Set origin to dash0-cli (using Id field since Origin is deprecated)
 		if dashboard.Metadata.Dash0Extensions == nil {
 			dashboard.Metadata.Dash0Extensions = &dash0.DashboardMetadataExtensions{}
 		}
 		origin := "dash0-cli"
-		dashboard.Metadata.Dash0Extensions.Origin = &origin
+		dashboard.Metadata.Dash0Extensions.Id = &origin
 		result, err := apiClient.ImportDashboard(ctx, &dashboard, datasetPtr)
 		if err != nil {
 			return "", client.HandleAPIError(err)
