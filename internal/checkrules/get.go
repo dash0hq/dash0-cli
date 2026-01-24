@@ -51,6 +51,11 @@ func runGet(ctx context.Context, id string, flags *resource.GetFlags) error {
 		return formatter.Print(rule)
 	default:
 		fmt.Printf("Name: %s\n", rule.Name)
+		dataset := ""
+		if rule.Dataset != nil {
+			dataset = *rule.Dataset
+		}
+		fmt.Printf("Dataset: %s\n", dataset)
 		fmt.Printf("Expression: %s\n", rule.Expression)
 		if rule.Enabled != nil {
 			fmt.Printf("Enabled: %t\n", *rule.Enabled)
