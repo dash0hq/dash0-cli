@@ -57,6 +57,18 @@ func runGet(ctx context.Context, id string, flags *resource.GetFlags) error {
 		if displayName != "" {
 			fmt.Printf("Name: %s\n", displayName)
 		}
+		dataset := ""
+		origin := ""
+		if dashboard.Metadata.Dash0Extensions != nil {
+			if dashboard.Metadata.Dash0Extensions.Dataset != nil {
+				dataset = *dashboard.Metadata.Dash0Extensions.Dataset
+			}
+			if dashboard.Metadata.Dash0Extensions.Origin != nil {
+				origin = *dashboard.Metadata.Dash0Extensions.Origin
+			}
+		}
+		fmt.Printf("Dataset: %s\n", dataset)
+		fmt.Printf("Origin: %s\n", origin)
 		if dashboard.Metadata.CreatedAt != nil {
 			fmt.Printf("Created: %s\n", dashboard.Metadata.CreatedAt.Format("2006-01-02 15:04:05"))
 		}

@@ -81,6 +81,8 @@ Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab
 $ dash0 dashboards get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Kind: Dashboard
 Name: Production Overview
+Dataset: default
+Origin: gitops/prod
 Created: 2026-01-15 10:30:00
 Updated: 2026-01-20 14:45:00
 
@@ -118,6 +120,7 @@ High Error Rate Alert                     a1b2c3d4-5678-90ab-cdef-1234567890ab
 
 $ dash0 check-rules get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Name: High Error Rate Alert
+Dataset: default
 Expression: sum(rate(errors[5m])) > 0.1
 Enabled: true
 Description: Alert when error rate exceeds threshold
@@ -178,6 +181,8 @@ API Health Check                          a1b2c3d4-5678-90ab-cdef-1234567890ab
 $ dash0 synthetic-checks get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Kind: Dash0SyntheticCheck
 Name: API Health Check
+Dataset: default
+Origin:
 Description: Checks API endpoint availability
 
 $ dash0 synthetic-checks create -f check.yaml
@@ -205,6 +210,8 @@ Error Logs View                           a1b2c3d4-5678-90ab-cdef-1234567890ab
 $ dash0 views get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Kind: Dash0View
 Name: Error Logs View
+Dataset: default
+Origin:
 
 $ dash0 views create -f view.yaml
 View "Error Logs View" created successfully

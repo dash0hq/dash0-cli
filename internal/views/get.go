@@ -52,6 +52,18 @@ func runGet(ctx context.Context, id string, flags *resource.GetFlags) error {
 	default:
 		fmt.Printf("Kind: %s\n", view.Kind)
 		fmt.Printf("Name: %s\n", view.Metadata.Name)
+		dataset := ""
+		origin := ""
+		if view.Metadata.Labels != nil {
+			if view.Metadata.Labels.Dash0Comdataset != nil {
+				dataset = *view.Metadata.Labels.Dash0Comdataset
+			}
+			if view.Metadata.Labels.Dash0Comorigin != nil {
+				origin = *view.Metadata.Labels.Dash0Comorigin
+			}
+		}
+		fmt.Printf("Dataset: %s\n", dataset)
+		fmt.Printf("Origin: %s\n", origin)
 		return nil
 	}
 }
