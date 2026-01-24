@@ -63,7 +63,10 @@ func runGet(ctx context.Context, id string, flags *resource.GetFlags) error {
 			if dashboard.Metadata.Dash0Extensions.Dataset != nil {
 				dataset = *dashboard.Metadata.Dash0Extensions.Dataset
 			}
-			if dashboard.Metadata.Dash0Extensions.Origin != nil {
+			// Origin is deprecated and replaced by Id
+			if dashboard.Metadata.Dash0Extensions.Id != nil {
+				origin = *dashboard.Metadata.Dash0Extensions.Id
+			} else if dashboard.Metadata.Dash0Extensions.Origin != nil {
 				origin = *dashboard.Metadata.Dash0Extensions.Origin
 			}
 		}
