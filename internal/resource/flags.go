@@ -68,15 +68,3 @@ func RegisterDeleteFlags(cmd *cobra.Command, flags *DeleteFlags) {
 	RegisterCommonFlags(cmd, &flags.CommonFlags)
 	cmd.Flags().BoolVar(&flags.Force, "force", false, "Skip confirmation prompt")
 }
-
-// ExportFlags holds flags specific to export commands
-type ExportFlags struct {
-	CommonFlags
-	File string
-}
-
-// RegisterExportFlags adds export-specific flags to a command
-func RegisterExportFlags(cmd *cobra.Command, flags *ExportFlags) {
-	RegisterCommonFlags(cmd, &flags.CommonFlags)
-	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Output file path (stdout if not specified)")
-}

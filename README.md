@@ -116,9 +116,6 @@ Dashboard "My Dashboard" updated successfully
 $ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab
 Are you sure you want to delete dashboard "a1b2c3d4-..."? [y/N]: y
 Dashboard "a1b2c3d4-..." deleted successfully
-
-$ dash0 dashboards export a1b2c3d4-5678-90ab-cdef-1234567890ab -f dashboard.yaml
-Dashboard exported to dashboard.yaml
 ```
 
 ### Check Rules
@@ -144,37 +141,9 @@ Check rule "High Error Rate Alert" updated successfully
 
 $ dash0 check-rules delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
 Check rule "a1b2c3d4-..." deleted successfully
-
-$ dash0 check-rules export a1b2c3d4-5678-90ab-cdef-1234567890ab -f rule.yaml
-Check rule exported to rule.yaml
 ```
 
-Check rules are exported in Prometheus Operator `PrometheusRule` CRD format:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: High Error Rate Alert
-  labels:
-    dash0.com/dataset: default
-    dash0.com/id: a1b2c3d4-5678-90ab-cdef-1234567890ab
-spec:
-  groups:
-    - name: High Error Rate Alert
-      interval: 1m0s
-      rules:
-        - alert: High Error Rate Alert
-          expr: sum(rate(errors[5m])) > 0.1
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            description: Alert when error rate exceeds threshold
-            summary: High error rate detected
-```
-
-You can also apply `PrometheusRule` CRD files directly:
+You can apply `PrometheusRule` CRD files directly:
 
 ```bash
 $ dash0 apply -f prometheus-rules.yaml
@@ -205,9 +174,6 @@ Synthetic check "API Health Check" updated successfully
 $ dash0 synthetic-checks delete a1b2c3d4-5678-90ab-cdef-1234567890ab
 Are you sure you want to delete synthetic check "a1b2c3d4-..."? [y/N]: y
 Synthetic check "a1b2c3d4-..." deleted successfully
-
-$ dash0 synthetic-checks export a1b2c3d4-5678-90ab-cdef-1234567890ab -f check.yaml
-Synthetic check exported to check.yaml
 ```
 
 ### Views
@@ -232,9 +198,6 @@ View "Error Logs View" updated successfully
 
 $ dash0 views delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
 View "a1b2c3d4-..." deleted successfully
-
-$ dash0 views export a1b2c3d4-5678-90ab-cdef-1234567890ab -f view.yaml
-View exported to view.yaml
 ```
 
 ### Common Flags
