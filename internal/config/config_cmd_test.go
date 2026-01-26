@@ -15,21 +15,21 @@ func executeCommand(root *cobra.Command, args ...string) (output string, err err
 	stdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	
+
 	// Reset args for testing
 	root.SetArgs(args)
-	
+
 	// Execute the command
 	err = root.Execute()
-	
+
 	// Restore stdout
 	w.Close()
 	os.Stdout = stdout
-	
+
 	// Read output
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, r)
-	
+
 	return buf.String(), err
 }
 
@@ -43,7 +43,7 @@ func TestShowCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				ApiUrl:   "https://test1.example.com",
+				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
@@ -51,18 +51,18 @@ func TestShowCmd(t *testing.T) {
 
 	createTestProfilesFile(t, configDir, testProfiles)
 	setActiveProfile(t, configDir, "test1")
-	
+
 	// Create root command and add config command
 	rootCmd := &cobra.Command{Use: "dash0"}
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
-	
+
 	// Execute show command
 	output, err := executeCommand(rootCmd, "config", "show")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	// Verify output contains expected data (note: spacing is "API URL:    " with alignment)
 	if !bytes.Contains([]byte(output), []byte("https://test1.example.com")) {
 		t.Errorf("Expected output to contain https://test1.example.com, got: %s", output)
@@ -79,14 +79,14 @@ func TestListProfileCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				ApiUrl:   "https://test1.example.com",
+				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				ApiUrl:   "https://test2.example.com",
+				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -127,7 +127,7 @@ func TestAddProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute add command
-	output, err := executeCommand(rootCmd, "config", "profile", "add", "--name", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
+	output, err := executeCommand(rootCmd, "config", "profile", "add", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -172,14 +172,14 @@ func TestRemoveProfileCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				ApiUrl:   "https://test1.example.com",
+				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				ApiUrl:   "https://test2.example.com",
+				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -194,7 +194,7 @@ func TestRemoveProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute remove command
-	output, err := executeCommand(rootCmd, "config", "profile", "remove", "--name", "test2")
+	output, err := executeCommand(rootCmd, "config", "profile", "remove", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -234,14 +234,14 @@ func TestSelectProfileCmd(t *testing.T) {
 		{
 			Name: "test1",
 			Configuration: Configuration{
-				ApiUrl:   "https://test1.example.com",
+				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
 			Configuration: Configuration{
-				ApiUrl:   "https://test2.example.com",
+				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
 		},
@@ -256,7 +256,7 @@ func TestSelectProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute select command
-	output, err := executeCommand(rootCmd, "config", "profile", "select", "--name", "test2")
+	output, err := executeCommand(rootCmd, "config", "profile", "select", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
