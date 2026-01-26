@@ -15,7 +15,6 @@ func NewSyntheticChecksCmd() *cobra.Command {
 	cmd.AddCommand(newCreateCmd())
 	cmd.AddCommand(newUpdateCmd())
 	cmd.AddCommand(newDeleteCmd())
-	cmd.AddCommand(newExportCmd())
 
 	return cmd
 }
