@@ -97,14 +97,14 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRule
 		)
 	}
 
+	if len(rules) == 0 {
+		fmt.Println("No check rules found.")
+		return nil
+	}
+
 	data := make([]interface{}, len(rules))
 	for i, r := range rules {
 		data[i] = r
-	}
-
-	if len(data) == 0 {
-		fmt.Println("No check rules found.")
-		return nil
 	}
 
 	return f.PrintTable(columns, data)
