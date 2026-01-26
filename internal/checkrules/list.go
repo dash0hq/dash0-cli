@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/resource"
@@ -68,14 +69,14 @@ func runList(ctx context.Context, flags *resource.ListFlags) error {
 
 func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRuleApiListItem, format output.Format) error {
 	columns := []output.Column{
-		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
+		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			r := item.(*dash0.PrometheusAlertRuleApiListItem)
 			if r.Name != nil {
 				return *r.Name
 			}
 			return ""
 		}},
-		{Header: "ID", Width: 36, Value: func(item interface{}) string {
+		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
 			r := item.(*dash0.PrometheusAlertRuleApiListItem)
 			return r.Id
 		}},
@@ -83,11 +84,11 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRule
 
 	if format == output.FormatWide {
 		columns = append(columns,
-			output.Column{Header: "DATASET", Width: 15, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
 				r := item.(*dash0.PrometheusAlertRuleApiListItem)
 				return string(r.Dataset)
 			}},
-			output.Column{Header: "ORIGIN", Width: 30, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
 				r := item.(*dash0.PrometheusAlertRuleApiListItem)
 				if r.Origin != nil {
 					return *r.Origin
