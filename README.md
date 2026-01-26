@@ -24,17 +24,24 @@ make install
 Configure API access using profiles.
 
 ```bash
-$ dash0 config profile add --name dev --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_xxx
+$ dash0 config profile add dev --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_xxx
 Profile "dev" added and set as active
+
+$ dash0 config profile add prod --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_yyy
+Profile "prod" added successfully
 
 $ dash0 config profile list
   NAME  API URL                                  AUTH TOKEN
 * dev   https://api.eu-west-1.aws.dash0-dev.com  ...ULSzVkM
+  prod  https://api.eu-west-1.aws.dash0.com      ...uth_yyy
+
+$ dash0 config profile select prod
+Profile 'prod' is now active
 
 $ dash0 config show
-Profile:    dev
-API URL:    https://api.eu-west-1.aws.dash0-dev.com
-Auth Token: ...ULSzVkM
+Profile:    prod
+API URL:    https://api.eu-west-1.aws.dash0.com
+Auth Token: ...uth_yyy
 ```
 
 The last seven digits of the auth token are displayed, matching the format shown in Dash0 as the `dash0.auth.token` attribute.

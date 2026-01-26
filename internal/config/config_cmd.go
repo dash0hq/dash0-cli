@@ -98,20 +98,27 @@ func newProfileCmd() *cobra.Command {
 
 // newAddProfileCmd creates a new add profile command
 func newAddProfileCmd() *cobra.Command {
-	var apiUrl, authToken, name string
+	var apiUrl, authToken string
 
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new configuration profile",
 		Long:  `Add a new named configuration profile with API URL and auth token`,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
 			configService, err := NewService()
 			if err != nil {
 				return err
 			}
 
-			if name == "" || apiUrl == "" || authToken == "" {
-				return fmt.Errorf("name, api-url, and auth-token are required")
+			if apiUrl == "" {
+				return fmt.Errorf("api-url is required")
+			}
+
+			if authToken == "" {
+				return fmt.Errorf("auth-token is required")
 			}
 
 			profile := Profile{
@@ -133,7 +140,6 @@ func newAddProfileCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Name of the profile")
 	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API")
 	cmd.Flags().StringVar(&authToken, "auth-token", "", "Authentication token for the Dash0 API")
 
@@ -212,20 +218,17 @@ func newListProfileCmd() *cobra.Command {
 
 // newRemoveProfileCmd creates a new remove profile command
 func newRemoveProfileCmd() *cobra.Command {
-	var name string
-
 	cmd := &cobra.Command{
 		Use:   "remove",
 		Short: "Remove a configuration profile",
 		Long:  `Remove a named configuration profile`,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
 			configService, err := NewService()
 			if err != nil {
 				return err
-			}
-
-			if name == "" {
-				return fmt.Errorf("name is required")
 			}
 
 			if err := configService.RemoveProfile(name); err != nil {
@@ -239,27 +242,22 @@ func newRemoveProfileCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Name of the profile to remove")
-
 	return cmd
 }
 
 // newSelectProfileCmd creates a new select profile command
 func newSelectProfileCmd() *cobra.Command {
-	var name string
-
 	cmd := &cobra.Command{
-		Use:   "select",
+		Use:   "select <name>",
 		Short: "Select a configuration profile",
 		Long:  `Set the active configuration profile`,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
 			configService, err := NewService()
 			if err != nil {
 				return err
-			}
-
-			if name == "" {
-				return fmt.Errorf("name is required")
 			}
 
 			if err := configService.SetActiveProfile(name); err != nil {
@@ -272,8 +270,6 @@ func newSelectProfileCmd() *cobra.Command {
 			return nil
 		},
 	}
-
-	cmd.Flags().StringVar(&name, "name", "", "Name of the profile to select")
 
 	return cmd
 }
