@@ -3,12 +3,23 @@ package resource
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// ReadDefinition reads a YAML or JSON definition from a file or stdin.
+// If path is "-" or empty, it reads from stdin (assumes YAML format).
+// Otherwise, it reads from the file at the given path.
+func ReadDefinition(path string, target interface{}, stdin io.Reader) error {
+	if path == "-" || path == "" {
+		return readFromStdin(stdin, target)
+	}
+	return ReadDefinitionFile(path, target)
+}
 
 // ReadDefinitionFile reads a YAML or JSON file and unmarshals into the target.
 // It auto-detects the format based on file extension, falling back to YAML first.
@@ -34,6 +45,28 @@ func ReadDefinitionFile(path string, target interface{}) error {
 			if jsonErr := json.Unmarshal(data, target); jsonErr != nil {
 				return fmt.Errorf("failed to parse file %s (tried YAML and JSON): yaml error: %v, json error: %v", path, err, jsonErr)
 			}
+		}
+	}
+
+	return nil
+}
+
+// readFromStdin reads YAML or JSON from stdin and unmarshals into the target.
+// It tries YAML first, then JSON (same behavior as files without extension).
+func readFromStdin(stdin io.Reader, target interface{}) error {
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return fmt.Errorf("failed to read from stdin: %w", err)
+	}
+
+	if len(data) == 0 {
+		return fmt.Errorf("no input provided on stdin")
+	}
+
+	// Try YAML first, then JSON
+	if err := yaml.Unmarshal(data, target); err != nil {
+		if jsonErr := json.Unmarshal(data, target); jsonErr != nil {
+			return fmt.Errorf("failed to parse stdin (tried YAML and JSON): yaml error: %v, json error: %v", err, jsonErr)
 		}
 	}
 

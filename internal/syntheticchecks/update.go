@@ -3,6 +3,7 @@ package syntheticchecks
 import (
 	"context"
 	"fmt"
+	"os"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -16,7 +17,7 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
 		Short: "Update a synthetic check from a file",
-		Long:  `Update an existing synthetic check from a YAML or JSON definition file`,
+		Long:  `Update an existing synthetic check from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(cmd.Context(), args[0], &flags)
@@ -29,7 +30,7 @@ func newUpdateCmd() *cobra.Command {
 
 func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error {
 	var check dash0.SyntheticCheckDefinition
-	if err := res.ReadDefinitionFile(flags.File, &check); err != nil {
+	if err := res.ReadDefinition(flags.File, &check, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read synthetic check definition: %w", err)
 	}
 

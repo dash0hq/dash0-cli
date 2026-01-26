@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"os"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -16,7 +17,7 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create -f <file>",
 		Short: "Create a view from a file",
-		Long:  `Create a new view from a YAML or JSON definition file`,
+		Long:  `Create a new view from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd.Context(), &flags)
 		},
@@ -28,7 +29,7 @@ func newCreateCmd() *cobra.Command {
 
 func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 	var view dash0.ViewDefinition
-	if err := res.ReadDefinitionFile(flags.File, &view); err != nil {
+	if err := res.ReadDefinition(flags.File, &view, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read view definition: %w", err)
 	}
 

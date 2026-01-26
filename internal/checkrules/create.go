@@ -3,6 +3,7 @@ package checkrules
 import (
 	"context"
 	"fmt"
+	"os"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -16,7 +17,7 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create -f <file>",
 		Short: "Create a check rule from a file",
-		Long:  `Create a new check rule from a YAML or JSON definition file`,
+		Long:  `Create a new check rule from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd.Context(), &flags)
 		},
@@ -28,7 +29,7 @@ func newCreateCmd() *cobra.Command {
 
 func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 	var rule dash0.PrometheusAlertRule
-	if err := res.ReadDefinitionFile(flags.File, &rule); err != nil {
+	if err := res.ReadDefinition(flags.File, &rule, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}
 

@@ -3,6 +3,7 @@ package resource
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -99,4 +100,54 @@ func TestWriteDefinitionFile_JSON(t *testing.T) {
 	content, err := os.ReadFile(jsonFile)
 	assert.NoError(t, err)
 	assert.Contains(t, string(content), "\"name\": \"test\"")
+}
+
+func TestReadDefinition_FromStdin_YAML(t *testing.T) {
+	yamlContent := `name: test-dashboard
+id: "123"
+`
+	stdin := strings.NewReader(yamlContent)
+
+	var result map[string]string
+	err := ReadDefinition("-", &result, stdin)
+	assert.NoError(t, err)
+	assert.Equal(t, "test-dashboard", result["name"])
+	assert.Equal(t, "123", result["id"])
+}
+
+func TestReadDefinition_FromStdin_JSON(t *testing.T) {
+	jsonContent := `{"name": "test-dashboard", "id": "123"}`
+	stdin := strings.NewReader(jsonContent)
+
+	var result map[string]string
+	err := ReadDefinition("-", &result, stdin)
+	assert.NoError(t, err)
+	assert.Equal(t, "test-dashboard", result["name"])
+	assert.Equal(t, "123", result["id"])
+}
+
+func TestReadDefinition_FromStdin_Empty(t *testing.T) {
+	stdin := strings.NewReader("")
+
+	var result map[string]string
+	err := ReadDefinition("-", &result, stdin)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no input provided on stdin")
+}
+
+func TestReadDefinition_FromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "test.yaml")
+	yamlContent := `name: test-dashboard
+id: "123"
+`
+	err := os.WriteFile(yamlFile, []byte(yamlContent), 0644)
+	assert.NoError(t, err)
+
+	var result map[string]string
+	// stdin should be ignored when file path is provided
+	err = ReadDefinition(yamlFile, &result, strings.NewReader("ignored"))
+	assert.NoError(t, err)
+	assert.Equal(t, "test-dashboard", result["name"])
+	assert.Equal(t, "123", result["id"])
 }
