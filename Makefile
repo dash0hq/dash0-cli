@@ -6,10 +6,10 @@ GOOS?=$(shell go env GOOS)
 GOARCH?=$(shell go env GOARCH)
 
 build:
-	mkdir -p $(BUILD_DIR) && go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
+	(mkdir -p $(BUILD_DIR) || true) && go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
 
 test:
 	go test -v ./...
 
 install: build
-	mv $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
+	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
