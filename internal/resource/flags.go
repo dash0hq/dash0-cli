@@ -49,10 +49,10 @@ type FileInputFlags struct {
 	DryRun bool
 }
 
-// RegisterFileInputFlags adds file input flags to a command
+// RegisterFileInputFlags adds file input flags to a command and marks -f as required
 func RegisterFileInputFlags(cmd *cobra.Command, flags *FileInputFlags) {
 	RegisterCommonFlags(cmd, &flags.CommonFlags)
-	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to YAML or JSON definition file")
+	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to YAML or JSON definition file (use '-' for stdin)")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate without creating/updating")
 	cmd.MarkFlagRequired("file")
 }

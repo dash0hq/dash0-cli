@@ -62,13 +62,17 @@ Auth Token: ...t_token    (from DASH0_AUTH_TOKEN environment variable)
 
 ### Applying Resources
 
-Apply resource definitions from a file. The file may contain multiple YAML documents separated by `---`:
+Apply resource definitions from a file or stdin. The input may contain multiple YAML documents separated by `---`:
 
 ```bash
 $ dash0 apply -f resources.yaml
 Dashboard "Production Overview" applied successfully
 CheckRule "High Error Rate" applied successfully
 View "Error Logs" applied successfully
+
+$ cat resources.yaml | dash0 apply -f -
+Dashboard "Production Overview" applied successfully
+...
 
 $ dash0 apply -f dashboard.yaml --dry-run
 Dry run: 1 document(s) validated successfully
@@ -240,6 +244,7 @@ View exported to view.yaml
 | `--api-url` | | Override API URL from profile |
 | `--auth-token` | | Override auth token from profile |
 | `--dataset` | `-d` | Specify dataset to operate on |
+| `--file` | `-f` | Input file path (use `-` for stdin) |
 | `--output` | `-o` | Output format: `table`, `wide`, `json`, `yaml` |
 
 ### Output Formats

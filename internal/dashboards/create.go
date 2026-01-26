@@ -3,6 +3,7 @@ package dashboards
 import (
 	"context"
 	"fmt"
+	"os"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -16,7 +17,7 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create -f <file>",
 		Short: "Create a dashboard from a file",
-		Long:  `Create a new dashboard from a YAML or JSON definition file`,
+		Long:  `Create a new dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd.Context(), &flags)
 		},
@@ -27,9 +28,8 @@ func newCreateCmd() *cobra.Command {
 }
 
 func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
-	// Read dashboard definition from file
 	var dashboard dash0.DashboardDefinition
-	if err := res.ReadDefinitionFile(flags.File, &dashboard); err != nil {
+	if err := res.ReadDefinition(flags.File, &dashboard, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 

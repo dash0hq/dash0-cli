@@ -33,6 +33,7 @@ func NewApplyCmd() *cobra.Command {
 		Long: `Apply resource definitions from a YAML or JSON file.
 The file may contain multiple documents separated by "---".
 Each document must have a "kind" field specifying the resource type.
+Use '-f -' to read from stdin.
 
 Supported resource types:
   - Dashboard
@@ -47,17 +48,20 @@ If a resource exists, it will be updated. If it doesn't exist, it will be create
   # Apply multiple resources from a single file
   dash0 apply -f resources.yaml
 
+  # Apply from stdin
+  cat resources.yaml | dash0 apply -f -
+
   # Validate without applying
   dash0 apply -f resources.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flags.File == "" {
-				return fmt.Errorf("file is required; use -f to specify the file")
+				return fmt.Errorf("file is required; use -f to specify the file (use '-' for stdin)")
 			}
 			return runApply(cmd.Context(), &flags)
 		},
 	}
 
-	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to the file containing resource definitions (required)")
+	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to the file containing resource definitions (use '-' for stdin)")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate the file without applying changes")
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
@@ -110,10 +114,10 @@ type PrometheusRule_ struct {
 }
 
 func runApply(ctx context.Context, flags *applyFlags) error {
-	// Read and parse the file
-	documents, err := readMultiDocumentYAML(flags.File)
+	// Read and parse the file or stdin
+	documents, err := readMultiDocumentYAML(flags.File, os.Stdin)
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		return fmt.Errorf("failed to read input: %w", err)
 	}
 
 	if len(documents) == 0 {
@@ -165,10 +169,23 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	return nil
 }
 
-func readMultiDocumentYAML(filePath string) ([]resourceDocument, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
+func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]resourceDocument, error) {
+	var data []byte
+	var err error
+
+	if filePath == "-" {
+		data, err = io.ReadAll(stdin)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read from stdin: %w", err)
+		}
+		if len(data) == 0 {
+			return nil, fmt.Errorf("no input provided on stdin")
+		}
+	} else {
+		data, err = os.ReadFile(filePath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var documents []resourceDocument
