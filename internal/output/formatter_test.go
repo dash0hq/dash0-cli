@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -103,7 +104,7 @@ func TestFormatter_PrintTable(t *testing.T) {
 		{Header: "ID", Width: 10, Value: func(item interface{}) string {
 			return item.(testItem).ID
 		}},
-		{Header: "NAME", Width: 20, Value: func(item interface{}) string {
+		{Header: internal.HEADER_NAME, Width: 20, Value: func(item interface{}) string {
 			return item.(testItem).Name
 		}},
 	}

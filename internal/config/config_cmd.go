@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/spf13/cobra"
 )
@@ -169,7 +170,7 @@ func newListProfileCmd() *cobra.Command {
 			}
 
 			// Calculate column widths (including 2 chars for active marker "* ")
-			nameWidth := len("NAME")
+			nameWidth := len(internal.HEADER_NAME)
 			apiUrlWidth := len("API URL")
 			authTokenWidth := len("AUTH TOKEN")
 

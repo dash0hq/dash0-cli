@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/resource"
@@ -117,11 +118,11 @@ func extractDisplayName(dashboard *dash0.DashboardDefinition) string {
 
 func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format) error {
 	columns := []output.Column{
-		{Header: "NAME", Width: 40, Value: func(item interface{}) string {
+		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			d := item.(dashboardListItem)
 			return d.DisplayName
 		}},
-		{Header: "ID", Width: 36, Value: func(item interface{}) string {
+		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
 			d := item.(dashboardListItem)
 			return d.Id
 		}},
@@ -129,11 +130,11 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 
 	if format == output.FormatWide {
 		columns = append(columns,
-			output.Column{Header: "DATASET", Width: 15, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
 				d := item.(dashboardListItem)
 				return d.Dataset
 			}},
-			output.Column{Header: "ORIGIN", Width: 30, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
 				d := item.(dashboardListItem)
 				if d.Origin != nil {
 					return *d.Origin
