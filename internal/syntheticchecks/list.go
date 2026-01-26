@@ -97,14 +97,14 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChec
 		)
 	}
 
+	if len(checks) == 0 {
+		fmt.Println("No synthetic checks found.")
+		return nil
+	}
+
 	data := make([]interface{}, len(checks))
 	for i, c := range checks {
 		data[i] = c
-	}
-
-	if len(data) == 0 {
-		fmt.Println("No synthetic checks found.")
-		return nil
 	}
 
 	return f.PrintTable(columns, data)

@@ -143,15 +143,14 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 		)
 	}
 
-	// Convert to []interface{}
+	if len(dashboards) == 0 {
+		fmt.Println("No dashboards found.")
+		return nil
+	}
+
 	data := make([]interface{}, len(dashboards))
 	for i, d := range dashboards {
 		data[i] = d
-	}
-
-	if len(data) == 0 {
-		fmt.Println("No dashboards found.")
-		return nil
 	}
 
 	return f.PrintTable(columns, data)

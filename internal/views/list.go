@@ -97,14 +97,14 @@ func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem, format 
 		)
 	}
 
+	if len(views) == 0 {
+		fmt.Println("No views found.")
+		return nil
+	}
+
 	data := make([]interface{}, len(views))
 	for i, v := range views {
 		data[i] = v
-	}
-
-	if len(data) == 0 {
-		fmt.Println("No views found.")
-		return nil
 	}
 
 	return f.PrintTable(columns, data)
