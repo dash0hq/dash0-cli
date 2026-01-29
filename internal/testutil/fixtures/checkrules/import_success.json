@@ -1,0 +1,16 @@
+{
+  "id": "47b6ccbe-82ab-47c6-a613-ce0d7f34353e",
+  "annotations": {},
+  "dataset": "default",
+  "description": "Test check rule for apply command",
+  "enabled": true,
+  "expression": "up == 0",
+  "for": "5m0s",
+  "interval": "1m0s",
+  "keepFiringFor": "0s",
+  "labels": {
+    "dash0.com/origin": "dash0-cli"
+  },
+  "name": "test-check-rule",
+  "summary": "Test check rule"
+}

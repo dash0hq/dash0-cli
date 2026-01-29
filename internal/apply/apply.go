@@ -76,6 +76,14 @@ type resourceDocument struct {
 	raw  []byte
 }
 
+// applyAction indicates whether a resource was created or updated
+type applyAction string
+
+const (
+	actionCreated applyAction = "created"
+	actionUpdated applyAction = "updated"
+)
+
 // PrometheusRule represents the Prometheus Operator PrometheusRule CRD
 type PrometheusRule struct {
 	APIVersion string                 `yaml:"apiVersion" json:"apiVersion"`
@@ -151,7 +159,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	// Apply each document
 	var applied []string
 	for i, doc := range documents {
-		name, err := applyDocument(ctx, apiClient, doc, flags.Dataset)
+		name, action, err := applyDocument(ctx, apiClient, doc, flags.Dataset)
 		if err != nil {
 			// Report what was applied before the error
 			if len(applied) > 0 {
@@ -163,7 +171,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			return fmt.Errorf("document %d (%s): %w", i+1, doc.Kind, err)
 		}
 		applied = append(applied, fmt.Sprintf("%s %q", doc.Kind, name))
-		fmt.Printf("%s %q applied successfully\n", doc.Kind, name)
+		fmt.Printf("%s %q %s\n", doc.Kind, name, action)
 	}
 
 	return nil
@@ -263,14 +271,14 @@ func normalizeKind(kind string) string {
 	return k
 }
 
-func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocument, dataset string) (string, error) {
+func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocument, dataset string) (string, applyAction, error) {
 	datasetPtr := client.DatasetPtr(dataset)
 
 	switch normalizeKind(doc.Kind) {
 	case "dashboard":
 		var dashboard dash0.DashboardDefinition
 		if err := yaml.Unmarshal(doc.raw, &dashboard); err != nil {
-			return "", fmt.Errorf("failed to parse Dashboard: %w", err)
+			return "", "", fmt.Errorf("failed to parse Dashboard: %w", err)
 		}
 		// Set origin to dash0-cli (using Id field since Origin is deprecated)
 		if dashboard.Metadata.Dash0Extensions == nil {
@@ -278,16 +286,26 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		}
 		origin := "dash0-cli"
 		dashboard.Metadata.Dash0Extensions.Id = &origin
+
+		// Check if dashboard exists
+		action := actionCreated
+		if dashboard.Metadata.Dash0Extensions.Id != nil && *dashboard.Metadata.Dash0Extensions.Id != "" {
+			_, err := apiClient.GetDashboard(ctx, *dashboard.Metadata.Dash0Extensions.Id, datasetPtr)
+			if err == nil {
+				action = actionUpdated
+			}
+		}
+
 		result, err := apiClient.ImportDashboard(ctx, &dashboard, datasetPtr)
 		if err != nil {
-			return "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err)
 		}
-		return result.Metadata.Name, nil
+		return result.Metadata.Name, action, nil
 
 	case "checkrule":
 		var rule dash0.PrometheusAlertRule
 		if err := yaml.Unmarshal(doc.raw, &rule); err != nil {
-			return "", fmt.Errorf("failed to parse CheckRule: %w", err)
+			return "", "", fmt.Errorf("failed to parse CheckRule: %w", err)
 		}
 		// Set origin to dash0-cli
 		if rule.Labels == nil {
@@ -295,23 +313,34 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 			rule.Labels = &labels
 		}
 		(*rule.Labels)["dash0.com/origin"] = "dash0-cli"
+
+		// Check if check rule exists
+		action := actionCreated
+		if rule.Id != nil && *rule.Id != "" {
+			_, err := apiClient.GetCheckRule(ctx, *rule.Id, datasetPtr)
+			if err == nil {
+				action = actionUpdated
+			}
+		}
+
 		result, err := apiClient.ImportCheckRule(ctx, &rule, datasetPtr)
 		if err != nil {
-			return "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err)
 		}
-		return result.Name, nil
+		return result.Name, action, nil
 
 	case "prometheusrule":
 		var promRule PrometheusRule
 		if err := yaml.Unmarshal(doc.raw, &promRule); err != nil {
-			return "", fmt.Errorf("failed to parse PrometheusRule: %w", err)
+			return "", "", fmt.Errorf("failed to parse PrometheusRule: %w", err)
 		}
-		return applyPrometheusRule(ctx, apiClient, &promRule, datasetPtr)
+		name, action, err := applyPrometheusRule(ctx, apiClient, &promRule, datasetPtr)
+		return name, action, err
 
 	case "syntheticcheck":
 		var check dash0.SyntheticCheckDefinition
 		if err := yaml.Unmarshal(doc.raw, &check); err != nil {
-			return "", fmt.Errorf("failed to parse SyntheticCheck: %w", err)
+			return "", "", fmt.Errorf("failed to parse SyntheticCheck: %w", err)
 		}
 		// Set origin to dash0-cli
 		if check.Metadata.Labels == nil {
@@ -319,16 +348,26 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		}
 		origin := "dash0-cli"
 		check.Metadata.Labels.Dash0Comorigin = &origin
+
+		// Check if synthetic check exists
+		action := actionCreated
+		if check.Metadata.Labels.Dash0Comorigin != nil && *check.Metadata.Labels.Dash0Comorigin != "" {
+			_, err := apiClient.GetSyntheticCheck(ctx, *check.Metadata.Labels.Dash0Comorigin, datasetPtr)
+			if err == nil {
+				action = actionUpdated
+			}
+		}
+
 		result, err := apiClient.ImportSyntheticCheck(ctx, &check, datasetPtr)
 		if err != nil {
-			return "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err)
 		}
-		return result.Metadata.Name, nil
+		return result.Metadata.Name, action, nil
 
 	case "view":
 		var view dash0.ViewDefinition
 		if err := yaml.Unmarshal(doc.raw, &view); err != nil {
-			return "", fmt.Errorf("failed to parse View: %w", err)
+			return "", "", fmt.Errorf("failed to parse View: %w", err)
 		}
 		// Set origin to dash0-cli
 		if view.Metadata.Labels == nil {
@@ -336,20 +375,32 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocu
 		}
 		origin := "dash0-cli"
 		view.Metadata.Labels.Dash0Comorigin = &origin
+
+		// Check if view exists
+		action := actionCreated
+		if view.Metadata.Labels.Dash0Comorigin != nil && *view.Metadata.Labels.Dash0Comorigin != "" {
+			_, err := apiClient.GetView(ctx, *view.Metadata.Labels.Dash0Comorigin, datasetPtr)
+			if err == nil {
+				action = actionUpdated
+			}
+		}
+
 		result, err := apiClient.ImportView(ctx, &view, datasetPtr)
 		if err != nil {
-			return "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err)
 		}
-		return result.Metadata.Name, nil
+		return result.Metadata.Name, action, nil
 
 	default:
-		return "", fmt.Errorf("unsupported kind: %s", doc.Kind)
+		return "", "", fmt.Errorf("unsupported kind: %s", doc.Kind)
 	}
 }
 
 // applyPrometheusRule extracts rules from a PrometheusRule CRD and applies each as a CheckRule
-func applyPrometheusRule(ctx context.Context, apiClient dash0.Client, promRule *PrometheusRule, datasetPtr *string) (string, error) {
+func applyPrometheusRule(ctx context.Context, apiClient dash0.Client, promRule *PrometheusRule, datasetPtr *string) (string, applyAction, error) {
 	var appliedNames []string
+	hasCreated := false
+	hasUpdated := false
 
 	// Extract ID from metadata labels for upsert semantics
 	var ruleID string
@@ -367,22 +418,44 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0.Client, promRule *
 			// Convert PrometheusRule rule to Dash0 CheckRule
 			checkRule := convertToCheckRule(&rule, group.Interval, ruleID)
 
+			// Check if this rule exists to determine action
+			if checkRule.Id != nil && *checkRule.Id != "" {
+				_, err := apiClient.GetCheckRule(ctx, *checkRule.Id, datasetPtr)
+				if err == nil {
+					hasUpdated = true
+				} else {
+					hasCreated = true
+				}
+			} else {
+				hasCreated = true
+			}
+
 			result, err := apiClient.ImportCheckRule(ctx, checkRule, datasetPtr)
 			if err != nil {
 				if len(appliedNames) > 0 {
-					return strings.Join(appliedNames, ", "), fmt.Errorf("applied %v, then failed on %q: %w", appliedNames, rule.Alert, client.HandleAPIError(err))
+					return strings.Join(appliedNames, ", "), "", fmt.Errorf("applied %v, then failed on %q: %w", appliedNames, rule.Alert, client.HandleAPIError(err))
 				}
-				return "", client.HandleAPIError(err)
+				return "", "", client.HandleAPIError(err)
 			}
 			appliedNames = append(appliedNames, result.Name)
 		}
 	}
 
 	if len(appliedNames) == 0 {
-		return "", fmt.Errorf("no alerting rules found in PrometheusRule (recording rules are not supported)")
+		return "", "", fmt.Errorf("no alerting rules found in PrometheusRule (recording rules are not supported)")
 	}
 
-	return strings.Join(appliedNames, ", "), nil
+	// Determine the action based on what happened
+	var action applyAction
+	if hasCreated && hasUpdated {
+		action = "created/updated"
+	} else if hasUpdated {
+		action = actionUpdated
+	} else {
+		action = actionCreated
+	}
+
+	return strings.Join(appliedNames, ", "), action, nil
 }
 
 // convertToCheckRule converts a Prometheus alerting rule to a Dash0 CheckRule

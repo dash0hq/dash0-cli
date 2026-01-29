@@ -1,0 +1,33 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "annotations": {},
+    "createdat": "2026-01-24T12:09:57.71659232Z",
+    "dash0extensions": {
+      "createdby": "user_test",
+      "dataset": "default",
+      "id": "test-dashboard-id",
+      "origin": null,
+      "tags": null
+    },
+    "name": "test-dashboard",
+    "project": null,
+    "updatedat": "2026-01-24T12:09:57.71659232Z",
+    "version": 1
+  },
+  "spec": {
+    "display": {
+      "description": "Test dashboard for apply command",
+      "name": "Test Dashboard"
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": []
+        }
+      }
+    ],
+    "panels": {}
+  }
+}
