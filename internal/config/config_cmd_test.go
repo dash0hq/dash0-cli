@@ -162,8 +162,8 @@ func TestCreateProfileCmd(t *testing.T) {
 	}
 }
 
-// TestRemoveProfileCmd tests the remove profile command
-func TestRemoveProfileCmd(t *testing.T) {
+// TestDeleteProfileCmd tests the delete profile command
+func TestDeleteProfileCmd(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
 
@@ -193,14 +193,14 @@ func TestRemoveProfileCmd(t *testing.T) {
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
 
-	// Execute remove command
-	output, err := executeCommand(rootCmd, "config", "profiles", "remove", "test2")
+	// Execute delete command
+	output, err := executeCommand(rootCmd, "config", "profiles", "delete", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Profile 'test2' removed successfully")) {
+	if !bytes.Contains([]byte(output), []byte("Profile 'test2' deleted successfully")) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
 
