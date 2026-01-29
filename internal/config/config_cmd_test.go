@@ -101,7 +101,7 @@ func TestListProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute list command
-	output, err := executeCommand(rootCmd, "config", "profile", "list")
+	output, err := executeCommand(rootCmd, "config", "profiles", "list")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestAddProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute add command
-	output, err := executeCommand(rootCmd, "config", "profile", "add", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
+	output, err := executeCommand(rootCmd, "config", "profiles", "add", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestRemoveProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute remove command
-	output, err := executeCommand(rootCmd, "config", "profile", "remove", "test2")
+	output, err := executeCommand(rootCmd, "config", "profiles", "remove", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestSelectProfileCmd(t *testing.T) {
 	rootCmd.AddCommand(configCmd)
 
 	// Execute select command
-	output, err := executeCommand(rootCmd, "config", "profile", "select", "test2")
+	output, err := executeCommand(rootCmd, "config", "profiles", "select", "test2")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
