@@ -1,0 +1,83 @@
+{
+  "kind": "Dash0View",
+  "metadata": {
+    "annotations": {},
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "058a2562-fada-40a9-8bc7-0bce27c1e2ee",
+      "dash0.com/source": "userdefined",
+      "dash0.com/version": "3"
+    },
+    "name": "all-logs-"
+  },
+  "spec": {
+    "display": {
+      "description": "All logs displayed with a general-purpose layout.",
+      "name": "All logs "
+    },
+    "filter": [
+      {
+        "key": "otel.log.severity.range",
+        "operator": "is_one_of",
+        "values": [
+          "ERROR",
+          "FATAL"
+        ]
+      }
+    ],
+    "groupBy": [
+      "otel.log.severity.range"
+    ],
+    "implicitFilter": [],
+    "permissions": [
+      {
+        "actions": [
+          "views:read",
+          "views:write",
+          "views:delete"
+        ],
+        "userId": "2b3b2e18-16c6-4383-8452-007608642b11"
+      }
+    ],
+    "table": {
+      "columns": [
+        {
+          "colSize": "min-content",
+          "key": "otel.log.severity.range",
+          "label": "Severity"
+        },
+        {
+          "colSize": "min-content",
+          "key": "otel.log.time",
+          "label": "Time"
+        },
+        {
+          "key": "dash0.resource.id",
+          "label": "Resource"
+        },
+        {
+          "key": "otel.log.body",
+          "label": "Body"
+        },
+        {
+          "colSize": "min-content",
+          "key": "otel.trace.id"
+        }
+      ],
+      "sort": [
+        {
+          "direction": "descending",
+          "key": "otel.log.time"
+        }
+      ]
+    },
+    "type": "logs",
+    "visualizations": [
+      {
+        "metric": "logs_total",
+        "renderers": [],
+        "yAxisScale": "linear"
+      }
+    ]
+  }
+}

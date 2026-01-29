@@ -1,0 +1,348 @@
+[
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "0c3893ac-3d26-11ef-943e-eedf0419e619",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "0e1e559b-a2e7-4504-b665-6121b84a28c2",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "15dd7855-e156-4dee-bc37-43be799d6ea5",
+    "name": "rapha-1-chart-mcchartface-but-dots-are-used-sensibly",
+    "origin": "some-dashboard-id",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Comprehensive AWS SQS monitoring dashboard with queue metrics, message flow analysis, and operational insights",
+    "id": "1623df61-49d3-4e6e-b31f-5303310af207",
+    "name": "AWS-SQS-Overview",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "18665957-f60e-4d5b-8c38-f30b988227fc",
+    "name": "dash0---services",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "1bea59df-612a-4241-889b-9f92b4c8d828",
+    "name": "Web-Vitals",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "2f9084a0-d16a-419c-bf4f-64263d1e198a",
+    "name": "33f4a307-5cf1-4aee-bd37-d41ba683e6d3",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "313d11e7-39e4-11ef-8aa5-36a7eee1d145",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "This is room for a human-readable description. Where would we show it though outside of the editing sidebar? Maybe the dashboard list? :D",
+    "id": "319814ec-3f8c-11ef-8a32-7af80889735e",
+    "name": "telemetry-ingress-overview",
+    "tags": [
+      "collector",
+      "volume"
+    ]
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "3449fda0-84f2-4df8-a09b-68766a4d809e",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "3bcd5e4e-8d56-4180-a50d-8932d675a3e7",
+    "name": "7074e3e5-8140-4f35-93c9-4ac2e1ed6bdb",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "4055fca2-2376-11ef-add5-ae8132122fb8",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "kubeletstatsreceiver metrics",
+    "id": "4c44df36-82dc-448f-99c5-a4f371666d8a",
+    "name": "22b51dbe-680d-49b5-bebc-c01c01e0dafe",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Comprehensive AWS SNS monitoring dashboard with topic metrics, message delivery analysis, and operational insights",
+    "id": "52e59699-db79-41f6-b448-df1d3befab8b",
+    "name": "AWS-SNS-Overview",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "55992352-856c-43b4-b473-20d587cd0db9",
+    "name": "a",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "5bf868cf-2d79-4004-8aa5-653a1272928b",
+    "name": "import-test",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "5e6de9a0-d158-4aed-93b7-a9b548d7dfb1",
+    "name": "service-activity",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "5f2b4bf5-3907-11ef-bacb-f6867e4e896e",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "617b1a94-39ad-46f7-95b2-aa67d577ab0c",
+    "name": "7074e3e5-8140-4f35-93c9-4ac2e1ed6bdb",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Visualizes the semantic conventions for JVM metrics collected",
+    "id": "653d2406-159c-4faa-b439-06be692d4d9e",
+    "name": "645de4fe-637b-4204-b93d-d2f7764bd12f",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Visualizes the semantic conventions for .Net Runtime metrics collected",
+    "id": "6fb2ad3a-bf30-427d-a6b0-922efadc6683",
+    "name": "dash0---net-runtime-metrics",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "75d917b5-af8f-4dfe-96af-b38171001126",
+    "name": "dash0---vercel-project-activity",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "798ed360-fcd5-4b1c-bf93-aa26570f4b7c",
+    "name": "sample-dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "815eacdf-217e-11ef-ab08-deefa33b8475",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "81d137b6-32f6-11ef-ab8c-5af2d42a9c39",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "895dae27-5548-4bca-82e2-48debb624b4c",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "8cd34dd5-a770-4863-aafc-f943a96e9a34",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "This is room for a human-readable description. Where would we show it though outside of the editing sidebar?",
+    "id": "8fdd3423-c060-48bf-a59c-f87dfc3e02fa",
+    "name": "telemetry-ingress-overview",
+    "tags": [
+      "collector",
+      "volume"
+    ]
+  },
+  {
+    "dataset": "default",
+    "description": "Comprehensive AWS API Gateway monitoring dashboard with performance metrics, error analysis, and operational insights",
+    "id": "9788c2fc-70bf-44f7-b7ca-35736343f7ed",
+    "name": "AWS-API-Gateway-Overview",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "9b0c0b16-7069-11ef-8c76-f68a77d96e04",
+    "name": "query-optimizer-gauges",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "a941a41a-16d8-42a0-ab15-34351a950c4a",
+    "name": "7bfd1a3c-3ccf-4f3e-bffc-768c0a5dcdae",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "b081f3a6-68a4-42d7-8602-38abd19c73d7",
+    "name": "chart-mcchartface-but-y-axis-is-naive",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "b1353965-ecf6-466f-8196-15d3fc6b38e1",
+    "name": "column-test",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "b2d893fd-8b36-449d-aa47-a59b130864ac",
+    "name": "red-charts-import",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "This is room for a human-readable description. Where would we show it though outside of the editing sidebar? Maybe the dashboard list? :D",
+    "id": "b6eade6a-2705-11ef-9516-ce22d0e888d6",
+    "name": "telemetry-ingress-overview",
+    "tags": [
+      "collector",
+      "volume"
+    ]
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "bfd7104f-2e76-4262-a0ef-ec2545d8aeac",
+    "name": "aws-lambda-overview",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "c05cc199-f985-46d6-bca3-445037fd97ba",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "c39f9d55-a439-4ce5-9a9c-d2c390b17aa4",
+    "name": "chart-mcchartface-but-dots-are-used-sensibly",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "cb820f1a-6f71-49f0-9eb7-df888766fe33",
+    "name": "column-test",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "daa81535-2983-42a1-8056-2cad2e2251a1",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "dd1a7eec-c59c-4e12-9c17-7fb704a46094",
+    "name": "New dashboard",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "This dashboard provides ESTIMATES on the fees accrued over the next 30 days, based on the last 24h. This dashboard does not take into account the beginning of the billing cycle.",
+    "id": "dfd4dbf8-5bda-4eed-bb36-a0be371b3bc2",
+    "name": "fccf61b0-e9b6-4ec2-b265-3cf61284cf04",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Account-Level AWS Lambda Command Center - Comprehensive dashboard for monitoring all Lambda functions with health indicators, scaling trends, and optimization insights",
+    "id": "e0d37093-d17c-4912-a78f-0e054ef66702",
+    "name": "AWS-Lambda-Command-Center",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Visualizes the semantic conventions for .Net Runtime metrics collected",
+    "id": "e2921066-54ef-46cb-96a4-2d90181f30fa",
+    "name": "fc9603d3-235a-4f41-b665-a352eb87e9d3",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "This dashboard provides ESTIMATES on the fees accrued over the next 30 days, based on the last 24h. This dashboard does not take into account the beginning of the billing cycle.",
+    "id": "e3030354-609e-4889-99d5-dec77e8e5004",
+    "name": "beefc1a4-3287-4163-9a10-ed802fd7f839",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "e518db61-c865-44f6-bebc-ab5fd3fd75b9",
+    "name": "e518db61-c865-44f6-bebc-ab5fd3fd75b9",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "Rate, Errors, and Duration metrics for the ProductCatalog service",
+    "id": "ee92c155-793d-4a91-a644-c31d6fd2385a",
+    "name": "productcatalog-red-metrics",
+    "tags": []
+  },
+  {
+    "dataset": "default",
+    "description": "",
+    "id": "ff3ebe2e-088e-4ae9-af7d-03b9769ab783",
+    "name": "chart-mcchartface",
+    "tags": []
+  }
+]

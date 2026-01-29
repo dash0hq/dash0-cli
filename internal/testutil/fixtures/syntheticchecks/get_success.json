@@ -1,0 +1,97 @@
+{
+  "kind": "Dash0SyntheticCheck",
+  "metadata": {
+    "annotations": {},
+    "description": "",
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "0ad05446-f2ba-4082-b414-2072ff45bde2",
+      "dash0.com/origin": "",
+      "dash0.com/version": "5"
+    },
+    "name": "AWS OTEL SNS publisher"
+  },
+  "spec": {
+    "display": {
+      "name": "AWS OTEL SNS publisher"
+    },
+    "enabled": true,
+    "notifications": {
+      "channels": []
+    },
+    "permissions": [
+      {
+        "actions": [
+          "synthetic_check:read",
+          "synthetic_check:delete",
+          "synthetic_check:write"
+        ],
+        "role": "admin"
+      },
+      {
+        "actions": [
+          "synthetic_check:read"
+        ],
+        "role": "basic_member"
+      }
+    ],
+    "plugin": {
+      "kind": "http",
+      "spec": {
+        "request": {
+          "tls": {
+            "allowInsecure": false
+          },
+          "url": "https://5db7u27zil.execute-api.eu-west-1.amazonaws.com/prod/otel/sns-publisher",
+          "method": "get",
+          "headers": [],
+          "tracing": {
+            "addTracingHeaders": false
+          },
+          "redirects": "disabled",
+          "queryParameters": []
+        },
+        "assertions": {
+          "criticalAssertions": [
+            {
+              "kind": "status_code",
+              "spec": {
+                "value": "200",
+                "operator": "is"
+              }
+            },
+            {
+              "kind": "timing",
+              "spec": {
+                "type": "total",
+                "value": "5000ms",
+                "operator": "lt"
+              }
+            }
+          ],
+          "degradedAssertions": [
+            {
+              "kind": "timing",
+              "spec": {
+                "type": "total",
+                "value": "2000ms",
+                "operator": "lt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "retries": {
+      "kind": "off",
+      "spec": {}
+    },
+    "schedule": {
+      "interval": "1m",
+      "locations": [
+        "de-frankfurt"
+      ],
+      "strategy": "all_locations"
+    }
+  }
+}
