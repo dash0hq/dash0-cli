@@ -79,12 +79,13 @@ func maskToken(token string) string {
 	return "..." + token[len(token)-7:]
 }
 
-// newProfileCmd creates a new profile command
+// newProfileCmd creates a new profiles command
 func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "profile",
-		Short: "Manage configuration profiles",
-		Long:  `Add, list, remove, and select configuration profiles`,
+		Use:     "profiles",
+		Aliases: []string{"profile"},
+		Short:   "Manage configuration profiles",
+		Long:    `Add, list, remove, and select configuration profiles`,
 	}
 
 	// Add subcommands
