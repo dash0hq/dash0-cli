@@ -66,12 +66,12 @@ Apply resource definitions from a file or stdin. The input may contain multiple 
 
 ```bash
 $ dash0 apply -f resources.yaml
-Dashboard "Production Overview" applied successfully
-CheckRule "High Error Rate" applied successfully
-View "Error Logs" applied successfully
+Dashboard "Production Overview" created
+CheckRule "High Error Rate" updated
+View "Error Logs" created
 
 $ cat resources.yaml | dash0 apply -f -
-Dashboard "Production Overview" applied successfully
+Dashboard "Production Overview" created
 ...
 
 $ dash0 apply -f dashboard.yaml --dry-run

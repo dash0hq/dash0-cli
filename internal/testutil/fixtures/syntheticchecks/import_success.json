@@ -1,0 +1,27 @@
+{
+  "kind": "Dash0SyntheticCheck",
+  "metadata": {
+    "annotations": {},
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "test-synthetic-check-id",
+      "dash0.com/origin": "dash0-cli"
+    },
+    "name": "test-synthetic-check"
+  },
+  "spec": {
+    "display": {
+      "name": "Test Synthetic Check",
+      "description": "Test synthetic check for apply command"
+    },
+    "http": {
+      "url": "https://example.com/health",
+      "method": "GET"
+    },
+    "scheduling": {
+      "interval": "1m",
+      "timeout": "30s"
+    },
+    "locations": ["eu-west-1"]
+  }
+}

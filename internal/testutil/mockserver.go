@@ -22,26 +22,30 @@ const (
 	FixtureDashboardsListSuccess   = "dashboards/list_success.json"
 	FixtureDashboardsListEmpty     = "dashboards/list_empty.json"
 	FixtureDashboardsGetSuccess    = "dashboards/get_success.json"
+	FixtureDashboardsImportSuccess = "dashboards/import_success.json"
 	FixtureDashboardsNotFound      = "dashboards/error_not_found.json"
 	FixtureDashboardsUnauthorized  = "dashboards/error_unauthorized.json"
 
 	// Check rules fixtures
-	FixtureCheckRulesListSuccess = "checkrules/list_success.json"
-	FixtureCheckRulesListEmpty   = "checkrules/list_empty.json"
-	FixtureCheckRulesGetSuccess  = "checkrules/get_success.json"
-	FixtureCheckRulesNotFound    = "checkrules/error_not_found.json"
+	FixtureCheckRulesListSuccess   = "checkrules/list_success.json"
+	FixtureCheckRulesListEmpty     = "checkrules/list_empty.json"
+	FixtureCheckRulesGetSuccess    = "checkrules/get_success.json"
+	FixtureCheckRulesImportSuccess = "checkrules/import_success.json"
+	FixtureCheckRulesNotFound      = "checkrules/error_not_found.json"
 
 	// Views fixtures
-	FixtureViewsListSuccess = "views/list_success.json"
-	FixtureViewsListEmpty   = "views/list_empty.json"
-	FixtureViewsGetSuccess  = "views/get_success.json"
-	FixtureViewsNotFound    = "views/error_not_found.json"
+	FixtureViewsListSuccess   = "views/list_success.json"
+	FixtureViewsListEmpty     = "views/list_empty.json"
+	FixtureViewsGetSuccess    = "views/get_success.json"
+	FixtureViewsImportSuccess = "views/import_success.json"
+	FixtureViewsNotFound      = "views/error_not_found.json"
 
 	// Synthetic checks fixtures
-	FixtureSyntheticChecksListSuccess = "syntheticchecks/list_success.json"
-	FixtureSyntheticChecksListEmpty   = "syntheticchecks/list_empty.json"
-	FixtureSyntheticChecksGetSuccess  = "syntheticchecks/get_success.json"
-	FixtureSyntheticChecksNotFound    = "syntheticchecks/error_not_found.json"
+	FixtureSyntheticChecksListSuccess   = "syntheticchecks/list_success.json"
+	FixtureSyntheticChecksListEmpty     = "syntheticchecks/list_empty.json"
+	FixtureSyntheticChecksGetSuccess    = "syntheticchecks/get_success.json"
+	FixtureSyntheticChecksImportSuccess = "syntheticchecks/import_success.json"
+	FixtureSyntheticChecksNotFound      = "syntheticchecks/error_not_found.json"
 )
 
 // FixturesDir returns the absolute path to the fixtures directory.
@@ -316,7 +320,7 @@ func (m *MockServer) WithDashboardsDelete() *MockServer {
 
 // WithCheckRulesList sets up the mock server to return a list of check rules.
 func (m *MockServer) WithCheckRulesList(fixture string) *MockServer {
-	return m.On(http.MethodGet, "/api/check-rules", MockResponse{
+	return m.On(http.MethodGet, "/api/alerting/check-rules", MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
 	})
@@ -324,7 +328,7 @@ func (m *MockServer) WithCheckRulesList(fixture string) *MockServer {
 
 // WithCheckRulesGet sets up the mock server to return a check rule by ID.
 func (m *MockServer) WithCheckRulesGet(fixture string) *MockServer {
-	return m.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/check-rules/[^/]+$`), MockResponse{
+	return m.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
 	})
@@ -332,7 +336,7 @@ func (m *MockServer) WithCheckRulesGet(fixture string) *MockServer {
 
 // WithCheckRulesCreate sets up the mock server to accept check rule creation.
 func (m *MockServer) WithCheckRulesCreate(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/check-rules", MockResponse{
+	return m.On(http.MethodPost, "/api/alerting/check-rules", MockResponse{
 		StatusCode: http.StatusCreated,
 		BodyFile:   fixture,
 	})
@@ -340,7 +344,7 @@ func (m *MockServer) WithCheckRulesCreate(fixture string) *MockServer {
 
 // WithCheckRulesDelete sets up the mock server to accept check rule deletion.
 func (m *MockServer) WithCheckRulesDelete() *MockServer {
-	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/check-rules/[^/]+$`), MockResponse{
+	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), MockResponse{
 		StatusCode: http.StatusNoContent,
 	})
 }
@@ -404,6 +408,44 @@ func (m *MockServer) WithSyntheticChecksCreate(fixture string) *MockServer {
 func (m *MockServer) WithSyntheticChecksDelete() *MockServer {
 	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`), MockResponse{
 		StatusCode: http.StatusNoContent,
+	})
+}
+
+// --- Import endpoint helpers ---
+
+// WithDashboardImport sets up the mock server to accept dashboard imports.
+func (m *MockServer) WithDashboardImport(fixture string) *MockServer {
+	return m.On(http.MethodPost, "/api/import/dashboard", MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireAuthHeader,
+	})
+}
+
+// WithCheckRuleImport sets up the mock server to accept check rule imports.
+func (m *MockServer) WithCheckRuleImport(fixture string) *MockServer {
+	return m.On(http.MethodPost, "/api/import/check-rule", MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireAuthHeader,
+	})
+}
+
+// WithViewImport sets up the mock server to accept view imports.
+func (m *MockServer) WithViewImport(fixture string) *MockServer {
+	return m.On(http.MethodPost, "/api/import/view", MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireAuthHeader,
+	})
+}
+
+// WithSyntheticCheckImport sets up the mock server to accept synthetic check imports.
+func (m *MockServer) WithSyntheticCheckImport(fixture string) *MockServer {
+	return m.On(http.MethodPost, "/api/import/synthetic-check", MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireAuthHeader,
 	})
 }
 
