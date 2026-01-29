@@ -85,13 +85,13 @@ func newProfileCmd() *cobra.Command {
 		Use:     "profiles",
 		Aliases: []string{"profile"},
 		Short:   "Manage configuration profiles",
-		Long:    `Add, list, remove, and select configuration profiles`,
+		Long:    `Create, list, delete, and select configuration profiles`,
 	}
 
 	// Add subcommands
 	cmd.AddCommand(newCreateProfileCmd())
 	cmd.AddCommand(newListProfileCmd())
-	cmd.AddCommand(newRemoveProfileCmd())
+	cmd.AddCommand(newDeleteProfileCmd())
 	cmd.AddCommand(newSelectProfileCmd())
 
 	return cmd
@@ -218,12 +218,13 @@ func newListProfileCmd() *cobra.Command {
 	return cmd
 }
 
-// newRemoveProfileCmd creates a new remove profile command
-func newRemoveProfileCmd() *cobra.Command {
+// newDeleteProfileCmd creates a new delete profile command
+func newDeleteProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove",
-		Short: "Remove a configuration profile",
-		Long:  `Remove a named configuration profile`,
+		Use:     "delete",
+		Aliases: []string{"remove"},
+		Short:   "Delete a configuration profile",
+		Long:    `Delete a named configuration profile`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -237,8 +238,8 @@ func newRemoveProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to remove profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Profile removed successfully")
-			fmt.Printf("Profile '%s' removed successfully\n", name)
+			log.Logger.Info().Str("name", name).Msg("Profile deleted successfully")
+			fmt.Printf("Profile '%s' deleted successfully\n", name)
 
 			return nil
 		},
