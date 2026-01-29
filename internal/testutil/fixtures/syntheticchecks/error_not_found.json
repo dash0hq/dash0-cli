@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 404,
+    "message": "Not Found: The requested synthetic check does not exist or is inaccessible to you.",
+    "traceId": "4ec8f8e3ebd6c62b2e41bd8450534c28"
+  }
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "dataset": "default",
+    "id": "0ad05446-f2ba-4082-b414-2072ff45bde2",
+    "name": "AWS OTEL SNS publisher"
+  },
+  {
+    "dataset": "default",
+    "id": "64617368-3073-796e-7468-5342d3560bb2",
+    "name": "Google.com"
+  },
+  {
+    "dataset": "default",
+    "id": "64617368-3073-796e-7468-cab8fb359167",
+    "name": "OTel Demo"
+  }
+]

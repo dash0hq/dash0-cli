@@ -1,0 +1,117 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "annotations": {
+      "dash0.com/source": "ui"
+    },
+    "createdAt": "2024-07-08T12:31:49.49Z",
+    "dash0Extensions": {
+      "dataset": "default"
+    },
+    "name": "New dashboard",
+    "updatedAt": "2024-07-08T12:36:07.713Z",
+    "version": 2
+  },
+  "spec": {
+    "display": {
+      "description": "",
+      "name": "New dashboard"
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/16d1a97f-9692-4b4e-8cc2-451fcfda4fd7"
+              },
+              "height": 8,
+              "width": 21,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        }
+      }
+    ],
+    "panels": {
+      "16d1a97f-9692-4b4e-8cc2-451fcfda4fd7": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "",
+            "name": "Untitled"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "size": "small",
+                "values": [
+                  "last"
+                ]
+              },
+              "thresholds": {},
+              "visual": {
+                "areaOpacity": 0.55,
+                "connectNulls": true,
+                "display": "line",
+                "lineWidth": 1,
+                "palette": {
+                  "mode": "auto"
+                },
+                "pointRadius": 2.5,
+                "stack": "none"
+              },
+              "yAxis": {
+                "format": {
+                  "decimalPlaces": 2,
+                  "enforceMinimumFractionDigits": false,
+                  "shortValues": false,
+                  "signDisplay": "auto",
+                  "unit": "decimal"
+                },
+                "min": 0,
+                "show": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "rate(spans_total{$service_name_filter}[5m])",
+                    "seriesNameFormat": "{{service_name}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "variables": [
+      {
+        "kind": "Dash0FilterVariable",
+        "spec": {
+          "attributeKey": "service_name",
+          "capturingRegexp": "",
+          "display": {
+            "description": "",
+            "hidden": false,
+            "name": ""
+          },
+          "name": "service_name_filter",
+          "operator": "is",
+          "values": []
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 404,
+    "message": "Not Found: The requested dashboard does not exist or is inaccessible to you.",
+    "traceId": "49e66c594acc8f95b159c31bb1511fdd"
+  }
+}

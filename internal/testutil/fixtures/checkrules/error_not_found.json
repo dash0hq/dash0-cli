@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 404,
+    "message": "Not Found: The requested check rule does not exist or is inaccessible to you.",
+    "traceId": "a2e6c82f1a6389934e41f346b442764c"
+  }
+}

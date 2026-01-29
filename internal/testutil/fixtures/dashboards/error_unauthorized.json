@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 401,
+    "message": "The provided auth token is not known.",
+    "traceId": "ba5bbf45bd7323a1988813ff565fcafe"
+  }
+}

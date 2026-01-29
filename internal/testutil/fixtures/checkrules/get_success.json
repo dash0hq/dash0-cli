@@ -1,0 +1,16 @@
+{
+  "annotations": {},
+  "dataset": "default",
+  "description": "das",
+  "enabled": false,
+  "expression": "histogram_avg(sum(rate({otel_metric_name = \"dash0.spans.duration\"}[5m]))) * 1000 > $__threshold",
+  "for": "1m0s",
+  "interval": "1m0s",
+  "keepFiringFor": "0s",
+  "labels": {},
+  "name": "Failing check rule 2",
+  "summary": "Das: {{ $k8s_cluster_name }}",
+  "thresholds": {
+    "failed": 0
+  }
+}
