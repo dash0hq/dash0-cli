@@ -15,9 +15,10 @@ func newCreateCmd() *cobra.Command {
 	var flags res.FileInputFlags
 
 	cmd := &cobra.Command{
-		Use:   "create -f <file>",
-		Short: "Create a dashboard from a file",
-		Long:  `Create a new dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
+		Use:     "create -f <file>",
+		Aliases: []string{"add"},
+		Short:   "Create a dashboard from a file",
+		Long:    `Create a new dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd.Context(), &flags)
 		},

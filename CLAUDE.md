@@ -11,6 +11,46 @@ AI agents and CI/CD workflows to perform tasks like creating, updating and delet
 - Test specific: `go test -v ./internal/config -run TestServiceAddContext`
 - Run locally: `./dash0 [command]`
 
+## CLI Naming Conventions
+
+### Top-level Resource Commands
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`
+- Group related functionality: `config profiles` for profile management
+
+### Standard CRUD Subcommands for Assets
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`) use these subcommands:
+
+| Subcommand | Alias    | Description |
+|------------|----------|-------------|
+| `list`     | `ls`     | List all resources |
+| `get`      | -        | Get a single resource by ID |
+| `create`   | `add`    | Create a new resource from a file |
+| `update`   | -        | Update an existing resource from a file |
+| `delete`   | `remove` | Delete a resource by ID |
+
+### Config Profiles Subcommands
+The `config profiles` command uses:
+
+| Subcommand | Alias    | Description |
+|------------|----------|-------------|
+| `list`     | `ls`     | List all profiles |
+| `create`   | `add`    | Create a new profile |
+| `delete`   | `remove` | Delete a profile |
+| `select`   | -        | Set the active profile |
+
+### Aliases
+- `add` → `create`
+- `remove` → `delete`
+- `ls` → `list`
+
+### Naming Rules
+1. **Prefer verbs** for actions: `create`, `delete`, `list`, `get`, `update`, `select`
+2. **Use plural** for resource type commands: `dashboards` not `dashboard`
+3. **Use kebab-case** for multi-word commands: `check-rules` not `checkRules`
+4. **Provide aliases** when renaming commands for backwards compatibility
+5. **Be consistent** across all resource types - if `dashboards` has `create`, all assets should have `create`
+
 ## Code Style
 - Use Go 1.24+ features
 - Format with `gofmt`

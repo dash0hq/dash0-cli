@@ -16,10 +16,11 @@ func newDeleteCmd() *cobra.Command {
 	var flags resource.DeleteFlags
 
 	cmd := &cobra.Command{
-		Use:   "delete <id>",
-		Short: "Delete a check rule",
-		Long:  `Delete a check rule by its ID`,
-		Args:  cobra.ExactArgs(1),
+		Use:     "delete <id>",
+		Aliases: []string{"remove"},
+		Short:   "Delete a check rule",
+		Long:    `Delete a check rule by its ID`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd.Context(), args[0], &flags)
 		},
