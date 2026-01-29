@@ -24,10 +24,10 @@ make install
 Configure API access using profiles.
 
 ```bash
-$ dash0 config profiles add dev --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_xxx
+$ dash0 config profiles create dev --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_xxx
 Profile "dev" added and set as active
 
-$ dash0 config profiles add prod --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_yyy
+$ dash0 config profiles create prod --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_yyy
 Profile "prod" added successfully
 
 $ dash0 config profiles list

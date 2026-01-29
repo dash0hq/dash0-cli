@@ -89,7 +89,7 @@ func newProfileCmd() *cobra.Command {
 	}
 
 	// Add subcommands
-	cmd.AddCommand(newAddProfileCmd())
+	cmd.AddCommand(newCreateProfileCmd())
 	cmd.AddCommand(newListProfileCmd())
 	cmd.AddCommand(newRemoveProfileCmd())
 	cmd.AddCommand(newSelectProfileCmd())
@@ -97,14 +97,15 @@ func newProfileCmd() *cobra.Command {
 	return cmd
 }
 
-// newAddProfileCmd creates a new add profile command
-func newAddProfileCmd() *cobra.Command {
+// newCreateProfileCmd creates a new create profile command
+func newCreateProfileCmd() *cobra.Command {
 	var apiUrl, authToken string
 
 	cmd := &cobra.Command{
-		Use:   "add",
-		Short: "Add a new configuration profile",
-		Long:  `Add a new named configuration profile with API URL and auth token`,
+		Use:     "create",
+		Aliases: []string{"add"},
+		Short:   "Create a new configuration profile",
+		Long:    `Create a new named configuration profile with API URL and auth token`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]

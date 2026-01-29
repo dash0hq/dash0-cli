@@ -116,8 +116,8 @@ func TestListProfileCmd(t *testing.T) {
 	}
 }
 
-// TestAddProfileCmd tests the add profile command
-func TestAddProfileCmd(t *testing.T) {
+// TestCreateProfileCmd tests the create profile command
+func TestCreateProfileCmd(t *testing.T) {
 	// Setup test environment
 	_ = setupTestConfigDir(t)
 
@@ -126,8 +126,8 @@ func TestAddProfileCmd(t *testing.T) {
 	configCmd := NewConfigCmd()
 	rootCmd.AddCommand(configCmd)
 
-	// Execute add command
-	output, err := executeCommand(rootCmd, "config", "profiles", "add", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
+	// Execute create command
+	output, err := executeCommand(rootCmd, "config", "profiles", "create", "new-profile", "--api-url", "https://new.example.com", "--auth-token", "new-token")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
