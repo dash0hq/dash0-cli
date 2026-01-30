@@ -17,6 +17,12 @@ bin/
 # Built binaries
 build/
 
+# Tools binaries
+.tools/
+
+# Generated release notes
+release-notes.md
+
 # Dependency directories
 vendor/
 

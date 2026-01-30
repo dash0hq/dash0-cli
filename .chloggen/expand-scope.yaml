@@ -1,0 +1,14 @@
+change_type: new_component
+
+component: cli
+
+note: Expanding the scope of the Dash0 CLI to managing assets
+
+issues: [2]
+
+subtext: |
+  Provides commands for managing Dash0 resources including dashboards, check rules,
+  synthetic checks, and views. Supports multiple configuration profiles and various
+  output formats.
+
+change_logs: []
