@@ -29,30 +29,30 @@ func NewApplyCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "apply -f <file>",
-		Short: "Apply resource definitions from a file",
-		Long: `Apply resource definitions from a YAML or JSON file.
+		Short: "Apply asset definitions from a file",
+		Long: `Apply asset definitions from a YAML or JSON file.
 The file may contain multiple documents separated by "---".
-Each document must have a "kind" field specifying the resource type.
+Each document must have a "kind" field specifying the asset type.
 Use '-f -' to read from stdin.
 
-Supported resource types:
+Supported asset types:
   - Dashboard
   - CheckRule (or PrometheusRule CRD)
   - SyntheticCheck
   - View
 
-If a resource exists, it will be updated. If it doesn't exist, it will be created.`,
-		Example: `  # Apply a single resource
+If an asset exists, it will be updated. If it doesn't exist, it will be created.`,
+		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
-  # Apply multiple resources from a single file
-  dash0 apply -f resources.yaml
+  # Apply multiple assets from a single file
+  dash0 apply -f assets.yaml
 
   # Apply from stdin
-  cat resources.yaml | dash0 apply -f -
+  cat assets.yaml | dash0 apply -f -
 
   # Validate without applying
-  dash0 apply -f resources.yaml --dry-run`,
+  dash0 apply -f assets.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flags.File == "" {
 				return fmt.Errorf("file is required; use -f to specify the file (use '-' for stdin)")
@@ -61,7 +61,7 @@ If a resource exists, it will be updated. If it doesn't exist, it will be create
 		},
 	}
 
-	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to the file containing resource definitions (use '-' for stdin)")
+	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to the file containing asset definitions (use '-' for stdin)")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate the file without applying changes")
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
@@ -70,13 +70,13 @@ If a resource exists, it will be updated. If it doesn't exist, it will be create
 	return cmd
 }
 
-// resourceDocument represents a parsed YAML document with its kind
-type resourceDocument struct {
+// assetDocument represents a parsed YAML document with its kind
+type assetDocument struct {
 	Kind string `yaml:"kind"`
 	raw  []byte
 }
 
-// applyAction indicates whether a resource was created or updated
+// applyAction indicates whether an asset was created or updated
 type applyAction string
 
 const (
@@ -177,7 +177,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	return nil
 }
 
-func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]resourceDocument, error) {
+func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]assetDocument, error) {
 	var data []byte
 	var err error
 
@@ -196,7 +196,7 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]resourceDocument
 		}
 	}
 
-	var documents []resourceDocument
+	var documents []assetDocument
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 
 	for {
@@ -231,7 +231,7 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]resourceDocument
 		}
 		encoder.Close()
 
-		documents = append(documents, resourceDocument{
+		documents = append(documents, assetDocument{
 			Kind: kindDoc.Kind,
 			raw:  buf.Bytes(),
 		})
@@ -244,7 +244,7 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]resourceDocument
 			Kind string `yaml:"kind"`
 		}
 		if err := yaml.Unmarshal(data, &kindDoc); err == nil && kindDoc.Kind != "" {
-			documents = append(documents, resourceDocument{
+			documents = append(documents, assetDocument{
 				Kind: kindDoc.Kind,
 				raw:  data,
 			})
@@ -271,7 +271,7 @@ func normalizeKind(kind string) string {
 	return k
 }
 
-func applyDocument(ctx context.Context, apiClient dash0.Client, doc resourceDocument, dataset string) (string, applyAction, error) {
+func applyDocument(ctx context.Context, apiClient dash0.Client, doc assetDocument, dataset string) (string, applyAction, error) {
 	datasetPtr := client.DatasetPtr(dataset)
 
 	switch normalizeKind(doc.Kind) {
