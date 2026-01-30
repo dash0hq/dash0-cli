@@ -1,0 +1,2 @@
+# This file ensures the .chloggen directory is tracked by git.
+# Changelog entry YAML files will be added here and removed during releases.

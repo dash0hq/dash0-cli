@@ -1,0 +1,52 @@
+{{- define "entry" -}}
+- `{{ .Component }}`: {{ .Note }} (#{{ range $i, $issue := .Issues }}{{ if $i }}, #{{ end }}{{ $issue }}{{ end }})
+{{- if .SubText }}
+{{ .SubText | indent 2 }}
+{{- end }}
+{{- end -}}
+
+{{- if .Version }}
+## {{ .Version }}
+{{ end }}
+{{- if .BreakingChanges }}
+
+### Breaking Changes
+
+{{ range .BreakingChanges }}
+{{ template "entry" . }}
+{{ end }}
+{{- end -}}
+{{- if .Deprecations }}
+
+### Deprecations
+
+{{ range .Deprecations }}
+{{ template "entry" . }}
+{{ end }}
+{{- end -}}
+{{- if .NewComponents }}
+
+### New Components
+
+{{ range .NewComponents }}
+{{ template "entry" . }}
+{{ end }}
+{{- end -}}
+{{- if .Enhancements }}
+
+### Enhancements
+
+{{ range .Enhancements }}
+{{ template "entry" . }}
+{{ end }}
+{{- end -}}
+{{- if .BugFixes }}
+
+### Bug Fixes
+
+{{ range .BugFixes }}
+{{ template "entry" . }}
+{{ end }}
+{{- end -}}
+
+<!-- next version -->

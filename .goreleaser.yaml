@@ -39,17 +39,12 @@ archives:
 
 release:
   prerelease: "false"
+  # Use the release notes extracted from CHANGELOG.md by the release workflow
+  release_notes: release-notes.md
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
-      - Merge pull request
-      - Merge branch
+  # Disable auto-generated changelog; using curated CHANGELOG.md via chloggen
+  disable: true
 
 dockers:
   - image_templates:

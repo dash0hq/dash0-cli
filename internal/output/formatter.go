@@ -94,7 +94,7 @@ type Column struct {
 // PrintTable prints a table with the given columns and data
 func (f *Formatter) PrintTable(columns []Column, data []interface{}) error {
 	if len(data) == 0 {
-		fmt.Fprintln(f.writer, "No resources found.")
+		fmt.Fprintln(f.writer, "No assets found.")
 		return nil
 	}
 

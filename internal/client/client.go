@@ -35,7 +35,7 @@ func HandleAPIError(err error) error {
 	}
 
 	if dash0.IsNotFound(err) {
-		return fmt.Errorf("resource not found: %w", err)
+		return fmt.Errorf("asset not found: %w", err)
 	}
 	if dash0.IsUnauthorized(err) {
 		return fmt.Errorf("authentication failed; check your auth token: %w", err)
@@ -47,7 +47,7 @@ func HandleAPIError(err error) error {
 		return fmt.Errorf("invalid request: %w", err)
 	}
 	if dash0.IsConflict(err) {
-		return fmt.Errorf("resource conflict: %w", err)
+		return fmt.Errorf("asset conflict: %w", err)
 	}
 	if dash0.IsRateLimited(err) {
 		return fmt.Errorf("rate limited; please try again later: %w", err)

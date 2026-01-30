@@ -7,12 +7,12 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
-	"github.com/dash0hq/dash0-cli/internal/resource"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newGetCmd() *cobra.Command {
-	var flags resource.GetFlags
+	var flags asset.GetFlags
 
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -24,11 +24,11 @@ func newGetCmd() *cobra.Command {
 		},
 	}
 
-	resource.RegisterGetFlags(cmd, &flags)
+	asset.RegisterGetFlags(cmd, &flags)
 	return cmd
 }
 
-func runGet(ctx context.Context, id string, flags *resource.GetFlags) error {
+func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err

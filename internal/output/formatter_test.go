@@ -132,7 +132,7 @@ func TestFormatter_PrintTable_Empty(t *testing.T) {
 
 	err := f.PrintTable([]Column{}, []interface{}{})
 	assert.NoError(t, err)
-	assert.Contains(t, buf.String(), "No resources found")
+	assert.Contains(t, buf.String(), "No assets found")
 }
 
 func TestTruncate(t *testing.T) {

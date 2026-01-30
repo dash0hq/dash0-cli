@@ -9,12 +9,12 @@ import (
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
-	"github.com/dash0hq/dash0-cli/internal/resource"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newListCmd() *cobra.Command {
-	var flags resource.ListFlags
+	var flags asset.ListFlags
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -26,11 +26,11 @@ func newListCmd() *cobra.Command {
 		},
 	}
 
-	resource.RegisterListFlags(cmd, &flags)
+	asset.RegisterListFlags(cmd, &flags)
 	return cmd
 }
 
-func runList(ctx context.Context, flags *resource.ListFlags) error {
+func runList(ctx context.Context, flags *asset.ListFlags) error {
 	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err

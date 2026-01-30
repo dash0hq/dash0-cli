@@ -60,17 +60,17 @@ API URL:    https://api.eu-west-1.aws.dash0-dev.com
 Auth Token: ...t_token    (from DASH0_AUTH_TOKEN environment variable)
 ```
 
-### Applying Resources
+### Applying Assets
 
-Apply resource definitions from a file or stdin. The input may contain multiple YAML documents separated by `---`:
+Apply asset definitions from a file or stdin. The input may contain multiple YAML documents separated by `---`:
 
 ```bash
-$ dash0 apply -f resources.yaml
+$ dash0 apply -f assets.yaml
 Dashboard "Production Overview" created
 CheckRule "High Error Rate" updated
 View "Error Logs" created
 
-$ cat resources.yaml | dash0 apply -f -
+$ cat assets.yaml | dash0 apply -f -
 Dashboard "Production Overview" created
 ...
 
@@ -79,7 +79,9 @@ Dry run: 1 document(s) validated successfully
   1. Dashboard
 ```
 
-Supported resource types: `Dashboard`, `CheckRule` (both the plain Prometheus YAML and the PrometheusRule CRD), `PrometheusRule`, `SyntheticCheck`, `View`
+Supported asset types: `Dashboard`, `CheckRule` (both the plain Prometheus YAML and the PrometheusRule CRD), `PrometheusRule`, `SyntheticCheck`, `View`
+
+**Note:** In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources". The reason for this is that the word "resource" is overloaded in OpenTelemetry, where it describes "where telemetry comes from".
 
 ### Dashboards
 
@@ -216,8 +218,8 @@ The `list` commands support four output formats:
 
 - **`table`** (default): Compact view with essential columns (name and ID)
 - **`wide`**: Similar to `table`, with additional columns (dataset and origin)
-- **`json`**: Full resource data in JSON format
-- **`yaml`**: Full resource data in YAML format
+- **`json`**: Full asset data in JSON format
+- **`yaml`**: Full asset data in YAML format
 
 ```bash
 $ dash0 dashboards list

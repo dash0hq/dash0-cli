@@ -13,7 +13,9 @@ AI agents and CI/CD workflows to perform tasks like creating, updating and delet
 
 ## CLI Naming Conventions
 
-### Top-level Resource Commands
+In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources". The reason for this is that the word "resource" is overloaded in OpenTelemetry, where it describes "where telemetry comes from". Use the word "asset" consistently where appropriate.
+
+### Top-level Asset Commands
 - Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`
 - Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`
 - Group related functionality: `config profiles` for profile management
@@ -23,11 +25,11 @@ All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`) us
 
 | Subcommand | Alias    | Description |
 |------------|----------|-------------|
-| `list`     | `ls`     | List all resources |
-| `get`      | -        | Get a single resource by ID |
-| `create`   | `add`    | Create a new resource from a file |
-| `update`   | -        | Update an existing resource from a file |
-| `delete`   | `remove` | Delete a resource by ID |
+| `list`     | `ls`     | List all assets |
+| `get`      | -        | Get a single asset by ID |
+| `create`   | `add`    | Create a new asset from a file |
+| `update`   | -        | Update an existing asset from a file |
+| `delete`   | `remove` | Delete an asset by ID |
 
 ### Config Profiles Subcommands
 The `config profiles` command uses:
@@ -46,10 +48,10 @@ The `config profiles` command uses:
 
 ### Naming Rules
 1. **Prefer verbs** for actions: `create`, `delete`, `list`, `get`, `update`, `select`
-2. **Use plural** for resource type commands: `dashboards` not `dashboard`
+2. **Use plural** for asset type commands: `dashboards` not `dashboard`
 3. **Use kebab-case** for multi-word commands: `check-rules` not `checkRules`
 4. **Provide aliases** when renaming commands for backwards compatibility
-5. **Be consistent** across all resource types - if `dashboards` has `create`, all assets should have `create`
+5. **Be consistent** across all asset types - if `dashboards` has `create`, all assets should have `create`
 
 ## Code Style
 - Use Go 1.24+ features
@@ -83,7 +85,7 @@ The OpenAPI specification of the Dash0 API is available at `https://api-docs.das
 
 ### Fixture Location
 - Fixtures are stored in `internal/testutil/fixtures/`
-- Organized by resource type: `dashboards/`, `checkrules/`, `views/`, `syntheticchecks/`
+- Organized by asset type: `dashboards/`, `checkrules/`, `views/`, `syntheticchecks/`
 - Common fixture patterns: `list_success.json`, `list_empty.json`, `get_success.json`, `error_not_found.json`, `error_unauthorized.json`
 
 ### Generating Fixtures

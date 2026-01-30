@@ -1,0 +1,13 @@
+# Configuration for the chloggen tool
+# See https://github.com/open-telemetry/opentelemetry-go-build-tools/tree/main/chloggen
+
+entries_dir: .chloggen
+
+template_yaml: .chloggen/TEMPLATE.yaml
+
+summary_template: .chloggen/summary.tmpl
+
+change_logs:
+  user: CHANGELOG.md
+
+default_change_logs: [user]
