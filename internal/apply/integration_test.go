@@ -190,7 +190,7 @@ func TestApply_MultipleDocuments(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	tmpDir := t.TempDir()
-	yamlFile := filepath.Join(tmpDir, "resources.yaml")
+	yamlFile := filepath.Join(tmpDir, "assets.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
 name: check-rule-1
 expression: up == 0
@@ -227,7 +227,7 @@ func TestApply_DryRun(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	tmpDir := t.TempDir()
-	yamlFile := filepath.Join(tmpDir, "resources.yaml")
+	yamlFile := filepath.Join(tmpDir, "assets.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: Dashboard
 metadata:
   name: test-dashboard
@@ -284,7 +284,7 @@ func TestApply_MissingKind(t *testing.T) {
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "missing-kind.yaml")
 	err := os.WriteFile(yamlFile, []byte(`metadata:
-  name: test-resource
+  name: test-asset
 `), 0644)
 	require.NoError(t, err)
 

@@ -132,7 +132,7 @@ metadata:
 	require.GreaterOrEqual(t, len(docs), 2)
 
 	// Filter to find documents with valid kinds
-	var validDocs []resourceDocument
+	var validDocs []assetDocument
 	for _, doc := range docs {
 		if doc.Kind != "" {
 			validDocs = append(validDocs, doc)

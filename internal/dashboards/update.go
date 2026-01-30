@@ -7,7 +7,7 @@ import (
 
 	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	res "github.com/dash0hq/dash0-cli/internal/resource"
+	res "github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 

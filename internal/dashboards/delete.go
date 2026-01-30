@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal/client"
-	"github.com/dash0hq/dash0-cli/internal/resource"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newDeleteCmd() *cobra.Command {
-	var flags resource.DeleteFlags
+	var flags asset.DeleteFlags
 
 	cmd := &cobra.Command{
 		Use:     "delete <id>",
@@ -26,11 +26,11 @@ func newDeleteCmd() *cobra.Command {
 		},
 	}
 
-	resource.RegisterDeleteFlags(cmd, &flags)
+	asset.RegisterDeleteFlags(cmd, &flags)
 	return cmd
 }
 
-func runDelete(ctx context.Context, id string, flags *resource.DeleteFlags) error {
+func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 	// Confirm deletion unless --force is used
 	if !flags.Force {
 		fmt.Printf("Are you sure you want to delete dashboard %q? [y/N]: ", id)
