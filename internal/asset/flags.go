@@ -1,8 +1,8 @@
-package resource
+package asset
 
 import "github.com/spf13/cobra"
 
-// CommonFlags holds common flag values used across all resource commands
+// CommonFlags holds common flag values used across all asset commands
 type CommonFlags struct {
 	ApiUrl    string
 	AuthToken string
