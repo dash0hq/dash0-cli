@@ -29,14 +29,17 @@ func newGetCmd() *cobra.Command {
 }
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	dashboard, err := apiClient.GetDashboard(ctx, id, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "dashboard",
+			AssetID:   id,
+		})
 	}
 
 	// Format output

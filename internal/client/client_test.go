@@ -24,8 +24,13 @@ func TestNewClient_WithEnvVars(t *testing.T) {
 }
 
 func TestNewClient_WithOverrides(t *testing.T) {
-	os.Setenv("DASH0_TEST_MODE", "1")
-	defer os.Unsetenv("DASH0_TEST_MODE")
+	// Set base env vars that will be overridden by NewClient parameters
+	os.Setenv("DASH0_API_URL", "https://api.base.dash0.com")
+	os.Setenv("DASH0_AUTH_TOKEN", "auth_base-token-12345")
+	defer func() {
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+	}()
 
 	client, err := NewClient("https://api.override.dash0.com", "auth_override-token-12345")
 	assert.NoError(t, err)
@@ -43,11 +48,11 @@ func TestNewClient_MissingConfig(t *testing.T) {
 	os.Setenv("DASH0_CONFIG_DIR", tempDir)
 	defer os.Unsetenv("DASH0_CONFIG_DIR")
 
-	// Without test mode, missing config should return an error
+	// Without test mode, missing config should return an error about no active profile
 	client, err := NewClient("", "")
 	assert.Error(t, err)
 	assert.Nil(t, client)
-	assert.Contains(t, err.Error(), "api-url and auth-token are required")
+	assert.Contains(t, err.Error(), "no active profile configured")
 }
 
 func TestDatasetPtr(t *testing.T) {

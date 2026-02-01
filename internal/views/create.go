@@ -46,14 +46,17 @@ func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 		return nil
 	}
 
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	result, err := apiClient.CreateView(ctx, &view, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "view",
+			AssetName: view.Metadata.Name,
+		})
 	}
 
 	fmt.Printf("View %q created successfully\n", result.Metadata.Name)

@@ -46,14 +46,18 @@ func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error 
 		return nil
 	}
 
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	result, err := apiClient.UpdateView(ctx, id, &view, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "view",
+			AssetID:   id,
+			AssetName: view.Metadata.Name,
+		})
 	}
 
 	fmt.Printf("View %q updated successfully\n", result.Metadata.Name)

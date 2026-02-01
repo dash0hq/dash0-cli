@@ -19,7 +19,7 @@ const (
 
 var (
 	// ErrNoActiveProfile is returned when there is no active profile
-	ErrNoActiveProfile = errors.New("no active profile configured")
+	ErrNoActiveProfile = errors.New("no active profile configured; run 'dash0 config profiles create <name> --api-url <url> --auth-token <token>' to create one")
 	// ErrProfileNotFound is returned when a requested profile is not found
 	ErrProfileNotFound = errors.New("profile not found")
 )
@@ -92,11 +92,15 @@ func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 	result := &Configuration{}
 
 	// Try to get the active configuration for defaults
+	var configErr error
 	configService, err := NewService()
 	if err == nil {
 		// Only attempt to load if service creation was successful
 		cfg, err := configService.GetActiveConfiguration()
-		if err == nil && cfg != nil {
+		if err != nil {
+			// Store the error but don't return yet - we might have explicit overrides
+			configErr = err
+		} else if cfg != nil {
 			// Use active configuration as a base
 			result.ApiUrl = cfg.ApiUrl
 			result.AuthToken = cfg.AuthToken
@@ -110,6 +114,11 @@ func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 
 	if authToken != "" {
 		result.AuthToken = authToken
+	}
+
+	// If we had a config error and don't have complete configuration from overrides, return the error
+	if configErr != nil && (result.ApiUrl == "" || result.AuthToken == "") {
+		return nil, configErr
 	}
 
 	// Final validation (skip in test mode)
@@ -156,7 +165,7 @@ func (s *Service) GetProfiles() ([]Profile, error) {
 
 	var profilesFile ProfilesFile
 	if err := json.Unmarshal(data, &profilesFile); err != nil {
-		return nil, fmt.Errorf("failed to parse profiles file: %w", err)
+		return nil, fmt.Errorf("failed to parse profiles file %s: %w\nHint: delete the file and reconfigure with 'dash0 config profiles create'", profilesFilePath, err)
 	}
 
 	return profilesFile.Profiles, nil
