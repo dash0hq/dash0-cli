@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -346,23 +347,67 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 	})
 }
 
+// TestServiceGetProfilesInvalidJSON tests GetProfiles with invalid JSON
+func TestServiceGetProfilesInvalidJSON(t *testing.T) {
+	// Setup test environment
+	configDir := setupTestConfigDir(t)
+
+	// Create an invalid JSON file
+	invalidJSON := []byte(`{invalid json content`)
+	profilesFilePath := filepath.Join(configDir, ProfilesFileName)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create directory: %v", err)
+	}
+	if err := os.WriteFile(profilesFilePath, invalidJSON, 0644); err != nil {
+		t.Fatalf("Failed to write invalid profiles file: %v", err)
+	}
+
+	// Create service and test GetProfiles
+	service, err := NewService()
+	if err != nil {
+		t.Fatalf("Failed to create service: %v", err)
+	}
+
+	_, err = service.GetProfiles()
+	if err == nil {
+		t.Fatal("Expected error for invalid JSON, got nil")
+	}
+
+	// Verify error message contains the file path
+	errStr := err.Error()
+	if !strings.Contains(errStr, profilesFilePath) {
+		t.Errorf("Expected error to contain file path %s, got: %s", profilesFilePath, errStr)
+	}
+	if !strings.Contains(errStr, "failed to parse profiles file") {
+		t.Errorf("Expected error to contain 'failed to parse profiles file', got: %s", errStr)
+	}
+	if !strings.Contains(errStr, "Hint:") {
+		t.Errorf("Expected error to contain hint, got: %s", errStr)
+	}
+}
+
 // TestResolveConfiguration tests the ResolveConfiguration function
 func TestResolveConfiguration(t *testing.T) {
-	// Test with command-line flags
-	t.Run("With command-line flags", func(t *testing.T) {
-		// Setup test environment
-		_ = setupTestConfigDir(t)
-		
-		config, err := ResolveConfiguration("https://flag.example.com", "flag-token")
+	// Test with environment variables (bypass profile loading)
+	t.Run("With environment variables", func(t *testing.T) {
+		// Use env vars to bypass profile loading
+		os.Setenv("DASH0_API_URL", "https://env.example.com")
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		defer func() {
+			os.Unsetenv("DASH0_API_URL")
+			os.Unsetenv("DASH0_AUTH_TOKEN")
+		}()
+
+		config, err := ResolveConfiguration("", "")
 		if err != nil {
 			t.Fatalf("Failed to resolve configuration: %v", err)
 		}
-		
-		if config.ApiUrl != "https://flag.example.com" {
-			t.Errorf("Expected API URL https://flag.example.com, got %s", config.ApiUrl)
+
+		if config.ApiUrl != "https://env.example.com" {
+			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl)
 		}
-		if config.AuthToken != "flag-token" {
-			t.Errorf("Expected auth token flag-token, got %s", config.AuthToken)
+		if config.AuthToken != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
 		}
 	})
 	
@@ -429,26 +474,19 @@ func TestResolveConfiguration(t *testing.T) {
 		}
 	})
 	
-	// Test test mode
-	t.Run("In test mode without configuration", func(t *testing.T) {
-		// Setup test environment without active context
+	// Test that missing profile returns error even in test mode
+	// (profile errors are not bypassed - only final validation is)
+	t.Run("In test mode without profile", func(t *testing.T) {
+		// Setup test environment without active profile
 		_ = setupTestConfigDir(t)
-		
-		// Test in test mode (should bypass validation)
+
+		// Test mode doesn't bypass profile loading errors
 		os.Setenv("DASH0_TEST_MODE", "1")
 		defer os.Unsetenv("DASH0_TEST_MODE")
-		
-		config, err := ResolveConfiguration("", "")
-		if err != nil {
-			t.Fatalf("Failed to resolve configuration: %v", err)
-		}
-		
-		// Empty values are allowed in test mode
-		if config.ApiUrl != "" {
-			t.Errorf("Expected empty API URL, got %s", config.ApiUrl)
-		}
-		if config.AuthToken != "" {
-			t.Errorf("Expected empty auth token, got %s", config.AuthToken)
+
+		_, err := ResolveConfiguration("", "")
+		if err == nil {
+			t.Errorf("Expected error for missing profile, got nil")
 		}
 	})
 	

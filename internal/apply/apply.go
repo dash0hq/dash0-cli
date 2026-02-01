@@ -151,7 +151,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	// Create API client
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -298,7 +298,10 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc assetDocumen
 
 		result, err := apiClient.ImportDashboard(ctx, &dashboard, datasetPtr)
 		if err != nil {
-			return "", "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "dashboard",
+				AssetName: extractDashboardDisplayName(&dashboard),
+			})
 		}
 		return result.Metadata.Name, action, nil
 
@@ -325,7 +328,10 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc assetDocumen
 
 		result, err := apiClient.ImportCheckRule(ctx, &rule, datasetPtr)
 		if err != nil {
-			return "", "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "check rule",
+				AssetName: rule.Name,
+			})
 		}
 		return result.Name, action, nil
 
@@ -360,7 +366,10 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc assetDocumen
 
 		result, err := apiClient.ImportSyntheticCheck(ctx, &check, datasetPtr)
 		if err != nil {
-			return "", "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "synthetic check",
+				AssetName: check.Metadata.Name,
+			})
 		}
 		return result.Metadata.Name, action, nil
 
@@ -387,7 +396,10 @@ func applyDocument(ctx context.Context, apiClient dash0.Client, doc assetDocumen
 
 		result, err := apiClient.ImportView(ctx, &view, datasetPtr)
 		if err != nil {
-			return "", "", client.HandleAPIError(err)
+			return "", "", client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "view",
+				AssetName: view.Metadata.Name,
+			})
 		}
 		return result.Metadata.Name, action, nil
 
@@ -433,9 +445,15 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0.Client, promRule *
 			result, err := apiClient.ImportCheckRule(ctx, checkRule, datasetPtr)
 			if err != nil {
 				if len(appliedNames) > 0 {
-					return strings.Join(appliedNames, ", "), "", fmt.Errorf("applied %v, then failed on %q: %w", appliedNames, rule.Alert, client.HandleAPIError(err))
+					return strings.Join(appliedNames, ", "), "", fmt.Errorf("applied %v, then failed on %q: %w", appliedNames, rule.Alert, client.HandleAPIError(err, client.ErrorContext{
+						AssetType: "check rule",
+						AssetName: rule.Alert,
+					}))
 				}
-				return "", "", client.HandleAPIError(err)
+				return "", "", client.HandleAPIError(err, client.ErrorContext{
+					AssetType: "check rule",
+					AssetName: rule.Alert,
+				})
 			}
 			appliedNames = append(appliedNames, result.Name)
 		}
@@ -508,4 +526,23 @@ func convertToCheckRule(rule *PrometheusRule_, groupInterval string, ruleID stri
 	}
 
 	return checkRule
+}
+
+// extractDashboardDisplayName extracts the display name from a dashboard definition
+func extractDashboardDisplayName(dashboard *dash0.DashboardDefinition) string {
+	if dashboard == nil || dashboard.Spec == nil {
+		return ""
+	}
+
+	display, ok := dashboard.Spec["display"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	name, ok := display["name"].(string)
+	if !ok {
+		return ""
+	}
+
+	return name
 }

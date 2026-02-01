@@ -47,13 +47,17 @@ func TestQueryInstantCmd(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Set up environment for test
-	os.Setenv("DASH0_TEST_MODE", "1")
-	defer os.Unsetenv("DASH0_TEST_MODE")
+	// Set up environment for test - use env vars to bypass profile loading
+	os.Setenv("DASH0_API_URL", server.URL)
+	os.Setenv("DASH0_AUTH_TOKEN", "test_token")
+	defer func() {
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+	}()
 
 	// Create and execute the command
 	cmd := newInstantQueryCmd()
-	cmd.SetArgs([]string{"--query", "test_query", "--api-url", server.URL, "--auth-token", "test_token"})
+	cmd.SetArgs([]string{"--query", "test_query"})
 
 	// Execute should succeed
 	err := cmd.Execute()
@@ -75,13 +79,17 @@ func TestQueryInstantCmdError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Set up environment for test
-	os.Setenv("DASH0_TEST_MODE", "1")
-	defer os.Unsetenv("DASH0_TEST_MODE")
+	// Set up environment for test - use env vars to bypass profile loading
+	os.Setenv("DASH0_API_URL", server.URL)
+	os.Setenv("DASH0_AUTH_TOKEN", "test_token")
+	defer func() {
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+	}()
 
 	// Create and execute the command
 	cmd := newInstantQueryCmd()
-	cmd.SetArgs([]string{"--query", "test_query", "--api-url", server.URL, "--auth-token", "test_token"})
+	cmd.SetArgs([]string{"--query", "test_query"})
 
 	// Execute should fail with the expected error
 	err := cmd.Execute()

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
@@ -12,6 +14,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/views"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +29,9 @@ var rootCmd = &cobra.Command{
 	Short:   "Dash0 CLI",
 	Long:    `Command line interface for interacting with Dash0 services`,
 	Version: version,
+	// Customize the printing of error and usage information
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func init() {
@@ -54,12 +60,80 @@ func newVersionCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("dash0 version %s (built on %s)\n", version, date)
 		},
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
 }
 
+// printError prints an error message with colored prefixes.
+// "Error:" is printed in red, "Hint:" is printed in cyan.
+// Colors are only used when stderr is a TTY (not piped).
+func printError(err error) {
+	errStr := err.Error()
+
+	red := color.New(color.FgRed, color.Bold)
+	cyan := color.New(color.FgCyan)
+
+	// Check if error contains a hint
+	if idx := strings.Index(errStr, "\nHint:"); idx != -1 {
+		mainError := errStr[:idx]
+		hint := errStr[idx+1:] // Skip the newline
+
+		red.Fprint(os.Stderr, "Error: ")
+		fmt.Fprintln(os.Stderr, mainError)
+		cyan.Fprint(os.Stderr, "Hint:")
+		fmt.Fprintln(os.Stderr, hint[5:]) // Skip "Hint:" prefix
+	} else {
+		red.Fprint(os.Stderr, "Error: ")
+		fmt.Fprintln(os.Stderr, errStr)
+	}
+}
+
+// needsConfig returns true if the command requires configuration to run
+func needsConfig(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return true
+	}
+	name := cmd.Name()
+	if name == "help" || name == "version" || name == "completion" || name == "dash0" {
+		return false
+	}
+	if name == "config" {
+		return false
+	}
+	if cmd.Parent() != nil && cmd.Parent().Name() == "config" {
+		return false
+	}
+	return true
+}
+
 func main() {
-	if err := rootCmd.Execute(); err != nil {
-		log.Logger.Error().Err(err).Msg("Command execution failed")
+	ctx := context.Background()
+
+	// Determine which command will be executed
+	targetCmd, _, _ := rootCmd.Traverse(os.Args[1:])
+
+	// Load configuration only for commands that need it
+	if needsConfig(targetCmd) {
+		cfg, cfgErr := config.ResolveConfiguration("", "")
+		if cfgErr != nil {
+			// Config errors: print error only, no usage
+			printError(cfgErr)
+			os.Exit(1)
+		}
+		if cfg != nil {
+			ctx = config.WithConfiguration(ctx, cfg)
+		}
+	}
+
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
+		// Print error first
+		printError(err)
+		// Then print usage for subcommand errors
+		if targetCmd != nil && targetCmd.Name() != "dash0" {
+			fmt.Fprintln(os.Stderr) // Add a newline before usage
+			targetCmd.Usage()
+		}
 		os.Exit(1)
 	}
 }

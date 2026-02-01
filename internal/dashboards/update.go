@@ -46,14 +46,18 @@ func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error 
 		return nil
 	}
 
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	result, err := apiClient.UpdateDashboard(ctx, id, &dashboard, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "dashboard",
+			AssetID:   id,
+			AssetName: extractDisplayName(&dashboard),
+		})
 	}
 
 	fmt.Printf("Dashboard %q updated successfully\n", result.Metadata.Name)

@@ -31,7 +31,7 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(ctx context.Context, flags *asset.ListFlags) error {
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,9 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	}
 
 	if err := iter.Err(); err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "view",
+		})
 	}
 
 	format, err := output.ParseFormat(flags.Output)

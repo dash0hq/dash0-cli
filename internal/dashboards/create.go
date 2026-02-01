@@ -46,14 +46,17 @@ func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 		return nil
 	}
 
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	result, err := apiClient.CreateDashboard(ctx, &dashboard, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "dashboard",
+			AssetName: extractDisplayName(&dashboard),
+		})
 	}
 
 	fmt.Printf("Dashboard %q created successfully\n", result.Metadata.Name)

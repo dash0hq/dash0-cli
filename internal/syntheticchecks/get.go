@@ -29,14 +29,17 @@ func newGetCmd() *cobra.Command {
 }
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	check, err := apiClient.GetSyntheticCheck(ctx, id, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "synthetic check",
+			AssetID:   id,
+		})
 	}
 
 	format, err := output.ParseFormat(flags.Output)

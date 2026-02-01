@@ -46,14 +46,17 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		}
 	}
 
-	apiClient, err := client.NewClient(flags.ApiUrl, flags.AuthToken)
+	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	err = apiClient.DeleteCheckRule(ctx, id, client.DatasetPtr(flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err)
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "check rule",
+			AssetID:   id,
+		})
 	}
 
 	fmt.Printf("Check rule %q deleted successfully\n", id)
