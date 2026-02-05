@@ -64,3 +64,28 @@ issues: [42]
 subtext: |
   The new `--output json` flag enables scripting and automation workflows.
 ```
+
+## Releasing
+
+Releases are fully automated via GitHub Actions.
+
+### Creating a Release
+
+1. Go to [Actions > Prepare Release](../../actions/workflows/prepare-release.yml)
+2. Click "Run workflow"
+3. Enter the version number (without `v` prefix, e.g., `1.0.0`)
+4. Click "Run workflow"
+
+The workflow automatically:
+1. Updates `CHANGELOG.md` with entries from `.chloggen/`
+2. Removes the processed `.chloggen/*.yaml` files
+3. Commits the changes to `main`
+4. Creates and pushes the version tag
+5. Triggers the Release workflow, which builds and publishes the release
+
+### Version Numbering
+
+Follow [Semantic Versioning](https://semver.org/):
+- **MAJOR**: Breaking changes
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes (backward compatible)
