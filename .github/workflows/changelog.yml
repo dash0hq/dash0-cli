@@ -15,7 +15,7 @@ concurrency:
 jobs:
   changelog:
     runs-on: ubuntu-latest
-    if: ${{ github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies') && !contains(github.event.pull_request.labels.*.name, 'Skip Changelog') && !startsWith(github.event.pull_request.title, 'chore') }}
+    if: ${{ github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies') && !contains(github.event.pull_request.labels.*.name, 'Skip Changelog') && !startsWith(github.event.pull_request.title, 'chore:') }}
     env:
       PR_HEAD: ${{ github.event.pull_request.head.sha }}
 
