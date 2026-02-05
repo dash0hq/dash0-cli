@@ -1,4 +1,7 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 project_name: dash0
+
+version: 2
 
 before:
   hooks:
@@ -38,9 +41,7 @@ archives:
         format: zip
 
 release:
-  prerelease: "false"
-  # Use the release notes extracted from CHANGELOG.md by the release workflow
-  release_notes: release-notes.md
+  prerelease: auto
 
 changelog:
   # Disable auto-generated changelog; using curated CHANGELOG.md via chloggen
