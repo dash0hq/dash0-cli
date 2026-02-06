@@ -4,16 +4,31 @@ A command-line interface for interacting with Dash0 services.
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install dash0hq/dash0-cli/dash0
+```
+
+### GitHub Releases
+
+Download pre-built binaries for your platform from the [releases page](https://github.com/dash0hq/dash0-cli/releases). Archives are available for Linux, macOS and Windows across multiple architectures.
+
+### Docker
+
+```bash
+docker run ghcr.io/dash0hq/cli:latest [command]
+```
+
+Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to GitHub Container Registry.
+
 ### From Source
 
 Requires Go 1.22 or higher.
 
 ```bash
-# Clone the repository
 git clone https://github.com/dash0hq/dash0-cli.git
 cd dash0-cli
-
-# Build and install
 make install
 ```
 
