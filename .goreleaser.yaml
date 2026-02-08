@@ -84,6 +84,15 @@ docker_manifests:
       - "ghcr.io/dash0hq/cli:latest-amd64"
       - "ghcr.io/dash0hq/cli:latest-arm64"
 
+docker_signs:
+  - cmd: cosign
+    artifacts: all
+    output: true
+    args:
+      - "sign"
+      - "${artifact}"
+      - "--yes"
+
 brews:
   - name: dash0
     repository:
