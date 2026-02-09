@@ -98,11 +98,12 @@ func needsConfig(cmd *cobra.Command) bool {
 	if name == "help" || name == "version" || name == "completion" || name == "dash0" {
 		return false
 	}
-	if name == "config" {
-		return false
-	}
-	if cmd.Parent() != nil && cmd.Parent().Name() == "config" {
-		return false
+	// Walk the command chain to check if "config" is an ancestor that is
+	// a direct child of the root command (e.g. "config show", "config profiles create")
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() == "config" && c.Parent() != nil && c.Parent().Parent() == nil {
+			return false
+		}
 	}
 	return true
 }
