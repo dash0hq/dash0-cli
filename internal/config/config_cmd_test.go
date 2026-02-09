@@ -69,6 +69,33 @@ func TestShowCmd(t *testing.T) {
 	}
 }
 
+// TestShowCmdNoProfile tests the show command when no profile is configured
+func TestShowCmdNoProfile(t *testing.T) {
+	// Setup test environment with no profiles
+	_ = setupTestConfigDir(t)
+
+	// Create root command and add config command
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	// Execute show command — should not error
+	output, err := executeCommand(rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Profile:    (none)")) {
+		t.Errorf("Expected output to contain 'Profile:    (none)', got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("API URL:    (not set)")) {
+		t.Errorf("Expected output to contain 'API URL:    (not set)', got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Auth Token: (not set)")) {
+		t.Errorf("Expected output to contain 'Auth Token: (not set)', got: %s", output)
+	}
+}
+
 // TestListProfileCmd tests the list profile command
 func TestListProfileCmd(t *testing.T) {
 	// Setup test environment

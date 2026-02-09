@@ -48,18 +48,30 @@ func newShowCmd() *cobra.Command {
 				fmt.Printf("%s\n", activeProfile.Name)
 			}
 
-			config, err := configService.GetActiveConfiguration()
-			if err != nil {
-				return fmt.Errorf("failed to get active configuration: %w", err)
+			config, _ := configService.GetActiveConfiguration()
+
+			apiUrl := ""
+			authToken := ""
+			if config != nil {
+				apiUrl = config.ApiUrl
+				authToken = config.AuthToken
 			}
 
-			fmt.Printf("API URL:    %s", config.ApiUrl)
+			if apiUrl != "" {
+				fmt.Printf("API URL:    %s", apiUrl)
+			} else {
+				fmt.Printf("API URL:    (not set)")
+			}
 			if envApiUrl != "" {
 				fmt.Printf("    (from DASH0_API_URL environment variable)")
 			}
 			fmt.Println()
 
-			fmt.Printf("Auth Token: %s", maskToken(config.AuthToken))
+			if authToken != "" {
+				fmt.Printf("Auth Token: %s", maskToken(authToken))
+			} else {
+				fmt.Printf("Auth Token: (not set)")
+			}
 			if envAuthToken != "" {
 				fmt.Printf("    (from DASH0_AUTH_TOKEN environment variable)")
 			}
