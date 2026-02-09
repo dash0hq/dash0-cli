@@ -7,6 +7,7 @@ A command-line interface for interacting with Dash0 services.
 ### Homebrew (macOS and Linux)
 
 ```bash
+brew tap dash0hq/dash0-cli https://github.com/dash0hq/dash0-cli
 brew install dash0hq/dash0-cli/dash0
 ```
 
