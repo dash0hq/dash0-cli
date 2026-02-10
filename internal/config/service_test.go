@@ -276,11 +276,149 @@ func TestServiceRemoveProfile(t *testing.T) {
 	}
 }
 
+// TestServiceUpdateProfile tests the UpdateProfile method
+func TestServiceUpdateProfile(t *testing.T) {
+	t.Run("update single field", func(t *testing.T) {
+		configDir := setupTestConfigDir(t)
+		createTestProfilesFile(t, configDir, []Profile{
+			{Name: "dev", Configuration: Configuration{ApiUrl: "https://old.example.com", AuthToken: "token1"}},
+		})
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		err = service.UpdateProfile("dev", func(cfg *Configuration) {
+			cfg.ApiUrl = "https://new.example.com"
+		})
+		if err != nil {
+			t.Fatalf("Failed to update profile: %v", err)
+		}
+
+		profiles, _ := service.GetProfiles()
+		if profiles[0].Configuration.ApiUrl != "https://new.example.com" {
+			t.Errorf("Expected API URL https://new.example.com, got %s", profiles[0].Configuration.ApiUrl)
+		}
+		if profiles[0].Configuration.AuthToken != "token1" {
+			t.Errorf("Expected auth token to remain token1, got %s", profiles[0].Configuration.AuthToken)
+		}
+	})
+
+	t.Run("update multiple fields", func(t *testing.T) {
+		configDir := setupTestConfigDir(t)
+		createTestProfilesFile(t, configDir, []Profile{
+			{Name: "dev", Configuration: Configuration{ApiUrl: "https://old.example.com", AuthToken: "old-token"}},
+		})
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		err = service.UpdateProfile("dev", func(cfg *Configuration) {
+			cfg.ApiUrl = "https://new.example.com"
+			cfg.AuthToken = "new-token"
+			cfg.OtlpUrl = "https://otlp.example.com"
+		})
+		if err != nil {
+			t.Fatalf("Failed to update profile: %v", err)
+		}
+
+		profiles, _ := service.GetProfiles()
+		if profiles[0].Configuration.ApiUrl != "https://new.example.com" {
+			t.Errorf("Expected API URL https://new.example.com, got %s", profiles[0].Configuration.ApiUrl)
+		}
+		if profiles[0].Configuration.AuthToken != "new-token" {
+			t.Errorf("Expected auth token new-token, got %s", profiles[0].Configuration.AuthToken)
+		}
+		if profiles[0].Configuration.OtlpUrl != "https://otlp.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", profiles[0].Configuration.OtlpUrl)
+		}
+	})
+
+	t.Run("remove field by setting to empty string", func(t *testing.T) {
+		configDir := setupTestConfigDir(t)
+		createTestProfilesFile(t, configDir, []Profile{
+			{Name: "dev", Configuration: Configuration{
+				ApiUrl: "https://api.example.com", AuthToken: "token1", OtlpUrl: "https://otlp.example.com",
+			}},
+		})
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		err = service.UpdateProfile("dev", func(cfg *Configuration) {
+			cfg.OtlpUrl = ""
+		})
+		if err != nil {
+			t.Fatalf("Failed to update profile: %v", err)
+		}
+
+		profiles, _ := service.GetProfiles()
+		if profiles[0].Configuration.OtlpUrl != "" {
+			t.Errorf("Expected OTLP URL to be empty, got %s", profiles[0].Configuration.OtlpUrl)
+		}
+		if profiles[0].Configuration.ApiUrl != "https://api.example.com" {
+			t.Errorf("Expected API URL to remain unchanged, got %s", profiles[0].Configuration.ApiUrl)
+		}
+	})
+
+	t.Run("does not affect other profiles", func(t *testing.T) {
+		configDir := setupTestConfigDir(t)
+		createTestProfilesFile(t, configDir, []Profile{
+			{Name: "dev", Configuration: Configuration{ApiUrl: "https://dev.example.com", AuthToken: "dev-token"}},
+			{Name: "prod", Configuration: Configuration{ApiUrl: "https://prod.example.com", AuthToken: "prod-token"}},
+		})
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		err = service.UpdateProfile("dev", func(cfg *Configuration) {
+			cfg.ApiUrl = "https://new-dev.example.com"
+		})
+		if err != nil {
+			t.Fatalf("Failed to update profile: %v", err)
+		}
+
+		profiles, _ := service.GetProfiles()
+		if profiles[1].Configuration.ApiUrl != "https://prod.example.com" {
+			t.Errorf("Expected prod API URL to remain unchanged, got %s", profiles[1].Configuration.ApiUrl)
+		}
+	})
+
+	t.Run("profile not found", func(t *testing.T) {
+		configDir := setupTestConfigDir(t)
+		createTestProfilesFile(t, configDir, []Profile{
+			{Name: "dev", Configuration: Configuration{ApiUrl: "https://dev.example.com", AuthToken: "token1"}},
+		})
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		err = service.UpdateProfile("nonexistent", func(cfg *Configuration) {
+			cfg.ApiUrl = "https://new.example.com"
+		})
+		if err == nil {
+			t.Fatal("Expected error for nonexistent profile, got nil")
+		}
+		if !strings.Contains(err.Error(), "nonexistent") {
+			t.Errorf("Expected error to contain profile name, got: %s", err.Error())
+		}
+	})
+}
+
 // TestServiceGetActiveConfiguration tests the GetActiveConfiguration method
 func TestServiceGetActiveConfiguration(t *testing.T) {
 	// Setup test environment
 	configDir := setupTestConfigDir(t)
-	
+
 	// Test with environment variables
 	t.Run("With environment variables", func(t *testing.T) {
 		os.Setenv("DASH0_API_URL", "https://env.example.com")
@@ -289,17 +427,17 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 			os.Unsetenv("DASH0_API_URL")
 			os.Unsetenv("DASH0_AUTH_TOKEN")
 		}()
-		
+
 		service, err := NewService()
 		if err != nil {
 			t.Fatalf("Failed to create service: %v", err)
 		}
-		
+
 		config, err := service.GetActiveConfiguration()
 		if err != nil {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
-		
+
 		if config.ApiUrl != "https://env.example.com" {
 			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl)
 		}
@@ -307,12 +445,13 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
 		}
 	})
-	
+
 	// Test with active profile
 	t.Run("With active profile", func(t *testing.T) {
 		// Unset environment variables
 		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
+		os.Unsetenv("DASH0_OTLP_URL")
 
 		// Create test profiles
 		testProfiles := []Profile{
@@ -327,22 +466,86 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 
 		createTestProfilesFile(t, configDir, testProfiles)
 		setActiveProfile(t, configDir, "test1")
-		
+
 		service, err := NewService()
 		if err != nil {
 			t.Fatalf("Failed to create service: %v", err)
 		}
-		
+
 		config, err := service.GetActiveConfiguration()
 		if err != nil {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
-		
+
 		if config.ApiUrl != "https://test1.example.com" {
 			t.Errorf("Expected API URL https://test1.example.com, got %s", config.ApiUrl)
 		}
 		if config.AuthToken != "token1" {
 			t.Errorf("Expected auth token token1, got %s", config.AuthToken)
+		}
+	})
+
+	// Test OTLP URL from environment variable
+	t.Run("With DASH0_OTLP_URL environment variable", func(t *testing.T) {
+		os.Unsetenv("DASH0_API_URL")
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		os.Setenv("DASH0_OTLP_URL", "https://otlp.example.com")
+		defer func() {
+			os.Unsetenv("DASH0_AUTH_TOKEN")
+			os.Unsetenv("DASH0_OTLP_URL")
+		}()
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		config, err := service.GetActiveConfiguration()
+		if err != nil {
+			t.Fatalf("Failed to get active configuration: %v", err)
+		}
+
+		if config.OtlpUrl != "https://otlp.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", config.OtlpUrl)
+		}
+		if config.AuthToken != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
+		}
+	})
+
+	// Test OTLP URL override from env var over profile
+	t.Run("OTLP URL env var overrides profile", func(t *testing.T) {
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+		os.Setenv("DASH0_OTLP_URL", "https://otlp-override.example.com")
+		defer os.Unsetenv("DASH0_OTLP_URL")
+
+		testProfiles := []Profile{
+			{
+				Name: "otlp-test",
+				Configuration: Configuration{
+					ApiUrl:    "https://api.example.com",
+					AuthToken: "token1",
+					OtlpUrl:   "https://otlp-profile.example.com",
+				},
+			},
+		}
+
+		createTestProfilesFile(t, configDir, testProfiles)
+		setActiveProfile(t, configDir, "otlp-test")
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		config, err := service.GetActiveConfiguration()
+		if err != nil {
+			t.Fatalf("Failed to get active configuration: %v", err)
+		}
+
+		if config.OtlpUrl != "https://otlp-override.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp-override.example.com, got %s", config.OtlpUrl)
 		}
 	})
 }
@@ -494,14 +697,57 @@ func TestResolveConfiguration(t *testing.T) {
 	t.Run("Without test mode and configuration", func(t *testing.T) {
 		// Setup test environment without active context
 		_ = setupTestConfigDir(t)
-		
+
 		// Disable test mode
 		os.Unsetenv("DASH0_TEST_MODE")
-		
+
 		// Should fail validation
 		_, err := ResolveConfiguration("", "")
 		if err == nil {
 			t.Errorf("Expected error for missing configuration, got nil")
+		}
+	})
+
+	// Test OTLP URL only via env vars (no API URL needed)
+	t.Run("With OTLP URL env var only", func(t *testing.T) {
+		os.Unsetenv("DASH0_API_URL")
+		os.Setenv("DASH0_OTLP_URL", "https://otlp.example.com")
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		defer func() {
+			os.Unsetenv("DASH0_OTLP_URL")
+			os.Unsetenv("DASH0_AUTH_TOKEN")
+		}()
+
+		config, err := ResolveConfiguration("", "")
+		if err != nil {
+			t.Fatalf("Expected no error for OTLP-only config, got: %v", err)
+		}
+
+		if config.OtlpUrl != "https://otlp.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", config.OtlpUrl)
+		}
+		if config.AuthToken != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
+		}
+		if config.ApiUrl != "" {
+			t.Errorf("Expected empty API URL, got %s", config.ApiUrl)
+		}
+	})
+
+	// Test ResolveConfigurationWithOtlp with OTLP URL flag
+	t.Run("With OTLP URL flag override", func(t *testing.T) {
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_OTLP_URL")
+		defer os.Unsetenv("DASH0_AUTH_TOKEN")
+
+		config, err := ResolveConfigurationWithOtlp("", "", "https://otlp-flag.example.com")
+		if err != nil {
+			t.Fatalf("Expected no error for OTLP flag config, got: %v", err)
+		}
+
+		if config.OtlpUrl != "https://otlp-flag.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp-flag.example.com, got %s", config.OtlpUrl)
 		}
 	})
 }

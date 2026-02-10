@@ -40,16 +40,25 @@ make install
 Configure API access using profiles.
 
 ```bash
-$ dash0 config profiles create dev --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_xxx
+$ dash0 config profiles create dev \
+    --api-url https://api.eu-west-1.aws.dash0.com \
+    --otlp-url https://ingress.eu-west-1.aws.dash0.com \
+    --auth-token auth_xxx
 Profile "dev" added and set as active
 
-$ dash0 config profiles create prod --api-url https://api.eu-west-1.aws.dash0.com --auth-token auth_yyy
+$ dash0 config profiles create prod \
+    --api-url https://api.eu-west-1.aws.dash0.com \
+    --otlp-url https://ingress.eu-west-1.aws.dash0.com \
+    --auth-token auth_yyy
 Profile "prod" added successfully
 
 $ dash0 config profiles list
-  NAME  API URL                                  AUTH TOKEN
-* dev   https://api.eu-west-1.aws.dash0-dev.com  ...ULSzVkM
-  prod  https://api.eu-west-1.aws.dash0.com      ...uth_yyy
+  NAME  API URL                                  OTLP URL                                     AUTH TOKEN
+* dev   https://api.eu-west-1.aws.dash0-dev.com  https://ingress.eu-west-1.aws.dash0-dev.com  ...ULSzVkM
+  prod  https://api.eu-west-1.aws.dash0.com      https://ingress.eu-west-1.aws.dash0.com      ...uth_yyy
+
+$ dash0 config profiles update prod --api-url https://api.us-east-1.aws.dash0.com
+Profile 'prod' updated successfully
 
 $ dash0 config profiles select prod
 Profile 'prod' is now active
@@ -57,24 +66,37 @@ Profile 'prod' is now active
 $ dash0 config show
 Profile:    prod
 API URL:    https://api.eu-west-1.aws.dash0.com
+OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
 Auth Token: ...uth_yyy
 ```
 
 The last seven digits of the auth token are displayed, matching the format shown in Dash0 as the `dash0.auth.token` attribute.
 
-The API URL and the authentication tokens can be overridden using the `DASH0_API_URL` and `DASH0_AUTH_TOKEN` environment variables:
+A profile requires `--auth-token` and at least one of `--api-url` or `--otlp-url`. Currently only HTTP OTLP endpoints are supported.
+
+The API URL, OTLP URL and the authentication tokens can be overridden using the `DASH0_API_URL`, `DASH0_OTLP_URL` and `DASH0_AUTH_TOKEN` environment variables, respectively:
 
 ```bash
 $ DASH0_API_URL='http://test' dash0 config show
 Profile:    dev
 API URL:    http://test    (from DASH0_API_URL environment variable)
+OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
+Auth Token: ...ULSzVkM
+
+$ DASH0_OTLP_URL='http://test' dash0 config show
+Profile:    dev
+API URL:    https://api.eu-west-1.aws.dash0-dev.com
+OTLP URL:   http://test    (from DASH0_OTLP_URL environment variable)
 Auth Token: ...ULSzVkM
 
 $ DASH0_AUTH_TOKEN='my_auth_test_token' dash0 config show
 Profile:    dev
 API URL:    https://api.eu-west-1.aws.dash0-dev.com
+OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
 Auth Token: ...t_token    (from DASH0_AUTH_TOKEN environment variable)
 ```
+
+You can find the API endpoint for your organization on the [Endpoints](https://app.dash0.com/settings/endpoints) page, under the `API` entry, and the OTLP HTTP endpoint under the `OTLP via HTTP` entry. (Only HTTP OTLP endpoints are supported.)
 
 ### Applying Assets
 
@@ -218,11 +240,26 @@ $ dash0 views delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
 View "a1b2c3d4-..." deleted successfully
 ```
 
+### Logs
+
+Send log records to Dash0 via OTLP:
+
+```bash
+$ dash0 logs create "Application started" \
+    --resource-attribute service.name=my-service \
+    --log-attribute user.id=12345 \
+    --severity-text INFO --severity-number 9
+Log record sent successfully
+```
+
+Requires an OTLP URL configured in the active profile, or via the `--otlp-url` flag or the `DASH0_OTLP_URL` environment variable.
+
 ### Common Flags
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--api-url` | | Override API URL from profile |
+| `--otlp-url` | | Override OTLP URL from profile |
 | `--auth-token` | | Override auth token from profile |
 | `--dataset` | `-d` | Specify dataset to operate on |
 | `--file` | `-f` | Input file path (use `-` for stdin) |

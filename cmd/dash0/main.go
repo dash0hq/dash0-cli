@@ -11,8 +11,10 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/log"
+	"github.com/dash0hq/dash0-cli/internal/logs"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
+	versionpkg "github.com/dash0hq/dash0-cli/internal/version"
 	"github.com/dash0hq/dash0-cli/internal/views"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -35,6 +37,9 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	// Propagate build version to shared package
+	versionpkg.Version = version
+
 	// Setup logging
 	log.SetupLogger()
 
@@ -43,6 +48,7 @@ func init() {
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
+	rootCmd.AddCommand(logs.NewLogsCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(views.NewViewsCmd())

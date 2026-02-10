@@ -38,6 +38,7 @@ The `config profiles` command uses:
 |------------|----------|-------------|
 | `list`     | `ls`     | List all profiles |
 | `create`   | `add`    | Create a new profile |
+| `update`   | -        | Update an existing profile |
 | `delete`   | `remove` | Delete a profile |
 | `select`   | -        | Set the active profile |
 
