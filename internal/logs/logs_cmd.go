@@ -10,7 +10,7 @@ func NewLogsCmd() *cobra.Command {
 		Long:  `Manage log records to Dash0 via OTLP`,
 	}
 
-	cmd.AddCommand(newCreateCmd())
+	cmd.AddCommand(newSendCmd())
 
 	return cmd
 }

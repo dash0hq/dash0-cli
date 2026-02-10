@@ -35,13 +35,14 @@ type createFlags struct {
 	LogDroppedAttributesCount      uint32
 }
 
-func newCreateCmd() *cobra.Command {
+func newSendCmd() *cobra.Command {
 	flags := &createFlags{}
 
 	cmd := &cobra.Command{
-		Use:   "create <body>",
-		Short: "Send a log record to Dash0",
-		Long:  `Create and send a log record to Dash0 via OTLP`,
+		Use:     "send <body>",
+		Aliases: []string{"create"},
+		Short:   "Send a log record to Dash0",
+		Long:    `Send a log record to Dash0 via OTLP`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, args[0], flags)

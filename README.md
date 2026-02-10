@@ -245,7 +245,7 @@ View "a1b2c3d4-..." deleted successfully
 Send log records to Dash0 via OTLP:
 
 ```bash
-$ dash0 logs create "Application started" \
+$ dash0 logs send "Application started" \
     --resource-attribute service.name=my-service \
     --log-attribute user.id=12345 \
     --severity-text INFO --severity-number 9
