@@ -41,8 +41,8 @@ Configure API access using profiles.
 
 ```bash
 $ dash0 config profiles create dev \
-    --api-url https://api.eu-west-1.aws.dash0.com \
-    --otlp-url https://ingress.eu-west-1.aws.dash0.com \
+    --api-url https://api.us-west-2.aws.dash0.com \
+    --otlp-url https://ingress.us-west-2.aws.dash0.com \
     --auth-token auth_xxx
 Profile "dev" added and set as active
 
@@ -53,9 +53,9 @@ $ dash0 config profiles create prod \
 Profile "prod" added successfully
 
 $ dash0 config profiles list
-  NAME  API URL                                  OTLP URL                                     AUTH TOKEN
-* dev   https://api.eu-west-1.aws.dash0-dev.com  https://ingress.eu-west-1.aws.dash0-dev.com  ...ULSzVkM
-  prod  https://api.eu-west-1.aws.dash0.com      https://ingress.eu-west-1.aws.dash0.com      ...uth_yyy
+  NAME  API URL                              OTLP URL                                    AUTH TOKEN
+* dev   https://api.us-west-2.aws.dash0.com  https://ingress.us-west-2.aws.dash0.com     ...ULSzVkM
+  prod  https://api.eu-west-1.aws.dash0.com  https://ingress.eu-west-1.aws.dash0.com     ...uth_yyy
 
 $ dash0 config profiles update prod --api-url https://api.us-east-1.aws.dash0.com
 Profile 'prod' updated successfully
@@ -80,19 +80,19 @@ The API URL, OTLP URL and the authentication tokens can be overridden using the 
 $ DASH0_API_URL='http://test' dash0 config show
 Profile:    dev
 API URL:    http://test    (from DASH0_API_URL environment variable)
-OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
+OTLP URL:   https://ingress.us-west-2.aws.dash0.com
 Auth Token: ...ULSzVkM
 
 $ DASH0_OTLP_URL='http://test' dash0 config show
 Profile:    dev
-API URL:    https://api.eu-west-1.aws.dash0-dev.com
+API URL:    https://api.us-west-2.aws.dash0.com
 OTLP URL:   http://test    (from DASH0_OTLP_URL environment variable)
 Auth Token: ...ULSzVkM
 
 $ DASH0_AUTH_TOKEN='my_auth_test_token' dash0 config show
 Profile:    dev
-API URL:    https://api.eu-west-1.aws.dash0-dev.com
-OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
+API URL:    https://api.us-west-2.aws.dash0.com
+OTLP URL:   https://ingress.us-west-2.aws.dash0.com
 Auth Token: ...t_token    (from DASH0_AUTH_TOKEN environment variable)
 ```
 
