@@ -26,5 +26,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Error messages now display "Error:" in red and "Hint:" in cyan for better visibility.
   The error message for invalid profile JSON now includes the actual file path instead
   of a hardcoded value, making it easier to identify and fix configuration issues.
-  
-<!-- next version -->
