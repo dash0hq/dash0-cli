@@ -14,8 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `config`: Fix a bug that would prevent the creation of new profiles in the config file when no profiles existed yet. (#19)
   - The bug was caused by a check that would prevent any command with "config" as an ancestor from running, which would include "config profiles create" when no profiles existed yet.
-  
-<!-- next version -->
 
 ## 1.0.0
 
