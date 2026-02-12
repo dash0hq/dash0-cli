@@ -39,6 +39,7 @@ func newShowCmd() *cobra.Command {
 			// Check if environment variables are being used
 			envApiUrl := os.Getenv("DASH0_API_URL")
 			envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
+			envOtlpUrl := os.Getenv("DASH0_OTLP_URL")
 
 			activeProfile, err := configService.GetActiveProfile()
 			fmt.Printf("Profile:    ")
@@ -52,28 +53,40 @@ func newShowCmd() *cobra.Command {
 
 			apiUrl := ""
 			authToken := ""
+			otlpUrl := ""
 			if config != nil {
 				apiUrl = config.ApiUrl
 				authToken = config.AuthToken
+				otlpUrl = config.OtlpUrl
 			}
 
 			if apiUrl != "" {
 				fmt.Printf("API URL:    %s", apiUrl)
+				if envApiUrl != "" {
+					fmt.Printf("    (from DASH0_API_URL environment variable)")
+				}
 			} else {
 				fmt.Printf("API URL:    (not set)")
 			}
-			if envApiUrl != "" {
-				fmt.Printf("    (from DASH0_API_URL environment variable)")
+			fmt.Println()
+
+			if otlpUrl != "" {
+				fmt.Printf("OTLP URL:   %s", otlpUrl)
+				if envOtlpUrl != "" {
+					fmt.Printf("    (from DASH0_OTLP_URL environment variable)")
+				}
+			} else {
+				fmt.Printf("OTLP URL:   (not set)")
 			}
 			fmt.Println()
 
 			if authToken != "" {
 				fmt.Printf("Auth Token: %s", maskToken(authToken))
+				if envAuthToken != "" {
+					fmt.Printf("    (from DASH0_AUTH_TOKEN environment variable)")
+				}
 			} else {
 				fmt.Printf("Auth Token: (not set)")
-			}
-			if envAuthToken != "" {
-				fmt.Printf("    (from DASH0_AUTH_TOKEN environment variable)")
 			}
 			fmt.Println()
 
@@ -102,6 +115,7 @@ func newProfileCmd() *cobra.Command {
 
 	// Add subcommands
 	cmd.AddCommand(newCreateProfileCmd())
+	cmd.AddCommand(newUpdateProfileCmd())
 	cmd.AddCommand(newListProfileCmd())
 	cmd.AddCommand(newDeleteProfileCmd())
 	cmd.AddCommand(newSelectProfileCmd())
@@ -111,13 +125,13 @@ func newProfileCmd() *cobra.Command {
 
 // newCreateProfileCmd creates a new create profile command
 func newCreateProfileCmd() *cobra.Command {
-	var apiUrl, authToken string
+	var apiUrl, authToken, otlpUrl string
 
 	cmd := &cobra.Command{
 		Use:     "create",
 		Aliases: []string{"add"},
 		Short:   "Create a new configuration profile",
-		Long:    `Create a new named configuration profile with API URL and auth token`,
+		Long:    `Create a new named configuration profile with API URL, OTLP URL and auth token`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -127,12 +141,12 @@ func newCreateProfileCmd() *cobra.Command {
 				return err
 			}
 
-			if apiUrl == "" {
-				return fmt.Errorf("api-url is required")
-			}
-
 			if authToken == "" {
 				return fmt.Errorf("auth-token is required")
+			}
+
+			if apiUrl == "" && otlpUrl == "" {
+				return fmt.Errorf("at least one of api-url or otlp-url is required")
 			}
 
 			profile := Profile{
@@ -140,6 +154,7 @@ func newCreateProfileCmd() *cobra.Command {
 				Configuration: Configuration{
 					ApiUrl:    apiUrl,
 					AuthToken: authToken,
+					OtlpUrl:   otlpUrl,
 				},
 			}
 
@@ -156,6 +171,60 @@ func newCreateProfileCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API")
 	cmd.Flags().StringVar(&authToken, "auth-token", "", "Authentication token for the Dash0 API")
+	cmd.Flags().StringVar(&otlpUrl, "otlp-url", "", "OTLP endpoint URL for sending telemetry data")
+
+	return cmd
+}
+
+// newUpdateProfileCmd creates a new update profile command
+func newUpdateProfileCmd() *cobra.Command {
+	var apiUrl, authToken, otlpUrl string
+
+	cmd := &cobra.Command{
+		Use:   "update <name>",
+		Short: "Update a configuration profile",
+		Long:  `Update an existing configuration profile. Only the specified flags are changed; unspecified flags are left as-is. Pass an empty string to remove a field.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			apiUrlChanged := cmd.Flags().Changed("api-url")
+			authTokenChanged := cmd.Flags().Changed("auth-token")
+			otlpUrlChanged := cmd.Flags().Changed("otlp-url")
+
+			if !apiUrlChanged && !authTokenChanged && !otlpUrlChanged {
+				return fmt.Errorf("at least one of --api-url, --auth-token, or --otlp-url must be specified")
+			}
+
+			configService, err := NewService()
+			if err != nil {
+				return err
+			}
+
+			if err := configService.UpdateProfile(name, func(cfg *Configuration) {
+				if apiUrlChanged {
+					cfg.ApiUrl = apiUrl
+				}
+				if authTokenChanged {
+					cfg.AuthToken = authToken
+				}
+				if otlpUrlChanged {
+					cfg.OtlpUrl = otlpUrl
+				}
+			}); err != nil {
+				return fmt.Errorf("failed to update profile: %w", err)
+			}
+
+			log.Logger.Info().Str("name", name).Msg("Profile updated successfully")
+			fmt.Printf("Profile '%s' updated successfully\n", name)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API")
+	cmd.Flags().StringVar(&authToken, "auth-token", "", "Authentication token for the Dash0 API")
+	cmd.Flags().StringVar(&otlpUrl, "otlp-url", "", "OTLP endpoint URL for sending telemetry data")
 
 	return cmd
 }
@@ -189,9 +258,19 @@ func newListProfileCmd() *cobra.Command {
 				activeProfileName = activeProfile.Name
 			}
 
+			// Check if any profile has an OTLP URL configured
+			hasOtlpUrl := false
+			for _, profile := range profiles {
+				if profile.Configuration.OtlpUrl != "" {
+					hasOtlpUrl = true
+					break
+				}
+			}
+
 			// Calculate column widths (including 2 chars for active marker "* ")
 			nameWidth := len(internal.HEADER_NAME)
 			apiUrlWidth := len("API URL")
+			otlpUrlWidth := len("OTLP URL")
 			authTokenWidth := len("AUTH TOKEN")
 
 			for _, profile := range profiles {
@@ -201,6 +280,9 @@ func newListProfileCmd() *cobra.Command {
 				if len(profile.Configuration.ApiUrl) > apiUrlWidth {
 					apiUrlWidth = len(profile.Configuration.ApiUrl)
 				}
+				if len(profile.Configuration.OtlpUrl) > otlpUrlWidth {
+					otlpUrlWidth = len(profile.Configuration.OtlpUrl)
+				}
 				maskedToken := maskToken(profile.Configuration.AuthToken)
 				if len(maskedToken) > authTokenWidth {
 					authTokenWidth = len(maskedToken)
@@ -208,7 +290,11 @@ func newListProfileCmd() *cobra.Command {
 			}
 
 			// Print header
-			fmt.Printf("  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", "AUTH TOKEN")
+			if hasOtlpUrl {
+				fmt.Printf("  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", otlpUrlWidth, "OTLP URL", "AUTH TOKEN")
+			} else {
+				fmt.Printf("  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", "AUTH TOKEN")
+			}
 
 			// Print rows
 			for _, profile := range profiles {
@@ -216,11 +302,20 @@ func newListProfileCmd() *cobra.Command {
 				if profile.Name == activeProfileName {
 					marker = "*"
 				}
-				fmt.Printf("%s %-*s  %-*s  %s\n",
-					marker,
-					nameWidth, profile.Name,
-					apiUrlWidth, profile.Configuration.ApiUrl,
-					maskToken(profile.Configuration.AuthToken))
+				if hasOtlpUrl {
+					fmt.Printf("%s %-*s  %-*s  %-*s  %s\n",
+						marker,
+						nameWidth, profile.Name,
+						apiUrlWidth, profile.Configuration.ApiUrl,
+						otlpUrlWidth, profile.Configuration.OtlpUrl,
+						maskToken(profile.Configuration.AuthToken))
+				} else {
+					fmt.Printf("%s %-*s  %-*s  %s\n",
+						marker,
+						nameWidth, profile.Name,
+						apiUrlWidth, profile.Configuration.ApiUrl,
+						maskToken(profile.Configuration.AuthToken))
+				}
 			}
 
 			return nil

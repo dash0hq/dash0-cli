@@ -50,12 +50,14 @@ func NewService() (*Service, error) {
 func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	envApiUrl := os.Getenv("DASH0_API_URL")
 	envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
+	envOtlpUrl := os.Getenv("DASH0_OTLP_URL")
 
-	// If both env vars are set, use them directly without requiring a profile
-	if envApiUrl != "" && envAuthToken != "" {
+	// If auth token and at least one URL are set via env vars, use them directly without requiring a profile
+	if envAuthToken != "" && (envApiUrl != "" || envOtlpUrl != "") {
 		return &Configuration{
 			ApiUrl:    envApiUrl,
 			AuthToken: envAuthToken,
+			OtlpUrl:   envOtlpUrl,
 		}, nil
 	}
 
@@ -74,6 +76,9 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	if envAuthToken != "" {
 		activeConfiguration.AuthToken = envAuthToken
 	}
+	if envOtlpUrl != "" {
+		activeConfiguration.OtlpUrl = envOtlpUrl
+	}
 
 	return activeConfiguration, nil
 }
@@ -88,6 +93,19 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 //   - Configuration with all overrides applied
 //   - Error if configuration couldn't be loaded or is invalid outside of test mode
 func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
+	return ResolveConfigurationWithOtlp(apiUrl, authToken, "")
+}
+
+// ResolveConfigurationWithOtlp loads configuration with override handling including OTLP URL
+// Parameters:
+//   - apiUrl: Command-line flag for API URL (empty if not provided)
+//   - authToken: Command-line flag for auth token (empty if not provided)
+//   - otlpUrl: Command-line flag for OTLP URL (empty if not provided)
+//
+// Returns:
+//   - Configuration with all overrides applied
+//   - Error if configuration couldn't be loaded or is invalid outside of test mode
+func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configuration, error) {
 	// Create result configuration starting with an empty config
 	result := &Configuration{}
 
@@ -104,7 +122,20 @@ func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 			// Use active configuration as a base
 			result.ApiUrl = cfg.ApiUrl
 			result.AuthToken = cfg.AuthToken
+			result.OtlpUrl = cfg.OtlpUrl
 		}
+	}
+
+	// Override with environment variables (in case GetActiveConfiguration failed
+	// before it could apply them, e.g. no active profile but env vars are set)
+	if envApiUrl := os.Getenv("DASH0_API_URL"); envApiUrl != "" && result.ApiUrl == "" {
+		result.ApiUrl = envApiUrl
+	}
+	if envAuthToken := os.Getenv("DASH0_AUTH_TOKEN"); envAuthToken != "" && result.AuthToken == "" {
+		result.AuthToken = envAuthToken
+	}
+	if envOtlpUrl := os.Getenv("DASH0_OTLP_URL"); envOtlpUrl != "" && result.OtlpUrl == "" {
+		result.OtlpUrl = envOtlpUrl
 	}
 
 	// Override with command-line flags if provided (only if non-empty)
@@ -116,15 +147,22 @@ func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 		result.AuthToken = authToken
 	}
 
+	if otlpUrl != "" {
+		result.OtlpUrl = otlpUrl
+	}
+
 	// If we had a config error and don't have complete configuration from overrides, return the error
-	if configErr != nil && (result.ApiUrl == "" || result.AuthToken == "") {
+	if configErr != nil && (result.AuthToken == "" || (result.ApiUrl == "" && result.OtlpUrl == "")) {
 		return nil, configErr
 	}
 
 	// Final validation (skip in test mode)
 	testMode := os.Getenv("DASH0_TEST_MODE") == "1"
-	if !testMode && (result.ApiUrl == "" || result.AuthToken == "") {
-		return nil, fmt.Errorf("api-url and auth-token are required; provide them as flags or configure a profile")
+	if !testMode && result.AuthToken == "" {
+		return nil, fmt.Errorf("auth-token is required; provide it as a flag or configure a profile")
+	}
+	if !testMode && result.ApiUrl == "" && result.OtlpUrl == "" {
+		return nil, fmt.Errorf("at least one of api-url or otlp-url is required; provide them as flags or configure a profile")
 	}
 
 	return result, nil
@@ -203,6 +241,30 @@ func (s *Service) AddProfile(profile Profile) error {
 	}
 
 	return nil
+}
+
+// UpdateProfile finds a profile by name and applies the updateFn to its configuration, then saves.
+// Returns ErrProfileNotFound if no profile with the given name exists.
+func (s *Service) UpdateProfile(name string, updateFn func(*Configuration)) error {
+	profiles, err := s.GetProfiles()
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i, profile := range profiles {
+		if profile.Name == name {
+			updateFn(&profiles[i].Configuration)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("profile %q not found", name)
+	}
+
+	return s.saveProfiles(profiles)
 }
 
 // RemoveProfile removes a profile from the configuration

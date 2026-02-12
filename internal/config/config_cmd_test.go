@@ -91,6 +91,9 @@ func TestShowCmdNoProfile(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("API URL:    (not set)")) {
 		t.Errorf("Expected output to contain 'API URL:    (not set)', got: %s", output)
 	}
+	if !bytes.Contains([]byte(output), []byte("OTLP URL:   (not set)")) {
+		t.Errorf("Expected output to contain 'OTLP URL:   (not set)', got: %s", output)
+	}
 	if !bytes.Contains([]byte(output), []byte("Auth Token: (not set)")) {
 		t.Errorf("Expected output to contain 'Auth Token: (not set)', got: %s", output)
 	}

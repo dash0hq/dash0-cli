@@ -14,22 +14,25 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0.
 	cfg := config.FromContext(ctx)
 	if cfg == nil {
 		// Fallback to ResolveConfiguration if not in context
-		return NewClient(apiUrl, authToken)
-	}
-
-	// Apply flag overrides
-	finalApiUrl := cfg.ApiUrl
-	finalAuthToken := cfg.AuthToken
-	if apiUrl != "" {
-		finalApiUrl = apiUrl
-	}
-	if authToken != "" {
-		finalAuthToken = authToken
+		resolved, err := config.ResolveConfiguration(apiUrl, authToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve configuration: %w", err)
+		}
+		apiUrl = resolved.ApiUrl
+		authToken = resolved.AuthToken
+	} else {
+		// Apply flag overrides on top of context configuration
+		if apiUrl == "" {
+			apiUrl = cfg.ApiUrl
+		}
+		if authToken == "" {
+			authToken = cfg.AuthToken
+		}
 	}
 
 	client, err := dash0.NewClient(
-		dash0.WithApiUrl(finalApiUrl),
-		dash0.WithAuthToken(finalAuthToken),
+		dash0.WithApiUrl(apiUrl),
+		dash0.WithAuthToken(authToken),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API client: %w", err)
@@ -38,22 +41,38 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0.
 	return client, nil
 }
 
-// NewClient creates a new Dash0 API client from the given configuration overrides.
-// It uses config.ResolveConfiguration to handle the configuration resolution hierarchy:
-// environment variables > command-line flags > active profile
-// Deprecated: Use NewClientFromContext for commands that run within the CLI context.
-func NewClient(apiUrl, authToken string) (dash0.Client, error) {
-	cfg, err := config.ResolveConfiguration(apiUrl, authToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve configuration: %w", err)
+// NewOtlpClientFromContext creates a new Dash0 API client configured for OTLP using configuration from context.
+// Flag overrides (otlpUrl, authToken) are applied on top of the context configuration.
+func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (dash0.Client, error) {
+	cfg := config.FromContext(ctx)
+
+	var finalOtlpUrl, finalAuthToken string
+	if cfg != nil {
+		finalOtlpUrl = cfg.OtlpUrl
+		finalAuthToken = cfg.AuthToken
+	}
+
+	// Apply flag overrides
+	if otlpUrl != "" {
+		finalOtlpUrl = otlpUrl
+	}
+	if authToken != "" {
+		finalAuthToken = authToken
+	}
+
+	if finalOtlpUrl == "" {
+		return nil, fmt.Errorf("otlp-url is required; provide it as a flag, environment variable, or configure a profile")
+	}
+	if finalAuthToken == "" {
+		return nil, fmt.Errorf("auth-token is required; provide it as a flag, environment variable, or configure a profile")
 	}
 
 	client, err := dash0.NewClient(
-		dash0.WithApiUrl(cfg.ApiUrl),
-		dash0.WithAuthToken(cfg.AuthToken),
+		dash0.WithOtlpEndpoint(dash0.OtlpEncodingJson, finalOtlpUrl),
+		dash0.WithAuthToken(finalAuthToken),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create API client: %w", err)
+		return nil, fmt.Errorf("failed to create OTLP client: %w", err)
 	}
 
 	return client, nil
