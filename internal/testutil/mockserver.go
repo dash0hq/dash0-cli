@@ -481,7 +481,6 @@ func (m *MockServer) WithUnauthorized(fixture string) *MockServer {
 func SetupTestEnv(t *testing.T) {
 	t.Helper()
 
-	t.Setenv("DASH0_TEST_MODE", "1")
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
 }
 

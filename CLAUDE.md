@@ -61,7 +61,7 @@ The `config profiles` command uses:
 - Use zerolog for structured logging
 - Error handling: wrap errors with descriptive messages using `fmt.Errorf("... %w", err)`
 - Naming: use camelCase for variable names and PascalCase for exported functions/types
-- Set `DASH0_TEST_MODE=1` when writing tests that need to bypass validation
+- Never introduce test-specific behavior (env var checks, test flags, etc.) in production code. Tests must exercise the real code paths. Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables, or CLI flags) to set up the state tests need.
 
 ## Project Structure
 - `/cmd/dash0`: Main entrypoint

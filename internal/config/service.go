@@ -83,20 +83,20 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	return activeConfiguration, nil
 }
 
-// ResolveConfiguration loads configuration with override handling
-// It handles test mode detection, configuration loading, and validation of API URL and auth token
+// ResolveConfiguration loads configuration with override handling.
+// It loads the active profile, applies environment variable and flag overrides, and validates the result.
 // Parameters:
 //   - apiUrl: Command-line flag for API URL (empty if not provided)
 //   - authToken: Command-line flag for auth token (empty if not provided)
 //
 // Returns:
 //   - Configuration with all overrides applied
-//   - Error if configuration couldn't be loaded or is invalid outside of test mode
+//   - Error if configuration couldn't be loaded or is invalid
 func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 	return ResolveConfigurationWithOtlp(apiUrl, authToken, "")
 }
 
-// ResolveConfigurationWithOtlp loads configuration with override handling including OTLP URL
+// ResolveConfigurationWithOtlp loads configuration with override handling including OTLP URL.
 // Parameters:
 //   - apiUrl: Command-line flag for API URL (empty if not provided)
 //   - authToken: Command-line flag for auth token (empty if not provided)
@@ -104,7 +104,7 @@ func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
 //
 // Returns:
 //   - Configuration with all overrides applied
-//   - Error if configuration couldn't be loaded or is invalid outside of test mode
+//   - Error if configuration couldn't be loaded or is invalid
 func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configuration, error) {
 	// Create result configuration starting with an empty config
 	result := &Configuration{}
@@ -156,12 +156,11 @@ func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configura
 		return nil, configErr
 	}
 
-	// Final validation (skip in test mode)
-	testMode := os.Getenv("DASH0_TEST_MODE") == "1"
-	if !testMode && result.AuthToken == "" {
+	// Final validation
+	if result.AuthToken == "" {
 		return nil, fmt.Errorf("auth-token is required; provide it as a flag or configure a profile")
 	}
-	if !testMode && result.ApiUrl == "" && result.OtlpUrl == "" {
+	if result.ApiUrl == "" && result.OtlpUrl == "" {
 		return nil, fmt.Errorf("at least one of api-url or otlp-url is required; provide them as flags or configure a profile")
 	}
 
@@ -308,25 +307,22 @@ func (s *Service) RemoveProfile(profileName string) error {
 
 // SetActiveProfile sets the active profile
 func (s *Service) SetActiveProfile(profileName string) error {
-	// During testing we may need to bypass profile validation
-	if os.Getenv("DASH0_TEST_MODE") != "1" {
-		// Verify the profile exists
-		profiles, err := s.GetProfiles()
-		if err != nil {
-			return err
-		}
+	// Verify the profile exists
+	profiles, err := s.GetProfiles()
+	if err != nil {
+		return err
+	}
 
-		var found bool
-		for _, profile := range profiles {
-			if profile.Name == profileName {
-				found = true
-				break
-			}
+	var found bool
+	for _, profile := range profiles {
+		if profile.Name == profileName {
+			found = true
+			break
 		}
+	}
 
-		if !found {
-			return ErrProfileNotFound
-		}
+	if !found {
+		return ErrProfileNotFound
 	}
 
 	// Ensure config directory exists
