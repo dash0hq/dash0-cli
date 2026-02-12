@@ -10,11 +10,9 @@ import (
 
 func TestNewClientFromContext_WithEnvVars(t *testing.T) {
 	// Setup test environment
-	os.Setenv("DASH0_TEST_MODE", "1")
 	os.Setenv("DASH0_API_URL", "https://api.test.dash0.com")
 	os.Setenv("DASH0_AUTH_TOKEN", "auth_test-token-12345")
 	defer func() {
-		os.Unsetenv("DASH0_TEST_MODE")
 		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
 	}()
@@ -42,14 +40,13 @@ func TestNewClientFromContext_MissingConfig(t *testing.T) {
 	// Ensure no environment variables are set
 	os.Unsetenv("DASH0_API_URL")
 	os.Unsetenv("DASH0_AUTH_TOKEN")
-	os.Unsetenv("DASH0_TEST_MODE")
 
 	// Use a temporary empty config directory to ensure no profile is loaded
 	tempDir := t.TempDir()
 	os.Setenv("DASH0_CONFIG_DIR", tempDir)
 	defer os.Unsetenv("DASH0_CONFIG_DIR")
 
-	// Without test mode, missing config should return an error about no active profile
+	// Missing config should return an error about no active profile
 	client, err := NewClientFromContext(context.Background(), "", "")
 	assert.Error(t, err)
 	assert.Nil(t, client)

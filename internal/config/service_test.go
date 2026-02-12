@@ -18,13 +18,9 @@ func setupTestConfigDir(t *testing.T) string {
 	// Override the config path for testing
 	os.Setenv("DASH0_CONFIG_DIR", tempDir)
 
-	// Enable test mode to bypass some validations
-	os.Setenv("DASH0_TEST_MODE", "1")
-
 	// Cleanup env vars after test
 	t.Cleanup(func() {
 		os.Unsetenv("DASH0_CONFIG_DIR")
-		os.Unsetenv("DASH0_TEST_MODE")
 	})
 
 	return tempDir
@@ -627,10 +623,6 @@ func TestResolveConfiguration(t *testing.T) {
 		os.Setenv("DASH0_CONFIG_DIR", tempDir)
 		defer os.Unsetenv("DASH0_CONFIG_DIR")
 
-		// Enable test mode
-		os.Setenv("DASH0_TEST_MODE", "1")
-		defer os.Unsetenv("DASH0_TEST_MODE")
-
 		// Unset environment variables that might interfere
 		os.Unsetenv("DASH0_API_URL")
 		os.Unsetenv("DASH0_AUTH_TOKEN")
@@ -677,31 +669,10 @@ func TestResolveConfiguration(t *testing.T) {
 		}
 	})
 	
-	// Test that missing profile returns error even in test mode
-	// (profile errors are not bypassed - only final validation is)
-	t.Run("In test mode without profile", func(t *testing.T) {
-		// Setup test environment without active profile
+	// Test error case: no profile, no env vars, no flags
+	t.Run("Without configuration", func(t *testing.T) {
 		_ = setupTestConfigDir(t)
 
-		// Test mode doesn't bypass profile loading errors
-		os.Setenv("DASH0_TEST_MODE", "1")
-		defer os.Unsetenv("DASH0_TEST_MODE")
-
-		_, err := ResolveConfiguration("", "")
-		if err == nil {
-			t.Errorf("Expected error for missing profile, got nil")
-		}
-	})
-	
-	// Test error case (no test mode, no config)
-	t.Run("Without test mode and configuration", func(t *testing.T) {
-		// Setup test environment without active context
-		_ = setupTestConfigDir(t)
-
-		// Disable test mode
-		os.Unsetenv("DASH0_TEST_MODE")
-
-		// Should fail validation
 		_, err := ResolveConfiguration("", "")
 		if err == nil {
 			t.Errorf("Expected error for missing configuration, got nil")
