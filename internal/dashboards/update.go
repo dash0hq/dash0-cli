@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	res "github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newUpdateCmd() *cobra.Command {
-	var flags res.FileInputFlags
+	var flags asset.FileInputFlags
 
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
@@ -24,21 +25,21 @@ func newUpdateCmd() *cobra.Command {
 		},
 	}
 
-	res.RegisterFileInputFlags(cmd, &flags)
+	asset.RegisterFileInputFlags(cmd, &flags)
 	return cmd
 }
 
-func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error {
-	var dashboard dash0.DashboardDefinition
-	if err := res.ReadDefinition(flags.File, &dashboard, os.Stdin); err != nil {
+func runUpdate(ctx context.Context, id string, flags *asset.FileInputFlags) error {
+	var dashboard dash0api.DashboardDefinition
+	if err := asset.ReadDefinition(flags.File, &dashboard, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
 	// Set origin to dash0-cli (using Id field since Origin is deprecated)
 	if dashboard.Metadata.Dash0Extensions == nil {
-		dashboard.Metadata.Dash0Extensions = &dash0.DashboardMetadataExtensions{}
+		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
 	}
-	origin := "dash0-cli"
+	origin := internal.DEFAULT_ORIGIN
 	dashboard.Metadata.Dash0Extensions.Id = &origin
 
 	if flags.DryRun {
@@ -56,7 +57,7 @@ func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error 
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",
 			AssetID:   id,
-			AssetName: extractDisplayName(&dashboard),
+			AssetName: asset.ExtractDashboardDisplayName(&dashboard),
 		})
 	}
 

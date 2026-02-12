@@ -1,0 +1,4 @@
+kind: CheckRule
+id: f6a7b8c9-0123-45f0-1234-67890abcdef0
+name: Nested Alert Rule
+expression: up == 0

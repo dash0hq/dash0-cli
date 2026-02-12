@@ -1,0 +1,4 @@
+metadata:
+  name: oops-no-kind
+spec:
+  query: "this will fail validation"

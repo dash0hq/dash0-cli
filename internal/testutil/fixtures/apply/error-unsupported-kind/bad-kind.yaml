@@ -1,0 +1,5 @@
+kind: Deployment
+metadata:
+  name: not-a-dash0-asset
+spec:
+  replicas: 3

@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	res "github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newUpdateCmd() *cobra.Command {
-	var flags res.FileInputFlags
+	var flags asset.FileInputFlags
 
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
@@ -24,13 +25,13 @@ func newUpdateCmd() *cobra.Command {
 		},
 	}
 
-	res.RegisterFileInputFlags(cmd, &flags)
+	asset.RegisterFileInputFlags(cmd, &flags)
 	return cmd
 }
 
-func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error {
-	var rule dash0.PrometheusAlertRule
-	if err := res.ReadDefinition(flags.File, &rule, os.Stdin); err != nil {
+func runUpdate(ctx context.Context, id string, flags *asset.FileInputFlags) error {
+	var rule dash0api.PrometheusAlertRule
+	if err := asset.ReadDefinition(flags.File, &rule, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}
 
@@ -39,7 +40,7 @@ func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error 
 		labels := make(map[string]string)
 		rule.Labels = &labels
 	}
-	(*rule.Labels)["dash0.com/origin"] = "dash0-cli"
+	(*rule.Labels)["dash0.com/origin"] = internal.DEFAULT_ORIGIN
 
 	if flags.DryRun {
 		fmt.Println("Dry run: check rule definition is valid")

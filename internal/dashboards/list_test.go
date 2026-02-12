@@ -3,14 +3,15 @@ package dashboards
 import (
 	"testing"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestExtractDisplayName(t *testing.T) {
 	tests := []struct {
 		name      string
-		dashboard *dash0.DashboardDefinition
+		dashboard *dash0api.DashboardDefinition
 		want      string
 	}{
 		{
@@ -20,21 +21,21 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "nil spec",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: nil,
 			},
 			want: "",
 		},
 		{
 			name: "empty spec",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{},
 			},
 			want: "",
 		},
 		{
 			name: "no display field",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"other": "value",
 				},
@@ -43,7 +44,7 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "display is not a map",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"display": "not a map",
 				},
@@ -52,7 +53,7 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "display has no name",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"display": map[string]interface{}{
 						"description": "some description",
@@ -63,7 +64,7 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "display name is not a string",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"display": map[string]interface{}{
 						"name": 123,
@@ -74,7 +75,7 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "valid display name",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"display": map[string]interface{}{
 						"name":        "My Dashboard",
@@ -86,7 +87,7 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "empty display name",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"display": map[string]interface{}{
 						"name": "",
@@ -97,7 +98,7 @@ func TestExtractDisplayName(t *testing.T) {
 		},
 		{
 			name: "display name with special characters",
-			dashboard: &dash0.DashboardDefinition{
+			dashboard: &dash0api.DashboardDefinition{
 				Spec: map[string]interface{}{
 					"display": map[string]interface{}{
 						"name": "Dash0 - Services (Production) 🚀",
@@ -110,7 +111,7 @@ func TestExtractDisplayName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractDisplayName(tt.dashboard)
+			got := asset.ExtractDashboardDisplayName(tt.dashboard)
 			assert.Equal(t, tt.want, got)
 		})
 	}

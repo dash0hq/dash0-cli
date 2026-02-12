@@ -1,0 +1,19 @@
+kind: Dashboard
+metadata:
+  name: e1f2a3b4-5678-90e5-6789-abcdef012345
+spec:
+  display:
+    name: First Dashboard
+---
+kind: CheckRule
+id: f2a3b4c5-6789-01f6-7890-bcdef0123456
+name: Second Document Rule
+expression: up == 0
+---
+kind: View
+metadata:
+  name: Third Document View
+  labels:
+    dash0.com/id: a3b4c5d6-7890-12a7-8901-cdef01234567
+spec:
+  query: "severity = WARN"

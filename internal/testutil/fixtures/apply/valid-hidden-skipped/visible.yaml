@@ -1,0 +1,6 @@
+kind: Dashboard
+metadata:
+  name: b8c9d0e1-2345-67b2-3456-890abcdef012
+spec:
+  display:
+    name: Visible Dashboard

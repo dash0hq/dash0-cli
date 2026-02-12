@@ -100,22 +100,29 @@ You can find the API endpoint for your organization on the [Endpoints](https://a
 
 ### Applying Assets
 
-Apply asset definitions from a file or stdin. The input may contain multiple YAML documents separated by `---`:
+Apply asset definitions from a file, directory, or stdin. The input may contain multiple YAML documents separated by `---`:
 
 ```bash
 $ dash0 apply -f assets.yaml
-Dashboard "Production Overview" created
-CheckRule "High Error Rate" updated
-View "Error Logs" created
+Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab) created
+Check rule "High Error Rate" (b2c3d4e5-6789-01bc-def0-234567890abc) updated
+View "Error Logs" (c3d4e5f6-7890-12cd-ef01-34567890abcd) created
 
-$ cat assets.yaml | dash0 apply -f -
-Dashboard "Production Overview" created
+$ dash0 apply -f dashboards/
+dashboards/prod.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+dashboards/staging.yaml: Dashboard "Staging Overview" (d4e5f6a7-...) created
 ...
 
-$ dash0 apply -f dashboard.yaml --dry-run
+$ cat assets.yaml | dash0 apply -f -
+Dashboard "Production Overview" (a1b2c3d4-...) created
+...
+
+$ dash0 apply -f assets.yaml --dry-run
 Dry run: 1 document(s) validated successfully
-  1. Dashboard
+  1. Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
 ```
+
+When a directory is specified, all `.yaml` and `.yml` files are discovered recursively. Hidden files and directories (starting with `.`) are skipped. All documents are validated before any are applied. If any discovered document fails validation, no document will be applied.
 
 Supported asset types: `Dashboard`, `CheckRule` (both the plain Prometheus YAML and the PrometheusRule CRD), `PrometheusRule`, `SyntheticCheck`, `View`
 
@@ -183,11 +190,14 @@ $ dash0 check-rules delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
 Check rule "a1b2c3d4-..." deleted successfully
 ```
 
-You can apply `PrometheusRule` CRD files directly:
+Both `apply` and `check-rules create` accept `PrometheusRule` CRD files:
 
 ```bash
+$ dash0 check-rules create -f prometheus-rules.yaml
+Check rule "High Error Rate Alert" created successfully
+
 $ dash0 apply -f prometheus-rules.yaml
-PrometheusRule "High Error Rate Alert" applied successfully
+Check rule "High Error Rate Alert" (b2c3d4e5-...) created
 ```
 
 ### Synthetic Checks

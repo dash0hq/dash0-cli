@@ -134,11 +134,11 @@ func main() {
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		// Print error first
 		printError(err)
-		// Then print usage for subcommand errors
-		if targetCmd != nil && targetCmd.Name() != "dash0" {
-			fmt.Fprintln(os.Stderr) // Add a newline before usage
+		// Show usage only for flag/argument errors, not for runtime errors.
+		// Commands set SilenceUsage = true once past flag validation.
+		if targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
+			fmt.Fprintln(os.Stderr)
 			targetCmd.Usage()
 		}
 		os.Exit(1)

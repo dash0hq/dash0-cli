@@ -1,0 +1,7 @@
+kind: View
+metadata:
+  name: Error Logs
+  labels:
+    dash0.com/id: c3d4e5f6-7890-12cd-ef01-34567890abcd
+spec:
+  query: "severity >= ERROR"

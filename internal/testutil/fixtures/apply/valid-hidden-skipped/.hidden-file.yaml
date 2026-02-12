@@ -1,0 +1,6 @@
+kind: Dashboard
+metadata:
+  name: c9d0e1f2-3456-78c3-4567-90abcdef0123
+spec:
+  display:
+    name: SHOULD NOT APPEAR (hidden file)

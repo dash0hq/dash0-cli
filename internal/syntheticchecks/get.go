@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"os"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
@@ -40,6 +41,15 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 			AssetType: "synthetic check",
 			AssetID:   id,
 		})
+	}
+
+	// Restore the ID so that exported YAML can be re-applied (the import
+	// API uses the ID for upsert).
+	if check.Metadata.Labels == nil {
+		check.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
+	}
+	if check.Metadata.Labels.Dash0Comid == nil {
+		check.Metadata.Labels.Dash0Comid = &id
 	}
 
 	format, err := output.ParseFormat(flags.Output)

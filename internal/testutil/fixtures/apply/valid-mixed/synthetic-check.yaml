@@ -1,0 +1,8 @@
+kind: SyntheticCheck
+metadata:
+  name: API Health Check
+  labels:
+    dash0.com/id: d4e5f6a7-8901-23de-f012-4567890abcde
+spec:
+  url: https://api.example.com/health
+  interval: 60s

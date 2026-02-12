@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/config"
 )
 
 // NewClientFromContext creates a new Dash0 API client using configuration from context.
 // Flag overrides (apiUrl, authToken) are applied on top of the context configuration.
-func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0.Client, error) {
+func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0api.Client, error) {
 	cfg := config.FromContext(ctx)
 	if cfg == nil {
 		// Fallback to ResolveConfiguration if not in context
@@ -30,9 +30,9 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0.
 		}
 	}
 
-	client, err := dash0.NewClient(
-		dash0.WithApiUrl(apiUrl),
-		dash0.WithAuthToken(authToken),
+	client, err := dash0api.NewClient(
+		dash0api.WithApiUrl(apiUrl),
+		dash0api.WithAuthToken(authToken),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API client: %w", err)
@@ -43,7 +43,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0.
 
 // NewOtlpClientFromContext creates a new Dash0 API client configured for OTLP using configuration from context.
 // Flag overrides (otlpUrl, authToken) are applied on top of the context configuration.
-func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (dash0.Client, error) {
+func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (dash0api.Client, error) {
 	cfg := config.FromContext(ctx)
 
 	var finalOtlpUrl, finalAuthToken string
@@ -67,9 +67,9 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 		return nil, fmt.Errorf("auth-token is required; provide it as a flag, environment variable, or configure a profile")
 	}
 
-	client, err := dash0.NewClient(
-		dash0.WithOtlpEndpoint(dash0.OtlpEncodingJson, finalOtlpUrl),
-		dash0.WithAuthToken(finalAuthToken),
+	client, err := dash0api.NewClient(
+		dash0api.WithOtlpEndpoint(dash0api.OtlpEncodingJson, finalOtlpUrl),
+		dash0api.WithAuthToken(finalAuthToken),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP client: %w", err)
@@ -113,7 +113,7 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 		return ""
 	}
 
-	if dash0.IsNotFound(err) {
+	if dash0api.IsNotFound(err) {
 		assetType := getAssetType()
 		identifier := getIdentifier()
 		if assetType != "" {
@@ -124,16 +124,16 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 		}
 		return fmt.Errorf("asset not found: %w", err)
 	}
-	if dash0.IsUnauthorized(err) {
+	if dash0api.IsUnauthorized(err) {
 		return fmt.Errorf("authentication failed; check your auth token: %w", err)
 	}
-	if dash0.IsForbidden(err) {
+	if dash0api.IsForbidden(err) {
 		return fmt.Errorf("access denied; check your permissions: %w", err)
 	}
-	if dash0.IsBadRequest(err) {
+	if dash0api.IsBadRequest(err) {
 		return fmt.Errorf("invalid request: %w", err)
 	}
-	if dash0.IsConflict(err) {
+	if dash0api.IsConflict(err) {
 		assetType := getAssetType()
 		identifier := getIdentifier()
 		if assetType != "" {
@@ -144,10 +144,10 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 		}
 		return fmt.Errorf("asset conflict: %w", err)
 	}
-	if dash0.IsRateLimited(err) {
+	if dash0api.IsRateLimited(err) {
 		return fmt.Errorf("rate limited; please try again later: %w", err)
 	}
-	if dash0.IsServerError(err) {
+	if dash0api.IsServerError(err) {
 		return fmt.Errorf("server error; please try again later: %w", err)
 	}
 

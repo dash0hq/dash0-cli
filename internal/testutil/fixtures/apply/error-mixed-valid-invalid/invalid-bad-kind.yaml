@@ -1,0 +1,3 @@
+kind: ConfigMap
+metadata:
+  name: wrong-asset-type

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -47,7 +47,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	// Fetch dashboards using iterator
 	iter := apiClient.ListDashboardsIter(ctx, client.DatasetPtr(flags.Dataset))
 
-	var listItems []*dash0.DashboardApiListItem
+	var listItems []*dash0api.DashboardApiListItem
 	count := 0
 	for iter.Next() {
 		listItems = append(listItems, iter.Current())
@@ -91,31 +91,12 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 }
 
 // getDisplayName fetches the full dashboard and extracts spec.display.name
-func getDisplayName(ctx context.Context, apiClient dash0.Client, id string, dataset string) string {
+func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, dataset string) string {
 	dashboard, err := apiClient.GetDashboard(ctx, id, client.DatasetPtr(dataset))
 	if err != nil {
 		return "" // Fall back to empty if we can't fetch
 	}
-	return extractDisplayName(dashboard)
-}
-
-// extractDisplayName extracts the display name from a dashboard definition
-func extractDisplayName(dashboard *dash0.DashboardDefinition) string {
-	if dashboard == nil || dashboard.Spec == nil {
-		return ""
-	}
-
-	display, ok := dashboard.Spec["display"].(map[string]interface{})
-	if !ok {
-		return ""
-	}
-
-	name, ok := display["name"].(string)
-	if !ok {
-		return ""
-	}
-
-	return name
+	return asset.ExtractDashboardDisplayName(dashboard)
 }
 
 func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format) error {
