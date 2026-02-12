@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	res "github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newUpdateCmd() *cobra.Command {
-	var flags res.FileInputFlags
+	var flags asset.FileInputFlags
 
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
@@ -24,21 +25,21 @@ func newUpdateCmd() *cobra.Command {
 		},
 	}
 
-	res.RegisterFileInputFlags(cmd, &flags)
+	asset.RegisterFileInputFlags(cmd, &flags)
 	return cmd
 }
 
-func runUpdate(ctx context.Context, id string, flags *res.FileInputFlags) error {
-	var check dash0.SyntheticCheckDefinition
-	if err := res.ReadDefinition(flags.File, &check, os.Stdin); err != nil {
+func runUpdate(ctx context.Context, id string, flags *asset.FileInputFlags) error {
+	var check dash0api.SyntheticCheckDefinition
+	if err := asset.ReadDefinition(flags.File, &check, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read synthetic check definition: %w", err)
 	}
 
 	// Set origin to dash0-cli
 	if check.Metadata.Labels == nil {
-		check.Metadata.Labels = &dash0.SyntheticCheckLabels{}
+		check.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
 	}
-	origin := "dash0-cli"
+	origin := internal.DEFAULT_ORIGIN
 	check.Metadata.Labels.Dash0Comorigin = &origin
 
 	if flags.DryRun {

@@ -1,0 +1,7 @@
+kind: View
+metadata:
+  name: Backend Services
+  labels:
+    dash0.com/id: a7b8c9d0-1234-56a1-2345-7890abcdef01
+spec:
+  query: "service.name = 'backend'"

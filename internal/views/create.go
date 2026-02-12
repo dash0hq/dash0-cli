@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	res "github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
 func newCreateCmd() *cobra.Command {
-	var flags res.FileInputFlags
+	var flags asset.FileInputFlags
 
 	cmd := &cobra.Command{
 		Use:     "create -f <file>",
@@ -24,22 +24,15 @@ func newCreateCmd() *cobra.Command {
 		},
 	}
 
-	res.RegisterFileInputFlags(cmd, &flags)
+	asset.RegisterFileInputFlags(cmd, &flags)
 	return cmd
 }
 
-func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
-	var view dash0.ViewDefinition
-	if err := res.ReadDefinition(flags.File, &view, os.Stdin); err != nil {
+func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
+	var view dash0api.ViewDefinition
+	if err := asset.ReadDefinition(flags.File, &view, os.Stdin); err != nil {
 		return fmt.Errorf("failed to read view definition: %w", err)
 	}
-
-	// Set origin to dash0-cli
-	if view.Metadata.Labels == nil {
-		view.Metadata.Labels = &dash0.ViewLabels{}
-	}
-	origin := "dash0-cli"
-	view.Metadata.Labels.Dash0Comorigin = &origin
 
 	if flags.DryRun {
 		fmt.Println("Dry run: view definition is valid")
@@ -51,14 +44,14 @@ func runCreate(ctx context.Context, flags *res.FileInputFlags) error {
 		return err
 	}
 
-	result, err := apiClient.CreateView(ctx, &view, client.DatasetPtr(flags.Dataset))
-	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
+	result, importErr := asset.ImportView(ctx, apiClient, &view, client.DatasetPtr(flags.Dataset))
+	if importErr != nil {
+		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "view",
 			AssetName: view.Metadata.Name,
 		})
 	}
 
-	fmt.Printf("View %q created successfully\n", result.Metadata.Name)
+	fmt.Printf("View %q %s successfully\n", result.Name, result.Action)
 	return nil
 }

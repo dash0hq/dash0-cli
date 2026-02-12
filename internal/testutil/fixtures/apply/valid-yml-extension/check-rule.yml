@@ -1,0 +1,4 @@
+kind: CheckRule
+id: c5d6e7f8-9012-34c9-0123-ef0123456789
+name: YML Extension Rule
+expression: rate(errors[5m]) > 0

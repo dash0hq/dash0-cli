@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -38,7 +38,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	iter := apiClient.ListSyntheticChecksIter(ctx, client.DatasetPtr(flags.Dataset))
 
-	var checks []*dash0.SyntheticChecksApiListItem
+	var checks []*dash0api.SyntheticChecksApiListItem
 	count := 0
 	for iter.Next() {
 		checks = append(checks, iter.Current())
@@ -69,17 +69,17 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	}
 }
 
-func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChecksApiListItem, format output.Format) error {
+func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticChecksApiListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
-			c := item.(*dash0.SyntheticChecksApiListItem)
+			c := item.(*dash0api.SyntheticChecksApiListItem)
 			if c.Name != nil {
 				return *c.Name
 			}
 			return ""
 		}},
 		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
-			c := item.(*dash0.SyntheticChecksApiListItem)
+			c := item.(*dash0api.SyntheticChecksApiListItem)
 			return c.Id
 		}},
 	}
@@ -87,11 +87,11 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0.SyntheticChec
 	if format == output.FormatWide {
 		columns = append(columns,
 			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
-				c := item.(*dash0.SyntheticChecksApiListItem)
+				c := item.(*dash0api.SyntheticChecksApiListItem)
 				return c.Dataset
 			}},
 			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
-				c := item.(*dash0.SyntheticChecksApiListItem)
+				c := item.(*dash0api.SyntheticChecksApiListItem)
 				if c.Origin != nil {
 					return *c.Origin
 				}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -38,7 +38,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	iter := apiClient.ListViewsIter(ctx, client.DatasetPtr(flags.Dataset))
 
-	var views []*dash0.ViewApiListItem
+	var views []*dash0api.ViewApiListItem
 	count := 0
 	for iter.Next() {
 		views = append(views, iter.Current())
@@ -69,17 +69,17 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	}
 }
 
-func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem, format output.Format) error {
+func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
-			v := item.(*dash0.ViewApiListItem)
+			v := item.(*dash0api.ViewApiListItem)
 			if v.Name != nil {
 				return *v.Name
 			}
 			return ""
 		}},
 		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
-			v := item.(*dash0.ViewApiListItem)
+			v := item.(*dash0api.ViewApiListItem)
 			return v.Id
 		}},
 	}
@@ -87,11 +87,11 @@ func printViewTable(f *output.Formatter, views []*dash0.ViewApiListItem, format 
 	if format == output.FormatWide {
 		columns = append(columns,
 			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
-				v := item.(*dash0.ViewApiListItem)
+				v := item.(*dash0api.ViewApiListItem)
 				return v.Dataset
 			}},
 			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
-				v := item.(*dash0.ViewApiListItem)
+				v := item.(*dash0api.ViewApiListItem)
 				if v.Origin != nil {
 					return *v.Origin
 				}

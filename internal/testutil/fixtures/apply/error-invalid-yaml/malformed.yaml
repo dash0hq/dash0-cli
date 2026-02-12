@@ -1,0 +1,7 @@
+kind: Dashboard
+metadata:
+  name: broken
+  labels:
+    - this: is
+    invalid yaml because
+  the indentation is wrong

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -38,7 +38,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	iter := apiClient.ListCheckRulesIter(ctx, client.DatasetPtr(flags.Dataset))
 
-	var rules []*dash0.PrometheusAlertRuleApiListItem
+	var rules []*dash0api.PrometheusAlertRuleApiListItem
 	count := 0
 	for iter.Next() {
 		rules = append(rules, iter.Current())
@@ -69,17 +69,17 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	}
 }
 
-func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRuleApiListItem, format output.Format) error {
+func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertRuleApiListItem, format output.Format) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
-			r := item.(*dash0.PrometheusAlertRuleApiListItem)
+			r := item.(*dash0api.PrometheusAlertRuleApiListItem)
 			if r.Name != nil {
 				return *r.Name
 			}
 			return ""
 		}},
 		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
-			r := item.(*dash0.PrometheusAlertRuleApiListItem)
+			r := item.(*dash0api.PrometheusAlertRuleApiListItem)
 			return r.Id
 		}},
 	}
@@ -87,11 +87,11 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0.PrometheusAlertRule
 	if format == output.FormatWide {
 		columns = append(columns,
 			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
-				r := item.(*dash0.PrometheusAlertRuleApiListItem)
+				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
 				return string(r.Dataset)
 			}},
 			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
-				r := item.(*dash0.PrometheusAlertRuleApiListItem)
+				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
 				if r.Origin != nil {
 					return *r.Origin
 				}

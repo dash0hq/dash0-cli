@@ -8,8 +8,28 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
+
+// ReadRawInput reads raw bytes from a file or stdin without unmarshalling.
+// If path is "-" or empty, it reads from stdin.
+func ReadRawInput(path string, stdin io.Reader) ([]byte, error) {
+	if path == "-" || path == "" {
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read from stdin: %w", err)
+		}
+		if len(data) == 0 {
+			return nil, fmt.Errorf("no input provided on stdin")
+		}
+		return data, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+	return data, nil
+}
 
 // ReadDefinition reads a YAML or JSON definition from a file or stdin.
 // If path is "-" or empty, it reads from stdin (assumes YAML format).
@@ -89,7 +109,7 @@ func WriteDefinitionFile(path string, data interface{}) error {
 		}
 		output = append(output, '\n')
 	default: // Default to YAML with 2-space indent (Kubernetes standard)
-		output, err = marshalYAML(data)
+		output, err = yaml.Marshal(data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal YAML: %w", err)
 		}
@@ -113,25 +133,11 @@ func WriteToStdout(format string, data interface{}) error {
 		}
 		fmt.Println(string(output))
 	default: // Default to YAML with 2-space indent (Kubernetes standard)
-		output, err := marshalYAML(data)
+		output, err := yaml.Marshal(data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal YAML: %w", err)
 		}
 		fmt.Print(string(output))
 	}
 	return nil
-}
-
-// marshalYAML marshals data to YAML with 2-space indentation (Kubernetes standard)
-func marshalYAML(data interface{}) ([]byte, error) {
-	var buf strings.Builder
-	encoder := yaml.NewEncoder(&buf)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(data); err != nil {
-		return nil, err
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, err
-	}
-	return []byte(buf.String()), nil
 }

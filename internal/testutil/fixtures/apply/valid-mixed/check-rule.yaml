@@ -1,0 +1,4 @@
+kind: CheckRule
+id: b2c3d4e5-6789-01bc-def0-234567890abc
+name: High Error Rate
+expression: sum(rate(http_requests_total{status=~"5.."}[5m])) > 0.1

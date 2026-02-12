@@ -42,6 +42,13 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
+	// The API does not return the rule ID in the response body. Restore it
+	// so that exported YAML can be re-applied (the import API uses the ID
+	// for upsert).
+	if rule.Id == nil {
+		rule.Id = &id
+	}
+
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
 		return err

@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 // Format represents the output format type
@@ -61,12 +61,15 @@ func (f *Formatter) PrintJSON(data interface{}) error {
 	return encoder.Encode(data)
 }
 
-// PrintYAML outputs data as YAML
+// PrintYAML outputs data as YAML via JSON (sigs.k8s.io/yaml). This ensures
+// json tags, omitempty, and custom MarshalJSON methods are respected.
 func (f *Formatter) PrintYAML(data interface{}) error {
-	encoder := yaml.NewEncoder(f.writer)
-	encoder.SetIndent(2)
-	defer encoder.Close()
-	return encoder.Encode(data)
+	out, err := yaml.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = f.writer.Write(out)
+	return err
 }
 
 // Print outputs data in the configured format (JSON or YAML only)
