@@ -52,7 +52,7 @@ func runUpdate(ctx context.Context, id string, flags *asset.FileInputFlags) erro
 		return err
 	}
 
-	result, err := apiClient.UpdateView(ctx, id, &view, client.DatasetPtr(flags.Dataset))
+	result, err := apiClient.UpdateView(ctx, id, &view, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "view",

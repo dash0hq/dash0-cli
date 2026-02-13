@@ -36,7 +36,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	iter := apiClient.ListViewsIter(ctx, client.DatasetPtr(flags.Dataset))
+	iter := apiClient.ListViewsIter(ctx, client.ResolveDataset(ctx, flags.Dataset))
 
 	var views []*dash0api.ViewApiListItem
 	count := 0

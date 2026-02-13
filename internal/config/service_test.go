@@ -509,6 +509,105 @@ func TestServiceGetActiveConfiguration(t *testing.T) {
 		}
 	})
 
+	// Test Dataset from environment variable
+	t.Run("With DASH0_DATASET environment variable", func(t *testing.T) {
+		os.Setenv("DASH0_API_URL", "https://api.example.com")
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		os.Setenv("DASH0_DATASET", "my-dataset")
+		defer func() {
+			os.Unsetenv("DASH0_API_URL")
+			os.Unsetenv("DASH0_AUTH_TOKEN")
+			os.Unsetenv("DASH0_DATASET")
+		}()
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		config, err := service.GetActiveConfiguration()
+		if err != nil {
+			t.Fatalf("Failed to get active configuration: %v", err)
+		}
+
+		if config.Dataset != "my-dataset" {
+			t.Errorf("Expected dataset my-dataset, got %s", config.Dataset)
+		}
+	})
+
+	// Test Dataset override from env var over profile
+	t.Run("Dataset env var overrides profile", func(t *testing.T) {
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+		os.Unsetenv("DASH0_OTLP_URL")
+		os.Setenv("DASH0_DATASET", "env-dataset")
+		defer os.Unsetenv("DASH0_DATASET")
+
+		testProfiles := []Profile{
+			{
+				Name: "dataset-test",
+				Configuration: Configuration{
+					ApiUrl:    "https://api.example.com",
+					AuthToken: "token1",
+					Dataset:   "profile-dataset",
+				},
+			},
+		}
+
+		createTestProfilesFile(t, configDir, testProfiles)
+		setActiveProfile(t, configDir, "dataset-test")
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		config, err := service.GetActiveConfiguration()
+		if err != nil {
+			t.Fatalf("Failed to get active configuration: %v", err)
+		}
+
+		if config.Dataset != "env-dataset" {
+			t.Errorf("Expected dataset env-dataset, got %s", config.Dataset)
+		}
+	})
+
+	// Test Dataset from profile (no env var)
+	t.Run("Dataset from profile", func(t *testing.T) {
+		os.Unsetenv("DASH0_API_URL")
+		os.Unsetenv("DASH0_AUTH_TOKEN")
+		os.Unsetenv("DASH0_OTLP_URL")
+		os.Unsetenv("DASH0_DATASET")
+
+		testProfiles := []Profile{
+			{
+				Name: "dataset-profile-test",
+				Configuration: Configuration{
+					ApiUrl:    "https://api.example.com",
+					AuthToken: "token1",
+					Dataset:   "profile-dataset",
+				},
+			},
+		}
+
+		createTestProfilesFile(t, configDir, testProfiles)
+		setActiveProfile(t, configDir, "dataset-profile-test")
+
+		service, err := NewService()
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		config, err := service.GetActiveConfiguration()
+		if err != nil {
+			t.Fatalf("Failed to get active configuration: %v", err)
+		}
+
+		if config.Dataset != "profile-dataset" {
+			t.Errorf("Expected dataset profile-dataset, got %s", config.Dataset)
+		}
+	})
+
 	// Test OTLP URL override from env var over profile
 	t.Run("OTLP URL env var overrides profile", func(t *testing.T) {
 		os.Unsetenv("DASH0_API_URL")
@@ -705,6 +804,48 @@ func TestResolveConfiguration(t *testing.T) {
 		}
 	})
 
+	// Test dataset resolved from env var
+	t.Run("Dataset from env var in ResolveConfiguration", func(t *testing.T) {
+		os.Setenv("DASH0_API_URL", "https://api.example.com")
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		os.Setenv("DASH0_DATASET", "env-dataset")
+		defer func() {
+			os.Unsetenv("DASH0_API_URL")
+			os.Unsetenv("DASH0_AUTH_TOKEN")
+			os.Unsetenv("DASH0_DATASET")
+		}()
+
+		config, err := ResolveConfiguration("", "")
+		if err != nil {
+			t.Fatalf("Failed to resolve configuration: %v", err)
+		}
+
+		if config.Dataset != "env-dataset" {
+			t.Errorf("Expected dataset env-dataset, got %s", config.Dataset)
+		}
+	})
+
+	// Test dataset resolved from flag in ResolveConfigurationWithOtlp
+	t.Run("Dataset from flag override", func(t *testing.T) {
+		os.Setenv("DASH0_API_URL", "https://api.example.com")
+		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
+		os.Setenv("DASH0_DATASET", "env-dataset")
+		defer func() {
+			os.Unsetenv("DASH0_API_URL")
+			os.Unsetenv("DASH0_AUTH_TOKEN")
+			os.Unsetenv("DASH0_DATASET")
+		}()
+
+		config, err := ResolveConfigurationWithOtlp("", "", "", "flag-dataset")
+		if err != nil {
+			t.Fatalf("Failed to resolve configuration: %v", err)
+		}
+
+		if config.Dataset != "flag-dataset" {
+			t.Errorf("Expected dataset flag-dataset, got %s", config.Dataset)
+		}
+	})
+
 	// Test ResolveConfigurationWithOtlp with OTLP URL flag
 	t.Run("With OTLP URL flag override", func(t *testing.T) {
 		os.Setenv("DASH0_AUTH_TOKEN", "env-token")
@@ -712,7 +853,7 @@ func TestResolveConfiguration(t *testing.T) {
 		os.Unsetenv("DASH0_OTLP_URL")
 		defer os.Unsetenv("DASH0_AUTH_TOKEN")
 
-		config, err := ResolveConfigurationWithOtlp("", "", "https://otlp-flag.example.com")
+		config, err := ResolveConfigurationWithOtlp("", "", "https://otlp-flag.example.com", "")
 		if err != nil {
 			t.Fatalf("Expected no error for OTLP flag config, got: %v", err)
 		}

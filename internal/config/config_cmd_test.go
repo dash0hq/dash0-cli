@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+
 // executeCommand is a helper function that executes a command and returns its output
 func executeCommand(root *cobra.Command, args ...string) (output string, err error) {
 	// Redirect stdout
@@ -96,6 +97,184 @@ func TestShowCmdNoProfile(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("Auth Token: (not set)")) {
 		t.Errorf("Expected output to contain 'Auth Token: (not set)', got: %s", output)
+	}
+}
+
+// TestShowCmdWithDataset tests the show command displays dataset
+func TestShowCmdWithDataset(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "test1",
+			Configuration: Configuration{
+				ApiUrl:    "https://test1.example.com",
+				AuthToken: "token1",
+				Dataset:   "my-dataset",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	output, err := executeCommand(rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Dataset:    my-dataset")) {
+		t.Errorf("Expected output to contain 'Dataset:    my-dataset', got: %s", output)
+	}
+}
+
+// TestShowCmdDatasetDefault tests the show command displays 'default' when dataset is empty
+func TestShowCmdDatasetDefault(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "test1",
+			Configuration: Configuration{
+				ApiUrl:    "https://test1.example.com",
+				AuthToken: "token1",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	output, err := executeCommand(rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Dataset:    default")) {
+		t.Errorf("Expected output to contain 'Dataset:    default', got: %s", output)
+	}
+}
+
+// TestShowCmdDatasetEnvVar tests the show command with DASH0_DATASET env var
+func TestShowCmdDatasetEnvVar(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "test1",
+			Configuration: Configuration{
+				ApiUrl:    "https://test1.example.com",
+				AuthToken: "token1",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
+
+	os.Setenv("DASH0_DATASET", "env-dataset")
+	defer os.Unsetenv("DASH0_DATASET")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	output, err := executeCommand(rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Dataset:    env-dataset")) {
+		t.Errorf("Expected output to contain 'Dataset:    env-dataset', got: %s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("(from DASH0_DATASET environment variable)")) {
+		t.Errorf("Expected output to contain env var annotation, got: %s", output)
+	}
+}
+
+// TestCreateProfileCmdWithDataset tests profile creation with --dataset
+func TestCreateProfileCmdWithDataset(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	_, err := executeCommand(rootCmd, "config", "profiles", "create", "new-profile",
+		"--api-url", "https://new.example.com", "--auth-token", "new-token", "--dataset", "my-dataset")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	service, err := NewService()
+	if err != nil {
+		t.Fatalf("Failed to create service: %v", err)
+	}
+
+	profiles, err := service.GetProfiles()
+	if err != nil {
+		t.Fatalf("Failed to get profiles: %v", err)
+	}
+
+	if len(profiles) != 1 {
+		t.Fatalf("Expected 1 profile, got %d", len(profiles))
+	}
+
+	if profiles[0].Configuration.Dataset != "my-dataset" {
+		t.Errorf("Expected dataset my-dataset, got %s", profiles[0].Configuration.Dataset)
+	}
+}
+
+// TestUpdateProfileCmdWithDataset tests profile update with --dataset
+func TestUpdateProfileCmdWithDataset(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "test1",
+			Configuration: Configuration{
+				ApiUrl:    "https://test1.example.com",
+				AuthToken: "token1",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	_, err := executeCommand(rootCmd, "config", "profiles", "update", "test1", "--dataset", "updated-dataset")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	service, err := NewService()
+	if err != nil {
+		t.Fatalf("Failed to create service: %v", err)
+	}
+
+	profiles, err := service.GetProfiles()
+	if err != nil {
+		t.Fatalf("Failed to get profiles: %v", err)
+	}
+
+	if profiles[0].Configuration.Dataset != "updated-dataset" {
+		t.Errorf("Expected dataset updated-dataset, got %s", profiles[0].Configuration.Dataset)
+	}
+
+	// Verify other fields were not changed
+	if profiles[0].Configuration.ApiUrl != "https://test1.example.com" {
+		t.Errorf("Expected API URL to remain unchanged, got %s", profiles[0].Configuration.ApiUrl)
 	}
 }
 

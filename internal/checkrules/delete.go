@@ -51,7 +51,7 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		return err
 	}
 
-	err = apiClient.DeleteCheckRule(ctx, id, client.DatasetPtr(flags.Dataset))
+	err = apiClient.DeleteCheckRule(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "check rule",
