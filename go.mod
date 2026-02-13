@@ -6,7 +6,6 @@ require (
 	github.com/dash0hq/dash0-api-client-go v1.3.0
 	github.com/fatih/color v1.18.0
 	github.com/google/uuid v1.6.0
-	github.com/rs/zerolog v1.32.0
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/collector/pdata v1.51.0

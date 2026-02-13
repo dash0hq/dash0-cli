@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dash0hq/dash0-cli/internal/config"
-	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/spf13/cobra"
 )
 
@@ -93,7 +92,6 @@ func newInstantQueryCmd() *cobra.Command {
 			apiURL.RawQuery = query.Encode()
 
 			// Create the HTTP request
-			log.Logger.Debug().Str("url", apiURL.String()).Msg("Making API request")
 			req, err := http.NewRequest("GET", apiURL.String(), nil)
 			if err != nil {
 				return fmt.Errorf("failed to create HTTP request: %w", err)

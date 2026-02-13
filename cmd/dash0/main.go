@@ -10,7 +10,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
-	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/dash0hq/dash0-cli/internal/logs"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
@@ -39,9 +38,6 @@ var rootCmd = &cobra.Command{
 func init() {
 	// Propagate build version to shared package
 	versionpkg.Version = version
-
-	// Setup logging
-	log.SetupLogger()
 
 	// Register subcommands
 	rootCmd.AddCommand(apply.NewApplyCmd())
