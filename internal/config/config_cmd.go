@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/dash0hq/dash0-cli/internal"
-	"github.com/dash0hq/dash0-cli/internal/log"
 	"github.com/spf13/cobra"
 )
 
@@ -162,7 +161,6 @@ func newCreateProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to add profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Profile added successfully")
 			fmt.Printf("Profile '%s' added successfully\n", name)
 
 			return nil
@@ -215,7 +213,6 @@ func newUpdateProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to update profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Profile updated successfully")
 			fmt.Printf("Profile '%s' updated successfully\n", name)
 
 			return nil
@@ -345,7 +342,6 @@ func newDeleteProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to remove profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Profile deleted successfully")
 			fmt.Printf("Profile '%s' deleted successfully\n", name)
 
 			return nil
@@ -374,7 +370,6 @@ func newSelectProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to select profile: %w", err)
 			}
 
-			log.Logger.Info().Str("name", name).Msg("Profile selected successfully")
 			fmt.Printf("Profile '%s' is now active\n", name)
 
 			return nil
