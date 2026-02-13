@@ -36,7 +36,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	iter := apiClient.ListCheckRulesIter(ctx, client.DatasetPtr(flags.Dataset))
+	iter := apiClient.ListCheckRulesIter(ctx, client.ResolveDataset(ctx, flags.Dataset))
 
 	var rules []*dash0api.PrometheusAlertRuleApiListItem
 	count := 0

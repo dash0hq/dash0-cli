@@ -51,7 +51,7 @@ func newSendCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&flags.OtlpUrl, "otlp-url", "", "OTLP endpoint URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
-	cmd.Flags().StringVarP(&flags.Dataset, "dataset", "d", "", "Dataset name")
+	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset name")
 	cmd.Flags().StringArrayVar(&flags.ResourceAttributes, "resource-attribute", nil, "Resource attribute as 'key=value' (repeatable)")
 	cmd.Flags().StringArrayVar(&flags.LogAttributes, "log-attribute", nil, "Log record attribute as 'key=value' (repeatable)")
 	cmd.Flags().IntVar(&flags.SeverityNumber, "severity-number", 0, "Severity number (1-24, see OpenTelemetry specification); this is used in Dash0 to caulculate the severity range and is separate from severity-text")
@@ -191,7 +191,7 @@ func runCreate(cmd *cobra.Command, body string, flags *createFlags) error {
 	}
 	defer apiClient.Close(ctx)
 
-	if err := apiClient.SendLogs(ctx, logs, client.DatasetPtr(flags.Dataset)); err != nil {
+	if err := apiClient.SendLogs(ctx, logs, client.ResolveDataset(ctx, flags.Dataset)); err != nil {
 		return fmt.Errorf("failed to send log record: %w", err)
 	}
 

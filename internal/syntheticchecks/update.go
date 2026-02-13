@@ -52,7 +52,7 @@ func runUpdate(ctx context.Context, id string, flags *asset.FileInputFlags) erro
 		return err
 	}
 
-	result, err := apiClient.UpdateSyntheticCheck(ctx, id, &check, client.DatasetPtr(flags.Dataset))
+	result, err := apiClient.UpdateSyntheticCheck(ctx, id, &check, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",

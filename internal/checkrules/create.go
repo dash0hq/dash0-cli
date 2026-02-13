@@ -63,7 +63,7 @@ func createFromCheckRule(ctx context.Context, flags *asset.FileInputFlags, data 
 		return err
 	}
 
-	result, importErr := asset.ImportCheckRule(ctx, apiClient, &rule, client.DatasetPtr(flags.Dataset))
+	result, importErr := asset.ImportCheckRule(ctx, apiClient, &rule, client.ResolveDataset(ctx, flags.Dataset))
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "check rule",
@@ -91,7 +91,7 @@ func createFromPrometheusRule(ctx context.Context, flags *asset.FileInputFlags, 
 		return err
 	}
 
-	results, importErr := asset.ImportPrometheusRule(ctx, apiClient, &promRule, client.DatasetPtr(flags.Dataset))
+	results, importErr := asset.ImportPrometheusRule(ctx, apiClient, &promRule, client.ResolveDataset(ctx, flags.Dataset))
 	for _, r := range results {
 		fmt.Printf("Check rule %q %s successfully\n", r.Name, r.Action)
 	}

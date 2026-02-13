@@ -44,7 +44,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return err
 	}
 
-	result, importErr := asset.ImportDashboard(ctx, apiClient, &dashboard, client.DatasetPtr(flags.Dataset))
+	result, importErr := asset.ImportDashboard(ctx, apiClient, &dashboard, client.ResolveDataset(ctx, flags.Dataset))
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "dashboard",

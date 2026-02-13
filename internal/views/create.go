@@ -44,7 +44,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return err
 	}
 
-	result, importErr := asset.ImportView(ctx, apiClient, &view, client.DatasetPtr(flags.Dataset))
+	result, importErr := asset.ImportView(ctx, apiClient, &view, client.ResolveDataset(ctx, flags.Dataset))
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "view",

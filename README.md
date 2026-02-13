@@ -53,9 +53,9 @@ $ dash0 config profiles create prod \
 Profile "prod" added successfully
 
 $ dash0 config profiles list
-  NAME  API URL                              OTLP URL                                    AUTH TOKEN
-* dev   https://api.us-west-2.aws.dash0.com  https://ingress.us-west-2.aws.dash0.com     ...ULSzVkM
-  prod  https://api.eu-west-1.aws.dash0.com  https://ingress.eu-west-1.aws.dash0.com     ...uth_yyy
+  NAME  API URL                              OTLP URL                                    DATASET  AUTH TOKEN
+* dev   https://api.us-west-2.aws.dash0.com  https://ingress.us-west-2.aws.dash0.com     default  ...ULSzVkM
+  prod  https://api.eu-west-1.aws.dash0.com  https://ingress.eu-west-1.aws.dash0.com     default  ...uth_yyy
 
 $ dash0 config profiles update prod --api-url https://api.us-east-1.aws.dash0.com
 Profile 'prod' updated successfully
@@ -67,6 +67,7 @@ $ dash0 config show
 Profile:    prod
 API URL:    https://api.eu-west-1.aws.dash0.com
 OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
+Dataset:    default
 Auth Token: ...uth_yyy
 ```
 
@@ -74,29 +75,34 @@ The last seven digits of the auth token are displayed, matching the format shown
 
 A profile requires `--auth-token` and at least one of `--api-url` or `--otlp-url`. Currently only HTTP OTLP endpoints are supported.
 
-The API URL, OTLP URL and the authentication tokens can be overridden using the `DASH0_API_URL`, `DASH0_OTLP_URL` and `DASH0_AUTH_TOKEN` environment variables, respectively:
-
 ```bash
 $ DASH0_API_URL='http://test' dash0 config show
 Profile:    dev
 API URL:    http://test    (from DASH0_API_URL environment variable)
 OTLP URL:   https://ingress.us-west-2.aws.dash0.com
+Dataset:    default
 Auth Token: ...ULSzVkM
 
-$ DASH0_OTLP_URL='http://test' dash0 config show
-Profile:    dev
-API URL:    https://api.us-west-2.aws.dash0.com
-OTLP URL:   http://test    (from DASH0_OTLP_URL environment variable)
-Auth Token: ...ULSzVkM
-
-$ DASH0_AUTH_TOKEN='my_auth_test_token' dash0 config show
+$ DASH0_DATASET='production' dash0 config show
 Profile:    dev
 API URL:    https://api.us-west-2.aws.dash0.com
 OTLP URL:   https://ingress.us-west-2.aws.dash0.com
-Auth Token: ...t_token    (from DASH0_AUTH_TOKEN environment variable)
+Dataset:    production    (from DASH0_DATASET environment variable)
+Auth Token: ...ULSzVkM
 ```
 
 You can find the API endpoint for your organization on the [Endpoints](https://app.dash0.com/settings/endpoints) page, under the `API` entry, and the OTLP HTTP endpoint under the `OTLP via HTTP` entry. (Only HTTP OTLP endpoints are supported.)
+
+The API URL, OTLP URL, dataset and authentication token can be overridden using environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `DASH0_API_URL` | Override the API URL from the active profile |
+| `DASH0_OTLP_URL` | Override the OTLP URL from the active profile |
+| `DASH0_AUTH_TOKEN` | Override the auth token from the active profile |
+| `DASH0_DATASET` | Override the dataset from the active profile |
+| `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
+
 
 ### Applying Assets
 
@@ -271,7 +277,7 @@ Requires an OTLP URL configured in the active profile, or via the `--otlp-url` f
 | `--api-url` | | Override API URL from profile |
 | `--otlp-url` | | Override OTLP URL from profile |
 | `--auth-token` | | Override auth token from profile |
-| `--dataset` | `-d` | Specify dataset to operate on |
+| `--dataset` | | Override dataset from profile |
 | `--file` | `-f` | Input file path (use `-` for stdin) |
 | `--output` | `-o` | Output format: `table`, `wide`, `json`, `yaml` |
 

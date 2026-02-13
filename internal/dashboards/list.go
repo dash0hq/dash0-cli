@@ -44,8 +44,10 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
 	// Fetch dashboards using iterator
-	iter := apiClient.ListDashboardsIter(ctx, client.DatasetPtr(flags.Dataset))
+	iter := apiClient.ListDashboardsIter(ctx, dataset)
 
 	var listItems []*dash0api.DashboardApiListItem
 	count := 0
@@ -78,7 +80,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		// Fetch full dashboard details to get display names
 		dashboards := make([]dashboardListItem, 0, len(listItems))
 		for _, item := range listItems {
-			displayName := getDisplayName(ctx, apiClient, item.Id, flags.Dataset)
+			displayName := getDisplayName(ctx, apiClient, item.Id, dataset)
 			dashboards = append(dashboards, dashboardListItem{
 				Id:          item.Id,
 				DisplayName: displayName,
@@ -91,8 +93,8 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 }
 
 // getDisplayName fetches the full dashboard and extracts spec.display.name
-func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, dataset string) string {
-	dashboard, err := apiClient.GetDashboard(ctx, id, client.DatasetPtr(dataset))
+func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, dataset *string) string {
+	dashboard, err := apiClient.GetDashboard(ctx, id, dataset)
 	if err != nil {
 		return "" // Fall back to empty if we can't fetch
 	}

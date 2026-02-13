@@ -44,7 +44,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return err
 	}
 
-	result, importErr := asset.ImportSyntheticCheck(ctx, apiClient, &check, client.DatasetPtr(flags.Dataset))
+	result, importErr := asset.ImportSyntheticCheck(ctx, apiClient, &check, client.ResolveDataset(ctx, flags.Dataset))
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "synthetic check",

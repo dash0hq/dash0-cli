@@ -35,7 +35,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return err
 	}
 
-	check, err := apiClient.GetSyntheticCheck(ctx, id, client.DatasetPtr(flags.Dataset))
+	check, err := apiClient.GetSyntheticCheck(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",

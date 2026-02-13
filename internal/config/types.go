@@ -5,6 +5,7 @@ type Configuration struct {
 	ApiUrl    string `json:"apiUrl" yaml:"apiUrl"`
 	AuthToken string `json:"authToken" yaml:"authToken"`
 	OtlpUrl   string `json:"otlpUrl,omitempty" yaml:"otlpUrl,omitempty"`
+	Dataset   string `json:"dataset,omitempty" yaml:"dataset,omitempty"`
 }
 
 // Profile represents a configuration profile

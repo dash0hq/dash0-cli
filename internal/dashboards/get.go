@@ -35,7 +35,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return err
 	}
 
-	dashboard, err := apiClient.GetDashboard(ctx, id, client.DatasetPtr(flags.Dataset))
+	dashboard, err := apiClient.GetDashboard(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",

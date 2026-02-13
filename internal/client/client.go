@@ -154,11 +154,3 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 	return err
 }
 
-// DatasetPtr converts a dataset string to a pointer, returning nil for empty strings.
-// This is a helper for API calls that accept optional dataset parameters.
-func DatasetPtr(dataset string) *string {
-	if dataset == "" {
-		return nil
-	}
-	return &dataset
-}

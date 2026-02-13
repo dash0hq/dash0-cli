@@ -36,7 +36,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	iter := apiClient.ListSyntheticChecksIter(ctx, client.DatasetPtr(flags.Dataset))
+	iter := apiClient.ListSyntheticChecksIter(ctx, client.ResolveDataset(ctx, flags.Dataset))
 
 	var checks []*dash0api.SyntheticChecksApiListItem
 	count := 0

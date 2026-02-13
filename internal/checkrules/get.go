@@ -34,7 +34,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return err
 	}
 
-	rule, err := apiClient.GetCheckRule(ctx, id, client.DatasetPtr(flags.Dataset))
+	rule, err := apiClient.GetCheckRule(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "check rule",
