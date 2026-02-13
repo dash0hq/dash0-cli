@@ -9,7 +9,9 @@ import (
 // ImportCheckRule checks existence by rule ID, strips the ID when the asset
 // is not found, and calls the import API.
 func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
-	// Strip origin — the import API manages it server-side.
+	// Strip server-managed fields — the import API manages these and rejects
+	// requests that include them (e.g. dataset).
+	rule.Dataset = nil
 	if rule.Labels != nil {
 		delete(*rule.Labels, "dash0.com/origin")
 	}

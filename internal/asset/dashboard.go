@@ -23,6 +23,9 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	dashboard.Metadata.CreatedAt = nil
 	dashboard.Metadata.UpdatedAt = nil
 	dashboard.Metadata.Version = nil
+	if dashboard.Metadata.Dash0Extensions != nil {
+		dashboard.Metadata.Dash0Extensions.Dataset = nil
+	}
 
 	action := ActionCreated
 	id := ""
