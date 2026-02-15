@@ -153,14 +153,6 @@ func newCreateProfileCmd() *cobra.Command {
 				return err
 			}
 
-			if authToken == "" {
-				return fmt.Errorf("auth-token is required")
-			}
-
-			if apiUrl == "" && otlpUrl == "" {
-				return fmt.Errorf("at least one of api-url or otlp-url is required")
-			}
-
 			profile := Profile{
 				Name: name,
 				Configuration: Configuration{

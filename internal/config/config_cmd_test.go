@@ -200,6 +200,118 @@ func TestShowCmdDatasetEnvVar(t *testing.T) {
 	}
 }
 
+// TestCreateProfileCmdPartialFields tests that profile creation succeeds with any combination of fields
+func TestCreateProfileCmdPartialFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected Configuration
+	}{
+		{
+			name: "auth-token only",
+			args: []string{"--auth-token", "token1"},
+			expected: Configuration{
+				AuthToken: "token1",
+			},
+		},
+		{
+			name: "api-url only",
+			args: []string{"--api-url", "https://api.example.com"},
+			expected: Configuration{
+				ApiUrl: "https://api.example.com",
+			},
+		},
+		{
+			name: "otlp-url only",
+			args: []string{"--otlp-url", "https://otlp.example.com"},
+			expected: Configuration{
+				OtlpUrl: "https://otlp.example.com",
+			},
+		},
+		{
+			name: "dataset only",
+			args: []string{"--dataset", "my-dataset"},
+			expected: Configuration{
+				Dataset: "my-dataset",
+			},
+		},
+		{
+			name: "auth-token and api-url",
+			args: []string{"--auth-token", "token1", "--api-url", "https://api.example.com"},
+			expected: Configuration{
+				AuthToken: "token1",
+				ApiUrl:    "https://api.example.com",
+			},
+		},
+		{
+			name: "auth-token and otlp-url",
+			args: []string{"--auth-token", "token1", "--otlp-url", "https://otlp.example.com"},
+			expected: Configuration{
+				AuthToken: "token1",
+				OtlpUrl:   "https://otlp.example.com",
+			},
+		},
+		{
+			name: "all fields",
+			args: []string{"--auth-token", "token1", "--api-url", "https://api.example.com", "--otlp-url", "https://otlp.example.com", "--dataset", "prod"},
+			expected: Configuration{
+				AuthToken: "token1",
+				ApiUrl:    "https://api.example.com",
+				OtlpUrl:   "https://otlp.example.com",
+				Dataset:   "prod",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_ = setupTestConfigDir(t)
+
+			rootCmd := &cobra.Command{Use: "dash0"}
+			configCmd := NewConfigCmd()
+			rootCmd.AddCommand(configCmd)
+
+			args := append([]string{"config", "profiles", "create", "test-profile"}, tc.args...)
+			output, err := executeCommand(rootCmd, args...)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if !bytes.Contains([]byte(output), []byte("Profile 'test-profile' added successfully")) {
+				t.Errorf("Expected success message, got: %s", output)
+			}
+
+			service, err := NewService()
+			if err != nil {
+				t.Fatalf("Failed to create service: %v", err)
+			}
+
+			profiles, err := service.GetProfiles()
+			if err != nil {
+				t.Fatalf("Failed to get profiles: %v", err)
+			}
+
+			if len(profiles) != 1 {
+				t.Fatalf("Expected 1 profile, got %d", len(profiles))
+			}
+
+			cfg := profiles[0].Configuration
+			if cfg.ApiUrl != tc.expected.ApiUrl {
+				t.Errorf("Expected ApiUrl %q, got %q", tc.expected.ApiUrl, cfg.ApiUrl)
+			}
+			if cfg.AuthToken != tc.expected.AuthToken {
+				t.Errorf("Expected AuthToken %q, got %q", tc.expected.AuthToken, cfg.AuthToken)
+			}
+			if cfg.OtlpUrl != tc.expected.OtlpUrl {
+				t.Errorf("Expected OtlpUrl %q, got %q", tc.expected.OtlpUrl, cfg.OtlpUrl)
+			}
+			if cfg.Dataset != tc.expected.Dataset {
+				t.Errorf("Expected Dataset %q, got %q", tc.expected.Dataset, cfg.Dataset)
+			}
+		})
+	}
+}
+
 // TestCreateProfileCmdWithDataset tests profile creation with --dataset
 func TestCreateProfileCmdWithDataset(t *testing.T) {
 	_ = setupTestConfigDir(t)
