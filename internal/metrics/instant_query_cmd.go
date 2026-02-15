@@ -63,6 +63,11 @@ func newInstantQueryCmd() *cobra.Command {
 			apiUrl = cfg.ApiUrl
 			authToken = cfg.AuthToken
 
+			// Resolve dataset from config if not provided via flag
+			if dataset == "" {
+				dataset = cfg.Dataset
+			}
+
 			// Validate required parameters
 			if queryExpr == "" {
 				return fmt.Errorf("query expression is required")
@@ -86,7 +91,7 @@ func newInstantQueryCmd() *cobra.Command {
 			query := url.Values{}
 			query.Set("query", queryExpr)
 			query.Set("time", queryTime)
-			if dataset != "" {
+			if dataset != "" && dataset != "default" {
 				query.Set("dataset", dataset)
 			}
 			apiURL.RawQuery = query.Encode()

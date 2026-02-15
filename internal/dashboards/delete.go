@@ -52,7 +52,7 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		return err
 	}
 
-	err = apiClient.DeleteDashboard(ctx, id, client.DatasetPtr(flags.Dataset))
+	err = apiClient.DeleteDashboard(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",

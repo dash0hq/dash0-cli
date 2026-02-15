@@ -51,6 +51,7 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	envApiUrl := os.Getenv("DASH0_API_URL")
 	envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
 	envOtlpUrl := os.Getenv("DASH0_OTLP_URL")
+	envDataset := os.Getenv("DASH0_DATASET")
 
 	// If auth token and at least one URL are set via env vars, use them directly without requiring a profile
 	if envAuthToken != "" && (envApiUrl != "" || envOtlpUrl != "") {
@@ -58,6 +59,7 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 			ApiUrl:    envApiUrl,
 			AuthToken: envAuthToken,
 			OtlpUrl:   envOtlpUrl,
+			Dataset:   envDataset,
 		}, nil
 	}
 
@@ -79,6 +81,9 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 	if envOtlpUrl != "" {
 		activeConfiguration.OtlpUrl = envOtlpUrl
 	}
+	if envDataset != "" {
+		activeConfiguration.Dataset = envDataset
+	}
 
 	return activeConfiguration, nil
 }
@@ -93,19 +98,20 @@ func (s *Service) GetActiveConfiguration() (*Configuration, error) {
 //   - Configuration with all overrides applied
 //   - Error if configuration couldn't be loaded or is invalid
 func ResolveConfiguration(apiUrl, authToken string) (*Configuration, error) {
-	return ResolveConfigurationWithOtlp(apiUrl, authToken, "")
+	return ResolveConfigurationWithOtlp(apiUrl, authToken, "", "")
 }
 
-// ResolveConfigurationWithOtlp loads configuration with override handling including OTLP URL.
+// ResolveConfigurationWithOtlp loads configuration with override handling including OTLP URL and dataset.
 // Parameters:
 //   - apiUrl: Command-line flag for API URL (empty if not provided)
 //   - authToken: Command-line flag for auth token (empty if not provided)
 //   - otlpUrl: Command-line flag for OTLP URL (empty if not provided)
+//   - dataset: Command-line flag for dataset (empty if not provided)
 //
 // Returns:
 //   - Configuration with all overrides applied
 //   - Error if configuration couldn't be loaded or is invalid
-func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configuration, error) {
+func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl, dataset string) (*Configuration, error) {
 	// Create result configuration starting with an empty config
 	result := &Configuration{}
 
@@ -123,6 +129,7 @@ func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configura
 			result.ApiUrl = cfg.ApiUrl
 			result.AuthToken = cfg.AuthToken
 			result.OtlpUrl = cfg.OtlpUrl
+			result.Dataset = cfg.Dataset
 		}
 	}
 
@@ -137,6 +144,9 @@ func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configura
 	if envOtlpUrl := os.Getenv("DASH0_OTLP_URL"); envOtlpUrl != "" && result.OtlpUrl == "" {
 		result.OtlpUrl = envOtlpUrl
 	}
+	if envDataset := os.Getenv("DASH0_DATASET"); envDataset != "" && result.Dataset == "" {
+		result.Dataset = envDataset
+	}
 
 	// Override with command-line flags if provided (only if non-empty)
 	if apiUrl != "" {
@@ -149,6 +159,10 @@ func ResolveConfigurationWithOtlp(apiUrl, authToken, otlpUrl string) (*Configura
 
 	if otlpUrl != "" {
 		result.OtlpUrl = otlpUrl
+	}
+
+	if dataset != "" {
+		result.Dataset = dataset
 	}
 
 	// If we had a config error and don't have complete configuration from overrides, return the error

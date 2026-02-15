@@ -83,7 +83,7 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate the file without applying changes")
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
-	cmd.Flags().StringVarP(&flags.Dataset, "dataset", "d", "", "Dataset to operate on")
+	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
 
 	return cmd
 }
@@ -183,10 +183,12 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return err
 	}
 
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
 	// Apply each document
 	var applied []string
 	for _, doc := range documents {
-		results, applyErr := applyDocument(ctx, apiClient, doc, flags.Dataset)
+		results, applyErr := applyDocument(ctx, apiClient, doc, dataset)
 		for _, r := range results {
 			displayKind := asset.KindDisplayName(r.kind)
 			label := formatNameAndId(r.name, r.id)
@@ -504,16 +506,14 @@ func normalizeKind(kind string) string {
 	return k
 }
 
-func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset string) ([]applyResult, error) {
-	datasetPtr := client.DatasetPtr(dataset)
-
+func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
 	switch normalizeKind(doc.kind) {
 	case "dashboard":
 		var dashboard dash0api.DashboardDefinition
 		if err := sigsyaml.Unmarshal(doc.raw, &dashboard); err != nil {
 			return nil, fmt.Errorf("failed to parse Dashboard: %w", err)
 		}
-		result, err := asset.ImportDashboard(ctx, apiClient, &dashboard, datasetPtr)
+		result, err := asset.ImportDashboard(ctx, apiClient, &dashboard, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dashboard",
@@ -527,7 +527,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		if err := sigsyaml.Unmarshal(doc.raw, &rule); err != nil {
 			return nil, fmt.Errorf("failed to parse CheckRule: %w", err)
 		}
-		result, err := asset.ImportCheckRule(ctx, apiClient, &rule, datasetPtr)
+		result, err := asset.ImportCheckRule(ctx, apiClient, &rule, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "check rule",
@@ -541,14 +541,14 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		if err := sigsyaml.Unmarshal(doc.raw, &promRule); err != nil {
 			return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
 		}
-		return applyPrometheusRule(ctx, apiClient, &promRule, datasetPtr)
+		return applyPrometheusRule(ctx, apiClient, &promRule, dataset)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
 		if err := sigsyaml.Unmarshal(doc.raw, &check); err != nil {
 			return nil, fmt.Errorf("failed to parse SyntheticCheck: %w", err)
 		}
-		result, err := asset.ImportSyntheticCheck(ctx, apiClient, &check, datasetPtr)
+		result, err := asset.ImportSyntheticCheck(ctx, apiClient, &check, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "synthetic check",
@@ -562,7 +562,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		if err := sigsyaml.Unmarshal(doc.raw, &view); err != nil {
 			return nil, fmt.Errorf("failed to parse View: %w", err)
 		}
-		result, err := asset.ImportView(ctx, apiClient, &view, datasetPtr)
+		result, err := asset.ImportView(ctx, apiClient, &view, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "view",
@@ -579,8 +579,8 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 // applyPrometheusRule extracts rules from a PrometheusRule CRD and applies each as a CheckRule.
 // Returns one applyResult per rule, each with its own action. On partial failure,
 // returns the successfully applied results along with the error.
-func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRule *asset.PrometheusRule, datasetPtr *string) ([]applyResult, error) {
-	importResults, err := asset.ImportPrometheusRule(ctx, apiClient, promRule, datasetPtr)
+func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRule *asset.PrometheusRule, dataset *string) ([]applyResult, error) {
+	importResults, err := asset.ImportPrometheusRule(ctx, apiClient, promRule, dataset)
 
 	var results []applyResult
 	for _, r := range importResults {

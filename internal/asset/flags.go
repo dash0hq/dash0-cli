@@ -14,7 +14,7 @@ type CommonFlags struct {
 func RegisterCommonFlags(cmd *cobra.Command, flags *CommonFlags) {
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
-	cmd.Flags().StringVarP(&flags.Dataset, "dataset", "d", "", "Dataset to operate on")
+	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
 	cmd.Flags().StringVarP(&flags.Output, "output", "o", "table", "Output format: table, json, yaml, wide")
 }
 
