@@ -1,0 +1,146 @@
+name: 'Setup Dash0 CLI'
+description: 'Install and cache the Dash0 CLI'
+author: 'Dash0'
+
+branding:
+  icon: 'package'
+  color: 'orange'
+
+inputs:
+  version:
+    description: 'Dash0 CLI version to install (e.g., "1.0.0" or omit for latest)'
+    required: false
+    default: ''
+
+  cache:
+    description: 'Enable caching of Dash0 CLI binary'
+    required: false
+    default: 'true'
+
+  api-url:
+    description: 'Dash0 API URL (e.g., "https://api.us-west-2.aws.dash0.com"). Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.'
+    required: false
+    default: ''
+
+  otlp-url:
+    description: 'Dash0 OTLP HTTP endpoint URL (e.g., "https://ingress.us-west-2.aws.dash0.com"). Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http.'
+    required: false
+    default: ''
+
+  auth-token:
+    description: 'Dash0 auth token (e.g., "auth_xxx"). Get one from https://app.dash0.com/goto/settings/auth-tokens. You should store this in a GitHub secret.'
+    required: false
+    default: ''
+
+  dataset:
+    description: 'Dash0 dataset name (e.g., "production"). Defaults to "default" if omitted.'
+    required: false
+    default: ''
+
+outputs:
+  version:
+    description: 'Installed Dash0 CLI version, without the `v` prefix (e.g., "1.0.0")'
+    value: ${{ steps.resolve-version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve Dash0 CLI version
+      id: resolve-version
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+
+        if [ -z "$VERSION" ]; then
+          echo "Fetching latest Dash0 CLI version..."
+          VERSION=$(git ls-remote --tags --sort=-version:refname https://github.com/dash0hq/dash0-cli.git | grep -v '\^{}' | head -1 | cut -f2 | sed 's|refs/tags/v||')
+
+          if [ -z "$VERSION" ]; then
+            echo "Error: Could not determine latest Dash0 CLI version"
+            exit 1
+          fi
+
+          echo "Latest version: $VERSION"
+        else
+          if [[ "$VERSION" =~ ^v ]]; then
+            # Strip off leading 'v' if present
+            VERSION="${VERSION#v}"
+          fi
+          echo "Using specified version: $VERSION"
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create install directory
+      shell: bash
+      run: mkdir -p ~/.dash0/bin
+
+    - name: Restore Dash0 CLI from cache
+      if: inputs.cache == 'true'
+      id: cache-dash0-cli
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.dash0/bin/dash0
+        key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
+
+    - name: Install Dash0 (Linux amd64)
+      if: runner.os == 'Linux' && runner.arch == 'X64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        VERSION="${{ steps.resolve-version.outputs.version }}"
+        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_amd64.tar.gz"
+
+        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
+        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
+
+    - name: Install Dash0 (Linux arm64)
+      if: runner.os == 'Linux' && runner.arch == 'ARM64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        VERSION="${{ steps.resolve-version.outputs.version }}"
+        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_arm64.tar.gz"
+
+        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
+        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
+
+    - name: Fail on unsupported platform
+      if: runner.os != 'Linux' || (runner.arch != 'X64' && runner.arch != 'ARM64')
+      shell: bash
+      run: |
+        echo "Error: Unsupported platform ${RUNNER_OS} ${RUNNER_ARCH}. Only Linux (x64, arm64) is supported."
+        exit 1
+
+    - name: Add Dash0 CLI to PATH
+      shell: bash
+      run: |
+        echo "$HOME/.dash0/bin" >> $GITHUB_PATH
+
+    - name: Create Dash0 profile
+      if: inputs.api-url != '' || inputs.auth-token != '' || inputs.otlp-url != '' || inputs.dataset != ''
+      shell: bash
+      env:
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_OTLP_URL: ${{ inputs.otlp-url }}
+        INPUT_AUTH_TOKEN: ${{ inputs.auth-token }}
+        INPUT_DATASET: ${{ inputs.dataset }}
+      run: |
+        ARGS=()
+        [ -n "$INPUT_API_URL" ] && ARGS+=(--api-url "$INPUT_API_URL")
+        [ -n "$INPUT_OTLP_URL" ] && ARGS+=(--otlp-url "$INPUT_OTLP_URL")
+        [ -n "$INPUT_AUTH_TOKEN" ] && ARGS+=(--auth-token "$INPUT_AUTH_TOKEN")
+        [ -n "$INPUT_DATASET" ] && ARGS+=(--dataset "$INPUT_DATASET")
+        dash0 config profiles create default "${ARGS[@]}"
+        dash0 config profiles select default
+
+    - name: Verify installation
+      shell: bash
+      run: |
+        dash0 version
+        dash0 config show
+
+    - name: Save Dash0 CLI to cache
+      if: inputs.cache == 'true' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.dash0/bin/dash0
+        key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}

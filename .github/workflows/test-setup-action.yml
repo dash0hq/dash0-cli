@@ -1,0 +1,260 @@
+name: Test setup action
+
+on:
+  push:
+    branches: ['*']
+  workflow_dispatch:
+
+jobs:
+  test-latest-version:
+    name: 'Install latest version'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        id: setup
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+
+      - name: Verify binary is on PATH
+        run: which dash0
+
+      - name: Verify version output is set
+        run: |
+          VERSION="${{ steps.setup.outputs.version }}"
+          echo "Resolved version: $VERSION"
+          [ -n "$VERSION" ] || { echo "Error: version output is empty"; exit 1; }
+
+      - name: Verify version matches
+        run: dash0 version | grep "${{ steps.setup.outputs.version }}"
+
+  test-pinned-version:
+    name: 'Install pinned version'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        id: setup
+        uses: ./.github/actions/setup
+        with:
+          version: '1.0.0'
+          cache: 'false'
+
+      - name: Verify pinned version
+        run: |
+          dash0 version | grep '1.0.0'
+          [ "${{ steps.setup.outputs.version }}" = "1.0.0" ]
+
+  test-pinned-version-v-prefix:
+    name: 'Install pinned version (v prefix)'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        id: setup
+        uses: ./.github/actions/setup
+        with:
+          version: 'v1.0.0'
+          cache: 'false'
+
+      - name: Verify v prefix is stripped
+        run: |
+          dash0 version | grep '1.0.0'
+          [ "${{ steps.setup.outputs.version }}" = "1.0.0" ]
+
+  test-profile-all-fields:
+    name: 'Profile: all fields'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          api-url: 'https://api.example.com'
+          otlp-url: 'https://ingress.example.com'
+          auth-token: 'auth_test1234567'
+          dataset: 'ci-test'
+          cache: 'false'
+
+      - name: Verify all fields are set
+        run: |
+          dash0 config show | grep 'https://api.example.com'
+          dash0 config show | grep 'https://ingress.example.com'
+          dash0 config show | grep 'ci-test'
+          dash0 config show | grep '1234567'
+
+  test-profile-auth-token-only:
+    name: 'Profile: auth-token only'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          auth-token: 'auth_onlytoken7'
+          cache: 'false'
+
+      - name: Verify auth-token set, others not set
+        run: |
+          dash0 config show | grep 'lytoken7'
+          dash0 config show | grep 'API URL:    (not set)'
+          dash0 config show | grep 'OTLP URL:   (not set)'
+          dash0 config show | grep 'Dataset:    default'
+
+  test-profile-api-url-only:
+    name: 'Profile: api-url only'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          api-url: 'https://api.only.example.com'
+          cache: 'false'
+
+      - name: Verify api-url set, others not set
+        run: |
+          dash0 config show | grep 'https://api.only.example.com'
+          dash0 config show | grep 'OTLP URL:   (not set)'
+          dash0 config show | grep 'Auth Token: (not set)'
+          dash0 config show | grep 'Dataset:    default'
+
+  test-profile-otlp-url-only:
+    name: 'Profile: otlp-url only'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          otlp-url: 'https://ingress.only.example.com'
+          cache: 'false'
+
+      - name: Verify otlp-url set, others not set
+        run: |
+          dash0 config show | grep 'https://ingress.only.example.com'
+          dash0 config show | grep 'API URL:    (not set)'
+          dash0 config show | grep 'Auth Token: (not set)'
+          dash0 config show | grep 'Dataset:    default'
+
+  test-profile-dataset-only:
+    name: 'Profile: dataset only'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          dataset: 'my-dataset'
+          cache: 'false'
+
+      - name: Verify dataset set, others not set
+        run: |
+          dash0 config show | grep 'Dataset:    my-dataset'
+          dash0 config show | grep 'API URL:    (not set)'
+          dash0 config show | grep 'OTLP URL:   (not set)'
+          dash0 config show | grep 'Auth Token: (not set)'
+
+  test-profile-auth-token-and-api-url:
+    name: 'Profile: auth-token + api-url'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          auth-token: 'auth_combo1token'
+          api-url: 'https://api.combo1.example.com'
+          cache: 'false'
+
+      - name: Verify auth-token and api-url set, others not set
+        run: |
+          dash0 config show | grep '1token'
+          dash0 config show | grep 'https://api.combo1.example.com'
+          dash0 config show | grep 'OTLP URL:   (not set)'
+          dash0 config show | grep 'Dataset:    default'
+
+  test-profile-auth-token-and-otlp-url:
+    name: 'Profile: auth-token + otlp-url'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          auth-token: 'auth_combo2token'
+          otlp-url: 'https://ingress.combo2.example.com'
+          cache: 'false'
+
+      - name: Verify auth-token and otlp-url set, others not set
+        run: |
+          dash0 config show | grep '2token'
+          dash0 config show | grep 'https://ingress.combo2.example.com'
+          dash0 config show | grep 'API URL:    (not set)'
+          dash0 config show | grep 'Dataset:    default'
+
+  test-no-profile:
+    name: 'No profile when no config inputs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI without config
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+
+      - name: Verify no profile was created
+        run: |
+          OUTPUT=$(dash0 config profiles list 2>&1 || true)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -i 'no profiles'
+
+  test-cache:
+    name: 'Binary caching'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: First install (populates cache)
+        uses: ./.github/actions/setup
+        with:
+          version: '1.0.0'
+
+      - name: Remove binary to prove cache works
+        run: rm ~/.dash0/bin/dash0
+
+      - name: Second install (should restore from cache)
+        uses: ./.github/actions/setup
+        with:
+          version: '1.0.0'
+
+      - name: Verify binary was restored
+        run: dash0 version | grep '1.0.0'
+
+  test-arm64:
+    name: 'Install on arm64'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+
+      - name: Verify binary runs on arm64
+        run: |
+          dash0 version
+          file ~/.dash0/bin/dash0 | grep 'aarch64\|ARM'

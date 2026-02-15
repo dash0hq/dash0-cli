@@ -13,7 +13,30 @@ brew install dash0hq/dash0-cli/dash0
 
 ### GitHub Releases
 
-Download pre-built binaries for your platform from the [releases page](https://github.com/dash0hq/dash0-cli/releases). Archives are available for Linux, macOS and Windows across multiple architectures.
+Download pre-built binaries for your platform from the [releases page](https://github.com/dash0hq/dash0-cli/releases).
+Archives are available for Linux, macOS and Windows across multiple architectures.
+
+### GitHub Actions
+
+Use the `dash0` CLI in your CI/CD workflows with the [setup](.github/actions/setup/action.yaml) action:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+
+  - name: Setup Dash0 CLI
+    uses: dash0hq/dash0-cli/.github/actions/setup@main  # You can use any git ref: @main, @v1.0.0, or @commit-sha
+    # with:
+    #   version: '1.0.0'
+
+  - name: List dashboards
+    env:
+      DASH0_API_URL: ... # Find this at https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http
+      DASH0_OTLP_URL: ... # Find this https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http
+      DASH0_AUTH_TOKEN: ... # Get one from https://app.dash0.com/goto/settings/auth-tokens?auth_token_id=39d58aa9-b64e-464c-a675-cc3923085d6c ; keep the auth token in a GitHub secret!
+      DASH0_DATASET: my-dataset # Leave empty for the `default` dataset
+    run: dash0 dashboards list
+```
 
 ### Docker
 
@@ -73,7 +96,9 @@ Auth Token: ...uth_yyy
 
 The last seven digits of the auth token are displayed, matching the format shown in Dash0 as the `dash0.auth.token` attribute.
 
-A profile requires `--auth-token` and at least one of `--api-url` or `--otlp-url`. Currently only HTTP OTLP endpoints are supported.
+All profile fields are optional at creation time — you can provide any combination of `--api-url`, `--otlp-url`, `--auth-token`, and `--dataset`.
+Missing values can be supplied later via `config profiles update` or overridden at runtime with [environment variables or CLI flags](#common-settings).
+Currently only HTTP OTLP endpoints are supported.
 
 ```bash
 $ DASH0_API_URL='http://test' dash0 config show
@@ -91,22 +116,16 @@ Dataset:    production    (from DASH0_DATASET environment variable)
 Auth Token: ...ULSzVkM
 ```
 
-You can find the API endpoint for your organization on the [Endpoints](https://app.dash0.com/settings/endpoints) page, under the `API` entry, and the OTLP HTTP endpoint under the `OTLP via HTTP` entry. (Only HTTP OTLP endpoints are supported.)
+You can find the API endpoint for your organization on the [Endpoints](https://app.dash0.com/settings/endpoints) page, under the `API` entry, and the OTLP HTTP endpoint under the `OTLP via HTTP` entry.
+(Only HTTP OTLP endpoints are supported.)
 
-The API URL, OTLP URL, dataset and authentication token can be overridden using environment variables:
-
-| Variable | Description |
-|----------|-------------|
-| `DASH0_API_URL` | Override the API URL from the active profile |
-| `DASH0_OTLP_URL` | Override the OTLP URL from the active profile |
-| `DASH0_AUTH_TOKEN` | Override the auth token from the active profile |
-| `DASH0_DATASET` | Override the dataset from the active profile |
-| `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
+The API URL, OTLP URL, dataset and authentication token can be overridden using environment variables or CLI flags (see [Common Flags](#common-settings)).
 
 
 ### Applying Assets
 
-Apply asset definitions from a file, directory, or stdin. The input may contain multiple YAML documents separated by `---`:
+Apply asset definitions from a file, directory, or stdin.
+The input may contain multiple YAML documents separated by `---`:
 
 ```bash
 $ dash0 apply -f assets.yaml
@@ -128,11 +147,15 @@ Dry run: 1 document(s) validated successfully
   1. Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
 ```
 
-When a directory is specified, all `.yaml` and `.yml` files are discovered recursively. Hidden files and directories (starting with `.`) are skipped. All documents are validated before any are applied. If any discovered document fails validation, no document will be applied.
+When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
+Hidden files and directories (starting with `.`) are skipped.
+All documents are validated before any are applied.
+If any discovered document fails validation, no document will be applied.
 
 Supported asset types: `Dashboard`, `CheckRule` (both the plain Prometheus YAML and the PrometheusRule CRD), `PrometheusRule`, `SyntheticCheck`, `View`
 
-**Note:** In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources". The reason for this is that the word "resource" is overloaded in OpenTelemetry, where it describes "where telemetry comes from".
+**Note:** In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources".
+The reason for this is that the word "resource" is overloaded in OpenTelemetry, where it describes "where telemetry comes from".
 
 ### Dashboards
 
@@ -270,16 +293,17 @@ Log record sent successfully
 
 Requires an OTLP URL configured in the active profile, or via the `--otlp-url` flag or the `DASH0_OTLP_URL` environment variable.
 
-### Common Flags
+### Common settings
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--api-url` | | Override API URL from profile |
-| `--otlp-url` | | Override OTLP URL from profile |
-| `--auth-token` | | Override auth token from profile |
-| `--dataset` | | Override dataset from profile |
-| `--file` | `-f` | Input file path (use `-` for stdin) |
-| `--output` | `-o` | Output format: `table`, `wide`, `json`, `yaml` |
+| Flag | Short | Env Variable | Description |
+|------|-------|--------------|-------------|
+| `--api-url` | | `DASH0_API_URL` | Override API URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http'). |
+| `--otlp-url` | | `DASH0_OTLP_URL` | Override OTLP URL from profile Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
+| `--auth-token` | | `DASH0_AUTH_TOKEN` | Override auth token from profile. Find yours [here](https://app.dash0.com/goto/settings/auth-tokens). |
+| `--dataset` | | `DASH0_DATASET` | Override dataset from profile. Find the available datasets in your organization [here](https://app.dash0.com/goto/settings/datasets). Use the value of `identifier`, not `Name`. |
+| `--file` | `-f` | | Input file path (use `-` for stdin) |
+| `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml` |
+| | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
 
 ### Output Formats
 
@@ -300,7 +324,8 @@ NAME                                      ID                                    
 Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab  default          gitops/prod
 ```
 
-The `wide` format includes the `DATASET` column even though `dash0` operates commands on a single dataset at a time. This makes it easier to merge and compare outputs from commands run against different datasets.
+The `wide` format includes the `DATASET` column even though `dash0` operates commands on a single dataset at a time.
+This makes it easier to merge and compare outputs from commands run against different datasets.
 
 ### Shell Completions
 

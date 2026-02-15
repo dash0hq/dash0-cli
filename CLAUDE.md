@@ -143,6 +143,63 @@ The OpenAPI specification of the Dash0 API is available at `https://api-docs.das
 - When existing tests fail due to outdated fixture data
 - Run `generate_all.sh` periodically to keep fixtures in sync with the actual API
 
+## GitHub Actions
+
+GitHub Actions created around the `dash0` CLI are located under `.github/actions`, each action with a separate folder named after the action itself, e.g., the `Setup` action resides in `.github/actions`.
+
+### Setup Action
+
+The repository ships a composite GitHub Action at `.github/actions/setup/` that installs and configures the Dash0 CLI in CI workflows.
+Its documentation lives in `.github/actions/setup/README.md`.
+
+The action:
+1. Resolves the CLI version (latest tag or user-specified).
+2. Downloads the Linux binary (`amd64` or `arm64`) from GitHub Releases.
+3. Caches the binary with `actions/cache` keyed on OS, arch, and version.
+4. Adds `~/.dash0/bin` to `$GITHUB_PATH`.
+5. Creates a `default` profile via `dash0 config profiles create` when any config input (`api-url`, `otlp-url`, `auth-token`, `dataset`) is provided.
+6. Verifies the installation with `dash0 version` and `dash0 config show`.
+
+### Keeping the action in sync with CLI changes
+
+When modifying the logic of `dash0 config`, ensure that the [setup](.github/actions/setup/action.yaml) GitHub Action is not affected negatively.
+Ensure that the constraints of `dash0 config profiles create` are enforced in the input validation of the setup GitHub action.
+
+### Testing the action
+
+The workflow `.github/workflows/test-setup-action.yml` runs on **every push** (not just changes to the action) because CLI changes — especially to `dash0 config profiles create` — can break the action's profile-creation step.
+The workflow can also be triggered manually via `workflow_dispatch`.
+
+The profile-creation tests mirror the parameter combinations tested in `TestCreateProfileCmdPartialFields` in `internal/config/config_cmd_test.go`.
+Each combination is a separate job that asserts the correct fields are set and the omitted fields show `(not set)` (or `default` for dataset).
+When adding or removing flags from `dash0 config profiles create`, update both the unit test and the workflow.
+
+## README.md
+
+Follow these rules when writing or editing prose in this project.
+
+### Line and Paragraph Structure
+- **One sentence per line** (semantic line breaks). Each sentence starts on its own line; do not wrap mid-sentence.
+- Separate paragraphs with a single blank line.
+- Keep paragraphs between 2 and 5 lines (sentences).
+
+### Section headers
+Seaction headers should be written in sentence case, e.g., "This is an example".
+
+### Links
+- Use inline Markdown links: `[visible text](url)`.
+- Link the most specific relevant term, not generic phrases like "click here" or "this page."
+
+### Code Blocks
+- Fence with triple backticks and a language identifier (e.g., ` ```yaml `).
+- Use code blocks to provide illustrative examples.
+
+### Punctuation and Typography
+- End sentences with full stops.
+- Use the **Oxford comma** (e.g., "error status, latency thresholds, rate limits, and so on").
+- Use curly/typographic quotes in prose (`"..."`, `'...'`); straight quotes are fine inside code blocks.
+- Write numbers as digits and spell out "percent" (e.g., "10 percent", not "10%" or "ten percent").
+
 ## Changelog
 
 This project uses [chloggen](https://github.com/open-telemetry/opentelemetry-go-build-tools/tree/main/chloggen) to manage changelog entries. Each user-facing change gets its own YAML file in `.chloggen/`.
