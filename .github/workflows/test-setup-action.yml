@@ -6,8 +6,48 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Check whether the minimum supported CLI version (1.1.0) has been released.
+  # Jobs that install the CLI depend on this and are skipped until the release exists.
+  # TODO: Remove this gate job and all `needs`/`if` references to it once v1.1.0 has been released.
+  check-min-version-released:
+    name: 'Check if v1.1.0 is released'
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.check.outputs.released }}
+    steps:
+      - name: Check for v1.1.0 tag
+        id: check
+        run: |
+          if git ls-remote --tags https://github.com/dash0hq/dash0-cli.git refs/tags/v1.1.0 | grep -q v1.1.0; then
+            echo "released=true" >> $GITHUB_OUTPUT
+            echo "v1.1.0 is released"
+          else
+            echo "released=false" >> $GITHUB_OUTPUT
+            echo "v1.1.0 is not yet released — dependent jobs will be skipped"
+          fi
+
+  test-rejects-old-version:
+    name: 'Rejects version below minimum'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI at 1.0.0
+        id: setup
+        continue-on-error: true
+        uses: ./.github/actions/setup
+        with:
+          version: '1.0.0'
+          cache: 'false'
+
+      - name: Verify setup failed
+        run: |
+          [ "${{ steps.setup.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.setup.outcome }}"; exit 1; }
+
   test-latest-version:
     name: 'Install latest version'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -32,6 +72,8 @@ jobs:
 
   test-pinned-version:
     name: 'Install pinned version'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -40,16 +82,18 @@ jobs:
         id: setup
         uses: ./.github/actions/setup
         with:
-          version: '1.0.0'
+          version: '1.1.0'
           cache: 'false'
 
       - name: Verify pinned version
         run: |
-          dash0 version | grep '1.0.0'
-          [ "${{ steps.setup.outputs.version }}" = "1.0.0" ]
+          dash0 version | grep '1.1.0'
+          [ "${{ steps.setup.outputs.version }}" = "1.1.0" ]
 
   test-pinned-version-v-prefix:
     name: 'Install pinned version (v prefix)'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -58,16 +102,18 @@ jobs:
         id: setup
         uses: ./.github/actions/setup
         with:
-          version: 'v1.0.0'
+          version: 'v1.1.0'
           cache: 'false'
 
       - name: Verify v prefix is stripped
         run: |
-          dash0 version | grep '1.0.0'
-          [ "${{ steps.setup.outputs.version }}" = "1.0.0" ]
+          dash0 version | grep '1.1.0'
+          [ "${{ steps.setup.outputs.version }}" = "1.1.0" ]
 
   test-profile-all-fields:
     name: 'Profile: all fields'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -90,6 +136,8 @@ jobs:
 
   test-profile-auth-token-only:
     name: 'Profile: auth-token only'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -109,6 +157,8 @@ jobs:
 
   test-profile-api-url-only:
     name: 'Profile: api-url only'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -128,6 +178,8 @@ jobs:
 
   test-profile-otlp-url-only:
     name: 'Profile: otlp-url only'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -147,6 +199,8 @@ jobs:
 
   test-profile-dataset-only:
     name: 'Profile: dataset only'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -166,6 +220,8 @@ jobs:
 
   test-profile-auth-token-and-api-url:
     name: 'Profile: auth-token + api-url'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -186,6 +242,8 @@ jobs:
 
   test-profile-auth-token-and-otlp-url:
     name: 'Profile: auth-token + otlp-url'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -206,6 +264,8 @@ jobs:
 
   test-no-profile:
     name: 'No profile when no config inputs'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -223,28 +283,28 @@ jobs:
 
   test-cache:
     name: 'Binary caching'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: First install (populates cache)
         uses: ./.github/actions/setup
-        with:
-          version: '1.0.0'
 
       - name: Remove binary to prove cache works
         run: rm ~/.dash0/bin/dash0
 
       - name: Second install (should restore from cache)
         uses: ./.github/actions/setup
-        with:
-          version: '1.0.0'
 
       - name: Verify binary was restored
-        run: dash0 version | grep '1.0.0'
+        run: dash0 version
 
   test-arm64:
     name: 'Install on arm64'
+    needs: check-min-version-released
+    if: needs.check-min-version-released.outputs.released == 'true'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

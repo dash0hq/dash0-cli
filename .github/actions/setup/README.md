@@ -1,6 +1,7 @@
 # Setup Dash0 CLI
 
 Install the [Dash0 CLI](https://github.com/dash0hq/dash0-cli) in your GitHub Actions workflows.
+The minimum supported CLI version is 1.1.0.
 
 ## Quick start
 
@@ -19,26 +20,27 @@ steps:
   - run: dash0 dashboards list
 ```
 
-You can use any git ref: `@main`, `@v1.0.0`, or `@<commit-sha>`.
+You can use any git ref: `@main`, `@v1.1.0`, or `@<commit-sha>`.
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `version` | No | latest | Dash0 CLI version to install (e.g., `1.0.0`) |
+| `version` | No | latest | Dash0 CLI version to install (e.g., `1.1.0`). Minimum supported: `1.1.0`. |
 | `cache` | No | `true` | Enable caching of the Dash0 CLI binary |
 | `api-url` | No | | Dash0 API URL. Find yours under [Endpoints](https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http). |
 | `otlp-url` | No | | Dash0 OTLP HTTP endpoint URL. Find yours under [Endpoints](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
 | `auth-token` | No | | Dash0 auth token. Get one from [Auth Tokens](https://app.dash0.com/goto/settings/auth-tokens). Store it in a [GitHub secret](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions). |
-| `dataset` | No | `default` | Dash0 dataset name |
+| `dataset` | No | `default` | Dash0 dataset name. |
 
-When any of these inputs are provided, the action creates a `default` CLI profile so subsequent `dash0` commands use them automatically.
+All profile inputs (`api-url`, `otlp-url`, `auth-token`, `dataset`) are optional and can be provided in any combination.
+When any of them are provided, the action creates a `default` CLI profile so subsequent `dash0` commands use them automatically.
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `version` | Installed Dash0 CLI version (e.g., `v1.0.0`) |
+| `version` | Installed Dash0 CLI version, without the `v` prefix (e.g., `1.1.0`) |
 
 ## Configuration via environment variables
 

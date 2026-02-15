@@ -25,9 +25,9 @@ steps:
   - uses: actions/checkout@v4
 
   - name: Setup Dash0 CLI
-    uses: dash0hq/dash0-cli/.github/actions/setup@main  # You can use any git ref: @main, @v1.0.0, or @commit-sha
+    uses: dash0hq/dash0-cli/.github/actions/setup@main  # You can use any git ref: @main, @v1.1.0, or @commit-sha
     # with:
-    #   version: '1.0.0'
+    #   version: '1.1.0' # 1.1.0 is the earliest supported version
 
   - name: List dashboards
     env:

@@ -8,7 +8,9 @@ branding:
 
 inputs:
   version:
-    description: 'Dash0 CLI version to install (e.g., "1.0.0" or omit for latest)'
+    description: >-
+      'Dash0 CLI version to install (e.g., "1.1.0" or omit for latest).
+      Minimum supported version is 1.1.0.'
     required: false
     default: ''
 
@@ -18,28 +20,37 @@ inputs:
     default: 'true'
 
   api-url:
-    description: 'Dash0 API URL (e.g., "https://api.us-west-2.aws.dash0.com"). Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.'
+    description: >-
+      Dash0 API URL (e.g., "https://api.us-west-2.aws.dash0.com").
+      Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.
     required: false
     default: ''
 
   otlp-url:
-    description: 'Dash0 OTLP HTTP endpoint URL (e.g., "https://ingress.us-west-2.aws.dash0.com"). Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http.'
+    description: >-
+      Dash0 OTLP HTTP endpoint URL (e.g., "https://ingress.us-west-2.aws.dash0.com").
+      Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http.
     required: false
     default: ''
 
   auth-token:
-    description: 'Dash0 auth token (e.g., "auth_xxx"). Get one from https://app.dash0.com/goto/settings/auth-tokens. You should store this in a GitHub secret.'
+    description: >-
+      Dash0 auth token (e.g., "auth_xxx").
+      Get one from https://app.dash0.com/goto/settings/auth-tokens.
+      You should store this in a GitHub secret.
     required: false
     default: ''
 
   dataset:
-    description: 'Dash0 dataset name (e.g., "production"). Defaults to "default" if omitted.'
+    description: >-
+      'Dash0 dataset name (e.g., "production").
+      Defaults to "default" if omitted.'
     required: false
     default: ''
 
 outputs:
   version:
-    description: 'Installed Dash0 CLI version, without the `v` prefix (e.g., "1.0.0")'
+    description: 'Installed Dash0 CLI version, without the `v` prefix (e.g., "1.1.0")'
     value: ${{ steps.resolve-version.outputs.version }}
 
 runs:
@@ -67,6 +78,13 @@ runs:
             VERSION="${VERSION#v}"
           fi
           echo "Using specified version: $VERSION"
+        fi
+
+        # Enforce minimum supported version
+        MIN_SUPPORTED="1.1.0"
+        if ! printf '%s\n%s\n' "$MIN_SUPPORTED" "$VERSION" | sort -V -C; then
+          echo "::error::Dash0 CLI version $VERSION is below the minimum supported version ($MIN_SUPPORTED)."
+          exit 1
         fi
 
         echo "version=$VERSION" >> $GITHUB_OUTPUT

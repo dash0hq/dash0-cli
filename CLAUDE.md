@@ -152,12 +152,14 @@ GitHub Actions created around the `dash0` CLI are located under `.github/actions
 The repository ships a composite GitHub Action at `.github/actions/setup/` that installs and configures the Dash0 CLI in CI workflows.
 Its documentation lives in `.github/actions/setup/README.md`.
 
+The minimum supported CLI version is 1.1.0; the action fails if a lower version is requested.
+
 The action:
-1. Resolves the CLI version (latest tag or user-specified).
+1. Resolves the CLI version (latest tag or user-specified) and enforces the minimum version.
 2. Downloads the Linux binary (`amd64` or `arm64`) from GitHub Releases.
 3. Caches the binary with `actions/cache` keyed on OS, arch, and version.
 4. Adds `~/.dash0/bin` to `$GITHUB_PATH`.
-5. Creates a `default` profile via `dash0 config profiles create` when any config input (`api-url`, `otlp-url`, `auth-token`, `dataset`) is provided.
+5. Creates a `default` profile via `dash0 config profiles create` when any config input (`api-url`, `otlp-url`, `auth-token`, `dataset`) is provided. All profile inputs are optional.
 6. Verifies the installation with `dash0 version` and `dash0 config show`.
 
 ### Keeping the action in sync with CLI changes
@@ -173,6 +175,7 @@ The workflow can also be triggered manually via `workflow_dispatch`.
 The profile-creation tests mirror the parameter combinations tested in `TestCreateProfileCmdPartialFields` in `internal/config/config_cmd_test.go`.
 Each combination is a separate job that asserts the correct fields are set and the omitted fields show `(not set)` (or `default` for dataset).
 When adding or removing flags from `dash0 config profiles create`, update both the unit test and the workflow.
+
 
 ## README.md
 
