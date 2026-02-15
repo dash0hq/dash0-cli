@@ -1,0 +1,17 @@
+annotations:
+  description: There are error logs from Minecraft server
+  summary: Error logs from Minecraft server
+dataset: default
+description: There are error logs from Minecraft server
+enabled: true
+expression: sum by (otel_log_severity_range) (increase({otel_metric_name = "dash0.logs",
+  otel_log_severity_range =~ "^(ERROR|FATAL)$"}[2m])) > $__threshold
+for: 0s
+id: 50680c5e-f1a3-4ca9-8da7-86664bbc00d1
+interval: 1m0s
+keepFiringFor: 0s
+labels:
+  should_not_count: "true"
+name: Error logs from Minecraft server
+summary: Error logs from Minecraft server
+thresholds: {}

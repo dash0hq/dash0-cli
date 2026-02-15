@@ -1,0 +1,713 @@
+kind: Dashboard
+metadata:
+  annotations:
+    dash0.com/source: ui
+  createdAt: "2026-02-13T17:54:17.121675493Z"
+  dash0Extensions:
+    dataset: default
+    id: 14e92422-c094-4cc6-a857-7d892044749e
+  name: ""
+  updatedAt: "2026-02-13T17:54:17.121675493Z"
+  version: 8
+spec:
+  display:
+    description: ""
+    name: Kubernetes overview
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        collapse:
+          open: true
+        title: Pods and workloads
+      items:
+      - content:
+          $ref: '#/spec/panels/a9b74690-bf8d-4f1a-8839-d4689c82165e'
+        height: 4
+        width: 9
+        x: 0
+        "y": 0
+      - content:
+          $ref: '#/spec/panels/c9f77b4c-3dd8-4072-8b6b-fe2346ad6390'
+        height: 6
+        width: 24
+        x: 0
+        "y": 9
+      - content:
+          $ref: '#/spec/panels/731dd900-9111-4180-8bf2-ee4017a0f1c3'
+        height: 5
+        width: 24
+        x: 0
+        "y": 4
+      - content:
+          $ref: '#/spec/panels/d8944312-ac1f-461e-83e6-1e7b8f0f0181'
+        height: 4
+        width: 15
+        x: 9
+        "y": 0
+  - kind: Grid
+    spec:
+      display:
+        collapse:
+          open: true
+        title: Nodes
+      items:
+      - content:
+          $ref: '#/spec/panels/f6de95b2-b865-4609-8937-44f86d87fb12'
+        height: 4
+        width: 6
+        x: 0
+        "y": 0
+      - content:
+          $ref: '#/spec/panels/1c10f553-a980-40f8-922b-b3dbc91afdb0'
+        height: 6
+        width: 6
+        x: 0
+        "y": 4
+      - content:
+          $ref: '#/spec/panels/5be96c7b-cb70-4898-bb69-1051daa2a53d'
+        height: 5
+        width: 9
+        x: 6
+        "y": 0
+      - content:
+          $ref: '#/spec/panels/d133b76c-e4b9-48c5-808e-a9a3833d0268'
+        height: 5
+        width: 9
+        x: 6
+        "y": 5
+      - content:
+          $ref: '#/spec/panels/d1f328bb-605f-4095-bfb6-fa1f0e363dc5'
+        height: 5
+        width: 9
+        x: 15
+        "y": 0
+      - content:
+          $ref: '#/spec/panels/1170fe49-4f15-4bbc-8ba7-22fc64c914b4'
+        height: 5
+        width: 9
+        x: 15
+        "y": 5
+  panels:
+    1170fe49-4f15-4bbc-8ba7-22fc64c914b4:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Memory usage per node
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.01
+              connectNulls: false
+              display: line
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: true
+                signDisplay: auto
+                unit: bytes
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (k8s_node_name) ({otel_metric_name = "k8s.node.memory.usage",
+                  otel_metric_type = "gauge", k8s_node_name != "", $k8s_cluster_name})
+                seriesNameFormat: '{{k8s_node_name}}'
+    1c10f553-a980-40f8-922b-b3dbc91afdb0:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Node status over time
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.2
+              connectNulls: false
+              display: bar
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: false
+                signDisplay: auto
+                unit: decimal
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_node_name) ({otel_metric_name
+                  = "k8s.node.condition_ready", otel_metric_type = "gauge", $k8s_cluster_name})==0)
+                  or vector(0), "dash0_color", "ERROR", "", "")
+                seriesNameFormat: Not ready
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_node_name) ({otel_metric_name
+                  = "k8s.node.condition_ready", otel_metric_type = "gauge", $k8s_cluster_name})==-1)
+                  or vector(0), "dash0_color", "UNKNOWN", "", "")
+                seriesNameFormat: Unknown
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_node_name) ({otel_metric_name
+                  = "k8s.node.condition_ready", otel_metric_type = "gauge", $k8s_cluster_name})==1)
+                  or vector(0), "dash0_color", "DEFAULT", "", "")
+                seriesNameFormat: Ready
+    5be96c7b-cb70-4898-bb69-1051daa2a53d:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Node memory usage aggregated
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.2
+              connectNulls: false
+              display: line
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: true
+                signDisplay: auto
+                unit: bytes
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: avg({otel_metric_name = "k8s.node.memory.usage", otel_metric_type
+                  = "gauge", k8s_node_name != "", $k8s_cluster_name})
+                seriesNameFormat: Average
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max({otel_metric_name = "k8s.node.memory.usage", otel_metric_type
+                  = "gauge",$k8s_cluster_name})
+                seriesNameFormat: Max
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: min({otel_metric_name = "k8s.node.memory.usage", otel_metric_type
+                  = "gauge",$k8s_cluster_name})
+                seriesNameFormat: Min
+    731dd900-9111-4180-8bf2-ee4017a0f1c3:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Pod status over time
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds:
+              steps: []
+            visual:
+              areaOpacity: 0.2
+              connectNulls: false
+              display: bar
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: false
+                signDisplay: auto
+                unit: decimal
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  k8s_namespace_name != ""})==4) or vector(0), "dash0_color", "ERROR",
+                  "", "")
+                seriesNameFormat: Failed
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count by(k8s_pod_name) ({otel_metric_name = "k8s.pod.phase",
+                  otel_metric_type = "gauge", $k8s_cluster_name}==5) or vector(0),
+                  "dash0_color", "UNKNOWN", "", "")
+                seriesNameFormat: Unknown
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name})==1)
+                  or vector(0), "dash0_color", "WARN", "", "")
+                seriesNameFormat: Pending
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  $k8s_namespace_name})==2) or vector(0), "dash0_color", "DEFAULT",
+                  "", "")
+                seriesNameFormat: Running
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name})==3)
+                  or vector(0), "dash0_color", "8", "", "")
+                seriesNameFormat: Succeeded
+    a9b74690-bf8d-4f1a-8839-d4689c82165e:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Pod overview
+        links: []
+        plugin:
+          kind: Dash0TreeMapChart
+          spec:
+            calculation: last-number
+            format:
+              decimalPlaces: 0
+              enforceMinimumFractionDigits: false
+              shortValues: false
+              signDisplay: auto
+              unit: decimal
+            thresholds: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  $k8s_namespace_name})==2) or vector(0), "dash0_color", "DEFAULT",
+                  "", "")
+                seriesNameFormat: Running
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  $k8s_namespace_name})==1) or vector(0), "dash0_color", "WARN", "",
+                  "")
+                seriesNameFormat: Pending
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  $k8s_namespace_name})==3) or vector(0), "dash0_color", "8", "",
+                  "")
+                seriesNameFormat: Succeeded
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  $k8s_namespace_name})==4) or vector(0), "dash0_color", "ERROR",
+                  "", "")
+                seriesNameFormat: Failed
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_pod_name) ({otel_metric_name
+                  = "k8s.pod.phase", otel_metric_type = "gauge", $k8s_cluster_name,
+                  $k8s_namespace_name})==5) or vector(0), "dash0_color", "UNKNOWN",
+                  "", "")
+                seriesNameFormat: Unknown
+    c9f77b4c-3dd8-4072-8b6b-fe2346ad6390:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Pod count by namespace
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.55
+              connectNulls: false
+              display: bar
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: false
+                signDisplay: auto
+                unit: decimal
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (k8s_namespace_name) ({otel_metric_name = "dash0.resources",
+                  $k8s_cluster_name, $k8s_namespace_name, k8s_namespace_name != "",
+                  dash0_resource_type="k8s.pod"}) > 0
+                seriesNameFormat: '{{ k8s_namespace_name }}'
+    d133b76c-e4b9-48c5-808e-a9a3833d0268:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: CPU usage per node
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.2
+              connectNulls: false
+              display: line
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: false
+                signDisplay: auto
+                unit: percent
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (k8s_node_name) ({otel_metric_name = "k8s.node.cpu.usage",
+                  otel_metric_type = "gauge", k8s_node_name != "", $k8s_cluster_name})
+                seriesNameFormat: '{{k8s_node_name}}'
+    d1f328bb-605f-4095-bfb6-fa1f0e363dc5:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Node CPU usage aggregated
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            dash0Extensions:
+              yAxis:
+                scale: linear
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.2
+              connectNulls: false
+              display: line
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: false
+                signDisplay: auto
+                unit: percent
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: avg({otel_metric_name = "k8s.node.cpu.usage", otel_metric_type
+                  = "gauge", k8s_node_name != "", $k8s_cluster_name})
+                seriesNameFormat: Average
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max({otel_metric_name = "k8s.node.cpu.usage", otel_metric_type
+                  = "gauge",$k8s_cluster_name})
+                seriesNameFormat: Max
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: min({otel_metric_name = "k8s.node.cpu.usage", otel_metric_type
+                  = "gauge",$k8s_cluster_name})
+                seriesNameFormat: Min
+    d8944312-ac1f-461e-83e6-1e7b8f0f0181:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Workload resource overview
+        links: []
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              decimalPlaces: 2
+              enforceMinimumFractionDigits: false
+              shortValues: false
+              signDisplay: auto
+              unit: decimal
+            thresholds: {}
+            valueFontSize: 31
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(sum by (k8s_deployment_name) ({otel_metric_name = "k8s.deployment.available",
+                  otel_metric_type = "gauge", $k8s_cluster_name, $k8s_namespace_name}))
+                seriesNameFormat: Deployments
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(sum by (k8s_daemonset_name) ({otel_metric_name = "k8s.daemonset.current_scheduled_nodes",
+                  otel_metric_type = "gauge"}))
+                seriesNameFormat: DaemonSets
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(sum by (k8s_statefulset_name) ({otel_metric_name = "k8s.statefulset.desired_pods",
+                  otel_metric_type = "gauge"})) or vector(0)
+                seriesNameFormat: StatefulSets
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(sum by (k8s_job_name) ({otel_metric_name = "k8s.job.active_pods",
+                  otel_metric_type = "gauge"})) or vector(0)
+                seriesNameFormat: Jobs
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count({otel_metric_name = "k8s.cronjob.active_jobs", otel_metric_type
+                  = "gauge",$k8s_cluster_name}) or vector(0)
+                seriesNameFormat: CronJobs
+    f6de95b2-b865-4609-8937-44f86d87fb12:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Node latest status
+        links: []
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              decimalPlaces: 0
+              enforceMinimumFractionDigits: false
+              shortValues: false
+              signDisplay: auto
+              unit: decimal
+            thresholds: {}
+            valueFontSize: 31
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: |
+                  count(max by (k8s_node_name) ({otel_metric_name = "k8s.node.condition_ready", otel_metric_type = "gauge", $k8s_cluster_name})==1) or vector(0)
+                seriesNameFormat: Ready
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_node_name) ({otel_metric_name
+                  = "k8s.node.condition_ready", otel_metric_type = "gauge", $k8s_cluster_name})==0)
+                  or vector(0), "dash0_color", "ERROR", "", "")
+                seriesNameFormat: Not ready
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: label_replace(count(max by (k8s_node_name) ({otel_metric_name
+                  = "k8s.node.condition_ready", otel_metric_type = "gauge", $k8s_cluster_name})==-1)
+                  or vector(0), "dash0_color", "WARN", "", "")
+                seriesNameFormat: Unknown
+  variables:
+  - kind: Dash0FilterVariable
+    spec:
+      attributeKey: k8s_cluster_name
+      capturingRegexp: ""
+      display:
+        description: ""
+        hidden: false
+        name: Cluster
+      name: k8s_cluster_name
+      operator: is_any
+      values: []
+  - kind: Dash0FilterVariable
+    spec:
+      attributeKey: k8s_namespace_name
+      capturingRegexp: ""
+      display:
+        description: ""
+        hidden: false
+        name: ""
+      name: k8s_namespace_name
+      operator: is_any
+      values: []

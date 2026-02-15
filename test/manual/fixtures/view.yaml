@@ -1,0 +1,49 @@
+kind: Dash0View
+metadata:
+  annotations: {}
+  labels:
+    dash0.com/dataset: default
+    dash0.com/id: fe520f3f-50f4-4e41-a2f3-ed916cf45e14
+    dash0.com/source: userdefined
+    dash0.com/version: "7"
+  name: minecraft-server
+spec:
+  display:
+    description: ""
+    name: Minecraft Server
+  filter:
+  - key: service.namespace
+    operator: is
+    value: minecraft
+  groupBy:
+  - otel.log.severity.range
+  permissions:
+  - actions:
+    - views:read
+    - views:delete
+    - views:write
+    role: admin
+  - actions:
+    - views:read
+    role: basic_member
+  table:
+    columns:
+    - colSize: min-content
+      key: otel.log.severity.range
+      label: Severity
+    - colSize: min-content
+      key: otel.log.time
+      label: Time
+    - key: dash0.resource.id
+      label: Resource
+    - key: process.executable.path
+    - key: otel.log.body
+      label: Body
+    sort:
+    - direction: descending
+      key: otel.log.time
+  type: logs
+  visualizations:
+  - metric: logs_total
+    renderers: []
+    yAxisScale: linear
