@@ -101,6 +101,7 @@ brews:
     commit_author:
       name: bripkens
       email: ben.blackmore@dash0.com
+    commit_msg_template: "chore: brew formula update for {{ .ProjectName }} version {{ .Tag }}"
     directory: Formula
     homepage: https://github.com/dash0hq/dash0-cli
     description: CLI to interact with Dash0
