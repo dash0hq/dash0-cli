@@ -216,6 +216,7 @@ Kind: Dashboard
 Name: Production Overview
 Dataset: default
 Origin: gitops/prod
+URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 Created: 2026-01-15 10:30:00
 Updated: 2026-01-20 14:45:00
 
@@ -254,6 +255,7 @@ Dataset: default
 Expression: sum(rate(errors[5m])) > 0.1
 Enabled: true
 Description: Alert when error rate exceeds threshold
+URL: https://app.dash0.com/goto/alerting/check-rules?check_rule_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 
 $ dash0 check-rules create -f rule.yaml
 Check rule "High Error Rate Alert" created successfully
@@ -289,6 +291,7 @@ Name: API Health Check
 Dataset: default
 Origin:
 Description: Checks API endpoint availability
+URL: https://app.dash0.com/goto/alerting/synthetics?check_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 
 $ dash0 synthetic-checks create -f check.yaml
 Synthetic check "API Health Check" created successfully
@@ -314,6 +317,7 @@ Kind: Dash0View
 Name: Error Logs View
 Dataset: default
 Origin:
+URL: https://app.dash0.com/goto/logs?view_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 
 $ dash0 views create -f view.yaml
 View "Error Logs View" created successfully
@@ -366,8 +370,8 @@ NAME                                      ID
 Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab
 
 $ dash0 dashboards list -o wide
-NAME                                      ID                                    DATASET          ORIGIN
-Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab  default          gitops/prod
+NAME                                      ID                                    DATASET          ORIGIN                          URL
+Production Overview                       a1b2c3d4-5678-90ab-cdef-1234567890ab  default          gitops/prod                     https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
 The `wide` format includes the `DATASET` column even though `dash0` operates commands on a single dataset at a time.

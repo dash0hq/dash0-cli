@@ -31,6 +31,7 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(ctx context.Context, flags *asset.ListFlags) error {
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -65,11 +66,11 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(rules)
 	default:
-		return printCheckRuleTable(formatter, rules, format)
+		return printCheckRuleTable(formatter, rules, format, apiUrl)
 	}
 }
 
-func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertRuleApiListItem, format output.Format) error {
+func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertRuleApiListItem, format output.Format, apiUrl string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			r := item.(*dash0api.PrometheusAlertRuleApiListItem)
@@ -90,12 +91,16 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertR
 				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
 				return string(r.Dataset)
 			}},
-			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item interface{}) string {
 				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
 				if r.Origin != nil {
 					return *r.Origin
 				}
 				return ""
+			}},
+			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
+				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
+				return asset.DeeplinkURL(apiUrl, "check rule", r.Id)
 			}},
 		)
 	}

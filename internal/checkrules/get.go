@@ -29,6 +29,7 @@ func newGetCmd() *cobra.Command {
 }
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -72,6 +73,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		}
 		if rule.Description != nil {
 			fmt.Printf("Description: %s\n", *rule.Description)
+		}
+		if deeplinkURL := asset.DeeplinkURL(apiUrl, "check rule", id); deeplinkURL != "" {
+			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil
 	}

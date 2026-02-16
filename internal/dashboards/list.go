@@ -39,6 +39,7 @@ type dashboardListItem struct {
 }
 
 func runList(ctx context.Context, flags *asset.ListFlags) error {
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -88,7 +89,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 				Origin:      item.Origin,
 			})
 		}
-		return printDashboardTable(formatter, dashboards, format)
+		return printDashboardTable(formatter, dashboards, format, apiUrl)
 	}
 }
 
@@ -101,7 +102,7 @@ func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, d
 	return asset.ExtractDashboardDisplayName(dashboard)
 }
 
-func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format) error {
+func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format, apiUrl string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			d := item.(dashboardListItem)
@@ -119,12 +120,16 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 				d := item.(dashboardListItem)
 				return d.Dataset
 			}},
-			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item interface{}) string {
 				d := item.(dashboardListItem)
 				if d.Origin != nil {
 					return *d.Origin
 				}
 				return ""
+			}},
+			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
+				d := item.(dashboardListItem)
+				return asset.DeeplinkURL(apiUrl, "dashboard", d.Id)
 			}},
 		)
 	}

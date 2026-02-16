@@ -78,6 +78,19 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 	return client, nil
 }
 
+// ResolveApiUrl returns the effective API URL from context and flag overrides.
+// This is useful when the resolved URL is needed outside of client creation
+// (e.g. for constructing deeplink URLs).
+func ResolveApiUrl(ctx context.Context, flagApiUrl string) string {
+	if flagApiUrl != "" {
+		return flagApiUrl
+	}
+	if cfg := config.FromContext(ctx); cfg != nil && cfg.ApiUrl != "" {
+		return cfg.ApiUrl
+	}
+	return ""
+}
+
 // ErrorContext provides context about the asset involved in an error.
 // This context is used to generate more specific and actionable error messages.
 type ErrorContext struct {

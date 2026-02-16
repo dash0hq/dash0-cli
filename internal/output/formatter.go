@@ -101,12 +101,18 @@ func (f *Formatter) PrintTable(columns []Column, data []interface{}) error {
 		return nil
 	}
 
-	// Print header
+	// Print header — the last column is not padded since nothing follows it
+	lastCol := len(columns) - 1
 	var headerParts []string
 	var format []string
-	for _, col := range columns {
-		headerParts = append(headerParts, fmt.Sprintf("%-*s", col.Width, col.Header))
-		format = append(format, fmt.Sprintf("%%-%ds", col.Width))
+	for i, col := range columns {
+		if i == lastCol {
+			headerParts = append(headerParts, col.Header)
+			format = append(format, "%s")
+		} else {
+			headerParts = append(headerParts, fmt.Sprintf("%-*s", col.Width, col.Header))
+			format = append(format, fmt.Sprintf("%%-%ds", col.Width))
+		}
 	}
 	fmt.Fprintln(f.writer, strings.Join(headerParts, "  "))
 
@@ -115,8 +121,8 @@ func (f *Formatter) PrintTable(columns []Column, data []interface{}) error {
 		var rowParts []string
 		for i, col := range columns {
 			value := col.Value(item)
-			// Truncate if necessary
-			if len(value) > col.Width {
+			// Truncate if necessary, but never truncate the last column
+			if i != lastCol && len(value) > col.Width {
 				value = value[:col.Width-3] + "..."
 			}
 			rowParts = append(rowParts, fmt.Sprintf(format[i], value))
