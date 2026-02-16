@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.2.0
+
+
+### New Components
+
+
+- `github-actions`: `send-log-event` GitHub Action to send log events to Dash0 directly from your GitHub workflows. (#40)
+  The action is standalone and installs the Dash0 CLI automatically.
+  If the `setup` action has already run, the existing installation is reused.
+  
+
+
+### Enhancements
+
+
+- `assets`: Add deeplink URLs to `get` and `list -o wide` output for all asset types (#36)
+  The `get` command now shows a `URL` field linking directly to the asset in the Dash0 web UI.
+  The `list -o wide` command includes a `URL` column with deeplink URLs for each asset.
+  
+
 ## 1.1.0
 
 
