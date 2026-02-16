@@ -1,0 +1,239 @@
+name: Test send-log-event action
+
+on:
+  push:
+    branches: ['*']
+  workflow_dispatch:
+
+jobs:
+  test-standalone-install:
+    name: 'Standalone install (no setup action)'
+    if: github.repository == 'dash0hq/dash0-cli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Verify CLI is not installed
+        run: |
+          ! command -v dash0 &>/dev/null || { echo "Error: dash0 should not be on PATH yet"; exit 1; }
+
+      - name: Send log event (standalone)
+        uses: ./.github/actions/send-log-event
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ vars.DASH0_DATASET }}
+          event-name: dash0.ci.test
+          body: 'Standalone install test'
+          service-name: send-log-event-action-ci
+          cli-version: '1.1.0'
+
+      - name: Verify CLI was installed
+        run: |
+          command -v dash0
+          dash0 version | grep '1.1.0'
+
+  test-reuses-setup:
+    name: 'Reuse setup action installation'
+    if: github.repository == 'dash0hq/dash0-cli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          version: '1.1.0'
+          cache: 'false'
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+
+      - name: Record binary path before send-log-event
+        id: before
+        run: echo "mtime=$(stat -c %Y ~/.dash0/bin/dash0)" >> "$GITHUB_OUTPUT"
+
+      - name: Send log event (reusing setup)
+        uses: ./.github/actions/send-log-event
+        with:
+          dataset: ${{ vars.DASH0_DATASET }}
+          event-name: dash0.ci.test
+          body: 'Reuse setup test'
+          service-name: send-log-event-action-ci
+
+      - name: Verify binary was not reinstalled
+        run: |
+          AFTER_MTIME=$(stat -c %Y ~/.dash0/bin/dash0)
+          [ "${{ steps.before.outputs.mtime }}" = "$AFTER_MTIME" ] || { echo "Error: binary was reinstalled"; exit 1; }
+
+  test-rejects-old-cli:
+    name: 'Rejects CLI below minimum version'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Send log event with old CLI version
+        id: send
+        continue-on-error: true
+        uses: ./.github/actions/send-log-event
+        with:
+          cli-version: '1.0.0'
+          otlp-url: https://otlp.example.com
+          auth-token: auth_test1234567
+          event-name: dash0.ci.test
+          body: 'Should fail'
+          service-name: ci-test
+
+      - name: Verify action failed
+        run: |
+          [ "${{ steps.send.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.send.outcome }}"; exit 1; }
+
+  test-argument-mapping:
+    name: 'Argument mapping'
+    if: github.repository == 'dash0hq/dash0-cli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+
+      - name: Create a wrapper to capture arguments
+        run: |
+          # Move the real binary aside and replace it with a wrapper that
+          # intercepts `logs send` but passes everything else through.
+          mv ~/.dash0/bin/dash0 ~/.dash0/bin/dash0-real
+          cat > ~/.dash0/bin/dash0 <<EOF
+          #!/bin/bash
+          if [ "\$1" = "logs" ] && [ "\$2" = "send" ]; then
+            echo "CAPTURED_ARGS:" "\$@" > /tmp/dash0-captured-args.txt
+            echo "Log record sent successfully"
+            exit 0
+          fi
+          exec ~/.dash0/bin/dash0-real "\$@"
+          EOF
+          chmod +x ~/.dash0/bin/dash0
+
+      - name: Send log event with all inputs
+        uses: ./.github/actions/send-log-event
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ vars.DASH0_DATASET }}
+          event-name: dash0.deployment
+          body: 'Test deployment completed'
+          service-name: my-service
+          service-namespace: my-namespace
+          service-version: '1.2.3'
+          deployment-environment-name: staging
+          deployment-name: my-deploy
+          deployment-id: deploy-42
+          deployment-status: succeeded
+          vcs-repository-url: https://github.com/dash0hq/dash0-cli
+          vcs-ref-head-revision: abc123def456
+          vcs-ref-head-name: main
+          severity-number: '9'
+          severity-text: INFO
+          other-resource-attributes: |
+            custom.resource=value1
+            another.resource=value2
+          other-log-attributes: |
+            custom.log=value3
+
+      - name: Verify captured arguments
+        env:
+          DASH0_OTLP_URL: ${{ vars.DASH0_OTLP_URL }}
+          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
+          DASH0_DATASET: ${{ vars.DASH0_DATASET }}
+        run: |
+          cat /tmp/dash0-captured-args.txt
+
+          ARGS=$(cat /tmp/dash0-captured-args.txt)
+
+          # Connection parameters
+          echo "$ARGS" | grep -q -- "--otlp-url $DASH0_OTLP_URL"
+          echo "$ARGS" | grep -q -- "--auth-token $DASH0_AUTH_TOKEN"
+          [ -z "$DASH0_DATASET" ] || echo "$ARGS" | grep -q -- "--dataset $DASH0_DATASET"
+
+          # Required inputs
+          echo "$ARGS" | grep -q -- '--event-name dash0.deployment'
+          echo "$ARGS" | grep -q -- 'Test deployment completed'
+
+          # First-level resource attributes
+          echo "$ARGS" | grep -q -- '--resource-attribute service.name=my-service'
+          echo "$ARGS" | grep -q -- '--resource-attribute service.namespace=my-namespace'
+          echo "$ARGS" | grep -q -- '--resource-attribute service.version=1.2.3'
+          echo "$ARGS" | grep -q -- '--resource-attribute deployment.environment.name=staging'
+          echo "$ARGS" | grep -q -- '--resource-attribute deployment.name=my-deploy'
+          echo "$ARGS" | grep -q -- '--resource-attribute deployment.id=deploy-42'
+
+          # Additional resource attributes
+          echo "$ARGS" | grep -q -- '--resource-attribute custom.resource=value1'
+          echo "$ARGS" | grep -q -- '--resource-attribute another.resource=value2'
+
+          # First-level log attributes
+          echo "$ARGS" | grep -q -- '--log-attribute deployment.status=succeeded'
+          echo "$ARGS" | grep -q -- '--log-attribute vcs.repository.url.full=https://github.com/dash0hq/dash0-cli'
+          echo "$ARGS" | grep -q -- '--log-attribute vcs.ref.head.revision=abc123def456'
+          echo "$ARGS" | grep -q -- '--log-attribute vcs.ref.head.name=main'
+
+          # Additional log attributes
+          echo "$ARGS" | grep -q -- '--log-attribute custom.log=value3'
+
+          # Other fields
+          echo "$ARGS" | grep -q -- '--severity-number 9'
+          echo "$ARGS" | grep -q -- '--severity-text INFO'
+
+          # Instrumentation scope
+          echo "$ARGS" | grep -q -- '--scope-name github.com/dash0hq/dash0-cli@send-log-event'
+          echo "$ARGS" | grep -q -- '--scope-version'
+
+          echo "All argument mappings verified successfully."
+
+  test-send:
+    name: 'End-to-end send'
+    if: github.repository == 'dash0hq/dash0-cli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Generate unique marker
+        id: marker
+        run: echo "value=ci-test-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+
+      - name: Send log event to Dash0
+        uses: ./.github/actions/send-log-event
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ vars.DASH0_DATASET }}
+          event-name: dash0.ci.test
+          body: ${{ steps.marker.outputs.value }}
+          service-name: send-log-event-action-ci
+          deployment-environment-name: ci
+          severity-number: '9'
+
+      # TODO(#41): Verify the log event arrived using `dash0 logs query` when implemented.
+
+  test-arm64:
+    name: 'Standalone install on arm64'
+    if: github.repository == 'dash0hq/dash0-cli'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Send log event (standalone on arm64)
+        uses: ./.github/actions/send-log-event
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ vars.DASH0_DATASET }}
+          event-name: dash0.ci.test
+          body: 'arm64 install test'
+          service-name: send-log-event-action-ci
+          cli-version: '1.1.0'
+
+      - name: Verify binary is arm64
+        run: |
+          file ~/.dash0/bin/dash0 | grep 'aarch64\|ARM'
