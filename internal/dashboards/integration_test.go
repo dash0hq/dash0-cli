@@ -126,6 +126,7 @@ func TestListDashboards_WideFormat(t *testing.T) {
 	// Wide format should include additional columns
 	assert.Contains(t, output, "DATASET")
 	assert.Contains(t, output, "ORIGIN")
+	assert.Contains(t, output, "URL")
 }
 
 func TestListDashboards_JSONFormat(t *testing.T) {

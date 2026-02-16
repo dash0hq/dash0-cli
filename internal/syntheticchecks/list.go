@@ -31,6 +31,7 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(ctx context.Context, flags *asset.ListFlags) error {
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -65,11 +66,11 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(checks)
 	default:
-		return printSyntheticCheckTable(formatter, checks, format)
+		return printSyntheticCheckTable(formatter, checks, format, apiUrl)
 	}
 }
 
-func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticChecksApiListItem, format output.Format) error {
+func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticChecksApiListItem, format output.Format, apiUrl string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			c := item.(*dash0api.SyntheticChecksApiListItem)
@@ -90,12 +91,16 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticC
 				c := item.(*dash0api.SyntheticChecksApiListItem)
 				return c.Dataset
 			}},
-			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item interface{}) string {
 				c := item.(*dash0api.SyntheticChecksApiListItem)
 				if c.Origin != nil {
 					return *c.Origin
 				}
 				return ""
+			}},
+			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
+				c := item.(*dash0api.SyntheticChecksApiListItem)
+				return asset.DeeplinkURL(apiUrl, "synthetic check", c.Id)
 			}},
 		)
 	}

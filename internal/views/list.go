@@ -31,6 +31,7 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(ctx context.Context, flags *asset.ListFlags) error {
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -65,11 +66,11 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(views)
 	default:
-		return printViewTable(formatter, views, format)
+		return printViewTable(formatter, views, format, apiUrl)
 	}
 }
 
-func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format) error {
+func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format, apiUrl string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			v := item.(*dash0api.ViewApiListItem)
@@ -90,12 +91,16 @@ func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, form
 				v := item.(*dash0api.ViewApiListItem)
 				return v.Dataset
 			}},
-			output.Column{Header: internal.HEADER_ORIGIN, Width: 30, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item interface{}) string {
 				v := item.(*dash0api.ViewApiListItem)
 				if v.Origin != nil {
 					return *v.Origin
 				}
 				return ""
+			}},
+			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
+				v := item.(*dash0api.ViewApiListItem)
+				return asset.DeeplinkURL(apiUrl, "view", v.Id)
 			}},
 		)
 	}
