@@ -2,7 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DASH0="${SCRIPT_DIR}/../../build/dash0"
 
+# Verify that an active profile is configured before running any tests.
+if ! "$DASH0" config show >/dev/null 2>&1; then
+  echo "Error: no active profile configured."
+  echo "Create one with: dash0 config profiles create <name> --api-url <url> --auth-token <token>"
+  exit 1
+fi
+
+echo "Active profile:"
+"$DASH0" config show
+echo
 echo "Running all round-trip tests..."
 echo
 
