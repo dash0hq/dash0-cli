@@ -1,0 +1,429 @@
+name: 'Send Log Event'
+description: 'Send a log event to Dash0'
+author: 'Dash0'
+
+branding:
+  icon: 'file-text'
+  color: 'orange'
+
+inputs:
+  # -- CLI installation --
+
+  cli-version:
+    description: >-
+      Dash0 CLI version to install (e.g., "1.1.0" or omit for latest).
+      Minimum supported version is 1.1.0.
+      Ignored if the CLI is already on PATH (e.g., via the setup action).
+    required: false
+    default: ''
+
+  # -- Connection --
+
+  otlp-url:
+    description: >-
+      Dash0 OTLP HTTP endpoint URL (e.g., "https://ingress.us-west-2.aws.dash0.com").
+      Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http.
+      Overrides the value from the active CLI profile.
+    required: false
+    default: ''
+
+  auth-token:
+    description: >-
+      Dash0 auth token (e.g., "auth_xxx").
+      Get one from https://app.dash0.com/goto/settings/auth-tokens.
+      You should store this in a GitHub secret.
+      Overrides the value from the active CLI profile.
+    required: false
+    default: ''
+
+  dataset:
+    description: >-
+      Dash0 dataset name (e.g., "production").
+      Defaults to "default" if omitted.
+      Overrides the value from the active CLI profile.
+    required: false
+    default: ''
+
+  # -- Log event --
+
+  event-name:
+    description: 'Event name.'
+    required: true
+
+  body:
+    description: 'The log message body.'
+    required: true
+
+  # -- Resource attributes (first-level) --
+
+  service-name:
+    description: 'Service name (maps to the service.name resource attribute).'
+    required: true
+
+  service-namespace:
+    description: 'Service namespace (maps to the service.namespace resource attribute).'
+    required: false
+    default: ''
+
+  service-version:
+    description: 'Service version (maps to the service.version resource attribute).'
+    required: false
+    default: ''
+
+  deployment-environment-name:
+    description: 'Deployment environment name (maps to the deployment.environment.name resource attribute).'
+    required: false
+    default: ''
+
+  deployment-name:
+    description: 'Deployment name (maps to the deployment.name resource attribute).'
+    required: false
+    default: ''
+
+  deployment-id:
+    description: 'Deployment ID (maps to the deployment.id resource attribute).'
+    required: false
+    default: ''
+
+  # -- Log attributes (first-level) --
+
+  deployment-status:
+    description: 'Deployment status, e.g., "succeeded" or "failed" (maps to the deployment.status log attribute).'
+    required: false
+    default: ''
+
+  vcs-repository-url:
+    description: 'VCS repository URL (maps to the vcs.repository.url.full log attribute).'
+    required: false
+    default: ''
+
+  vcs-ref-head-revision:
+    description: 'VCS head revision, e.g., a commit SHA (maps to the vcs.ref.head.revision log attribute).'
+    required: false
+    default: ''
+
+  vcs-ref-head-name:
+    description: 'VCS head ref name, e.g., a branch name (maps to the vcs.ref.head.name log attribute).'
+    required: false
+    default: ''
+
+  # -- Additional attributes --
+
+  other-resource-attributes:
+    description: >-
+      Additional resource attributes as key=value pairs, one per line.
+      These are added alongside the first-level resource attribute inputs.
+    required: false
+    default: ''
+
+  other-log-attributes:
+    description: >-
+      Additional log record attributes as key=value pairs, one per line.
+      These are added alongside the first-level log attribute inputs.
+    required: false
+    default: ''
+
+  # -- Other log record fields --
+
+  time:
+    description: >-
+      Log record timestamp in RFC3339 format (e.g., "2024-03-15T10:30:00.123456789Z").
+      Defaults to now.
+    required: false
+    default: ''
+
+  severity-number:
+    description: >-
+      Severity number (1-24, see OpenTelemetry specification).
+      Used in Dash0 to calculate the severity range; separate from severity-text.
+    required: false
+    default: ''
+
+  severity-text:
+    description: >-
+      Severity text (e.g., INFO, WARN, ERROR).
+      This is separate from severity-number and can be used to provide custom severity levels.
+    required: false
+    default: ''
+
+  observed-time:
+    description: >-
+      Observed timestamp in RFC3339 format (e.g., "2024-03-15T10:30:00.123456789Z").
+      Defaults to now.
+    required: false
+    default: ''
+
+  trace-id:
+    description: 'Trace ID (32 hex characters). Must be specified together with span-id.'
+    required: false
+    default: ''
+
+  span-id:
+    description: 'Span ID (16 hex characters). Must be specified together with trace-id.'
+    required: false
+    default: ''
+
+  flags:
+    description: 'Log record flags.'
+    required: false
+    default: ''
+
+  resource-dropped-attributes-count:
+    description: 'Number of dropped resource attributes.'
+    required: false
+    default: ''
+
+  log-dropped-attributes-count:
+    description: 'Number of dropped log record attributes.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    # -- CLI installation (skipped if already on PATH, e.g., via the setup action) --
+
+    - name: Check for existing Dash0 CLI
+      id: check-cli
+      shell: bash
+      run: |
+        if command -v dash0 &>/dev/null; then
+          echo "Dash0 CLI already installed: $(dash0 version)"
+          echo "installed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "installed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Resolve Dash0 CLI version
+      id: resolve-version
+      if: steps.check-cli.outputs.installed == 'false'
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.cli-version }}
+      run: |
+        VERSION="$INPUT_VERSION"
+
+        if [ -z "$VERSION" ]; then
+          echo "Fetching latest Dash0 CLI version..."
+          VERSION=$(git ls-remote --tags --sort=-version:refname https://github.com/dash0hq/dash0-cli.git | grep -v '\^{}' | head -1 | cut -f2 | sed 's|refs/tags/v||')
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not determine latest Dash0 CLI version"
+            exit 1
+          fi
+
+          echo "Latest version: $VERSION"
+        else
+          if [[ "$VERSION" =~ ^v ]]; then
+            VERSION="${VERSION#v}"
+          fi
+          echo "Using specified version: $VERSION"
+        fi
+
+        # Enforce minimum supported version
+        MIN_SUPPORTED="1.1.0"
+        if ! printf '%s\n%s\n' "$MIN_SUPPORTED" "$VERSION" | sort -V -C; then
+          echo "::error::Dash0 CLI version $VERSION is below the minimum supported version ($MIN_SUPPORTED)."
+          exit 1
+        fi
+
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Create install directory
+      if: steps.check-cli.outputs.installed == 'false'
+      shell: bash
+      run: mkdir -p ~/.dash0/bin
+
+    - name: Restore Dash0 CLI from cache
+      if: steps.check-cli.outputs.installed == 'false'
+      id: cache-dash0-cli
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.dash0/bin/dash0
+        key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
+
+    - name: Install Dash0 CLI (Linux amd64)
+      if: steps.check-cli.outputs.installed == 'false' && runner.os == 'Linux' && runner.arch == 'X64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        VERSION="${{ steps.resolve-version.outputs.version }}"
+        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_amd64.tar.gz"
+
+        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
+        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
+
+    - name: Install Dash0 CLI (Linux arm64)
+      if: steps.check-cli.outputs.installed == 'false' && runner.os == 'Linux' && runner.arch == 'ARM64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        VERSION="${{ steps.resolve-version.outputs.version }}"
+        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_arm64.tar.gz"
+
+        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
+        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
+
+    - name: Fail on unsupported platform
+      if: steps.check-cli.outputs.installed == 'false' && (runner.os != 'Linux' || (runner.arch != 'X64' && runner.arch != 'ARM64'))
+      shell: bash
+      run: |
+        echo "::error::Unsupported platform ${RUNNER_OS} ${RUNNER_ARCH}. Only Linux (x64, arm64) is supported."
+        exit 1
+
+    - name: Add Dash0 CLI to PATH
+      if: steps.check-cli.outputs.installed == 'false'
+      shell: bash
+      run: |
+        echo "$HOME/.dash0/bin" >> "$GITHUB_PATH"
+        # Make dash0 available in subsequent steps of this action
+        export PATH="$HOME/.dash0/bin:$PATH"
+        dash0 version
+
+    - name: Save Dash0 CLI to cache
+      if: steps.check-cli.outputs.installed == 'false' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.dash0/bin/dash0
+        key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
+
+    - name: Verify minimum CLI version
+      shell: bash
+      run: |
+        export PATH="$HOME/.dash0/bin:$PATH"
+        MIN_SUPPORTED="1.1.0"
+        CLI_VERSION=$(dash0 version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+        if [ -z "$CLI_VERSION" ]; then
+          echo "::error::Could not determine Dash0 CLI version."
+          exit 1
+        fi
+
+        if ! printf '%s\n%s\n' "$MIN_SUPPORTED" "$CLI_VERSION" | sort -V -C; then
+          echo "::error::Dash0 CLI version $CLI_VERSION is below the minimum supported version ($MIN_SUPPORTED)."
+          exit 1
+        fi
+
+        echo "Dash0 CLI version $CLI_VERSION meets minimum requirement ($MIN_SUPPORTED)."
+
+    # -- Ensure a profile exists --
+
+    - name: Create Dash0 profile if needed
+      shell: bash
+      env:
+        INPUT_OTLP_URL: ${{ inputs.otlp-url }}
+        INPUT_AUTH_TOKEN: ${{ inputs.auth-token }}
+        INPUT_DATASET: ${{ inputs.dataset }}
+      run: |
+        export PATH="$HOME/.dash0/bin:$PATH"
+
+        # If an active profile already exists (e.g., from the setup action), skip creation.
+        # When no profile is configured, `dash0 config show` prints "Profile:    (none)".
+        PROFILE_LINE=$(dash0 config show 2>/dev/null | grep '^Profile:' || true)
+        if [ -n "$PROFILE_LINE" ] && ! echo "$PROFILE_LINE" | grep -q '(none)'; then
+          echo "Active profile found, skipping profile creation."
+          exit 0
+        fi
+
+        # No active profile — create one from the connection inputs.
+        ARGS=()
+        [ -n "$INPUT_OTLP_URL" ] && ARGS+=(--otlp-url "$INPUT_OTLP_URL")
+        [ -n "$INPUT_AUTH_TOKEN" ] && ARGS+=(--auth-token "$INPUT_AUTH_TOKEN")
+        [ -n "$INPUT_DATASET" ] && ARGS+=(--dataset "$INPUT_DATASET")
+
+        if [ ${#ARGS[@]} -eq 0 ]; then
+          echo "::error::No active profile and no connection inputs (otlp-url, auth-token) provided."
+          exit 1
+        fi
+
+        dash0 config profiles create default "${ARGS[@]}"
+        dash0 config profiles select default
+
+    # -- Send log event --
+
+    - name: Send log event
+      shell: bash
+      env:
+        INPUT_BODY: ${{ inputs.body }}
+        INPUT_OTLP_URL: ${{ inputs.otlp-url }}
+        INPUT_AUTH_TOKEN: ${{ inputs.auth-token }}
+        INPUT_DATASET: ${{ inputs.dataset }}
+        INPUT_EVENT_NAME: ${{ inputs.event-name }}
+        INPUT_SEVERITY_TEXT: ${{ inputs.severity-text }}
+        INPUT_SEVERITY_NUMBER: ${{ inputs.severity-number }}
+        INPUT_SERVICE_NAME: ${{ inputs.service-name }}
+        INPUT_SERVICE_NAMESPACE: ${{ inputs.service-namespace }}
+        INPUT_SERVICE_VERSION: ${{ inputs.service-version }}
+        INPUT_DEPLOYMENT_ENVIRONMENT_NAME: ${{ inputs.deployment-environment-name }}
+        INPUT_DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        INPUT_DEPLOYMENT_ID: ${{ inputs.deployment-id }}
+        INPUT_DEPLOYMENT_STATUS: ${{ inputs.deployment-status }}
+        INPUT_VCS_REPOSITORY_URL: ${{ inputs.vcs-repository-url }}
+        INPUT_VCS_REF_HEAD_REVISION: ${{ inputs.vcs-ref-head-revision }}
+        INPUT_VCS_REF_HEAD_NAME: ${{ inputs.vcs-ref-head-name }}
+        INPUT_OTHER_RESOURCE_ATTRIBUTES: ${{ inputs.other-resource-attributes }}
+        INPUT_OTHER_LOG_ATTRIBUTES: ${{ inputs.other-log-attributes }}
+        INPUT_TIME: ${{ inputs.time }}
+        INPUT_OBSERVED_TIME: ${{ inputs.observed-time }}
+        INPUT_TRACE_ID: ${{ inputs.trace-id }}
+        INPUT_SPAN_ID: ${{ inputs.span-id }}
+        INPUT_FLAGS: ${{ inputs.flags }}
+        INPUT_RESOURCE_DROPPED_ATTRIBUTES_COUNT: ${{ inputs.resource-dropped-attributes-count }}
+        INPUT_LOG_DROPPED_ATTRIBUTES_COUNT: ${{ inputs.log-dropped-attributes-count }}
+      run: |
+        # Ensure dash0 is on PATH (for the case where this action installed it)
+        export PATH="$HOME/.dash0/bin:$PATH"
+
+        ARGS=()
+
+        [ -n "$INPUT_OTLP_URL" ] && ARGS+=(--otlp-url "$INPUT_OTLP_URL")
+        [ -n "$INPUT_AUTH_TOKEN" ] && ARGS+=(--auth-token "$INPUT_AUTH_TOKEN")
+        [ -n "$INPUT_DATASET" ] && ARGS+=(--dataset "$INPUT_DATASET")
+
+        # First-level resource attributes
+        ARGS+=(--resource-attribute "service.name=$INPUT_SERVICE_NAME")
+        [ -n "$INPUT_SERVICE_NAMESPACE" ] && ARGS+=(--resource-attribute "service.namespace=$INPUT_SERVICE_NAMESPACE")
+        [ -n "$INPUT_SERVICE_VERSION" ] && ARGS+=(--resource-attribute "service.version=$INPUT_SERVICE_VERSION")
+        [ -n "$INPUT_DEPLOYMENT_ENVIRONMENT_NAME" ] && ARGS+=(--resource-attribute "deployment.environment.name=$INPUT_DEPLOYMENT_ENVIRONMENT_NAME")
+        [ -n "$INPUT_DEPLOYMENT_NAME" ] && ARGS+=(--resource-attribute "deployment.name=$INPUT_DEPLOYMENT_NAME")
+        [ -n "$INPUT_DEPLOYMENT_ID" ] && ARGS+=(--resource-attribute "deployment.id=$INPUT_DEPLOYMENT_ID")
+
+        # Additional resource attributes
+        if [ -n "$INPUT_OTHER_RESOURCE_ATTRIBUTES" ]; then
+          while IFS= read -r line; do
+            line=$(echo "$line" | xargs)
+            [ -n "$line" ] && ARGS+=(--resource-attribute "$line")
+          done <<< "$INPUT_OTHER_RESOURCE_ATTRIBUTES"
+        fi
+
+        # First-level log attributes
+        [ -n "$INPUT_DEPLOYMENT_STATUS" ] && ARGS+=(--log-attribute "deployment.status=$INPUT_DEPLOYMENT_STATUS")
+        [ -n "$INPUT_VCS_REPOSITORY_URL" ] && ARGS+=(--log-attribute "vcs.repository.url.full=$INPUT_VCS_REPOSITORY_URL")
+        [ -n "$INPUT_VCS_REF_HEAD_REVISION" ] && ARGS+=(--log-attribute "vcs.ref.head.revision=$INPUT_VCS_REF_HEAD_REVISION")
+        [ -n "$INPUT_VCS_REF_HEAD_NAME" ] && ARGS+=(--log-attribute "vcs.ref.head.name=$INPUT_VCS_REF_HEAD_NAME")
+
+        # Additional log attributes
+        if [ -n "$INPUT_OTHER_LOG_ATTRIBUTES" ]; then
+          while IFS= read -r line; do
+            line=$(echo "$line" | xargs)
+            [ -n "$line" ] && ARGS+=(--log-attribute "$line")
+          done <<< "$INPUT_OTHER_LOG_ATTRIBUTES"
+        fi
+
+        [ -n "$INPUT_SEVERITY_TEXT" ] && ARGS+=(--severity-text "$INPUT_SEVERITY_TEXT")
+        [ -n "$INPUT_SEVERITY_NUMBER" ] && ARGS+=(--severity-number "$INPUT_SEVERITY_NUMBER")
+        [ -n "$INPUT_TIME" ] && ARGS+=(--time "$INPUT_TIME")
+        [ -n "$INPUT_OBSERVED_TIME" ] && ARGS+=(--observed-time "$INPUT_OBSERVED_TIME")
+        [ -n "$INPUT_TRACE_ID" ] && ARGS+=(--trace-id "$INPUT_TRACE_ID")
+        [ -n "$INPUT_SPAN_ID" ] && ARGS+=(--span-id "$INPUT_SPAN_ID")
+        ARGS+=(--event-name "$INPUT_EVENT_NAME")
+        [ -n "$INPUT_FLAGS" ] && ARGS+=(--flags "$INPUT_FLAGS")
+
+        # Instrumentation scope: hard-coded to identify this action.
+        # Update ACTION_VERSION when releasing a new version of the action.
+        CLI_VERSION=$(dash0 version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        ARGS+=(--scope-name "github.com/dash0hq/dash0-cli@send-log-event")
+        ARGS+=(--scope-version "$CLI_VERSION")
+
+        [ -n "$INPUT_RESOURCE_DROPPED_ATTRIBUTES_COUNT" ] && ARGS+=(--resource-dropped-attributes-count "$INPUT_RESOURCE_DROPPED_ATTRIBUTES_COUNT")
+        [ -n "$INPUT_LOG_DROPPED_ATTRIBUTES_COUNT" ] && ARGS+=(--log-dropped-attributes-count "$INPUT_LOG_DROPPED_ATTRIBUTES_COUNT")
+
+        dash0 logs send "${ARGS[@]}" "$INPUT_BODY"

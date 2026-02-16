@@ -18,6 +18,8 @@ Archives are available for Linux, macOS and Windows across multiple architecture
 
 ### GitHub Actions
 
+#### Setup Action
+
 Use the `dash0` CLI in your CI/CD workflows with the [setup](.github/actions/setup/action.yaml) action:
 
 ```yaml
@@ -36,6 +38,50 @@ steps:
       DASH0_AUTH_TOKEN: ... # Get one from https://app.dash0.com/goto/settings/auth-tokens?auth_token_id=39d58aa9-b64e-464c-a675-cc3923085d6c ; keep the auth token in a GitHub secret!
       DASH0_DATASET: my-dataset # Leave empty for the `default` dataset
     run: dash0 dashboards list
+```
+
+#### Send Log Event Action
+
+The [`send-log-event`](.github/actions/send-log-event/action.yaml) action sends [log events](https://opentelemetry.io/docs/specs/otel/logs/data-model/#events) to Dash0 directly from your workflows.
+It is standalone: it installs the Dash0 CLI automatically if it is not already on `PATH`.
+If the [`setup`](#setup-action) action has already run in the same job, the existing installation is reused.
+
+When used on its own, pass `otlp-url` and `auth-token` directly:
+
+```yaml
+steps:
+  - name: Send deployment event
+    uses: dash0hq/dash0-cli/.github/actions/send-log-event@main
+    with:
+      otlp-url: ${{ vars.DASH0_OTLP_URL }}
+      auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+      event-name: dash0.deployment
+      body: 'Deployment completed'
+      severity-number: '9'
+      service-name: my-service
+      deployment-environment-name: production
+      deployment-status: succeeded
+```
+
+When the `setup` action has already created a profile, the connection parameters are inherited and do not need to be repeated:
+
+```yaml
+steps:
+  - name: Setup Dash0 CLI
+    uses: dash0hq/dash0-cli/.github/actions/setup@main
+    with:
+      otlp-url: ${{ vars.DASH0_OTLP_URL }}
+      auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+
+  - name: Send deployment event
+    uses: dash0hq/dash0-cli/.github/actions/send-log-event@main
+    with:
+      event-name: dash0.deployment
+      body: 'Deployment completed'
+      severity-number: '9'
+      service-name: my-service
+      deployment-environment-name: production
+      deployment-status: succeeded
 ```
 
 ### Docker

@@ -162,10 +162,22 @@ The action:
 5. Creates a `default` profile via `dash0 config profiles create` when any config input (`api-url`, `otlp-url`, `auth-token`, `dataset`) is provided. All profile inputs are optional.
 6. Verifies the installation with `dash0 version` and `dash0 config show`.
 
-### Keeping the action in sync with CLI changes
+### Send Log Event Action
+
+The repository ships a composite GitHub Action at `.github/actions/send-log-event/` that sends a log event to Dash0.
+Its documentation lives in `.github/actions/send-log-event/README.md`.
+
+The action is standalone: it installs the Dash0 CLI automatically if not already on PATH, reusing the same install path and cache key as the setup action.
+It accepts connection parameters (`otlp-url`, `auth-token`, `dataset`) and all parameters supported by `dash0 logs send`.
+Recommended attributes from the [Dash0 deployment event spec](https://github.com/dash0hq/dash0-semantic-conventions) are exposed as first-level inputs (e.g., `service-name`, `deployment-status`).
+Additional attributes can be passed via `other-resource-attributes` and `other-log-attributes` as `key=value` pairs, one per line.
+
+### Keeping the actions in sync with CLI changes
 
 When modifying the logic of `dash0 config`, ensure that the [setup](.github/actions/setup/action.yaml) GitHub Action is not affected negatively.
 Ensure that the constraints of `dash0 config profiles create` are enforced in the input validation of the setup GitHub action.
+
+When modifying the flags of `dash0 logs send`, ensure that the [send-log-event](.github/actions/send-log-event/action.yaml) GitHub Action inputs stay in sync.
 
 ### Testing the action
 
@@ -202,6 +214,10 @@ Seaction headers should be written in sentence case, e.g., "This is an example".
 - Use the **Oxford comma** (e.g., "error status, latency thresholds, rate limits, and so on").
 - Use curly/typographic quotes in prose (`"..."`, `'...'`); straight quotes are fine inside code blocks.
 - Write numbers as digits and spell out "percent" (e.g., "10 percent", not "10%" or "ten percent").
+
+### Referencing GitHub Actions in Documentation
+
+Names of GitHub actions are treated as code, e.g., `send-log-event`, and a link is provided to their folder.
 
 ## Changelog
 
