@@ -1,0 +1,94 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "my-service"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "dash0-cli",
+            "version": "1.0.0",
+            "attributes": []
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1706198400000000000",
+              "observedTimeUnixNano": "1706198400000000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "Application started successfully"
+              },
+              "attributes": [
+                {
+                  "key": "user.id",
+                  "value": {
+                    "stringValue": "12345"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1706198401000000000",
+              "observedTimeUnixNano": "1706198401000000000",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": {
+                "stringValue": "Connection timeout"
+              },
+              "attributes": [
+                {
+                  "key": "error.type",
+                  "value": {
+                    "stringValue": "timeout"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "api-gateway"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "otel-sdk",
+            "version": "0.5.0",
+            "attributes": []
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1706198402000000000",
+              "observedTimeUnixNano": "1706198402000000000",
+              "severityNumber": 13,
+              "severityText": "WARN",
+              "body": {
+                "stringValue": "Rate limit approaching threshold"
+              },
+              "attributes": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

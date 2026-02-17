@@ -219,7 +219,8 @@ jobs:
           deployment-environment-name: ci
           severity-number: '9'
 
-      # TODO(#41): Verify the log event arrived using `dash0 logs query` when implemented.
+      # TODO(#41): Verify the log event arrived using `dash0 logs query`.
+      # Deferred to a follow-up PR after a release that includes the command.
 
   test-arm64:
     name: 'Standalone install on arm64'

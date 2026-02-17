@@ -331,6 +331,11 @@ View "a1b2c3d4-..." deleted successfully
 
 ### Logs
 
+#### Sending logs to Dash0
+
+> [!NOTE]
+> The `dash0 logs send` command requires an OTLP URL configured in the active profile, or via the `--otlp-url` flag or the `DASH0_OTLP_URL` environment variable.
+
 Send log records to Dash0 via OTLP:
 
 ```bash
@@ -341,7 +346,71 @@ $ dash0 logs send "Application started" \
 Log record sent successfully
 ```
 
-Requires an OTLP URL configured in the active profile, or via the `--otlp-url` flag or the `DASH0_OTLP_URL` environment variable.
+#### Querying logs from Dash0
+
+> [!WARNING]
+> The command syntax — especially the `--filter` format — is experimental and may change in future releases.
+
+> [!NOTE] The `dash0 logs query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
+
+Query log records from Dash0:
+
+```bash
+$ dash0 logs query
+TIMESTAMP                     SEVERITY    BODY
+2026-02-16T09:12:03.456Z      INFO        Application started successfully
+2026-02-16T09:12:04.789Z      ERROR       Connection timeout
+2026-02-16T09:12:05.123Z      WARN        Rate limit approaching threshold
+...
+```
+
+By default, `logs query` returns up to 50 records from the last 15 minutes (`--from now-15m --to now`).
+Use `--from` and `--to` to specify a different time range, and `--limit` to change the maximum number of records.
+Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
+Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
+
+Filter results using the `--filter` flag:
+
+```bash
+$ dash0 logs query --filter "service.name is my-service" --filter "otel.log.severity.number gte 13"
+TIMESTAMP                     SEVERITY    BODY
+2026-02-16T09:12:04.789Z      ERROR       Connection timeout
+...
+```
+
+The `--filter` flag accepts expressions in the form `key [operator] value`.
+When the operator is omitted, `is` (exact match) is assumed.
+Supported operators: `is`, `is_not`, `contains`, `does_not_contain`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`, `matches`, `does_not_match`, `gt`, `gte`, `lt`, `lte`, `is_set`, `is_not_set`, `is_one_of`, `is_not_one_of`, `is_any`.
+Symbolic aliases are also accepted: `=` for `is`, `!=` for `is_not`, `>` for `gt`, `>=` for `gte`, `<` for `lt`, `<=` for `lte`, `~` for `matches`, `!~` for `does_not_match`.
+Keys containing spaces can be single-quoted, e.g., `'my key' is value`.
+The `is_one_of` and `is_not_one_of` operators accept space-separated values.
+Values containing spaces can be single-quoted:
+
+```bash
+$ dash0 logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
+$ dash0 logs query --filter "service.name is_not_one_of frontend gateway"
+$ dash0 logs query --filter "deployment.environment.name is_one_of 'us east' 'eu west' staging"
+```
+
+Alternative output formats are available:
+
+```bash
+$ dash0 logs query -o otlp-json
+{"resourceLogs": [...]}
+
+$ dash0 logs query -o csv
+timestamp,severity,body
+2026-02-16T09:12:03.456Z,INFO,Application started successfully
+...
+```
+
+Pipe through `tail -n +2` to skip the CSV header row.
+
+```bash
+$ dash0 logs query -o csv | tail -n +2
+2026-02-16T09:12:03.456Z,INFO,Application started successfully
+...
+```
 
 ### Common settings
 

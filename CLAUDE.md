@@ -94,16 +94,25 @@ The `apply` command and the individual CRUD subcommands (e.g., `check-rules crea
 - `/internal/dashboards`, `/internal/checkrules`, `/internal/views`, `/internal/syntheticchecks`: Per-asset CRUD commands — delegate asset-specific logic to `internal/asset`
 - `/internal/config`: Configuration management
 - `/internal/client`: API client factory and error handling
+- `/internal/query`: Shared query utilities (filter parsing, timestamp normalization) used by query commands across signal types (e.g., `logs query`)
 - `/internal/metrics`: Commands and utilities to retrieve metrics from Dash0
 - `/internal/log`: Shared logging utilities
 
 Logic that is shared between `apply` and CRUD commands (import with existence check, PrometheusRule conversion, kind display names, file I/O) must live in `internal/asset/`, not be duplicated across packages. The per-asset packages and `apply` import from `internal/asset`, never from each other.
+
+Logic that is shared across query commands for different signal types (filter parsing, timestamp normalization) must live in `internal/query/`, not be duplicated across per-signal packages like `internal/logs`.
 
 Organize code by domain, make interfaces for testability, and follow standard Go package layout.
 
 ## Documentation
 
 Available commands are explained in @README.md . The description of what commands do is kept short and to the point. Providing a sample invocation as shell snippet, and when the output is longer than 4 lines, truncate it meaningfully to 4 lines or less. When modifying `dash0` in ways that affect the outpout displayed to users, always validate that the documentation about the commands is correct.
+
+### Attribute keys in examples
+When writing filter or query examples in documentation, use real Dash0 attribute keys — not invented ones.
+Check the Dash0 API (via the `getAttributeKeys` and `getAttributeValues` MCP tools) to verify that the attribute keys and values used in examples actually exist.
+Common log attribute keys include `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, and `otel.log.body`.
+The valid values for `otel.log.severity.range` are: TRACE, DEBUG, INFO, WARN, ERROR, and UNKNOWN (not FATAL — FATAL is an `otel.log.severity.text` value, not a range).
 
 ### Environment Variables Reference Table
 The README contains an "Environment Variables" table listing all supported env vars. When adding a new environment variable (e.g., for a new config field), add a row to this table. Keep the table sorted alphabetically by variable name.
