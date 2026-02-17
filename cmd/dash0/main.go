@@ -51,6 +51,9 @@ func init() {
 
 	// Add version command
 	rootCmd.AddCommand(newVersionCmd())
+
+	// Global flags
+	rootCmd.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
 }
 
 // newVersionCmd creates a new version command

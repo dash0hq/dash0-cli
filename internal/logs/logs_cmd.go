@@ -6,11 +6,12 @@ import "github.com/spf13/cobra"
 func NewLogsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs",
-		Short: "Manage log records",
-		Long:  `Manage log records to Dash0 via OTLP`,
+		Short: "Send and query log records",
+		Long:  `Send and query log records to and from Dash0.`,
 	}
 
 	cmd.AddCommand(newSendCmd())
+	cmd.AddCommand(newQueryCmd())
 
 	return cmd
 }

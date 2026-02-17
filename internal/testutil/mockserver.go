@@ -40,6 +40,10 @@ const (
 	FixtureViewsImportSuccess = "views/import_success.json"
 	FixtureViewsNotFound      = "views/error_not_found.json"
 
+	// Logs fixtures
+	FixtureLogsQuerySuccess = "logs/query_success.json"
+	FixtureLogsQueryEmpty   = "logs/query_empty.json"
+
 	// Synthetic checks fixtures
 	FixtureSyntheticChecksListSuccess   = "syntheticchecks/list_success.json"
 	FixtureSyntheticChecksListEmpty     = "syntheticchecks/list_empty.json"
