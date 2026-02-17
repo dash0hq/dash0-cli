@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,6 +22,15 @@ const (
 	testLogsAuthToken        = "auth_test_token"
 )
 
+// newExperimentalLogsCmd creates a root command with the --experimental persistent
+// flag and the logs subcommand attached, mirroring the real command tree.
+func newExperimentalLogsCmd() *cobra.Command {
+	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	root.AddCommand(NewLogsCmd())
+	return root
+}
+
 func TestQueryLogs_Success(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -31,8 +41,8 @@ func TestQueryLogs_Success(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
-	cmd.SetArgs([]string{"query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -59,8 +69,8 @@ func TestQueryLogs_Empty(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
-	cmd.SetArgs([]string{"query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -81,8 +91,8 @@ func TestQueryLogs_OtlpJsonFormat(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
-	cmd.SetArgs([]string{"query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "otlp-json"})
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "otlp-json"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -107,8 +117,8 @@ func TestQueryLogs_CsvFormat(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
-	cmd.SetArgs([]string{"query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "csv"})
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "csv"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -133,9 +143,9 @@ func TestQueryLogs_WithFilter(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
+	cmd := newExperimentalLogsCmd()
 	cmd.SetArgs([]string{
-		"query",
+		"-X", "logs", "query",
 		"--api-url", server.URL,
 		"--auth-token", testLogsAuthToken,
 		"--filter", "service.name is my-service",
@@ -172,8 +182,8 @@ func TestQueryLogs_Unauthorized(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
-	cmd.SetArgs([]string{"query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
 
 	err := cmd.Execute()
 
@@ -184,8 +194,8 @@ func TestQueryLogs_Unauthorized(t *testing.T) {
 func TestQueryLogs_OtlpJsonLimitExceeded(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	cmd := NewLogsCmd()
-	cmd.SetArgs([]string{"query", "--api-url", "http://unused", "--auth-token", testLogsAuthToken, "-o", "otlp-json", "--limit", "200"})
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", "http://unused", "--auth-token", testLogsAuthToken, "-o", "otlp-json", "--limit", "200"})
 
 	err := cmd.Execute()
 
@@ -203,9 +213,9 @@ func TestQueryLogs_RequestParams(t *testing.T) {
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := NewLogsCmd()
+	cmd := newExperimentalLogsCmd()
 	cmd.SetArgs([]string{
-		"query",
+		"-X", "logs", "query",
 		"--api-url", server.URL,
 		"--auth-token", testLogsAuthToken,
 		"--from", "now-2h",
