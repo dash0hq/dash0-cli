@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - 'Formula/**'
       - 'CHANGELOG.md'
+      - .chloggen/**
   workflow_dispatch:
 
 jobs:
