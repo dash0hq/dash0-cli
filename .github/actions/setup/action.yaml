@@ -59,39 +59,9 @@ runs:
     - name: Resolve Dash0 CLI version
       id: resolve-version
       shell: bash
-      run: |
-        VERSION="${{ inputs.version }}"
-
-        if [ -z "$VERSION" ]; then
-          echo "Fetching latest Dash0 CLI version..."
-          VERSION=$(git ls-remote --tags --sort=-version:refname https://github.com/dash0hq/dash0-cli.git | grep -v '\^{}' | head -1 | cut -f2 | sed 's|refs/tags/v||')
-
-          if [ -z "$VERSION" ]; then
-            echo "Error: Could not determine latest Dash0 CLI version"
-            exit 1
-          fi
-
-          echo "Latest version: $VERSION"
-        else
-          if [[ "$VERSION" =~ ^v ]]; then
-            # Strip off leading 'v' if present
-            VERSION="${VERSION#v}"
-          fi
-          echo "Using specified version: $VERSION"
-        fi
-
-        # Enforce minimum supported version
-        MIN_SUPPORTED="1.1.0"
-        if ! printf '%s\n%s\n' "$MIN_SUPPORTED" "$VERSION" | sort -V -C; then
-          echo "::error::Dash0 CLI version $VERSION is below the minimum supported version ($MIN_SUPPORTED)."
-          exit 1
-        fi
-
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-    - name: Create install directory
-      shell: bash
-      run: mkdir -p ~/.dash0/bin
+      env:
+        CLI_VERSION: ${{ inputs.version }}
+      run: bash "${{ github.action_path }}/../lib/resolve-cli-version.sh"
 
     - name: Restore Dash0 CLI from cache
       if: inputs.cache == 'true'
@@ -101,37 +71,16 @@ runs:
         path: ~/.dash0/bin/dash0
         key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
 
-    - name: Install Dash0 (Linux amd64)
-      if: runner.os == 'Linux' && runner.arch == 'X64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+    - name: Download Dash0 CLI
+      if: steps.cache-dash0-cli.outputs.cache-hit != 'true'
       shell: bash
-      run: |
-        VERSION="${{ steps.resolve-version.outputs.version }}"
-        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_amd64.tar.gz"
-
-        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
-        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
-
-    - name: Install Dash0 (Linux arm64)
-      if: runner.os == 'Linux' && runner.arch == 'ARM64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        VERSION="${{ steps.resolve-version.outputs.version }}"
-        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_arm64.tar.gz"
-
-        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
-        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
-
-    - name: Fail on unsupported platform
-      if: runner.os != 'Linux' || (runner.arch != 'X64' && runner.arch != 'ARM64')
-      shell: bash
-      run: |
-        echo "Error: Unsupported platform ${RUNNER_OS} ${RUNNER_ARCH}. Only Linux (x64, arm64) is supported."
-        exit 1
+      env:
+        CLI_VERSION: ${{ steps.resolve-version.outputs.version }}
+      run: bash "${{ github.action_path }}/../lib/download-cli.sh"
 
     - name: Add Dash0 CLI to PATH
       shell: bash
-      run: |
-        echo "$HOME/.dash0/bin" >> $GITHUB_PATH
+      run: echo "$HOME/.dash0/bin" >> "$GITHUB_PATH"
 
     - name: Create Dash0 profile
       if: inputs.api-url != '' || inputs.auth-token != '' || inputs.otlp-url != '' || inputs.dataset != ''
@@ -142,6 +91,7 @@ runs:
         INPUT_AUTH_TOKEN: ${{ inputs.auth-token }}
         INPUT_DATASET: ${{ inputs.dataset }}
       run: |
+        export PATH="$HOME/.dash0/bin:$PATH"
         ARGS=()
         [ -n "$INPUT_API_URL" ] && ARGS+=(--api-url "$INPUT_API_URL")
         [ -n "$INPUT_OTLP_URL" ] && ARGS+=(--otlp-url "$INPUT_OTLP_URL")
@@ -153,6 +103,7 @@ runs:
     - name: Verify installation
       shell: bash
       run: |
+        export PATH="$HOME/.dash0/bin:$PATH"
         dash0 version
         dash0 config show
 

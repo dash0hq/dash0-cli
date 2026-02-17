@@ -183,126 +183,40 @@ runs:
   steps:
     # -- CLI installation (skipped if already on PATH, e.g., via the setup action) --
 
-    - name: Check for existing Dash0 CLI
-      id: check-cli
-      shell: bash
-      run: |
-        if command -v dash0 &>/dev/null; then
-          echo "Dash0 CLI already installed: $(dash0 version)"
-          echo "installed=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "installed=false" >> "$GITHUB_OUTPUT"
-        fi
-
     - name: Resolve Dash0 CLI version
       id: resolve-version
-      if: steps.check-cli.outputs.installed == 'false'
       shell: bash
       env:
-        INPUT_VERSION: ${{ inputs.cli-version }}
-      run: |
-        VERSION="$INPUT_VERSION"
-
-        if [ -z "$VERSION" ]; then
-          echo "Fetching latest Dash0 CLI version..."
-          VERSION=$(git ls-remote --tags --sort=-version:refname https://github.com/dash0hq/dash0-cli.git | grep -v '\^{}' | head -1 | cut -f2 | sed 's|refs/tags/v||')
-
-          if [ -z "$VERSION" ]; then
-            echo "::error::Could not determine latest Dash0 CLI version"
-            exit 1
-          fi
-
-          echo "Latest version: $VERSION"
-        else
-          if [[ "$VERSION" =~ ^v ]]; then
-            VERSION="${VERSION#v}"
-          fi
-          echo "Using specified version: $VERSION"
-        fi
-
-        # Enforce minimum supported version
-        MIN_SUPPORTED="1.1.0"
-        if ! printf '%s\n%s\n' "$MIN_SUPPORTED" "$VERSION" | sort -V -C; then
-          echo "::error::Dash0 CLI version $VERSION is below the minimum supported version ($MIN_SUPPORTED)."
-          exit 1
-        fi
-
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-    - name: Create install directory
-      if: steps.check-cli.outputs.installed == 'false'
-      shell: bash
-      run: mkdir -p ~/.dash0/bin
+        CLI_VERSION: ${{ inputs.cli-version }}
+        SKIP_IF_ON_PATH: 'true'
+      run: bash "${{ github.action_path }}/../lib/resolve-cli-version.sh"
 
     - name: Restore Dash0 CLI from cache
-      if: steps.check-cli.outputs.installed == 'false'
+      if: steps.resolve-version.outputs.skip-install != 'true'
       id: cache-dash0-cli
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.dash0/bin/dash0
         key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
 
-    - name: Install Dash0 CLI (Linux amd64)
-      if: steps.check-cli.outputs.installed == 'false' && runner.os == 'Linux' && runner.arch == 'X64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+    - name: Download Dash0 CLI
+      if: steps.resolve-version.outputs.skip-install != 'true' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
       shell: bash
-      run: |
-        VERSION="${{ steps.resolve-version.outputs.version }}"
-        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_amd64.tar.gz"
-
-        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
-        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
-
-    - name: Install Dash0 CLI (Linux arm64)
-      if: steps.check-cli.outputs.installed == 'false' && runner.os == 'Linux' && runner.arch == 'ARM64' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        VERSION="${{ steps.resolve-version.outputs.version }}"
-        BINARY_URL="https://github.com/dash0hq/dash0-cli/releases/download/v${VERSION}/dash0_${VERSION}_linux_arm64.tar.gz"
-
-        echo "Installing Dash0 CLI ${VERSION} from ${BINARY_URL}..."
-        curl --proto '=https' --tlsv1.2 -LsSf "$BINARY_URL" | tar -xzf - -C ~/.dash0/bin dash0
-
-    - name: Fail on unsupported platform
-      if: steps.check-cli.outputs.installed == 'false' && (runner.os != 'Linux' || (runner.arch != 'X64' && runner.arch != 'ARM64'))
-      shell: bash
-      run: |
-        echo "::error::Unsupported platform ${RUNNER_OS} ${RUNNER_ARCH}. Only Linux (x64, arm64) is supported."
-        exit 1
+      env:
+        CLI_VERSION: ${{ steps.resolve-version.outputs.version }}
+      run: bash "${{ github.action_path }}/../lib/download-cli.sh"
 
     - name: Add Dash0 CLI to PATH
-      if: steps.check-cli.outputs.installed == 'false'
+      if: steps.resolve-version.outputs.skip-install != 'true'
       shell: bash
-      run: |
-        echo "$HOME/.dash0/bin" >> "$GITHUB_PATH"
-        # Make dash0 available in subsequent steps of this action
-        export PATH="$HOME/.dash0/bin:$PATH"
-        dash0 version
+      run: echo "$HOME/.dash0/bin" >> "$GITHUB_PATH"
 
     - name: Save Dash0 CLI to cache
-      if: steps.check-cli.outputs.installed == 'false' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      if: steps.resolve-version.outputs.skip-install != 'true' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.dash0/bin/dash0
         key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
-
-    - name: Verify minimum CLI version
-      shell: bash
-      run: |
-        export PATH="$HOME/.dash0/bin:$PATH"
-        MIN_SUPPORTED="1.1.0"
-        CLI_VERSION=$(dash0 version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-
-        if [ -z "$CLI_VERSION" ]; then
-          echo "::error::Could not determine Dash0 CLI version."
-          exit 1
-        fi
-
-        if ! printf '%s\n%s\n' "$MIN_SUPPORTED" "$CLI_VERSION" | sort -V -C; then
-          echo "::error::Dash0 CLI version $CLI_VERSION is below the minimum supported version ($MIN_SUPPORTED)."
-          exit 1
-        fi
-
-        echo "Dash0 CLI version $CLI_VERSION meets minimum requirement ($MIN_SUPPORTED)."
 
     # -- Ensure a profile exists --
 
