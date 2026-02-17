@@ -349,14 +349,15 @@ Log record sent successfully
 #### Querying logs from Dash0
 
 > [!WARNING]
-> The command syntax — especially the `--filter` format — is experimental and may change in future releases.
+> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
+> The command syntax — especially the `--filter` format — may change in future releases.
 
 > [!NOTE] The `dash0 logs query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
 Query log records from Dash0:
 
 ```bash
-$ dash0 logs query
+$ dash0 --experimental logs query
 TIMESTAMP                     SEVERITY    BODY
 2026-02-16T09:12:03.456Z      INFO        Application started successfully
 2026-02-16T09:12:04.789Z      ERROR       Connection timeout
@@ -372,7 +373,7 @@ Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:0
 Filter results using the `--filter` flag:
 
 ```bash
-$ dash0 logs query --filter "service.name is my-service" --filter "otel.log.severity.number gte 13"
+$ dash0 --experimental logs query --filter "service.name is my-service" --filter "otel.log.severity.number gte 13"
 TIMESTAMP                     SEVERITY    BODY
 2026-02-16T09:12:04.789Z      ERROR       Connection timeout
 ...
@@ -380,25 +381,47 @@ TIMESTAMP                     SEVERITY    BODY
 
 The `--filter` flag accepts expressions in the form `key [operator] value`.
 When the operator is omitted, `is` (exact match) is assumed.
-Supported operators: `is`, `is_not`, `contains`, `does_not_contain`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`, `matches`, `does_not_match`, `gt`, `gte`, `lt`, `lte`, `is_set`, `is_not_set`, `is_one_of`, `is_not_one_of`, `is_any`.
-Symbolic aliases are also accepted: `=` for `is`, `!=` for `is_not`, `>` for `gt`, `>=` for `gte`, `<` for `lt`, `<=` for `lte`, `~` for `matches`, `!~` for `does_not_match`.
+The supported operators are the following:
+
+| Operator | Alias | Description |
+|----------|-------|-------------|
+| `is` | `=` | Exact match (default when operator is omitted) |
+| `is_not` | `!=` | Not equal |
+| `contains` | | Value contains substring |
+| `does_not_contain` | | Value does not contain substring |
+| `starts_with` | | Value starts with prefix |
+| `does_not_start_with` | | Value does not start with prefix |
+| `ends_with` | | Value ends with suffix |
+| `does_not_end_with` | | Value does not end with suffix |
+| `matches` | `~` | Regular expression match |
+| `does_not_match` | `!~` | Negated regular expression match |
+| `gt` | `>` | Greater than |
+| `gte` | `>=` | Greater than or equal |
+| `lt` | `<` | Less than |
+| `lte` | `<=` | Less than or equal |
+| `is_set` | | Attribute is present |
+| `is_not_set` | | Attribute is absent |
+| `is_one_of` | | Matches any of the given values |
+| `is_not_one_of` | | Matches none of the given values |
+| `is_any` | | Matches any value |
+
 Keys containing spaces can be single-quoted, e.g., `'my key' is value`.
 The `is_one_of` and `is_not_one_of` operators accept space-separated values.
 Values containing spaces can be single-quoted:
 
 ```bash
-$ dash0 logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
-$ dash0 logs query --filter "service.name is_not_one_of frontend gateway"
-$ dash0 logs query --filter "deployment.environment.name is_one_of 'us east' 'eu west' staging"
+$ dash0 --experimental logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
+$ dash0 --experimental logs query --filter "service.name is_not_one_of frontend gateway"
+$ dash0 --experimental logs query --filter "deployment.environment.name is_one_of 'us east' 'eu west' staging"
 ```
 
 Alternative output formats are available:
 
 ```bash
-$ dash0 logs query -o otlp-json
+$ dash0 --experimental logs query -o otlp-json
 {"resourceLogs": [...]}
 
-$ dash0 logs query -o csv
+$ dash0 --experimental logs query -o csv
 timestamp,severity,body
 2026-02-16T09:12:03.456Z,INFO,Application started successfully
 ...
@@ -407,7 +430,7 @@ timestamp,severity,body
 Pipe through `tail -n +2` to skip the CSV header row.
 
 ```bash
-$ dash0 logs query -o csv | tail -n +2
+$ dash0 --experimental logs query -o csv | tail -n +2
 2026-02-16T09:12:03.456Z,INFO,Application started successfully
 ...
 ```
@@ -420,6 +443,7 @@ $ dash0 logs query -o csv | tail -n +2
 | `--otlp-url` | | `DASH0_OTLP_URL` | Override OTLP URL from profile Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Override auth token from profile. Find yours [here](https://app.dash0.com/goto/settings/auth-tokens). |
 | `--dataset` | | `DASH0_DATASET` | Override dataset from profile. Find the available datasets in your organization [here](https://app.dash0.com/goto/settings/datasets). Use the value of `identifier`, not `Name`. |
+| `--experimental` | `-X` | | Enable experimental features (required for commands marked `[experimental]`) |
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml` |
 | | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |

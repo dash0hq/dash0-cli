@@ -4,9 +4,55 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newLogsQueryCmd() (*cobra.Command, *cobra.Command) {
+	root := &cobra.Command{Use: "dash0"}
+	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	logsCmd := NewLogsCmd()
+	root.AddCommand(logsCmd)
+	var queryCmd *cobra.Command
+	for _, c := range logsCmd.Commands() {
+		if c.Name() == "query" {
+			queryCmd = c
+			break
+		}
+	}
+	return root, queryCmd
+}
+
+func TestQueryRequiresExperimentalFlag(t *testing.T) {
+	t.Run("without --experimental flag", func(t *testing.T) {
+		root, _ := newLogsQueryCmd()
+		root.SetArgs([]string{"logs", "query"})
+		err := root.Execute()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "experimental command")
+		assert.Contains(t, err.Error(), "--experimental")
+	})
+
+	t.Run("with --experimental flag", func(t *testing.T) {
+		root, _ := newLogsQueryCmd()
+		root.SetArgs([]string{"--experimental", "logs", "query"})
+		err := root.Execute()
+		// Should not fail with experimental error; will fail for other reasons (no config)
+		if err != nil {
+			assert.NotContains(t, err.Error(), "experimental command")
+		}
+	})
+
+	t.Run("with -X short flag", func(t *testing.T) {
+		root, _ := newLogsQueryCmd()
+		root.SetArgs([]string{"-X", "logs", "query"})
+		err := root.Execute()
+		if err != nil {
+			assert.NotContains(t, err.Error(), "experimental command")
+		}
+	})
+}
 
 func TestParseQueryFormat(t *testing.T) {
 	tests := []struct {

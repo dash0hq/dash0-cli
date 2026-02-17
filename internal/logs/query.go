@@ -11,6 +11,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
+	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/query"
 	"github.com/spf13/cobra"
 )
@@ -55,10 +56,13 @@ func newQueryCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "query",
-		Short: "Query log records from Dash0",
+		Short: "[experimental] Query log records from Dash0",
 		Long:  `Query log records from Dash0 and display them in various formats.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := experimental.RequireExperimental(cmd); err != nil {
+				return err
+			}
 			return runQuery(cmd, flags)
 		},
 	}
