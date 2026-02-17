@@ -219,8 +219,28 @@ jobs:
           deployment-environment-name: ci
           severity-number: '9'
 
-      # TODO(#41): Verify the log event arrived using `dash0 logs query`.
-      # Deferred to a follow-up PR after a release that includes the command.
+      - name: Verify log event arrived
+        env:
+          DASH0_API_URL: ${{ vars.DASH0_API_URL }}
+          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
+          DASH0_DATASET: ${{ vars.DASH0_DATASET }}
+        run: |
+          MARKER="${{ steps.marker.outputs.value }}"
+          for ATTEMPT in $(seq 1 12); do
+            OUTPUT=$(dash0 -X logs query \
+              --filter "otel.log.body contains $MARKER" \
+              --from now-5m \
+              --limit 1 2>&1) || true
+            if echo "$OUTPUT" | grep -q "$MARKER"; then
+              echo "Log event found after $((ATTEMPT * 5)) seconds:"
+              echo "$OUTPUT"
+              exit 0
+            fi
+            echo "Attempt $ATTEMPT/12: log event not yet queryable, retrying in 5s..."
+            sleep 5
+          done
+          echo "Error: log event with marker '$MARKER' was not found after 60 seconds."
+          exit 1
 
   test-arm64:
     name: 'Standalone install on arm64'
