@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.3.0
+
+
+### Enhancements
+
+
+- `logs`: Add `dash0 logs query` command to query log records from Dash0 (#41)
+  The command syntax — especially the `--filter` format — is experimental and may change in future releases.
+
 ## 1.2.0
 
 
