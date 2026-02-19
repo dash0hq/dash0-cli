@@ -11,8 +11,10 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/client"
+	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/query"
+	"github.com/dash0hq/dash0-cli/internal/severity"
 	"github.com/spf13/cobra"
 )
 
@@ -151,7 +153,7 @@ func iterateRecords(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64
 			for _, lr := range sl.LogRecords {
 				emit(flatRecord{
 					timestamp: formatTimestamp(lr.TimeUnixNano),
-					severity:  severityName(lr.SeverityNumber, lr.SeverityText),
+					severity:  severityRange(lr.SeverityNumber),
 					body:      extractBodyString(lr.Body),
 				})
 				total++
@@ -190,7 +192,7 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) e
 			fmt.Fprintf(os.Stdout, "%-28s  %-10s  %s\n", "TIMESTAMP", "SEVERITY", "BODY")
 			headerPrinted = true
 		}
-		fmt.Fprintf(os.Stdout, "%-28s  %-10s  %s\n", r.timestamp, r.severity, r.body)
+		fmt.Fprintf(os.Stdout, "%-28s  %s  %s\n", r.timestamp, colorpkg.SprintSeverity(r.severity), r.body)
 	})
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: logRecordsAssetType})
@@ -278,35 +280,10 @@ func formatTimestamp(nanoStr string) string {
 	return t.Format("2006-01-02T15:04:05.000Z")
 }
 
-// severityName returns a human-readable severity name.
-func severityName(num *int32, text *string) string {
-	if text != nil && *text != "" {
-		return *text
-	}
+// severityRange returns the OTel severity range derived from the severity number.
+func severityRange(num *int32) string {
 	if num != nil {
-		return severityNumberToName(*num)
+		return severity.FromNumber(*num)
 	}
 	return ""
-}
-
-// severityNumberToName maps OTel severity numbers to names.
-func severityNumberToName(n int32) string {
-	switch {
-	case n == 0:
-		return "UNSPECIFIED"
-	case n >= 1 && n <= 4:
-		return "TRACE"
-	case n >= 5 && n <= 8:
-		return "DEBUG"
-	case n >= 9 && n <= 12:
-		return "INFO"
-	case n >= 13 && n <= 16:
-		return "WARN"
-	case n >= 17 && n <= 20:
-		return "ERROR"
-	case n >= 21 && n <= 24:
-		return "FATAL"
-	default:
-		return fmt.Sprintf("SEVERITY_%d", n)
-	}
 }

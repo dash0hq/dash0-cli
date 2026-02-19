@@ -118,21 +118,13 @@ func TestFormatTimestamp(t *testing.T) {
 	assert.Equal(t, "not-a-number", formatTimestamp("not-a-number"))
 }
 
-func TestSeverityName(t *testing.T) {
-	text := "INFO"
+func TestSeverityRange(t *testing.T) {
 	var num9 int32 = 9
 	var num17 int32 = 17
 	var num0 int32 = 0
 
-	// Text takes precedence
-	assert.Equal(t, "INFO", severityName(&num9, &text))
-	// Number only
-	assert.Equal(t, "INFO", severityName(&num9, nil))
-	assert.Equal(t, "ERROR", severityName(&num17, nil))
-	assert.Equal(t, "UNSPECIFIED", severityName(&num0, nil))
-	// Both nil
-	assert.Equal(t, "", severityName(nil, nil))
-	// Empty text falls back to number
-	empty := ""
-	assert.Equal(t, "ERROR", severityName(&num17, &empty))
+	assert.Equal(t, "INFO", severityRange(&num9))
+	assert.Equal(t, "ERROR", severityRange(&num17))
+	assert.Equal(t, "UNKNOWN", severityRange(&num0))
+	assert.Equal(t, "", severityRange(nil))
 }
