@@ -442,6 +442,7 @@ $ dash0 --experimental logs query -o csv | tail -n +2
 | `--api-url` | | `DASH0_API_URL` | Override API URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http'). |
 | `--otlp-url` | | `DASH0_OTLP_URL` | Override OTLP URL from profile Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Override auth token from profile. Find yours [here](https://app.dash0.com/goto/settings/auth-tokens). |
+| `--color` | | `DASH0_COLOR` | Color mode for output: `semantic` (default) or `none`. When set to `semantic`, severity levels and error messages are color-coded in terminal output. |
 | `--dataset` | | `DASH0_DATASET` | Override dataset from profile. Find the available datasets in your organization [here](https://app.dash0.com/goto/settings/datasets). Use the value of `identifier`, not `Name`. |
 | `--experimental` | `-X` | | Enable experimental features (required for commands marked `[experimental]`) |
 | `--file` | `-f` | | Input file path (use `-` for stdin) |

@@ -25,6 +25,19 @@ var (
 	date    = "unknown"
 )
 
+// colorMode represents the supported color output modes.
+type colorMode string
+
+const (
+	colorModeSemantic colorMode = "semantic"
+	colorModeNone     colorMode = "none"
+)
+
+var validColorModes = []colorMode{
+	colorModeSemantic,
+	colorModeNone,
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "dash0",
 	Short:   "Dash0 CLI",
@@ -54,6 +67,7 @@ func init() {
 
 	// Global flags
 	rootCmd.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	rootCmd.PersistentFlags().String("color", "", `Color mode for output: "semantic" or "none" (env: DASH0_COLOR)`)
 }
 
 // newVersionCmd creates a new version command
@@ -113,11 +127,43 @@ func needsConfig(cmd *cobra.Command) bool {
 	return true
 }
 
+func resolveColorMode() (colorMode, error) {
+	flagVal, _ := rootCmd.PersistentFlags().GetString("color")
+	raw := flagVal
+	if raw == "" {
+		raw = os.Getenv("DASH0_COLOR")
+	}
+	if raw == "" {
+		return colorModeSemantic, nil
+	}
+	mode := colorMode(raw)
+	for _, valid := range validColorModes {
+		if mode == valid {
+			return mode, nil
+		}
+	}
+	names := make([]string, len(validColorModes))
+	for i, m := range validColorModes {
+		names[i] = fmt.Sprintf("%q", m)
+	}
+	return "", fmt.Errorf("unknown color mode: %q (valid values: %s)", raw, strings.Join(names, ", "))
+}
+
 func main() {
 	ctx := context.Background()
 
 	// Determine which command will be executed
 	targetCmd, _, _ := rootCmd.Traverse(os.Args[1:])
+
+	// Resolve and apply the color mode before any output
+	colorMode, colorErr := resolveColorMode()
+	if colorErr != nil {
+		printError(colorErr)
+		os.Exit(1)
+	}
+	if colorMode == colorModeNone {
+		color.NoColor = true
+	}
 
 	// Load configuration only for commands that need it
 	if needsConfig(targetCmd) {
