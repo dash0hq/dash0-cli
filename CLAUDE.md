@@ -22,4 +22,4 @@ Detailed guidelines are split into focused documents:
 - @docs/documentation.md — prose rules, attribute keys in examples, validation
 - @docs/testing.md — test strategies, integration tests, fixtures, mock server
 - @docs/github-actions.md — how to create GitHub actions based on the `dash0` CLI, existing actions and their maintenance
-- @docs/changelog.md — when and how to create changelog entries
+- @docs/changelog-maintenance.md — when and how to create changelog entries

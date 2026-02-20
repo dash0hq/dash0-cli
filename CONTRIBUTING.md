@@ -25,7 +25,7 @@ The development guidelines live in [`docs/`](docs/):
 ## Changelog
 
 Every pull request that affects end users must include a changelog entry.
-See [docs/changelog.md](docs/changelog.md) for full instructions on creating, validating, and previewing entries.
+See [docs/changelog-maintenance.md](docs/changelog-maintenance.md) for full instructions on creating, validating, and previewing entries.
 
 Quick start:
 
