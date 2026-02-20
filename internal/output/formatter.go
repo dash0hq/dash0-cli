@@ -37,16 +37,31 @@ func ParseFormat(s string) (Format, error) {
 
 // Formatter handles output formatting
 type Formatter struct {
-	format Format
-	writer io.Writer
+	format     Format
+	writer     io.Writer
+	skipHeader bool
+}
+
+// FormatterOption configures optional Formatter behavior.
+type FormatterOption func(*Formatter)
+
+// WithSkipHeader omits the header row from table output.
+func WithSkipHeader(skip bool) FormatterOption {
+	return func(f *Formatter) {
+		f.skipHeader = skip
+	}
 }
 
 // NewFormatter creates a formatter for the specified output format
-func NewFormatter(format Format, w io.Writer) *Formatter {
-	return &Formatter{
+func NewFormatter(format Format, w io.Writer, opts ...FormatterOption) *Formatter {
+	f := &Formatter{
 		format: format,
 		writer: w,
 	}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
 }
 
 // Format returns the configured format
@@ -87,6 +102,21 @@ func (f *Formatter) Print(data interface{}) error {
 	}
 }
 
+// ValidateSkipHeader returns an error if --skip-header is used with a format
+// that has no header row (e.g. JSON or YAML).
+func ValidateSkipHeader(skipHeader bool, format string) error {
+	if !skipHeader {
+		return nil
+	}
+	lower := strings.ToLower(format)
+	switch lower {
+	case "table", "wide", "csv", "":
+		return nil
+	default:
+		return fmt.Errorf("--skip-header is not supported with output format %q", format)
+	}
+}
+
 // Column represents a table column configuration
 type Column struct {
 	Header string
@@ -101,20 +131,28 @@ func (f *Formatter) PrintTable(columns []Column, data []interface{}) error {
 		return nil
 	}
 
-	// Print header — the last column is not padded since nothing follows it
 	lastCol := len(columns) - 1
-	var headerParts []string
 	var format []string
 	for i, col := range columns {
 		if i == lastCol {
-			headerParts = append(headerParts, col.Header)
 			format = append(format, "%s")
 		} else {
-			headerParts = append(headerParts, fmt.Sprintf("%-*s", col.Width, col.Header))
 			format = append(format, fmt.Sprintf("%%-%ds", col.Width))
 		}
 	}
-	fmt.Fprintln(f.writer, strings.Join(headerParts, "  "))
+
+	// Print header — the last column is not padded since nothing follows it
+	if !f.skipHeader {
+		var headerParts []string
+		for i, col := range columns {
+			if i == lastCol {
+				headerParts = append(headerParts, col.Header)
+			} else {
+				headerParts = append(headerParts, fmt.Sprintf("%-*s", col.Width, col.Header))
+			}
+		}
+		fmt.Fprintln(f.writer, strings.Join(headerParts, "  "))
+	}
 
 	// Print rows
 	for _, item := range data {

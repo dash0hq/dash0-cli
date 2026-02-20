@@ -85,8 +85,12 @@ List all profiles.
 The active profile is marked with `*`.
 
 ```bash
-dash0 config profiles list
+dash0 config profiles list [--skip-header]
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--skip-header` | `false` | Omit the header row from output |
 
 Example output:
 
@@ -94,6 +98,12 @@ Example output:
   NAME  API URL                              OTLP URL                                    DATASET  AUTH TOKEN
 * dev   https://api.us-west-2.aws.dash0.com  https://ingress.us-west-2.aws.dash0.com     default  ...ULSzVkM
   prod  https://api.eu-west-1.aws.dash0.com  https://ingress.eu-west-1.aws.dash0.com     default  ...uth_yyy
+```
+
+Use `--skip-header` to omit the header row:
+
+```bash
+$ dash0 config profiles list --skip-header
 ```
 
 Aliases: `ls`
@@ -164,13 +174,14 @@ The examples below use `dashboards`, but the same patterns apply to every asset 
 List all assets in the dataset.
 
 ```bash
-dash0 dashboards list [--limit <n>] [-o <format>]
+dash0 dashboards list [--limit <n>] [-o <format>] [--skip-header]
 ```
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--limit` | `-l` | 50 | Maximum number of results |
 | `--output` | `-o` | `table` | `table`, `wide`, `json`, or `yaml` |
+| `--skip-header` | | `false` | Omit the header row from `table` and `wide` output |
 
 Example:
 
@@ -490,6 +501,7 @@ dash0 -X logs query [flags]
 | `--limit` | 50 | Maximum number of records |
 | `--filter` | | Filter expression (repeatable) |
 | `-o` | `table` | Output format: `table`, `otlp-json`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
@@ -528,7 +540,7 @@ timestamp,severity,body
 ...
 
 # CSV without header
-$ dash0 -X logs query -o csv | tail -n +2
+$ dash0 -X logs query -o csv --skip-header
 ```
 
 ### Filter syntax

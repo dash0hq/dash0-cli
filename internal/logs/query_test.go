@@ -54,6 +54,13 @@ func TestQueryRequiresExperimentalFlag(t *testing.T) {
 	})
 }
 
+func TestQuerySkipHeaderFlag(t *testing.T) {
+	_, queryCmd := newLogsQueryCmd()
+	flag := queryCmd.Flags().Lookup("skip-header")
+	require.NotNil(t, flag, "--skip-header flag should be registered on logs query")
+	assert.Equal(t, "false", flag.DefValue)
+}
+
 func TestParseQueryFormat(t *testing.T) {
 	tests := []struct {
 		input   string

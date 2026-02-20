@@ -21,8 +21,9 @@ func RegisterCommonFlags(cmd *cobra.Command, flags *CommonFlags) {
 // ListFlags holds flags specific to list commands
 type ListFlags struct {
 	CommonFlags
-	Limit int
-	All   bool
+	Limit      int
+	All        bool
+	SkipHeader bool
 }
 
 // RegisterListFlags adds list-specific flags to a command
@@ -30,6 +31,7 @@ func RegisterListFlags(cmd *cobra.Command, flags *ListFlags) {
 	RegisterCommonFlags(cmd, &flags.CommonFlags)
 	cmd.Flags().IntVarP(&flags.Limit, "limit", "l", 50, "Maximum number of results to return")
 	cmd.Flags().BoolVarP(&flags.All, "all", "a", false, "Fetch all pages (ignore limit)")
+	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and wide output")
 }
 
 // GetFlags holds flags specific to get commands
