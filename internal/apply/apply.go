@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
@@ -34,17 +35,11 @@ func NewApplyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply -f <file|directory>",
 		Short: "Apply asset definitions from a file or directory",
-		Long: `Apply asset definitions from a YAML file or a directory containing YAML files.
-Files must have the .yaml or .yml file extension and may contain
-multiple documents separated by "---".
+		Long: `Apply asset definitions from a YAML file or a directory containing YAML files. Files must have the .yaml or .yml file extension and may contain multiple documents separated by "---".
 
-Each document must have a "kind" field specifying the asset type.
-Use '-f -' to read documents from stdin.
+Each document must have a "kind" field specifying the asset type. Use '-f -' to read documents from stdin.
 
-When a directory is specified, all .yaml and .yml files are discovered
-recursively. Hidden files and directories (starting with '.') are skipped.
-All documents are validated before any are applied; if any document fails
-validation, no changes are made.
+When a directory is specified, all .yaml and .yml files are discovered recursively. Hidden files and directories (starting with '.') are skipped. All documents are validated before any are applied; if any document fails validation, no changes are made.
 
 Supported asset types:
   - Dashboard
@@ -52,7 +47,7 @@ Supported asset types:
   - SyntheticCheck
   - View
 
-If an asset exists, it will be updated. If it doesn't exist, it will be created.`,
+If an asset exists, it will be updated. If it doesn't exist, it will be created.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 

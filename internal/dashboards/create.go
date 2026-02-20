@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
@@ -17,8 +18,16 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "create -f <file>",
 		Aliases: []string{"add"},
-		Short:   "Create a dashboard from a file",
-		Long:    `Create a new dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
+		Short: "Create a dashboard from a file",
+		Long: `Create a new dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Example: `  # Create from a YAML file
+  dash0 dashboards create -f dashboard.yaml
+
+  # Create from stdin
+  cat dashboard.yaml | dash0 dashboards create -f -
+
+  # Validate without creating
+  dash0 dashboards create -f dashboard.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd.Context(), &flags)
 		},

@@ -28,7 +28,25 @@ func newShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
 		Short: "Show current configuration",
-		Long:  `Display the current active configuration`,
+		Long: `Display the current active configuration.
+
+Configuration is resolved in the following order (highest priority first):
+
+  1. Environment variables (DASH0_API_URL, DASH0_OTLP_URL, DASH0_AUTH_TOKEN, DASH0_DATASET)
+  2. CLI flags (--api-url, --otlp-url, --auth-token, --dataset)
+  3. Active profile settings
+
+When an environment variable overrides a profile value, config show annotates the field with "(from <VAR> environment variable)".
+
+The DASH0_CONFIG_DIR environment variable changes the configuration directory (default: ~/.dash0).`,
+		Example: `  # Show the active profile and its settings
+  dash0 config show
+
+  # See the effect of an environment variable override
+  DASH0_API_URL='https://api.example.com' dash0 config show
+
+  # Use a different configuration directory
+  DASH0_CONFIG_DIR=/tmp/dash0-test dash0 config show`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
@@ -144,7 +162,15 @@ func newCreateProfileCmd() *cobra.Command {
 		Aliases: []string{"add"},
 		Short:   "Create a new configuration profile",
 		Long:    `Create a new named configuration profile with API URL, OTLP URL and auth token`,
-		Args:    cobra.ExactArgs(1),
+		Example: `  # Create a profile with all settings
+  dash0 config profiles create dev \
+      --api-url https://api.us-west-2.aws.dash0.com \
+      --otlp-url https://ingress.us-west-2.aws.dash0.com \
+      --auth-token auth_xxx
+
+  # Create a minimal profile (add settings later with update)
+  dash0 config profiles create staging --api-url https://api.example.com`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -189,7 +215,15 @@ func newUpdateProfileCmd() *cobra.Command {
 		Use:   "update <name>",
 		Short: "Update a configuration profile",
 		Long:  `Update an existing configuration profile. Only the specified flags are changed; unspecified flags are left as-is. Pass an empty string to remove a field.`,
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Update the API URL of a profile
+  dash0 config profiles update prod --api-url https://api.us-east-1.aws.dash0.com
+
+  # Add an OTLP URL to an existing profile
+  dash0 config profiles update prod --otlp-url https://ingress.us-east-1.aws.dash0.com
+
+  # Remove a field by passing an empty string
+  dash0 config profiles update prod --dataset ''`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -245,6 +279,8 @@ func newListProfileCmd() *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List all configuration profiles",
 		Long:    `Display a list of all available configuration profiles`,
+		Example: `  # List all profiles (active profile marked with *)
+  dash0 config profiles list`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
@@ -355,7 +391,9 @@ func newDeleteProfileCmd() *cobra.Command {
 		Aliases: []string{"remove"},
 		Short:   "Delete a configuration profile",
 		Long:    `Delete a named configuration profile`,
-		Args:    cobra.ExactArgs(1),
+		Example: `  # Delete a profile
+  dash0 config profiles delete staging`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -383,7 +421,9 @@ func newSelectProfileCmd() *cobra.Command {
 		Use:   "select <name>",
 		Short: "Select a configuration profile",
 		Long:  `Set the active configuration profile`,
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Switch to a different profile
+  dash0 config profiles select prod`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 

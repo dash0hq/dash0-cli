@@ -18,8 +18,15 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
 		Short: "Update a check rule from a file",
-		Long:  `Update an existing check rule from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Update an existing check rule from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Example: `  # Update a check rule from a file
+  dash0 check-rules update <id> -f rule.yaml
+
+  # Export, edit, and update
+  dash0 check-rules get <id> -o yaml > rule.yaml
+  # edit rule.yaml
+  dash0 check-rules update <id> -f rule.yaml`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(cmd.Context(), args[0], &flags)
 		},

@@ -35,6 +35,11 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
       yaml: line 6: could not find expected ':'
   ```
 - Naming: use camelCase for variable names and PascalCase for exported functions/types
+- Help text examples: every cobra command should have an `Example` field showing common use-cases.
+  Each example line is indented by 2 spaces.
+  Use `<id>` as a placeholder for asset IDs — never use actual or fake UUIDs.
+  Precede each example with a `#` comment explaining the use-case.
+  Keep examples practical: show the most common flags and workflows users will reach for.
 - Never introduce test-specific behavior (env var checks, test flags, etc.) in production code.
   Tests must exercise the real code paths.
   Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables, or CLI flags) to set up the state tests need.

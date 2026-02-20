@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -18,8 +19,16 @@ func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get a view by ID",
-		Long:  `Retrieve a view definition by its ID`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Retrieve a view definition by its ID.` + internal.CONFIG_HINT,
+		Example: `  # Show view summary
+  dash0 views get <id>
+
+  # Export as YAML (suitable for re-applying)
+  dash0 views get <id> -o yaml > view.yaml
+
+  # Export as JSON
+  dash0 views get <id> -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd.Context(), args[0], &flags)
 		},

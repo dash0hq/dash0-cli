@@ -19,8 +19,16 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List views",
-		Long:    `List all views in the specified dataset`,
+		Short: "List views",
+		Long: `List all views in the specified dataset.` + internal.CONFIG_HINT,
+		Example: `  # List views (default: up to 50)
+  dash0 views list
+
+  # Output as YAML for backup or version control
+  dash0 views list -o yaml > views.yaml
+
+  # Output as JSON for scripting
+  dash0 views list -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd.Context(), &flags)
 		},

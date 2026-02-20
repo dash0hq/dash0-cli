@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
@@ -18,9 +19,14 @@ func newDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete <id>",
 		Aliases: []string{"remove"},
-		Short:   "Delete a dashboard",
-		Long:    `Delete a dashboard by its ID`,
-		Args:    cobra.ExactArgs(1),
+		Short: "Delete a dashboard",
+		Long: `Delete a dashboard by its ID. Use --force to skip the confirmation prompt.` + internal.CONFIG_HINT,
+		Example: `  # Delete with confirmation prompt
+  dash0 dashboards delete <id>
+
+  # Delete without confirmation (for scripts and automation)
+  dash0 dashboards delete <id> --force`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd.Context(), args[0], &flags)
 		},

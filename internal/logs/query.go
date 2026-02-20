@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
@@ -59,8 +60,31 @@ func newQueryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query",
 		Short: "[experimental] Query log records from Dash0",
-		Long:  `Query log records from Dash0 and display them in various formats.`,
-		Args:  cobra.NoArgs,
+		Long: `Query log records from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
+		Example: `  # Query recent logs (last 15 minutes, up to 50 records)
+  dash0 --experimental logs query
+
+  # Query logs from the last hour
+  dash0 --experimental logs query --from now-1h
+
+  # Filter by service name
+  dash0 --experimental logs query --filter "service.name is my-service"
+
+  # Filter by severity
+  dash0 --experimental logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
+
+  # Combine multiple filters
+  dash0 --experimental logs query \
+      --filter "service.name is my-service" \
+      --filter "otel.log.severity.number gte 13" \
+      --from now-1h --limit 100
+
+  # Output as CSV for further processing
+  dash0 --experimental logs query -o csv
+
+  # Output as OTLP JSON
+  dash0 --experimental logs query -o otlp-json --limit 10`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {
 				return err

@@ -19,8 +19,19 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List dashboards",
-		Long:    `List all dashboards in the specified dataset`,
+		Short: "List dashboards",
+		Long: `List all dashboards in the specified dataset.` + internal.CONFIG_HINT,
+		Example: `  # List dashboards (default: up to 50)
+  dash0 dashboards list
+
+  # List all dashboards across all pages
+  dash0 dashboards list --all
+
+  # Output as YAML for backup or version control
+  dash0 dashboards list -o yaml > dashboards.yaml
+
+  # Output as JSON for scripting
+  dash0 dashboards list -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd.Context(), &flags)
 		},

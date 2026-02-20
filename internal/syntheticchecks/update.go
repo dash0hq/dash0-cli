@@ -18,8 +18,15 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
 		Short: "Update a synthetic check from a file",
-		Long:  `Update an existing synthetic check from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Update an existing synthetic check from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Example: `  # Update a synthetic check from a file
+  dash0 synthetic-checks update <id> -f check.yaml
+
+  # Export, edit, and update
+  dash0 synthetic-checks get <id> -o yaml > check.yaml
+  # edit check.yaml
+  dash0 synthetic-checks update <id> -f check.yaml`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(cmd.Context(), args[0], &flags)
 		},

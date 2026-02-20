@@ -18,8 +18,15 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id> -f <file>",
 		Short: "Update a dashboard from a file",
-		Long:  `Update an existing dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Update an existing dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Example: `  # Update a dashboard from a file
+  dash0 dashboards update <id> -f dashboard.yaml
+
+  # Export, edit, and update
+  dash0 dashboards get <id> -o yaml > dashboard.yaml
+  # edit dashboard.yaml
+  dash0 dashboards update <id> -f dashboard.yaml`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(cmd.Context(), args[0], &flags)
 		},

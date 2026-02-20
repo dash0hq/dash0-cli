@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -51,7 +52,15 @@ func newInstantQueryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "instant",
 		Short: "Run an instant query",
-		Long:  `Query the instant value of a metric from the Dash0 API`,
+		Long: `Query the instant value of a metric from the Dash0 API.` + internal.CONFIG_HINT,
+		Example: `  # Query a PromQL expression
+  dash0 metrics instant --query 'up'
+
+  # Query with a specific dataset
+  dash0 metrics instant --query 'rate(http_requests_total[5m])' --dataset production
+
+  # Query at a specific time
+  dash0 metrics instant --query 'process_cpu_seconds_total' --time 2024-01-25T10:00:00Z`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Resolve configuration with overrides
 			cfg, err := config.ResolveConfiguration(apiUrl, authToken)

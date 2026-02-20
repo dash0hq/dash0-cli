@@ -19,8 +19,16 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List check rules",
-		Long:    `List all check rules (alerting rules) in the specified dataset`,
+		Short: "List check rules",
+		Long: `List all check rules (alerting rules) in the specified dataset.` + internal.CONFIG_HINT,
+		Example: `  # List check rules (default: up to 50)
+  dash0 check-rules list
+
+  # Output as YAML for backup or version control
+  dash0 check-rules list -o yaml > check-rules.yaml
+
+  # Output as JSON for scripting
+  dash0 check-rules list -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd.Context(), &flags)
 		},

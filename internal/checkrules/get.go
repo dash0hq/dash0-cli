@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -17,8 +18,16 @@ func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get a check rule by ID",
-		Long:  `Retrieve a check rule definition by its ID`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Retrieve a check rule definition by its ID.` + internal.CONFIG_HINT,
+		Example: `  # Show check rule summary
+  dash0 check-rules get <id>
+
+  # Export as YAML (suitable for re-applying)
+  dash0 check-rules get <id> -o yaml > rule.yaml
+
+  # Export as JSON
+  dash0 check-rules get <id> -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd.Context(), args[0], &flags)
 		},

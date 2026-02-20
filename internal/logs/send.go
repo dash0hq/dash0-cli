@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -41,9 +42,28 @@ func newSendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "send <body>",
 		Aliases: []string{"create"},
-		Short:   "Send a log record to Dash0",
-		Long:    `Send a log record to Dash0 via OTLP`,
-		Args:  cobra.ExactArgs(1),
+		Short: "Send a log record to Dash0",
+		Long: `Send a log record to Dash0 via OTLP.` + internal.CONFIG_HINT,
+		Example: `  # Send a simple log message
+  dash0 logs send "Application started"
+
+  # Send with severity and service name
+  dash0 logs send "Deployment completed" \
+      --severity-text INFO --severity-number 9 \
+      --resource-attribute service.name=my-service
+
+  # Send a deployment event with attributes
+  dash0 logs send "Deployment v2.1.0" \
+      --event-name dash0.deployment \
+      --severity-number 9 \
+      --resource-attribute service.name=my-service \
+      --log-attribute deployment.status=succeeded
+
+  # Send with trace context
+  dash0 logs send "Request processed" \
+      --trace-id 0af7651916cd43dd8448eb211c80319c \
+      --span-id b7ad6b7169203331`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, args[0], flags)
 		},
