@@ -126,6 +126,36 @@ func TestFormatter_PrintTable(t *testing.T) {
 	assert.Contains(t, output, "Dashboard Two")
 }
 
+func TestFormatter_PrintTable_SkipHeader(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatTable, &buf, WithSkipHeader(true))
+
+	columns := []Column{
+		{Header: "ID", Width: 10, Value: func(item interface{}) string {
+			return item.(testItem).ID
+		}},
+		{Header: internal.HEADER_NAME, Width: 20, Value: func(item interface{}) string {
+			return item.(testItem).Name
+		}},
+	}
+
+	data := []interface{}{
+		testItem{ID: "123", Name: "Dashboard One"},
+		testItem{ID: "456", Name: "Dashboard Two"},
+	}
+
+	err := f.PrintTable(columns, data)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	assert.NotContains(t, output, "ID")
+	assert.NotContains(t, output, "NAME")
+	assert.Contains(t, output, "123")
+	assert.Contains(t, output, "Dashboard One")
+	assert.Contains(t, output, "456")
+	assert.Contains(t, output, "Dashboard Two")
+}
+
 func TestFormatter_PrintTable_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	f := NewFormatter(FormatTable, &buf)
@@ -133,6 +163,28 @@ func TestFormatter_PrintTable_Empty(t *testing.T) {
 	err := f.PrintTable([]Column{}, []interface{}{})
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "No assets found")
+}
+
+func TestValidateSkipHeader(t *testing.T) {
+	t.Run("skip-header false never errors", func(t *testing.T) {
+		for _, format := range []string{"table", "wide", "json", "yaml", "csv", ""} {
+			assert.NoError(t, ValidateSkipHeader(false, format))
+		}
+	})
+
+	t.Run("skip-header true with compatible formats", func(t *testing.T) {
+		for _, format := range []string{"table", "wide", "csv", ""} {
+			assert.NoError(t, ValidateSkipHeader(true, format), "format %q should be compatible", format)
+		}
+	})
+
+	t.Run("skip-header true with incompatible formats", func(t *testing.T) {
+		for _, format := range []string{"json", "yaml", "otlp-json"} {
+			err := ValidateSkipHeader(true, format)
+			assert.Error(t, err, "format %q should be incompatible", format)
+			assert.Contains(t, err.Error(), "--skip-header is not supported")
+		}
+	})
 }
 
 func TestTruncate(t *testing.T) {

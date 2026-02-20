@@ -437,6 +437,42 @@ func TestListProfileCmd(t *testing.T) {
 	}
 }
 
+// TestListProfileCmdSkipHeader tests the --skip-header flag on list profiles
+func TestListProfileCmdSkipHeader(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "dev",
+			Configuration: Configuration{
+				ApiUrl:    "https://api.example.com",
+				AuthToken: "token_abc",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	out, err := executeCommand(rootCmd, "config", "profiles", "list", "--skip-header")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if bytes.Contains([]byte(out), []byte("NAME")) {
+		t.Errorf("Expected header to be omitted, but output contains NAME: %s", out)
+	}
+	if bytes.Contains([]byte(out), []byte("API URL")) {
+		t.Errorf("Expected header to be omitted, but output contains API URL: %s", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("dev")) {
+		t.Errorf("Expected output to contain profile name 'dev', got: %s", out)
+	}
+}
+
 // TestCreateProfileCmd tests the create profile command
 func TestCreateProfileCmd(t *testing.T) {
 	// Setup test environment

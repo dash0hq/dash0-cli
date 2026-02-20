@@ -28,7 +28,10 @@ func newListCmd() *cobra.Command {
   dash0 views list -o yaml > views.yaml
 
   # Output as JSON for scripting
-  dash0 views list -o json`,
+  dash0 views list -o json
+
+  # List without the header row (pipe-friendly)
+  dash0 views list --skip-header`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd.Context(), &flags)
 		},
@@ -39,6 +42,10 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(ctx context.Context, flags *asset.ListFlags) error {
+	if err := output.ValidateSkipHeader(flags.SkipHeader, flags.Output); err != nil {
+		return err
+	}
+
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
@@ -68,7 +75,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	formatter := output.NewFormatter(format, os.Stdout)
+	formatter := output.NewFormatter(format, os.Stdout, output.WithSkipHeader(flags.SkipHeader))
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:

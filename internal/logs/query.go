@@ -14,20 +14,22 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/query"
 	"github.com/dash0hq/dash0-cli/internal/severity"
 	"github.com/spf13/cobra"
 )
 
 type queryFlags struct {
-	ApiUrl    string
-	AuthToken string
-	Dataset   string
-	Output    string
-	From      string
-	To        string
-	Filter    []string
-	Limit     int
+	ApiUrl     string
+	AuthToken  string
+	Dataset    string
+	Output     string
+	From       string
+	To         string
+	Filter     []string
+	Limit      int
+	SkipHeader bool
 }
 
 // queryFormat represents the output format for log queries.
@@ -83,7 +85,10 @@ func newQueryCmd() *cobra.Command {
   dash0 --experimental logs query -o csv
 
   # Output as OTLP JSON
-  dash0 --experimental logs query -o otlp-json --limit 10`,
+  dash0 --experimental logs query -o otlp-json --limit 10
+
+  # Output as CSV without the header row
+  dash0 --experimental logs query -o csv --skip-header`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {
@@ -101,12 +106,17 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.To, "to", "now", "End of time range (e.g. now, 2024-01-25T11:00:00.000Z)")
 	cmd.Flags().StringArrayVar(&flags.Filter, "filter", nil, "Filter expression as 'key [operator] value' (repeatable)")
 	cmd.Flags().IntVar(&flags.Limit, "limit", 50, "Maximum number of log records to return")
+	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and CSV output")
 
 	return cmd
 }
 
 func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 	ctx := cmd.Context()
+
+	if err := output.ValidateSkipHeader(flags.SkipHeader, flags.Output); err != nil {
+		return err
+	}
 
 	format, err := parseQueryFormat(flags.Output)
 	if err != nil {
@@ -155,9 +165,9 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit)
+		return streamTable(iter, totalLimit, flags.SkipHeader)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit)
+		return streamCSV(iter, totalLimit, flags.SkipHeader)
 	case queryFormatOtlpJSON:
 		return collectAndRenderOtlpJSON(iter, totalLimit)
 	default:
@@ -208,11 +218,11 @@ type flatRecord struct {
 	body      string
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) error {
+func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool) error {
 	headerPrinted := false
 
 	total, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
-		if !headerPrinted {
+		if !headerPrinted && !skipHeader {
 			fmt.Fprintf(os.Stdout, "%-28s  %-10s  %s\n", "TIMESTAMP", "SEVERITY", "BODY")
 			headerPrinted = true
 		}
@@ -227,12 +237,14 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) e
 	return nil
 }
 
-func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) error {
+func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool) error {
 	w := csv.NewWriter(os.Stdout)
-	if err := w.Write([]string{"timestamp", "severity", "body"}); err != nil {
-		return err
+	if !skipHeader {
+		if err := w.Write([]string{"timestamp", "severity", "body"}); err != nil {
+			return err
+		}
+		w.Flush()
 	}
-	w.Flush()
 
 	_, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
 		w.Write([]string{r.timestamp, r.severity, r.body})

@@ -260,7 +260,7 @@ The `logs query` command supports a different set of formats via `-o`:
 
 - **`table`** (default): Timestamp, severity, and body columns
 - **`otlp-json`**: Full OTLP JSON payload
-- **`csv`**: Comma-separated values (pipe through `tail -n +2` to skip the header row)
+- **`csv`**: Comma-separated values
 
 ### Shell completions
 

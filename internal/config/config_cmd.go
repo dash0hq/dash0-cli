@@ -274,13 +274,18 @@ func newUpdateProfileCmd() *cobra.Command {
 
 // newListProfileCmd creates a new list profile command
 func newListProfileCmd() *cobra.Command {
+	var skipHeader bool
+
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List all configuration profiles",
 		Long:    `Display a list of all available configuration profiles`,
 		Example: `  # List all profiles (active profile marked with *)
-  dash0 config profiles list`,
+  dash0 config profiles list
+
+  # List without the header row (pipe-friendly)
+  dash0 config profiles list --skip-header`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configService, err := NewService()
 			if err != nil {
@@ -343,10 +348,12 @@ func newListProfileCmd() *cobra.Command {
 			}
 
 			// Print header
-			if hasOtlpUrl {
-				fmt.Printf("  %-*s  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", otlpUrlWidth, "OTLP URL", datasetWidth, "DATASET", "AUTH TOKEN")
-			} else {
-				fmt.Printf("  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", datasetWidth, "DATASET", "AUTH TOKEN")
+			if !skipHeader {
+				if hasOtlpUrl {
+					fmt.Printf("  %-*s  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", otlpUrlWidth, "OTLP URL", datasetWidth, "DATASET", "AUTH TOKEN")
+				} else {
+					fmt.Printf("  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", datasetWidth, "DATASET", "AUTH TOKEN")
+				}
 			}
 
 			// Print rows
@@ -380,6 +387,8 @@ func newListProfileCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&skipHeader, "skip-header", false, "Omit the header row from table output")
 
 	return cmd
 }
