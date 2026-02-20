@@ -1,6 +1,14 @@
 # Dash0 CLI
 
-A command-line interface for interacting with Dash0 services.
+A command-line interface designed for humans, agentic AIs and CI/CD to interact with the [Dash0](https://www.dash0.com) observability platform.
+
+## An ergonomic CLI for agentic AI
+
+The `dash0` CLI's capabilities are discoverable via `--help`, alongside a comprehensive [command reference](docs/commands.md) with detailed flags, expected outputs, and ready-to-use workflow examples.
+Authentication and connection settings can be configured entirely through profiles and environment variables, no need to juggle (and risk leaking) secrets in agentic context.
+Commands use consistent naming conventions and flags.
+Structured and parseable output formats (`--output json`, `--output yaml`, `--output csv`).
+Interactive prompts can be skipped with `--force`.
 
 ## Installation
 
