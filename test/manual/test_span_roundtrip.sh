@@ -32,8 +32,8 @@ if [ -z "$TRACE_ID" ] || [ -z "$SPAN_ID" ]; then
 fi
 
 # Step 2: Wait for ingestion
-echo "--- Step 2: Waiting 10s for ingestion ---"
-sleep 10
+echo "--- Step 2: Waiting 30s for ingestion ---"
+sleep 30
 
 # Step 3: Query in table format and verify the span appears
 echo "--- Step 3: Query spans (table) ---"
