@@ -123,6 +123,8 @@ $ dash0 config profiles select prod
 Profile 'prod' is now active
 ```
 
+Aliases: `activate`
+
 ### `config profiles delete`
 
 Delete a profile.

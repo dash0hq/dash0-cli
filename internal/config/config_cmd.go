@@ -427,9 +427,10 @@ func newDeleteProfileCmd() *cobra.Command {
 // newSelectProfileCmd creates a new select profile command
 func newSelectProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "select <name>",
-		Short: "Select a configuration profile",
-		Long:  `Set the active configuration profile`,
+		Use:     "select <name>",
+		Aliases: []string{"activate"},
+		Short:   "Select a configuration profile",
+		Long:    `Set the active configuration profile`,
 		Example: `  # Switch to a different profile
   dash0 config profiles select prod`,
 		Args: cobra.ExactArgs(1),

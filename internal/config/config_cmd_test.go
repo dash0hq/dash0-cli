@@ -638,3 +638,55 @@ func TestSelectProfileCmd(t *testing.T) {
 		t.Errorf("Expected active profile name test2, got %s", activeProfile.Name)
 	}
 }
+
+// TestActivateProfileAlias tests that "activate" works as an alias for "select"
+func TestActivateProfileAlias(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "test1",
+			Configuration: Configuration{
+				ApiUrl:    "https://test1.example.com",
+				AuthToken: "token1",
+			},
+		},
+		{
+			Name: "test2",
+			Configuration: Configuration{
+				ApiUrl:    "https://test2.example.com",
+				AuthToken: "token2",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "test1")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	configCmd := NewConfigCmd()
+	rootCmd.AddCommand(configCmd)
+
+	output, err := executeCommand(rootCmd, "config", "profiles", "activate", "test2")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Profile 'test2' is now active")) {
+		t.Errorf("Expected output to contain success message, got: %s", output)
+	}
+
+	service, err := NewService()
+	if err != nil {
+		t.Fatalf("Failed to create service: %v", err)
+	}
+
+	activeProfile, err := service.GetActiveProfile()
+	if err != nil {
+		t.Fatalf("Failed to get active profile: %v", err)
+	}
+
+	if activeProfile.Name != "test2" {
+		t.Errorf("Expected active profile name test2, got %s", activeProfile.Name)
+	}
+}
