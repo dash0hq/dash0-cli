@@ -29,9 +29,10 @@ The `config profiles` command uses:
 | `create`   | `add`    | Create a new profile |
 | `update`   | -        | Update an existing profile |
 | `delete`   | `remove` | Delete a profile |
-| `select`   | -        | Set the active profile |
+| `select`   | `activate` | Set the active profile |
 
 ## Aliases
+- `activate` → `select`
 - `add` → `create`
 - `remove` → `delete`
 - `ls` → `list`
