@@ -111,23 +111,21 @@ func printError(err error) {
 	}
 }
 
-// needsConfig returns true if the command requires configuration to run
-func needsConfig(cmd *cobra.Command) bool {
-	if cmd == nil {
-		return true
+// loadConfig attempts to resolve the CLI configuration (active profile +
+// environment variable overrides). It returns the resolved configuration on
+// success or nil if resolution fails. Errors are intentionally swallowed:
+// commands that actually need configuration will fail with a clear error
+// when they try to create a client and the required values are missing.
+//
+// This approach avoids the need to predict which command will run — something
+// that cobra's Traverse cannot reliably do when persistent flags like -X
+// precede the subcommand name.
+func loadConfig() *config.Configuration {
+	cfg, err := config.ResolveConfiguration("", "")
+	if err != nil {
+		return nil
 	}
-	name := cmd.Name()
-	if name == "help" || name == "version" || name == "completion" || name == "dash0" {
-		return false
-	}
-	// Walk the command chain to check if "config" is an ancestor that is
-	// a direct child of the root command (e.g. "config show", "config profiles create")
-	for c := cmd; c != nil; c = c.Parent() {
-		if c.Name() == "config" && c.Parent() != nil && c.Parent().Parent() == nil {
-			return false
-		}
-	}
-	return true
+	return cfg
 }
 
 func resolveColorMode() (colorMode, error) {
@@ -155,7 +153,8 @@ func resolveColorMode() (colorMode, error) {
 func main() {
 	ctx := context.Background()
 
-	// Determine which command will be executed
+	// Determine which command will be executed (best-effort; Traverse may
+	// return the root command when persistent flags like -X come first).
 	targetCmd, _, _ := rootCmd.Traverse(os.Args[1:])
 
 	// Resolve and apply the color mode before any output
@@ -168,17 +167,11 @@ func main() {
 		color.NoColor = true
 	}
 
-	// Load configuration only for commands that need it
-	if needsConfig(targetCmd) {
-		cfg, cfgErr := config.ResolveConfiguration("", "")
-		if cfgErr != nil {
-			// Config errors: print error only, no usage
-			printError(cfgErr)
-			os.Exit(1)
-		}
-		if cfg != nil {
-			ctx = config.WithConfiguration(ctx, cfg)
-		}
+	// Always attempt to load configuration. Commands that don't need it
+	// (help, version, config) simply ignore it. Commands that do need it
+	// will fail with a clear error if the required values are missing.
+	if cfg := loadConfig(); cfg != nil {
+		ctx = config.WithConfiguration(ctx, cfg)
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
