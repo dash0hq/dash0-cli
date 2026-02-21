@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.4.0
+
+
+### New Components
+
+
+- `spans`: Add `spans query` command to query spans from Dash0 (#51)
+  Supports table, CSV, and OTLP JSON output formats with filtering, time range selection, and pagination.
+  
+
+- `spans`: Add `spans send` command to send spans to Dash0 via OTLP (#51)
+  Supports span kind, status, duration, trace/span ID (auto-generated or explicit), parent span, span links, resource/span/scope attributes, and custom instrumentation scope.
+  
+
+- `traces`: Add `traces get` command to retrieve all spans in a trace from Dash0 (#51)
+  Displays spans in table, JSON (OTLP/JSON), or CSV format.
+  Table output shows timestamp, duration, trace ID, span ID, parent ID, span name, status, service name, and span links.
+  Supports `--follow-span-links` to recursively fetch traces linked through span links.
+  
+
+
+### Enhancements
+
+
+- `logs`: Color-code severity levels in `logs query` table output (#46)
+  Severity levels (FATAL, ERROR, WARN, DEBUG, TRACE) are now color-coded when output is a terminal.
+  A new global `--color` flag (env: `DASH0_COLOR`) controls color output: `semantic` (default) or `none`.
+  
+
+- `output`: Add `--skip-header` flag to suppress the header row in tabular output formats (#50)
+  Available on all asset `list` commands (table and wide formats), `config profiles list` and `logs query` (table and CSV formats).
+  
+
 ## 1.3.0
 
 
