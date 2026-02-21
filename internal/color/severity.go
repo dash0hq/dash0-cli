@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dash0hq/dash0-cli/internal/severity"
+	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/fatih/color"
 	"github.com/mattn/go-isatty"
 )
@@ -33,14 +33,14 @@ func SprintSeverity(sev string) string {
 
 func sprintSeverityColored(sev string) string {
 	var c *color.Color
-	switch severity.OtlpLogSeverityRange(sev) {
-	case severity.Error, severity.Fatal:
+	switch otlp.OtlpLogSeverityRange(sev) {
+	case otlp.Error, otlp.Fatal:
 		c = colorError
-	case severity.Warn:
+	case otlp.Warn:
 		c = colorWarn
-	case severity.Info:
+	case otlp.Info:
 		c = colorInfo
-	case severity.Unknown:
+	case otlp.Unknown:
 		c = colorUnknown
 	default:
 		// Debug, Trace, custom text — no color

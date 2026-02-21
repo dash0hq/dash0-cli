@@ -194,7 +194,7 @@ dash0 views update <id> -f view.yaml
 dash0 views delete <id> [--force]
 ```
 
-### Logs
+### Logging
 
 #### Sending logs to Dash0
 
@@ -227,6 +227,55 @@ dash0 -X logs query -o csv
 
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
 
+### Tracing
+
+#### Sending spans to Dash0
+
+> [!WARNING]
+> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
+
+> [!NOTE]
+> The `dash0 spans send` command requires an OTLP URL configured in the active profile, or via the `--otlp-url` flag or the `DASH0_OTLP_URL` environment variable.
+
+```bash
+dash0 -X spans send --name "GET /api/users" \
+    --kind SERVER --status-code OK --duration 100ms \
+    --resource-attribute service.name=my-service
+```
+
+#### Querying spans from Dash0
+
+> [!WARNING]
+> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
+
+> [!NOTE]
+> The `dash0 spans query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
+
+```bash
+dash0 -X spans query
+dash0 -X spans query --from now-1h --to now --limit 100
+dash0 -X spans query --filter "service.name is my-service"
+dash0 -X spans query --filter "otel.span.status.code is ERROR"
+dash0 -X spans query -o csv
+```
+
+See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
+
+#### Getting a trace from Dash0
+
+> [!WARNING]
+> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
+
+> [!NOTE]
+> The `dash0 traces get` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
+
+```bash
+dash0 -X traces get <trace-id>
+dash0 -X traces get <trace-id> --from now-2h
+dash0 -X traces get <trace-id> --follow-span-links
+dash0 -X traces get <trace-id> -o json
+```
+
 ### Metrics
 
 ```bash
@@ -256,10 +305,10 @@ The `list` and `get` commands for assets support multiple output formats via `-o
 - **`json`**: Full asset data in JSON format
 - **`yaml`**: Full asset data in YAML format
 
-The `logs query` command supports a different set of formats via `-o`:
+The `logs query`, `spans query`, and `traces get` commands support a different set of formats via `-o`:
 
-- **`table`** (default): Timestamp, severity, and body columns
-- **`otlp-json`**: Full OTLP JSON payload
+- **`table`** (default): Columnar output (`logs query` shows timestamp, severity, and body; `spans query` shows timestamp, duration, name, status, service, and trace ID; `traces get` shows a hierarchical span tree)
+- **`json`**: Full OTLP/JSON payload
 - **`csv`**: Comma-separated values
 
 ### Shell completions

@@ -1,13 +1,12 @@
-package logs
+package logging
 
 import (
-	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
+	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/version"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -42,8 +41,8 @@ func newSendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "send <body>",
 		Aliases: []string{"create"},
-		Short: "Send a log record to Dash0",
-		Long: `Send a log record to Dash0 via OTLP.` + internal.CONFIG_HINT,
+		Short:   "Send a log record to Dash0",
+		Long:    `Send a log record to Dash0 via OTLP.` + internal.CONFIG_HINT,
 		Example: `  # Send a simple log message
   dash0 logs send "Application started"
 
@@ -95,19 +94,19 @@ func newSendCmd() *cobra.Command {
 func runCreate(cmd *cobra.Command, body string, flags *createFlags) error {
 	ctx := cmd.Context()
 
-	resolveScopeDefaults(cmd, flags)
+	otlp.ResolveScopeDefaults(cmd, &flags.ScopeName, &flags.ScopeVersion)
 
-	resourceAttrs, err := parseKeyValuePairs(flags.ResourceAttributes)
+	resourceAttrs, err := otlp.ParseKeyValuePairs(flags.ResourceAttributes)
 	if err != nil {
 		return fmt.Errorf("invalid resource attribute: %w", err)
 	}
 
-	logAttrs, err := parseKeyValuePairs(flags.LogAttributes)
+	logAttrs, err := otlp.ParseKeyValuePairs(flags.LogAttributes)
 	if err != nil {
 		return fmt.Errorf("invalid log attribute: %w", err)
 	}
 
-	scopeAttrs, err := parseKeyValuePairs(flags.ScopeAttributes)
+	scopeAttrs, err := otlp.ParseKeyValuePairs(flags.ScopeAttributes)
 	if err != nil {
 		return fmt.Errorf("invalid scope attribute: %w", err)
 	}
@@ -177,7 +176,7 @@ func runCreate(cmd *cobra.Command, body string, flags *createFlags) error {
 	}
 
 	if flags.TraceID != "" {
-		traceID, err := parseTraceID(flags.TraceID)
+		traceID, err := otlp.ParseTraceID(flags.TraceID)
 		if err != nil {
 			return err
 		}
@@ -185,7 +184,7 @@ func runCreate(cmd *cobra.Command, body string, flags *createFlags) error {
 	}
 
 	if flags.SpanID != "" {
-		spanID, err := parseSpanID(flags.SpanID)
+		spanID, err := otlp.ParseSpanID(flags.SpanID)
 		if err != nil {
 			return err
 		}
@@ -217,61 +216,4 @@ func runCreate(cmd *cobra.Command, body string, flags *createFlags) error {
 
 	fmt.Println("Log record sent successfully")
 	return nil
-}
-
-// parseKeyValuePairs parses a slice of "key=value" strings into a map.
-func parseKeyValuePairs(pairs []string) (map[string]string, error) {
-	result := make(map[string]string, len(pairs))
-	for _, pair := range pairs {
-		k, v, ok := strings.Cut(pair, "=")
-		if !ok {
-			return nil, fmt.Errorf("expected key=value format, got %q", pair)
-		}
-		if k == "" {
-			return nil, fmt.Errorf("empty key in %q", pair)
-		}
-		result[k] = v
-	}
-	return result, nil
-}
-
-// parseTraceID parses a 32 hex character string into a pcommon.TraceID.
-func parseTraceID(s string) (pcommon.TraceID, error) {
-	if len(s) != 32 {
-		return pcommon.TraceID{}, fmt.Errorf("trace-id must be 32 hex characters, got %d", len(s))
-	}
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		return pcommon.TraceID{}, fmt.Errorf("trace-id must be valid hex: %w", err)
-	}
-	var tid pcommon.TraceID
-	copy(tid[:], b)
-	return tid, nil
-}
-
-// parseSpanID parses a 16 hex character string into a pcommon.SpanID.
-func parseSpanID(s string) (pcommon.SpanID, error) {
-	if len(s) != 16 {
-		return pcommon.SpanID{}, fmt.Errorf("span-id must be 16 hex characters, got %d", len(s))
-	}
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		return pcommon.SpanID{}, fmt.Errorf("span-id must be valid hex: %w", err)
-	}
-	var sid pcommon.SpanID
-	copy(sid[:], b)
-	return sid, nil
-}
-
-// resolveScopeDefaults clears the default value for scope-name or scope-version
-// when only the other flag is explicitly set. This avoids pairing a custom scope
-// name with the dash0-cli version (or vice versa).
-func resolveScopeDefaults(cmd *cobra.Command, flags *createFlags) {
-	scopeNameChanged := cmd.Flags().Changed("scope-name")
-	scopeVersionChanged := cmd.Flags().Changed("scope-version")
-	if scopeNameChanged && !scopeVersionChanged {
-		flags.ScopeVersion = ""
-	} else if scopeVersionChanged && !scopeNameChanged {
-		flags.ScopeName = ""
-	}
 }

@@ -1,4 +1,4 @@
-package logs
+package logging
 
 import (
 	"encoding/csv"
@@ -7,16 +7,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/query"
-	"github.com/dash0hq/dash0-cli/internal/severity"
 	"github.com/spf13/cobra"
 )
 
@@ -36,9 +35,9 @@ type queryFlags struct {
 type queryFormat string
 
 const (
-	queryFormatTable    queryFormat = "table"
-	queryFormatOtlpJSON queryFormat = "otlp-json"
-	queryFormatCSV      queryFormat = "csv"
+	queryFormatTable queryFormat = "table"
+	queryFormatJSON  queryFormat = "json"
+	queryFormatCSV   queryFormat = "csv"
 
 	logRecordsAssetType = "log records"
 )
@@ -47,12 +46,12 @@ func parseQueryFormat(s string) (queryFormat, error) {
 	switch strings.ToLower(s) {
 	case "table", "":
 		return queryFormatTable, nil
-	case "otlp-json":
-		return queryFormatOtlpJSON, nil
+	case "json":
+		return queryFormatJSON, nil
 	case "csv":
 		return queryFormatCSV, nil
 	default:
-		return "", fmt.Errorf("unknown output format: %s (valid formats: table, otlp-json, csv)", s)
+		return "", fmt.Errorf("unknown output format: %s (valid formats: table, json, csv)", s)
 	}
 }
 
@@ -62,7 +61,7 @@ func newQueryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query",
 		Short: "[experimental] Query log records from Dash0",
-		Long: `Query log records from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
+		Long:  `Query log records from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
 		Example: `  # Query recent logs (last 15 minutes, up to 50 records)
   dash0 --experimental logs query
 
@@ -84,8 +83,8 @@ func newQueryCmd() *cobra.Command {
   # Output as CSV for further processing
   dash0 --experimental logs query -o csv
 
-  # Output as OTLP JSON
-  dash0 --experimental logs query -o otlp-json --limit 10
+  # Output as JSON (OTLP/JSON format)
+  dash0 --experimental logs query -o json --limit 10
 
   # Output as CSV without the header row
   dash0 --experimental logs query -o csv --skip-header`,
@@ -101,7 +100,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API endpoint URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset name")
-	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, otlp-json, csv (default: table)")
+	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, json (OTLP/JSON), csv (default: table)")
 	cmd.Flags().StringVar(&flags.From, "from", "now-15m", "Start of time range (e.g. now-1h, 2024-01-25T10:00:00.000Z)")
 	cmd.Flags().StringVar(&flags.To, "to", "now", "End of time range (e.g. now, 2024-01-25T11:00:00.000Z)")
 	cmd.Flags().StringArrayVar(&flags.Filter, "filter", nil, "Filter expression as 'key [operator] value' (repeatable)")
@@ -137,9 +136,9 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	totalLimit := int64(flags.Limit)
 
-	const otlpJSONMaxLimit int64 = 100
-	if format == queryFormatOtlpJSON && totalLimit > otlpJSONMaxLimit {
-		return fmt.Errorf("otlp-json output is limited to %d records; use --limit %d or lower, or choose a different output format", otlpJSONMaxLimit, otlpJSONMaxLimit)
+	const jsonMaxLimit int64 = 100
+	if format == queryFormatJSON && totalLimit > jsonMaxLimit {
+		return fmt.Errorf("json output is limited to %d records; use --limit %d or lower, or choose a different output format", jsonMaxLimit, jsonMaxLimit)
 	}
 
 	// Use a reasonable page size for API requests, independent of the total limit.
@@ -168,8 +167,8 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 		return streamTable(iter, totalLimit, flags.SkipHeader)
 	case queryFormatCSV:
 		return streamCSV(iter, totalLimit, flags.SkipHeader)
-	case queryFormatOtlpJSON:
-		return collectAndRenderOtlpJSON(iter, totalLimit)
+	case queryFormatJSON:
+		return collectAndRenderJSON(iter, totalLimit)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
@@ -240,7 +239,7 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, s
 func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
-		if err := w.Write([]string{"timestamp", "severity", "body"}); err != nil {
+		if err := w.Write([]string{"otel.log.time", "otel.log.severity.range", "otel.log.body"}); err != nil {
 			return err
 		}
 		w.Flush()
@@ -256,7 +255,7 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, ski
 	return nil
 }
 
-func collectAndRenderOtlpJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) error {
+func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) error {
 	var allResourceLogs []dash0api.ResourceLogs
 	var totalRecords int64
 
@@ -306,20 +305,15 @@ func extractBodyString(body *dash0api.AnyValue) string {
 	return ""
 }
 
-// formatTimestamp converts a nanosecond Unix timestamp string to a human-readable format.
+// formatTimestamp delegates to the shared query.FormatTimestamp.
 func formatTimestamp(nanoStr string) string {
-	nanos, err := strconv.ParseInt(nanoStr, 10, 64)
-	if err != nil {
-		return nanoStr
-	}
-	t := time.Unix(0, nanos).UTC()
-	return t.Format("2006-01-02T15:04:05.000Z")
+	return query.FormatTimestamp(nanoStr)
 }
 
 // severityRange returns the OTel severity range derived from the severity number.
 func severityRange(num *int32) string {
 	if num != nil {
-		return severity.FromNumber(*num)
+		return otlp.SeverityNumberToRange(*num)
 	}
 	return ""
 }

@@ -25,7 +25,9 @@ for script in \
   "${SCRIPT_DIR}/test_dashboard_roundtrip.sh" \
   "${SCRIPT_DIR}/test_check_rule_roundtrip.sh" \
   "${SCRIPT_DIR}/test_synthetic_check_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_view_roundtrip.sh"; do
+  "${SCRIPT_DIR}/test_view_roundtrip.sh" \
+  "${SCRIPT_DIR}/test_log_roundtrip.sh" \
+  "${SCRIPT_DIR}/test_span_roundtrip.sh"; do
 
   name="$(basename "$script" .sh)"
   echo "========================================"

@@ -1,4 +1,4 @@
-package logs
+package logging
 
 import "github.com/spf13/cobra"
 

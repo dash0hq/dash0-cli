@@ -1,0 +1,54 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "order-service"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "otel-sdk",
+            "version": "1.0.0",
+            "attributes": []
+          },
+          "spans": [
+            {
+              "traceId": "qrvM3aq7zN2qu8zdqrvM3Q==",
+              "spanId": "ESIzRFVmd4g=",
+              "name": "process-order",
+              "kind": 1,
+              "startTimeUnixNano": "1706198400000000000",
+              "endTimeUnixNano": "1706198400300000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [],
+              "events": [],
+              "links": [
+                {
+                  "traceId": "7v8AESIzRFVmd4iZqrvM3Q==",
+                  "spanId": "qrsRIjNEABE=",
+                  "attributes": [
+                    {
+                      "key": "link.reason",
+                      "value": {
+                        "stringValue": "follows-from"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

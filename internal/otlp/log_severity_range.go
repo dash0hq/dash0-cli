@@ -1,4 +1,4 @@
-package severity
+package otlp
 
 import "fmt"
 
@@ -17,9 +17,9 @@ const (
 	Fatal       OtlpLogSeverityRange = "FATAL"
 )
 
-// FromNumber maps an OTel severity number (0–24) to its severity range.
+// SeverityNumberToRange maps an OTel severity number (0–24) to its severity range.
 // Numbers outside the defined bands return a formatted string like "SEVERITY_25".
-func FromNumber(n int32) string {
+func SeverityNumberToRange(n int32) string {
 	switch {
 	case n == 0:
 		return string(Unknown)

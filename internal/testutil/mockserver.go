@@ -44,6 +44,14 @@ const (
 	FixtureLogsQuerySuccess = "logs/query_success.json"
 	FixtureLogsQueryEmpty   = "logs/query_empty.json"
 
+	// Spans fixtures
+	FixtureSpansQuerySuccess = "spans/query_success.json"
+	FixtureSpansQueryEmpty   = "spans/query_empty.json"
+
+	// Traces fixtures
+	FixtureTracesGetSuccess   = "traces/get_success.json"
+	FixtureTracesGetWithLinks = "traces/get_with_links.json"
+
 	// Synthetic checks fixtures
 	FixtureSyntheticChecksListSuccess   = "syntheticchecks/list_success.json"
 	FixtureSyntheticChecksListEmpty     = "syntheticchecks/list_empty.json"
