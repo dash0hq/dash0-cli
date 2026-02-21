@@ -1,6 +1,6 @@
 //go:build integration
 
-package logs
+package tracing
 
 import (
 	"encoding/json"
@@ -15,34 +15,34 @@ import (
 )
 
 const (
-	apiPathLogs              = "/api/logs"
-	fixtureQuerySuccess      = "logs/query_success.json"
-	fixtureQueryEmpty        = "logs/query_empty.json"
-	fixtureLogsUnauthorized  = "dashboards/error_unauthorized.json"
-	testLogsAuthToken        = "auth_test_token"
+	apiPathSpans             = "/api/spans"
+	fixtureQuerySuccess      = "spans/query_success.json"
+	fixtureQueryEmpty        = "spans/query_empty.json"
+	fixtureSpansUnauthorized = "dashboards/error_unauthorized.json"
+	testSpansAuthToken       = "auth_test_token"
 )
 
-// newExperimentalLogsCmd creates a root command with the --experimental persistent
-// flag and the logs subcommand attached, mirroring the real command tree.
-func newExperimentalLogsCmd() *cobra.Command {
+// newExperimentalSpansCmd creates a root command with the --experimental persistent
+// flag and the spans subcommand attached, mirroring the real command tree.
+func newExperimentalSpansCmd() *cobra.Command {
 	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
-	root.AddCommand(NewLogsCmd())
+	root.AddCommand(NewSpansCmd())
 	return root
 }
 
-func TestQueryLogs_Success(t *testing.T) {
+func TestQuerySpans_Success(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -51,26 +51,29 @@ func TestQueryLogs_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "TIMESTAMP")
-	assert.Contains(t, output, "SEVERITY")
-	assert.Contains(t, output, "BODY")
-	assert.Contains(t, output, "Application started successfully")
-	assert.Contains(t, output, "Connection timeout")
-	assert.Contains(t, output, "INFO")
-	assert.Contains(t, output, "ERROR")
+	assert.Contains(t, output, "DURATION")
+	assert.Contains(t, output, "SPAN NAME")
+	assert.Contains(t, output, "STATUS")
+	assert.Contains(t, output, "SERVICE NAME")
+	assert.Contains(t, output, "PARENT ID")
+	assert.Contains(t, output, "TRACE ID")
+	assert.Contains(t, output, "GET /api/users")
+	assert.Contains(t, output, "SELECT * FROM users")
+	assert.Contains(t, output, "POST /api/orders")
 }
 
-func TestQueryLogs_Empty(t *testing.T) {
+func TestQuerySpans_Empty(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQueryEmpty,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -78,21 +81,21 @@ func TestQueryLogs_Empty(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "No log records found.")
+	assert.Contains(t, output, "No spans found.")
 }
 
-func TestQueryLogs_OtlpJsonFormat(t *testing.T) {
+func TestQuerySpans_OtlpJsonFormat(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "otlp-json"})
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken, "-o", "json"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -100,25 +103,24 @@ func TestQueryLogs_OtlpJsonFormat(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output, `"resourceLogs"`)
-	// Verify it's valid JSON
+	assert.Contains(t, output, `"resourceSpans"`)
 	var parsed map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
-	assert.Contains(t, parsed, "resourceLogs")
+	assert.Contains(t, parsed, "resourceSpans")
 }
 
-func TestQueryLogs_CsvFormat(t *testing.T) {
+func TestQuerySpans_CsvFormat(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "csv"})
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken, "-o", "csv"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -127,27 +129,26 @@ func TestQueryLogs_CsvFormat(t *testing.T) {
 
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	require.GreaterOrEqual(t, len(lines), 4) // header + 3 records
-	assert.Equal(t, "timestamp,severity,body", lines[0])
-	assert.Contains(t, lines[1], "INFO")
-	assert.Contains(t, lines[1], "Application started successfully")
+	require.GreaterOrEqual(t, len(lines), 4) // header + 3 spans
+	assert.Equal(t, "otel.span.start_time,otel.span.duration,otel.span.name,otel.span.status.code,service.name,otel.parent.id,otel.trace.id,otel.span.links", lines[0])
+	assert.Contains(t, lines[1], "GET /api/users")
 }
 
-func TestQueryLogs_WithFilter(t *testing.T) {
+func TestQuerySpans_WithFilter(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
+	cmd := newExperimentalSpansCmd()
 	cmd.SetArgs([]string{
-		"-X", "logs", "query",
+		"-X", "spans", "query",
 		"--api-url", server.URL,
-		"--auth-token", testLogsAuthToken,
+		"--auth-token", testSpansAuthToken,
 		"--filter", "service.name is my-service",
 	})
 
@@ -157,7 +158,6 @@ func TestQueryLogs_WithFilter(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Verify filter was sent in request body
 	req := server.LastRequest()
 	require.NotNil(t, req)
 	assert.Equal(t, http.MethodPost, req.Method)
@@ -172,18 +172,18 @@ func TestQueryLogs_WithFilter(t *testing.T) {
 	assert.Equal(t, "is", filter["operator"])
 }
 
-func TestQueryLogs_Unauthorized(t *testing.T) {
+func TestQuerySpans_Unauthorized(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusUnauthorized,
-		BodyFile:   fixtureLogsUnauthorized,
+		BodyFile:   fixtureSpansUnauthorized,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
 
 	err := cmd.Execute()
 
@@ -191,33 +191,33 @@ func TestQueryLogs_Unauthorized(t *testing.T) {
 	assert.Contains(t, err.Error(), "authentication failed")
 }
 
-func TestQueryLogs_OtlpJsonLimitExceeded(t *testing.T) {
+func TestQuerySpans_OtlpJsonLimitExceeded(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", "http://unused", "--auth-token", testLogsAuthToken, "-o", "otlp-json", "--limit", "200"})
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", "http://unused", "--auth-token", testSpansAuthToken, "-o", "json", "--limit", "200"})
 
 	err := cmd.Execute()
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "otlp-json output is limited to 100 records")
+	assert.Contains(t, err.Error(), "json output is limited to 100 records")
 }
 
-func TestQueryLogs_RequestParams(t *testing.T) {
+func TestQuerySpans_RequestParams(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQueryEmpty,
 		Validator:  testutil.RequireAuthHeader,
 	})
 
-	cmd := newExperimentalLogsCmd()
+	cmd := newExperimentalSpansCmd()
 	cmd.SetArgs([]string{
-		"-X", "logs", "query",
+		"-X", "spans", "query",
 		"--api-url", server.URL,
-		"--auth-token", testLogsAuthToken,
+		"--auth-token", testSpansAuthToken,
 		"--from", "now-2h",
 		"--to", "now-1h",
 		"--dataset", "my-dataset",
@@ -236,16 +236,12 @@ func TestQueryLogs_RequestParams(t *testing.T) {
 	var body map[string]interface{}
 	require.NoError(t, json.Unmarshal(req.Body, &body))
 
-	// Verify time range
 	timeRange, ok := body["timeRange"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, "now-2h", timeRange["from"])
 	assert.Equal(t, "now-1h", timeRange["to"])
-
-	// Verify dataset
 	assert.Equal(t, "my-dataset", body["dataset"])
 
-	// Verify pagination limit
 	pagination, ok := body["pagination"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, float64(10), pagination["limit"])

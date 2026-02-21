@@ -1,0 +1,108 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "my-service"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "otel-sdk",
+            "version": "1.0.0",
+            "attributes": []
+          },
+          "spans": [
+            {
+              "traceId": "CvdlGRbNQ92ESOshHIAxnA==",
+              "spanId": "t61rcWkgMzE=",
+              "name": "GET /api/users",
+              "kind": 2,
+              "startTimeUnixNano": "1706198400000000000",
+              "endTimeUnixNano": "1706198400150000000",
+              "status": {
+                "code": 1
+              },
+              "attributes": [
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                }
+              ],
+              "events": [],
+              "links": []
+            },
+            {
+              "traceId": "CvdlGRbNQ92ESOshHIAxnA==",
+              "spanId": "APBnqgupArc=",
+              "parentSpanId": "t61rcWkgMzE=",
+              "name": "SELECT * FROM users",
+              "kind": 3,
+              "startTimeUnixNano": "1706198400020000000",
+              "endTimeUnixNano": "1706198400120000000",
+              "status": {
+                "code": 0
+              },
+              "attributes": [
+                {
+                  "key": "db.system",
+                  "value": {
+                    "stringValue": "postgresql"
+                  }
+                }
+              ],
+              "events": [],
+              "links": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "api-gateway"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "otel-sdk",
+            "version": "0.5.0",
+            "attributes": []
+          },
+          "spans": [
+            {
+              "traceId": "3d3d3d3d3d3d3d3d3d3d3Q==",
+              "spanId": "7u7u7u7u7u4=",
+              "name": "POST /api/orders",
+              "kind": 2,
+              "startTimeUnixNano": "1706198401000000000",
+              "endTimeUnixNano": "1706198401500000000",
+              "status": {
+                "code": 2,
+                "message": "Internal server error"
+              },
+              "attributes": [],
+              "events": [],
+              "links": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

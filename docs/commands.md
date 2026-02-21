@@ -13,8 +13,8 @@ The CLI resolves configuration in this order (first match wins):
 2. CLI flags (`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`)
 3. The active profile (stored in `~/.dash0/`)
 
-Commands that read from the API (asset CRUD, `logs query`, `metrics instant`) require `api-url` and `auth-token`.
-Commands that write via OTLP (`logs send`) require `otlp-url` and `auth-token`.
+Commands that read from the API (asset CRUD, `logs query`, `spans query`, `traces get`, `metrics instant`) require `api-url` and `auth-token`.
+Commands that write via OTLP (`logs send`, `spans send`) require `otlp-url` and `auth-token`.
 
 ## Global flags
 
@@ -422,7 +422,7 @@ name: Second Document Rule
 expression: up == 0
 ```
 
-## Logs
+## Logging
 
 ### `logs send`
 
@@ -500,7 +500,7 @@ dash0 -X logs query [flags]
 | `--to` | `now` | End of time range |
 | `--limit` | 50 | Maximum number of records |
 | `--filter` | | Filter expression (repeatable) |
-| `-o` | `table` | Output format: `table`, `otlp-json`, or `csv` |
+| `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
@@ -531,11 +531,11 @@ $ dash0 -X logs query \
     --filter "otel.log.severity.range is_one_of ERROR WARN"
 
 # Output as JSON (full OTLP payload)
-$ dash0 -X logs query -o otlp-json
+$ dash0 -X logs query -o json
 
 # Output as CSV (pipe-friendly)
 $ dash0 -X logs query -o csv
-timestamp,severity,body
+otel.log.time,otel.log.severity.range,otel.log.body
 2026-02-16T09:12:03.456Z,INFO,Application started successfully
 ...
 
@@ -575,6 +575,166 @@ Values containing spaces can be single-quoted: `deployment.environment.name is_o
 
 Common log attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, `otel.log.body`.
 Valid values for `otel.log.severity.range`: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `UNKNOWN`.
+
+## Tracing
+
+### `spans send` (experimental)
+
+Send a span to Dash0 via OTLP.
+Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
+
+```bash
+dash0 -X spans send --name <name> [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Span name (required) |
+| `--kind` | `INTERNAL` | Span kind: `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
+| `--status-code` | `UNSET` | Status code: `UNSET`, `OK`, `ERROR` |
+| `--status-message` | | Status message (typically for ERROR status) |
+| `--start-time` | now | Start timestamp in RFC3339 format |
+| `--end-time` | | End timestamp in RFC3339 format; mutually exclusive with `--duration` |
+| `--duration` | | Span duration (e.g., `100ms`, `1.5s`); mutually exclusive with `--end-time` |
+| `--trace-id` | auto | Trace ID (32 hex characters); auto-generated if omitted |
+| `--span-id` | auto | Span ID (16 hex characters); auto-generated if omitted |
+| `--parent-span-id` | | Parent span ID (16 hex characters) |
+| `--resource-attribute` | | Resource attribute as `key=value` (repeatable) |
+| `--span-attribute` | | Span attribute as `key=value` (repeatable) |
+| `--span-link` | | Span link as `trace-id:span-id[,key=value,...]` (repeatable) |
+| `--scope-name` | `dash0-cli` | Instrumentation scope name |
+| `--scope-version` | CLI version | Instrumentation scope version |
+| `--scope-attribute` | | Instrumentation scope attribute as `key=value` (repeatable) |
+
+Examples:
+
+```bash
+# Send a simple span
+$ dash0 -X spans send --name "my-operation"
+Span sent successfully (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
+
+# Send a server span with duration
+$ dash0 -X spans send --name "GET /api/users" \
+    --kind SERVER --status-code OK --duration 100ms \
+    --resource-attribute service.name=my-service
+Span sent successfully (trace-id: ..., span-id: ...)
+
+# Send a span with a link to another trace
+$ dash0 -X spans send --name "process-message" \
+    --kind CONSUMER \
+    --span-link 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331
+
+# Send a child span with explicit parent
+$ dash0 -X spans send --name "db-query" \
+    --kind CLIENT \
+    --trace-id 0af7651916cd43dd8448eb211c80319c \
+    --parent-span-id b7ad6b7169203331
+```
+
+### `spans query` (experimental)
+
+Query spans from Dash0.
+Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+
+```bash
+dash0 -X spans query [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from` | `now-15m` | Start of time range |
+| `--to` | `now` | End of time range |
+| `--limit` | 50 | Maximum number of spans |
+| `--filter` | | Filter expression (repeatable) |
+| `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+
+Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
+
+Examples:
+
+```bash
+# Query recent spans (last 15 minutes, up to 50 spans)
+$ dash0 -X spans query
+TIMESTAMP                     DURATION    SPAN NAME                                 STATUS    SERVICE NAME                    PARENT ID         TRACE ID                          SPAN LINKS
+2026-02-16T09:12:03.456Z      150ms       GET /api/users                            OK        my-service                                        0af76519...
+2026-02-16T09:12:04.789Z      500ms       POST /api/orders                          ERROR     api-gateway                     b7ad6b7169203331  3d3d3d3d...
+...
+
+# Query with time range
+$ dash0 -X spans query --from now-1h --to now --limit 100
+
+# Filter by service
+$ dash0 -X spans query --filter "service.name is my-service"
+
+# Filter by span status
+$ dash0 -X spans query --filter "otel.span.status.code is ERROR"
+
+# Output as CSV
+$ dash0 -X spans query -o csv
+otel.span.start_time,otel.span.duration,otel.span.name,otel.span.status.code,service.name,otel.parent.id,otel.trace.id,otel.span.links
+2026-02-16T09:12:03.456Z,150ms,GET /api/users,OK,my-service,,0af76519...,
+...
+
+# Output as OTLP JSON
+$ dash0 -X spans query -o json --limit 10
+```
+
+The `--filter` flag uses the same [filter syntax](#filter-syntax) as `logs query`.
+Common span attribute keys: `service.name`, `otel.span.status.code`, `otel.trace.id`, `otel.span.name`.
+
+### `traces get` (experimental)
+
+Retrieve all spans belonging to a trace from Dash0.
+Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+
+```bash
+dash0 -X traces get <trace-id> [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from` | `now-1h` | Start of time range |
+| `--to` | `now` | End of time range |
+| `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--follow-span-links` | | Follow span links to related traces; optional value sets the lookback period (default: `1h`) |
+
+The `<trace-id>` argument must be 32 hex characters.
+
+In table format, spans are displayed as a hierarchical tree with child spans indented under their parents.
+
+Examples:
+
+```bash
+# Get all spans in a trace
+$ dash0 -X traces get <trace-id>
+TIMESTAMP                     DURATION    TRACE ID                          SPAN ID           PARENT ID         SPAN NAME                                   STATUS    SERVICE NAME                    SPAN LINKS
+2026-02-16T09:12:03.456Z      200ms       0af7651916cd43dd8448eb211c80319c  b7ad6b7169203331                    GET /api/users                              OK        frontend
+2026-02-16T09:12:03.486Z      150ms       0af7651916cd43dd8448eb211c80319c  00f067aa0ba902b7  b7ad6b7169203331  SELECT * FROM users                         UNSET     frontend
+2026-02-16T09:12:03.641Z      10ms        0af7651916cd43dd8448eb211c80319c  123456789abcdef0  b7ad6b7169203331  serialize response                          UNSET     frontend
+
+# Get a trace with a specific time range
+$ dash0 -X traces get <trace-id> --from now-2h
+
+# Follow span links to related traces
+$ dash0 -X traces get <trace-id> --follow-span-links
+
+# Follow span links with a custom lookback period
+$ dash0 -X traces get <trace-id> --follow-span-links 2h
+
+# Output as OTLP JSON
+$ dash0 -X traces get <trace-id> -o json
+
+# Output as CSV
+$ dash0 -X traces get <trace-id> -o csv
+otel.trace.id,otel.span.start_time,otel.span.duration,otel.span.id,otel.parent.id,otel.span.name,otel.span.status.code,service.name,otel.span.links
+0af7651916cd43dd8448eb211c80319c,2026-02-16T09:12:03.456Z,200ms,b7ad6b7169203331,,GET /api/users,OK,frontend,
+...
+```
+
+When `--follow-span-links` is used, linked traces are displayed after the primary trace, separated by a header line showing the linked trace ID.
+The command follows links recursively up to a maximum of 20 traces.
 
 ## Metrics
 

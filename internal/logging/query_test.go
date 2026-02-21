@@ -1,4 +1,4 @@
-package logs
+package logging
 
 import (
 	"testing"
@@ -70,12 +70,11 @@ func TestParseQueryFormat(t *testing.T) {
 		{"", queryFormatTable, false},
 		{"table", queryFormatTable, false},
 		{"TABLE", queryFormatTable, false},
-		{"otlp-json", queryFormatOtlpJSON, false},
-		{"OTLP-JSON", queryFormatOtlpJSON, false},
+		{"json", queryFormatJSON, false},
+		{"JSON", queryFormatJSON, false},
 		{"csv", queryFormatCSV, false},
 		{"CSV", queryFormatCSV, false},
 		{"yaml", "", true},
-		{"json", "", true},
 		{"wide", "", true},
 		{"invalid", "", true},
 	}

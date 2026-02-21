@@ -179,7 +179,7 @@ func TestValidateSkipHeader(t *testing.T) {
 	})
 
 	t.Run("skip-header true with incompatible formats", func(t *testing.T) {
-		for _, format := range []string{"json", "yaml", "otlp-json"} {
+		for _, format := range []string{"json", "yaml"} {
 			err := ValidateSkipHeader(true, format)
 			assert.Error(t, err, "format %q should be incompatible", format)
 			assert.Contains(t, err.Error(), "--skip-header is not supported")
