@@ -504,6 +504,7 @@ dash0 -X logs query [flags]
 | `--filter` | | Filter expression (repeatable) |
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
@@ -578,6 +579,58 @@ Values containing spaces can be single-quoted: `deployment.environment.name is_o
 Common log attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, `otel.log.body`.
 Valid values for `otel.log.severity.range`: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `UNKNOWN`.
 
+### Custom columns
+
+The `--column` flag lets you choose which columns appear in `table` and `csv` output.
+It is repeatable: pass one `--column` per column.
+When used, the flag replaces the default column set entirely.
+
+```bash
+# Show only timestamp and body
+dash0 -X logs query --column time --column body
+
+# Include an arbitrary attribute column
+dash0 -X spans query \
+    --column timestamp --column duration \
+    --column "span name" --column http.request.method
+
+# Include an arbitrary attribute column by key
+dash0 -X logs query --column time --column service.name --column body
+```
+
+Each command has predefined columns with short aliases.
+Aliases are matched case-insensitively.
+Any OTLP attribute key (resource, scope, or record/span level) can also be used as a column; its header defaults to the attribute key as-is.
+
+**Log query aliases:**
+
+| Alias | Attribute key |
+|-------|---------------|
+| `time`, `timestamp` | `otel.log.time` |
+| `severity` | `otel.log.severity.range` |
+| `body` | `otel.log.body` |
+
+**Span query aliases:**
+
+| Alias | Attribute key |
+|-------|---------------|
+| `timestamp`, `start time`, `time` | `otel.span.start_time` |
+| `duration` | `otel.span.duration` |
+| `span name`, `name` | `otel.span.name` |
+| `status`, `status code` | `otel.span.status.code` |
+| `service name`, `service` | `service.name` |
+| `parent id` | `otel.parent.id` |
+| `trace id` | `otel.trace.id` |
+| `span id` | `otel.span.id` |
+| `span links`, `links` | `otel.span.links` |
+
+**Trace get aliases** share the span query aliases.
+
+Aliases that contain spaces must be quoted: `--column "start time"`.
+
+The `--column` flag is not supported with JSON output.
+Using `--column` with `-o json` returns an error.
+
 ## Tracing
 
 ### `spans send` (experimental)
@@ -650,6 +703,7 @@ dash0 -X spans query [flags]
 | `--filter` | | Filter expression (repeatable) |
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
@@ -701,6 +755,7 @@ dash0 -X traces get <trace-id> [flags]
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 | `--follow-span-links` | | Follow span links to related traces; optional value sets the lookback period (default: `1h`) |
+| `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
 
 The `<trace-id>` argument must be 32 hex characters.
 

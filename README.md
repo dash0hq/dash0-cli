@@ -223,6 +223,7 @@ dash0 -X logs query --from now-1h --to now --limit 100
 dash0 -X logs query --filter "service.name is my-service"
 dash0 -X logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
 dash0 -X logs query -o csv
+dash0 -X logs query --column time --column service.name --column body
 ```
 
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
@@ -257,6 +258,7 @@ dash0 -X spans query --from now-1h --to now --limit 100
 dash0 -X spans query --filter "service.name is my-service"
 dash0 -X spans query --filter "otel.span.status.code is ERROR"
 dash0 -X spans query -o csv
+dash0 -X spans query --column otel.span.start_time --column otel.span.duration --column "span name" --column http.request.method
 ```
 
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
@@ -274,6 +276,7 @@ dash0 -X traces get <trace-id>
 dash0 -X traces get <trace-id> --from now-2h
 dash0 -X traces get <trace-id> --follow-span-links
 dash0 -X traces get <trace-id> -o json
+dash0 -X traces get <trace-id> --column otel.span.start_time --column otel.span.duration --column "span name" --column otel.span.status.code
 ```
 
 ### Metrics
