@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal"
@@ -22,6 +23,8 @@ func TestParseFormat(t *testing.T) {
 		{"yaml", FormatYAML, false},
 		{"yml", FormatYAML, false},
 		{"wide", FormatWide, false},
+		{"csv", FormatCSV, false},
+		{"CSV", FormatCSV, false},
 		{"invalid", "", true},
 	}
 
@@ -163,6 +166,91 @@ func TestFormatter_PrintTable_Empty(t *testing.T) {
 	err := f.PrintTable([]Column{}, []interface{}{})
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "No assets found")
+}
+
+func TestFormatter_PrintCSV(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatCSV, &buf)
+
+	columns := []Column{
+		{Header: "ID", Width: 10, Value: func(item interface{}) string {
+			return item.(testItem).ID
+		}},
+		{Header: internal.HEADER_NAME, Width: 20, Value: func(item interface{}) string {
+			return item.(testItem).Name
+		}},
+	}
+
+	data := []interface{}{
+		testItem{ID: "123", Name: "Dashboard One"},
+		testItem{ID: "456", Name: "Dashboard Two"},
+	}
+
+	err := f.PrintCSV(columns, data)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	assert.Len(t, lines, 3)
+	assert.Equal(t, "id,name", lines[0])
+	assert.Equal(t, "123,Dashboard One", lines[1])
+	assert.Equal(t, "456,Dashboard Two", lines[2])
+}
+
+func TestFormatter_PrintCSV_SkipHeader(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatCSV, &buf, WithSkipHeader(true))
+
+	columns := []Column{
+		{Header: "ID", Width: 10, Value: func(item interface{}) string {
+			return item.(testItem).ID
+		}},
+		{Header: internal.HEADER_NAME, Width: 20, Value: func(item interface{}) string {
+			return item.(testItem).Name
+		}},
+	}
+
+	data := []interface{}{
+		testItem{ID: "123", Name: "Dashboard One"},
+	}
+
+	err := f.PrintCSV(columns, data)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	assert.Len(t, lines, 1)
+	assert.Equal(t, "123,Dashboard One", lines[0])
+}
+
+func TestFormatter_PrintCSV_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatCSV, &buf)
+
+	err := f.PrintCSV([]Column{}, []interface{}{})
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "No assets found")
+}
+
+func TestFormatter_PrintCSV_QuotesCommas(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatCSV, &buf)
+
+	columns := []Column{
+		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
+			return item.(testItem).Name
+		}},
+	}
+
+	data := []interface{}{
+		testItem{Name: "Dashboard, with comma"},
+	}
+
+	err := f.PrintCSV(columns, data)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, `"Dashboard, with comma"`)
 }
 
 func TestValidateSkipHeader(t *testing.T) {

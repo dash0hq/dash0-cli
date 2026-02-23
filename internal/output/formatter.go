@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ const (
 	FormatJSON  Format = "json"
 	FormatYAML  Format = "yaml"
 	FormatWide  Format = "wide"
+	FormatCSV   Format = "csv"
 )
 
 // ParseFormat parses a format string into a Format type
@@ -30,8 +32,10 @@ func ParseFormat(s string) (Format, error) {
 		return FormatYAML, nil
 	case "wide":
 		return FormatWide, nil
+	case "csv":
+		return FormatCSV, nil
 	default:
-		return "", fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml, wide)", s)
+		return "", fmt.Errorf("unknown output format: %s (valid formats: table, wide, json, yaml, csv)", s)
 	}
 }
 
@@ -95,7 +99,7 @@ func (f *Formatter) Print(data interface{}) error {
 		return f.PrintJSON(data)
 	case FormatYAML:
 		return f.PrintYAML(data)
-	case FormatTable, FormatWide:
+	case FormatTable, FormatWide, FormatCSV:
 		return fmt.Errorf("use type-specific Print method for table format")
 	default:
 		return fmt.Errorf("unknown format: %s", f.format)
@@ -169,6 +173,40 @@ func (f *Formatter) PrintTable(columns []Column, data []interface{}) error {
 	}
 
 	return nil
+}
+
+// PrintCSV prints data as CSV using the given columns.
+// Header values are lowercased for consistency with query CSV output.
+func (f *Formatter) PrintCSV(columns []Column, data []interface{}) error {
+	if len(data) == 0 {
+		fmt.Fprintln(f.writer, "No assets found.")
+		return nil
+	}
+
+	w := csv.NewWriter(f.writer)
+
+	if !f.skipHeader {
+		header := make([]string, len(columns))
+		for i, col := range columns {
+			header[i] = strings.ToLower(col.Header)
+		}
+		if err := w.Write(header); err != nil {
+			return err
+		}
+	}
+
+	for _, item := range data {
+		row := make([]string, len(columns))
+		for i, col := range columns {
+			row[i] = col.Value(item)
+		}
+		if err := w.Write(row); err != nil {
+			return err
+		}
+	}
+
+	w.Flush()
+	return w.Error()
 }
 
 // Truncate truncates a string to the given max length, adding "..." if truncated

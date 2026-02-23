@@ -15,7 +15,7 @@ func RegisterCommonFlags(cmd *cobra.Command, flags *CommonFlags) {
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
-	cmd.Flags().StringVarP(&flags.Output, "output", "o", "table", "Output format: table, json, yaml, wide")
+	cmd.Flags().StringVarP(&flags.Output, "output", "o", "table", "Output format: table, wide, json, yaml, csv")
 }
 
 // ListFlags holds flags specific to list commands
@@ -31,7 +31,7 @@ func RegisterListFlags(cmd *cobra.Command, flags *ListFlags) {
 	RegisterCommonFlags(cmd, &flags.CommonFlags)
 	cmd.Flags().IntVarP(&flags.Limit, "limit", "l", 50, "Maximum number of results to return")
 	cmd.Flags().BoolVarP(&flags.All, "all", "a", false, "Fetch all pages (ignore limit)")
-	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and wide output")
+	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table, wide, and csv output")
 }
 
 // GetFlags holds flags specific to get commands

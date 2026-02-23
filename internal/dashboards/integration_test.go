@@ -129,6 +129,69 @@ func TestListDashboards_WideFormat(t *testing.T) {
 	assert.Contains(t, output, "URL")
 }
 
+func TestListDashboards_CSVFormat(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "csv"})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	// Should have a header row plus data rows
+	require.GreaterOrEqual(t, len(lines), 2)
+	// Header should contain all wide columns in lowercase
+	assert.Equal(t, "name,id,dataset,origin,url", lines[0])
+	// Data rows should contain comma-separated values
+	assert.Contains(t, lines[1], "New dashboard")
+}
+
+func TestListDashboards_CSVFormat_SkipHeader(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "csv", "--skip-header"})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	// Should not contain the header row
+	assert.NotContains(t, output, "name,id,dataset,origin,url")
+	// Should still contain data
+	assert.Contains(t, output, "New dashboard")
+}
+
 func TestListDashboards_JSONFormat(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

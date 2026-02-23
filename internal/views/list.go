@@ -30,6 +30,9 @@ func newListCmd() *cobra.Command {
   # Output as JSON for scripting
   dash0 views list -o json
 
+  # Output as CSV (pipe-friendly)
+  dash0 views list -o csv
+
   # List without the header row (pipe-friendly)
   dash0 views list --skip-header`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -100,7 +103,7 @@ func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, form
 		}},
 	}
 
-	if format == output.FormatWide {
+	if format == output.FormatWide || format == output.FormatCSV {
 		columns = append(columns,
 			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
 				v := item.(*dash0api.ViewApiListItem)
@@ -130,5 +133,8 @@ func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, form
 		data[i] = v
 	}
 
+	if format == output.FormatCSV {
+		return f.PrintCSV(columns, data)
+	}
 	return f.PrintTable(columns, data)
 }

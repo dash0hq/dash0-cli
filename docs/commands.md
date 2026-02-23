@@ -182,7 +182,7 @@ dash0 dashboards list [--limit <n>] [-o <format>] [--skip-header]
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--limit` | `-l` | 50 | Maximum number of results |
-| `--output` | `-o` | `table` | `table`, `wide`, `json`, or `yaml` |
+| `--output` | `-o` | `table` | `table`, `wide`, `json`, `yaml`, or `csv` |
 | `--skip-header` | | `false` | Omit the header row from `table` and `wide` output |
 
 Example:
@@ -204,6 +204,14 @@ Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   gitops/pro
 ```
 
 Use `-o json` or `-o yaml` to get the full asset payload, suitable for piping or saving to a file.
+Use `-o csv` for a pipe-friendly, machine-readable format with the same columns as `wide`:
+
+```bash
+$ dash0 dashboards list -o csv
+name,id,dataset,origin,url
+Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,gitops/prod,https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
+```
+
 Aliases: `ls`
 
 ### `get`

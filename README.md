@@ -296,7 +296,7 @@ dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
 | `--dataset` | | `DASH0_DATASET` | Override dataset from profile. Use the `identifier`, not `Name`. |
 | `--experimental` | `-X` | | Enable experimental features (required for commands marked `[experimental]`) |
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
-| `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml` |
+| `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
 | | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
 
 ### Output formats
@@ -307,6 +307,7 @@ The `list` and `get` commands for assets support multiple output formats via `-o
 - **`wide`**: Similar to `table`, with additional columns (dataset, origin, and URL)
 - **`json`**: Full asset data in JSON format
 - **`yaml`**: Full asset data in YAML format
+- **`csv`**: Comma-separated values with the same columns as `wide`, suitable for piping and automation
 
 The `logs query`, `spans query`, and `traces get` commands support a different set of formats via `-o`:
 
