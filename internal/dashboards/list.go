@@ -33,6 +33,9 @@ func newListCmd() *cobra.Command {
   # Output as JSON for scripting
   dash0 dashboards list -o json
 
+  # Output as CSV (pipe-friendly)
+  dash0 dashboards list -o csv
+
   # List without the header row (pipe-friendly)
   dash0 dashboards list --skip-header`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -132,7 +135,7 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 		}},
 	}
 
-	if format == output.FormatWide {
+	if format == output.FormatWide || format == output.FormatCSV {
 		columns = append(columns,
 			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
 				d := item.(dashboardListItem)
@@ -162,5 +165,8 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 		data[i] = d
 	}
 
+	if format == output.FormatCSV {
+		return f.PrintCSV(columns, data)
+	}
 	return f.PrintTable(columns, data)
 }
