@@ -11,8 +11,10 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/logging"
+	"github.com/dash0hq/dash0-cli/internal/members"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
+	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/tracing"
 	versionpkg "github.com/dash0hq/dash0-cli/internal/version"
 	"github.com/dash0hq/dash0-cli/internal/views"
@@ -59,8 +61,10 @@ func init() {
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
+	rootCmd.AddCommand(members.NewMembersCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
+	rootCmd.AddCommand(teams.NewTeamsCmd())
 	rootCmd.AddCommand(tracing.NewSpansCmd())
 	rootCmd.AddCommand(tracing.NewTracesCmd())
 	rootCmd.AddCommand(views.NewViewsCmd())

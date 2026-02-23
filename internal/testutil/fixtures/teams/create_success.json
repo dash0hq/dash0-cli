@@ -1,0 +1,19 @@
+{
+  "kind": "Team",
+  "metadata": {
+    "name": "new-team",
+    "labels": {
+      "dash0.com/id": "c3d4e5f6-7890-12cd-ef01-34567890abcd"
+    }
+  },
+  "spec": {
+    "display": {
+      "name": "New Team",
+      "color": {
+        "from": "#FF0000",
+        "to": "#00FF00"
+      }
+    },
+    "members": []
+  }
+}

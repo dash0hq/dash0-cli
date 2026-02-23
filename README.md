@@ -285,6 +285,35 @@ dash0 -X traces get <trace-id> --column otel.span.start_time --column otel.span.
 dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
 ```
 
+### Teams (experimental)
+
+```bash
+# List all teams
+dash0 -X teams list
+
+# Get team details (members + accessible assets)
+dash0 -X teams get <id>
+
+# Create a team
+dash0 -X teams create "Backend Team" --color-from "#FF6B6B" --color-to "#4ECDC4"
+
+# Add members to a team
+dash0 -X teams add-members <team-id> <member-id-1> <member-id-2>
+```
+
+### Members (experimental)
+
+```bash
+# List organization members
+dash0 -X members list
+
+# Invite a member (default role: basic_member)
+dash0 -X members invite user@example.com
+
+# Delete a member
+dash0 -X members delete <member-id> --force
+```
+
 ### Common settings
 
 | Flag | Short | Env Variable | Description |

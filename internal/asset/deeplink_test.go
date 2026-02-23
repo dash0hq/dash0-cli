@@ -77,6 +77,13 @@ func TestDeeplinkURL(t *testing.T) {
 			assetID:   "abc123",
 			expected:  "https://app.dash0.com/goto/alerting/check-rules?check_rule_id=abc123",
 		},
+		{
+			name:      "team",
+			apiUrl:    "https://api.us-west-2.aws.dash0.com",
+			assetType: "team",
+			assetID:   "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+			expected:  "https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4-5678-90ab-cdef-1234567890ab",
+		},
 	}
 
 	for _, tt := range tests {

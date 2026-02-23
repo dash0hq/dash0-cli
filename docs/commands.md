@@ -823,6 +823,269 @@ Example:
 $ dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
 ```
 
+## Team management
+
+Teams and members are organizational entities (not "assets").
+All team and member commands are experimental and require the `-X` flag.
+They use `api-url` and `auth-token` but do not accept `--dataset`.
+
+### `teams list` (experimental)
+
+List all teams in the organization.
+
+```bash
+dash0 -X teams list [-o <format>] [--skip-header] [--column <col>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only) |
+
+Example:
+
+```bash
+$ dash0 -X teams list
+NAME            ID          MEMBERS  ORIGIN       URL
+Backend Team    a1b2c3d4    3        dash0-cli    https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
+Frontend Team   b2c3d4e5    2                     https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
+```
+
+Column aliases: `name` / `team name`, `id` / `team id`, `members` / `member count`, `origin`, `url`.
+
+Aliases: `ls`
+
+### `teams get` (experimental)
+
+Get detailed information about a team, including members and accessible assets.
+
+```bash
+dash0 -X teams get <id> [-o <format>]
+```
+
+The `<id>` argument can be a team ID or origin.
+
+Example:
+
+```bash
+$ dash0 -X teams get <id>
+Kind:    Team
+Name:    Backend Team
+ID:      a1b2c3d4-5678-90ab-cdef-1234567890ab
+Origin:  dash0-cli
+Color:   #FF6B6B -> #4ECDC4
+Members: 2
+...
+```
+
+### `teams create` (experimental)
+
+Create a new team.
+
+```bash
+dash0 -X teams create <name> [--color-from <hex>] [--color-to <hex>] [--member <id>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--color-from` | Gradient start color (e.g. `"#FF0000"`) |
+| `--color-to` | Gradient end color (e.g. `"#00FF00"`) |
+| `--member` | Member ID to add to the team (repeatable) |
+
+Example:
+
+```bash
+$ dash0 -X teams create "Backend Team" --color-from "#FF6B6B" --color-to "#4ECDC4"
+Team "Backend Team" created (id: a1b2c3d4-...)
+```
+
+Aliases: `add`
+
+### `teams update` (experimental)
+
+Update the display settings of a team (name, color).
+
+```bash
+dash0 -X teams update <id> [--name <name>] [--color-from <hex>] [--color-to <hex>]
+```
+
+Example:
+
+```bash
+$ dash0 -X teams update <id> --name "New Team Name"
+Team "<id>" updated
+```
+
+### `teams delete` (experimental)
+
+Delete a team.
+Prompts for confirmation unless `--force` is passed.
+
+```bash
+dash0 -X teams delete <id> [--force]
+```
+
+Example:
+
+```bash
+$ dash0 -X teams delete <id> --force
+Team "<id>" deleted
+```
+
+Aliases: `remove`
+
+### `teams list-members` (experimental)
+
+List all members of a team.
+
+```bash
+dash0 -X teams list-members <team-id> [-o <format>] [--skip-header] [--column <col>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only) |
+
+Example:
+
+```bash
+$ dash0 -X teams list-members <team-id>
+NAME              EMAIL                  ID
+Alice Smith       alice@example.com      m1-0000-0000-0000-000000000001
+Bob Jones         bob@example.com        m2-0000-0000-0000-000000000002
+```
+
+Column aliases are the same as for `members list`: `name` / `member name`, `email`, `id` / `member id`.
+
+### `teams add-members` (experimental)
+
+Add one or more existing organization members to a team.
+Members can be specified by ID or email address.
+When an email address is provided, it is resolved to a member ID via the members list API.
+
+```bash
+dash0 -X teams add-members <team-id> <member-id-or-email> [<member-id-or-email>...]
+```
+
+Examples:
+
+```bash
+# Add members by ID
+$ dash0 -X teams add-members <team-id> <member-id-1> <member-id-2>
+2 members added to team "<team-id>"
+
+# Add a member by email address
+$ dash0 -X teams add-members <team-id> <email-address>
+1 member added to team "<team-id>"
+
+# Mix of IDs and email addresses
+$ dash0 -X teams add-members <team-id> <member-id> <email-address>
+2 members added to team "<team-id>"
+```
+
+### `teams remove-members` (experimental)
+
+Remove one or more members from a team.
+Members can be specified by ID or email address.
+Prompts for confirmation unless `--force` is passed.
+
+```bash
+dash0 -X teams remove-members <team-id> <member-id-or-email> [<member-id-or-email>...] [--force]
+```
+
+Examples:
+
+```bash
+# Remove a member by ID
+$ dash0 -X teams remove-members <team-id> <member-id> --force
+1 member removed from team "<team-id>"
+
+# Remove a member by email address
+$ dash0 -X teams remove-members <team-id> <email-address> --force
+1 member removed from team "<team-id>"
+```
+
+## Member management
+
+### `members list` (experimental)
+
+List all members of the organization.
+
+```bash
+dash0 -X members list [-o <format>] [--skip-header] [--column <col>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only) |
+
+Example:
+
+```bash
+$ dash0 -X members list
+NAME              EMAIL                  ID
+Alice Smith       alice@example.com      m1-0000-0000-0000-000000000001
+Bob Jones         bob@example.com        m2-0000-0000-0000-000000000002
+...
+```
+
+Column aliases: `name` / `member name`, `email`, `id` / `member id`.
+
+Aliases: `ls`
+
+### `members invite` (experimental)
+
+Invite one or more members to the organization by email address.
+
+```bash
+dash0 -X members invite <email> [<email>...] [--role <role>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--role` | `basic_member` | Role to assign: `basic_member` or `admin` |
+
+Example:
+
+```bash
+$ dash0 -X members invite user@example.com
+Invitation sent to user@example.com
+
+$ dash0 -X members invite user1@example.com user2@example.com --role admin
+Invitations sent to 2 email addresses
+```
+
+Aliases: `add`
+
+### `members remove` (experimental)
+
+Remove one or more members from the organization.
+Members can be specified by ID or email address.
+Prompts for confirmation unless `--force` is passed.
+
+```bash
+dash0 -X members remove <member-id-or-email> [<member-id-or-email>...] [--force]
+```
+
+Examples:
+
+```bash
+# Remove a member by ID
+$ dash0 -X members remove <member-id> --force
+Member "<member-id>" removed
+
+# Remove a member by email address
+$ dash0 -X members remove <email-address> --force
+Member "<member-id>" removed
+```
+
+Aliases: `delete`
+
 ## Common workflows for AI agents
 
 ### Set up credentials from environment variables

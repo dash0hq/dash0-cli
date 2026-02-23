@@ -1,0 +1,75 @@
+{
+  "team": {
+    "kind": "Team",
+    "metadata": {
+      "name": "backend-team",
+      "labels": {
+        "dash0.com/id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+        "dash0.com/origin": "dash0-cli"
+      }
+    },
+    "spec": {
+      "display": {
+        "name": "Backend Team",
+        "color": {
+          "from": "#FF6B6B",
+          "to": "#4ECDC4"
+        }
+      },
+      "members": [
+        "m1-0000-0000-0000-000000000001",
+        "m2-0000-0000-0000-000000000002"
+      ]
+    }
+  },
+  "members": [
+    {
+      "kind": "Member",
+      "metadata": {
+        "name": "user-1",
+        "labels": {
+          "dash0.com/id": "m1-0000-0000-0000-000000000001",
+          "dash0.com/joinedAt": "2025-06-15T10:00:00Z"
+        }
+      },
+      "spec": {
+        "display": {
+          "firstName": "Alice",
+          "lastName": "Smith",
+          "email": "alice@example.com"
+        }
+      }
+    },
+    {
+      "kind": "Member",
+      "metadata": {
+        "name": "user-2",
+        "labels": {
+          "dash0.com/id": "m2-0000-0000-0000-000000000002",
+          "dash0.com/joinedAt": "2025-07-01T14:30:00Z"
+        }
+      },
+      "spec": {
+        "display": {
+          "firstName": "Bob",
+          "lastName": "Jones",
+          "email": "bob@example.com"
+        }
+      }
+    }
+  ],
+  "dashboards": [
+    {
+      "id": "d1-0000-0000-0000-000000000001",
+      "name": "Production Overview",
+      "dataset": "default",
+      "hasAccess": true,
+      "permittedActions": ["read", "write"],
+      "createdAt": "2025-01-15T10:30:00Z"
+    }
+  ],
+  "checkRules": [],
+  "views": [],
+  "syntheticChecks": [],
+  "datasets": []
+}

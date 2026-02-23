@@ -12,11 +12,15 @@ const (
 	deeplinkPathCheckRule      = "/goto/alerting/check-rules"
 	deeplinkPathSyntheticCheck = "/goto/alerting/synthetics"
 	deeplinkPathView           = "/goto/logs"
+	deeplinkPathTeam           = "/goto/settings/teams"
+	deeplinkPathMember         = "/goto/settings/members"
 
 	deeplinkQueryDashboard      = "dashboard_id"
 	deeplinkQueryCheckRule      = "check_rule_id"
 	deeplinkQuerySyntheticCheck = "check_id"
 	deeplinkQueryView           = "view_id"
+	deeplinkQueryTeam           = "team_id"
+	deeplinkQueryMember         = "member_id"
 )
 
 // DeeplinkURL constructs a deeplink URL for the given asset type and ID.
@@ -79,6 +83,10 @@ func deeplinkPathAndQuery(assetType string) (string, string) {
 		return deeplinkPathSyntheticCheck, deeplinkQuerySyntheticCheck
 	case "view":
 		return deeplinkPathView, deeplinkQueryView
+	case "team":
+		return deeplinkPathTeam, deeplinkQueryTeam
+	case "member":
+		return deeplinkPathMember, deeplinkQueryMember
 	default:
 		return "", ""
 	}
