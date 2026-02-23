@@ -50,6 +50,13 @@ func TestSpansQuerySkipHeaderFlag(t *testing.T) {
 	assert.Equal(t, "false", flag.DefValue)
 }
 
+func TestSpansQueryColumnFlag(t *testing.T) {
+	_, queryCmd := newSpansQueryCmd()
+	flag := queryCmd.Flags().Lookup("column")
+	require.NotNil(t, flag, "--column flag should be registered on spans query")
+	assert.Equal(t, "[]", flag.DefValue)
+}
+
 func TestParseSpansQueryFormat(t *testing.T) {
 	tests := []struct {
 		input   string

@@ -14,6 +14,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/query"
 	"github.com/spf13/cobra"
@@ -28,19 +29,39 @@ type getFlags struct {
 	To              string
 	SkipHeader      bool
 	FollowSpanLinks string
+	Column          []string
 }
 
 // getFormat represents the output format for trace queries.
 type getFormat string
 
 const (
-	getFormatTable    getFormat = "table"
-	getFormatJSON getFormat = "json"
-	getFormatCSV      getFormat = "csv"
+	getFormatTable getFormat = "table"
+	getFormatJSON  getFormat = "json"
+	getFormatCSV   getFormat = "csv"
 
 	tracesAssetType = "traces"
 
 	maxFollowedTraces = 20
+)
+
+// traceDefaultColumns defines the default columns for traces get output.
+var traceDefaultColumns = []query.ColumnDef{
+	{Key: "otel.span.start_time", Aliases: []string{"timestamp", "start time", "time"}, Header: "TIMESTAMP", Width: 28},
+	{Key: "otel.span.duration", Aliases: []string{"duration"}, Header: "DURATION", Width: 10},
+	{Key: "otel.trace.id", Aliases: []string{"trace id"}, Header: "TRACE ID", Width: 32},
+	{Key: "otel.span.id", Aliases: []string{"span id"}, Header: "SPAN ID", Width: 16},
+	{Key: "otel.parent.id", Aliases: []string{"parent id"}, Header: "PARENT ID", Width: 16},
+	{Key: "otel.span.name", Aliases: []string{"span name", "name"}, Header: "SPAN NAME", Width: 42, ColorFn: nil},
+	{Key: "otel.span.status.code", Aliases: []string{"status", "status code"}, Header: "STATUS", Width: 8, ColorFn: colorpkg.SprintSpanStatus},
+	{Key: "service.name", Aliases: []string{"service name", "service"}, Header: "SERVICE NAME", Width: 30},
+	{Key: "otel.span.links", Aliases: []string{"span links", "links"}, Header: "SPAN LINKS", Width: 0},
+}
+
+// traceKnownColumns extends traceDefaultColumns with additional alias entries
+// for fields that are not shown by default but should be resolvable by alias.
+var traceKnownColumns = append(traceDefaultColumns,
+	query.ColumnDef{Key: "otel.flags", Aliases: []string{"flags"}, Header: "FLAGS", Width: 10},
 )
 
 func parseGetFormat(s string) (getFormat, error) {
@@ -76,7 +97,44 @@ func newGetCmd() *cobra.Command {
   dash0 --experimental traces get <trace-id> --follow-span-links 2h
 
   # Output as JSON (OTLP/JSON format)
-  dash0 --experimental traces get <trace-id> -o json`,
+  dash0 --experimental traces get <trace-id> -o json
+
+  # Show only specific columns
+  dash0 --experimental traces get <trace-id> \
+      --column timestamp --column duration \
+      --column "span name" --column status
+
+  Column aliases (case-insensitive):
+    timestamp, start time, time  → otel.span.start_time
+    duration                     → otel.span.duration
+    span name, name              → otel.span.name
+    status, status code          → otel.span.status.code
+    service name, service        → service.name
+    parent id                    → otel.parent.id
+    trace id                     → otel.trace.id
+    span id                      → otel.span.id
+    span links, links            → otel.span.links
+    flags                        → otel.flags
+
+  Built-in OTLP fields (always available without attributes):
+    otel.span.name
+    otel.span.start_time
+    otel.span.duration
+    otel.span.kind
+    otel.span.status.code
+    otel.span.status.message
+    otel.trace.id
+    otel.span.id
+    otel.parent.id
+    otel.trace.state
+    otel.flags
+    otel.span.links
+    otel.scope.name
+    otel.scope.version
+
+  Any OTLP attribute key can also be used as a column.
+
+  NOTE: span events are currently not supported.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {
@@ -95,6 +153,7 @@ func newGetCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and CSV output")
 	cmd.Flags().StringVar(&flags.FollowSpanLinks, "follow-span-links", "", "Follow span links to related traces; optional value sets the lookback period (default: 1h)")
 	cmd.Flags().Lookup("follow-span-links").NoOptDefVal = "1h"
+	cmd.Flags().StringArrayVar(&flags.Column, "column", nil, "Column to display (alias or attribute key; repeatable; table and CSV only)")
 
 	return cmd
 }
@@ -112,7 +171,16 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 		return err
 	}
 
+	if err := query.ValidateColumnFormat(flags.Column, flags.Output); err != nil {
+		return err
+	}
+
 	format, err := parseGetFormat(flags.Output)
+	if err != nil {
+		return err
+	}
+
+	cols, err := resolveTraceColumns(flags.Column)
 	if err != nil {
 		return err
 	}
@@ -174,14 +242,25 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 
 	switch format {
 	case getFormatTable:
-		return renderTable(results, flags.SkipHeader)
+		return renderTable(results, flags.SkipHeader, cols)
 	case getFormatCSV:
-		return renderCSV(results, flags.SkipHeader)
+		return renderCSV(results, flags.SkipHeader, cols)
 	case getFormatJSON:
 		return renderJSON(results)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+}
+
+func resolveTraceColumns(columns []string) ([]query.ColumnDef, error) {
+	if len(columns) == 0 {
+		return traceDefaultColumns, nil
+	}
+	specs, err := query.ParseColumns(columns)
+	if err != nil {
+		return nil, err
+	}
+	return query.ResolveColumns(specs, traceKnownColumns), nil
 }
 
 func fetchTraceSpans(ctx context.Context, apiClient dash0api.Client, traceID string, timeRange dash0api.TimeReferenceRange, dataset *string) ([]dash0api.ResourceSpans, error) {
@@ -217,35 +296,74 @@ func fetchTraceSpans(ctx context.Context, apiClient dash0api.Client, traceID str
 
 // flatTraceSpan holds a flattened span for table/CSV rendering in a trace context.
 type flatTraceSpan struct {
-	timestamp string
-	duration  string
-	spanID    string
-	name      string
-	status    string
-	service   string
-	parentID  string
-	spanLinks string
+	timestamp     string
+	duration      string
+	spanID        string
+	name          string
+	kind          string
+	statusCode    string
+	statusMessage string
+	scopeName     string
+	scopeVersion  string
+	parentID      string
+	traceState    string
+	flags         string
+	spanLinks     string
+	rawAttrs      []dash0api.KeyValue
+}
+
+// values returns a map of predefined column values. The trace ID is injected
+// separately from the traceGroup context.
+func (s flatTraceSpan) values(traceID string) map[string]string {
+	return map[string]string{
+		"otel.span.start_time":     s.timestamp,
+		"otel.span.duration":       s.duration,
+		"otel.trace.id":            traceID,
+		"otel.span.id":             s.spanID,
+		"otel.parent.id":           s.parentID,
+		"otel.span.name":           s.name,
+		"otel.span.kind":           s.kind,
+		"otel.span.status.code":    s.statusCode,
+		"otel.span.status.message": s.statusMessage,
+		"otel.scope.name":          s.scopeName,
+		"otel.scope.version":       s.scopeVersion,
+		"otel.trace.state":         s.traceState,
+		"otel.flags":               s.flags,
+		"otel.span.links":          s.spanLinks,
+	}
 }
 
 func flattenSpans(resourceSpans []dash0api.ResourceSpans) []flatTraceSpan {
 	var spans []flatTraceSpan
 	for _, rs := range resourceSpans {
-		serviceName := extractServiceName(rs.Resource)
 		for _, ss := range rs.ScopeSpans {
+			var scopeAttrs []dash0api.KeyValue
+			var scopeName, scopeVersion string
+			if ss.Scope != nil {
+				scopeAttrs = ss.Scope.Attributes
+				scopeName = otlp.DerefString(ss.Scope.Name)
+				scopeVersion = otlp.DerefString(ss.Scope.Version)
+			}
 			for _, s := range ss.Spans {
 				var parentID string
 				if s.ParentSpanId != nil {
 					parentID = hex.EncodeToString(*s.ParentSpanId)
 				}
 				spans = append(spans, flatTraceSpan{
-					timestamp: query.FormatTimestamp(s.StartTimeUnixNano),
-					duration:  FormatDuration(s.StartTimeUnixNano, s.EndTimeUnixNano),
-					spanID:    hex.EncodeToString(s.SpanId),
-					name:      s.Name,
-					status:    SpanStatusString(s.Status.Code),
-					service:   serviceName,
-					parentID:  parentID,
-					spanLinks: FormatSpanLinks(s.Links),
+					timestamp:     query.FormatTimestamp(s.StartTimeUnixNano),
+					duration:      FormatDuration(s.StartTimeUnixNano, s.EndTimeUnixNano),
+					spanID:        hex.EncodeToString(s.SpanId),
+					name:          s.Name,
+					kind:          SpanKindString(s.Kind),
+					statusCode:    SpanStatusString(s.Status.Code),
+					statusMessage: otlp.DerefString(s.Status.Message),
+					scopeName:     scopeName,
+					scopeVersion:  scopeVersion,
+					parentID:      parentID,
+					traceState:    otlp.DerefString(s.TraceState),
+					flags:         otlp.DerefInt64(s.Flags),
+					spanLinks:     FormatSpanLinks(s.Links),
+					rawAttrs:      otlp.MergeAttributes(rs.Resource.Attributes, scopeAttrs, s.Attributes),
 				})
 			}
 		}
@@ -309,36 +427,29 @@ func buildTree(spans []flatTraceSpan) []flatTraceSpan {
 	return result
 }
 
-func renderTable(results []traceGroup, skipHeader bool) error {
-	headerPrinted := false
-	totalSpans := 0
+func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef) error {
+	var rows []map[string]string
 
 	for _, tr := range results {
 		spans := flattenSpans(tr.resourceSpans)
 		ordered := buildTree(spans)
-
 		for _, s := range ordered {
-			if !headerPrinted && !skipHeader {
-				fmt.Fprintf(os.Stdout, "%-28s  %-10s  %-32s  %-16s  %-16s  %-42s  %-8s  %-30s  %s\n",
-					"TIMESTAMP", "DURATION", "TRACE ID", "SPAN ID", "PARENT ID", "SPAN NAME", "STATUS", "SERVICE NAME", "SPAN LINKS")
-				headerPrinted = true
-			}
-			name := output.Truncate(s.name, 42)
-			fmt.Fprintf(os.Stdout, "%-28s  %-10s  %-32s  %-16s  %-16s  %-42s  %s  %-30s  %s\n",
-				s.timestamp, s.duration, tr.traceID, s.spanID, s.parentID, name, colorpkg.SprintSpanStatus(s.status), s.service, s.spanLinks)
-			totalSpans++
+			values := query.BuildValues(s.values(tr.traceID), cols, s.rawAttrs)
+			rows = append(rows, values)
 		}
 	}
-	if totalSpans == 0 {
+	if len(rows) == 0 {
 		fmt.Println("No spans found for this trace.")
+		return nil
 	}
+	query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	return nil
 }
 
-func renderCSV(results []traceGroup, skipHeader bool) error {
+func renderCSV(results []traceGroup, skipHeader bool, cols []query.ColumnDef) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
-		if err := w.Write([]string{"otel.trace.id", "otel.span.start_time", "otel.span.duration", "otel.span.id", "otel.parent.id", "otel.span.name", "otel.span.status.code", "service.name", "otel.span.links"}); err != nil {
+		if err := query.WriteCSVHeader(w, cols); err != nil {
 			return err
 		}
 		w.Flush()
@@ -348,7 +459,8 @@ func renderCSV(results []traceGroup, skipHeader bool) error {
 		spans := flattenSpans(tr.resourceSpans)
 		ordered := buildTree(spans)
 		for _, s := range ordered {
-			w.Write([]string{tr.traceID, s.timestamp, s.duration, s.spanID, s.parentID, s.name, s.status, s.service, s.spanLinks})
+			values := query.BuildValues(s.values(tr.traceID), cols, s.rawAttrs)
+			query.WriteCSVRow(w, cols, values)
 			w.Flush()
 		}
 	}
@@ -397,4 +509,3 @@ func extractLinkedTraceIDs(resourceSpans []dash0api.ResourceSpans, seen map[stri
 	}
 	return newTraceIDs
 }
-

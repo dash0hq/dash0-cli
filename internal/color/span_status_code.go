@@ -8,21 +8,24 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-// spanStatusWidth is the column width reserved for the span status field in table output.
-const spanStatusWidth = 8
-
-// SprintSpanStatus returns the span status string color-coded for terminal output.
-// The returned string is padded to spanStatusWidth visible characters so that
-// table columns stay aligned even when ANSI escape codes are present.
-func SprintSpanStatus(status string) string {
+// SprintSpanStatus returns the span status string color-coded and padded to
+// width visible characters for terminal output. When width is 0, no padding
+// is applied.
+func SprintSpanStatus(status string, width int) string {
 	if color.NoColor || !isatty.IsTerminal(os.Stdout.Fd()) {
-		return fmt.Sprintf("%-*s", spanStatusWidth, status)
+		if width > 0 {
+			return fmt.Sprintf("%-*s", width, status)
+		}
+		return status
 	}
-	return sprintSpanStatusColored(status)
+	return sprintSpanStatusColored(status, width)
 }
 
-func sprintSpanStatusColored(status string) string {
-	padded := fmt.Sprintf("%-*s", spanStatusWidth, status)
+func sprintSpanStatusColored(status string, width int) string {
+	padded := status
+	if width > 0 {
+		padded = fmt.Sprintf("%-*s", width, status)
+	}
 	switch status {
 	case "ERROR":
 		return colorError.Sprint(padded)

@@ -29,6 +29,7 @@ type queryFlags struct {
 	Filter     []string
 	Limit      int
 	SkipHeader bool
+	Column     []string
 }
 
 // queryFormat represents the output format for log queries.
@@ -40,6 +41,21 @@ const (
 	queryFormatCSV   queryFormat = "csv"
 
 	logRecordsAssetType = "log records"
+)
+
+// logDefaultColumns defines the default columns for log query output.
+var logDefaultColumns = []query.ColumnDef{
+	{Key: "otel.log.time", Aliases: []string{"timestamp", "time"}, Header: "TIMESTAMP", Width: 28},
+	{Key: "otel.log.severity.range", Aliases: []string{"severity"}, Header: "SEVERITY", Width: 10, ColorFn: colorpkg.SprintSeverity},
+	{Key: "otel.log.body", Aliases: []string{"body"}, Header: "BODY", Width: 0},
+}
+
+// logKnownColumns extends logDefaultColumns with additional alias entries for
+// fields that are not shown by default but should be resolvable by alias.
+var logKnownColumns = append(logDefaultColumns,
+	query.ColumnDef{Key: "otel.trace.id", Aliases: []string{"trace id"}, Header: "TRACE ID", Width: 32},
+	query.ColumnDef{Key: "otel.span.id", Aliases: []string{"span id"}, Header: "SPAN ID", Width: 16},
+	query.ColumnDef{Key: "otel.flags", Aliases: []string{"flags"}, Header: "FLAGS", Width: 10},
 )
 
 func parseQueryFormat(s string) (queryFormat, error) {
@@ -87,7 +103,38 @@ func newQueryCmd() *cobra.Command {
   dash0 --experimental logs query -o json --limit 10
 
   # Output as CSV without the header row
-  dash0 --experimental logs query -o csv --skip-header`,
+  dash0 --experimental logs query -o csv --skip-header
+
+  # Show only timestamp and body
+  dash0 --experimental logs query --column time --column body
+
+  # Include an arbitrary attribute column
+  dash0 --experimental logs query \
+      --column time --column severity \
+      --column service.name --column body
+
+  Column aliases (case-insensitive):
+    time, timestamp  → otel.log.time
+    severity         → otel.log.severity.range
+    body             → otel.log.body
+    trace id         → otel.trace.id
+    span id          → otel.span.id
+    flags            → otel.flags
+
+  Built-in OTLP fields (always available without attributes):
+    otel.log.time
+    otel.log.body
+    otel.log.severity.range
+    otel.log.severity.number
+    otel.log.severity.text
+    otel.event.name
+    otel.trace.id
+    otel.span.id
+    otel.flags
+    otel.scope.name
+    otel.scope.version
+
+  Any OTLP attribute key can also be used as a column.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {
@@ -106,6 +153,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&flags.Filter, "filter", nil, "Filter expression as 'key [operator] value' (repeatable)")
 	cmd.Flags().IntVar(&flags.Limit, "limit", 50, "Maximum number of log records to return")
 	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and CSV output")
+	cmd.Flags().StringArrayVar(&flags.Column, "column", nil, "Column to display (alias or attribute key; repeatable; table and CSV only)")
 
 	return cmd
 }
@@ -117,7 +165,16 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 		return err
 	}
 
+	if err := query.ValidateColumnFormat(flags.Column, flags.Output); err != nil {
+		return err
+	}
+
 	format, err := parseQueryFormat(flags.Output)
+	if err != nil {
+		return err
+	}
+
+	cols, err := resolveLogColumns(flags.Column)
 	if err != nil {
 		return err
 	}
@@ -164,13 +221,57 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader)
+		return streamTable(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader)
+		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
 		return collectAndRenderJSON(iter, totalLimit)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
+	}
+}
+
+func resolveLogColumns(columns []string) ([]query.ColumnDef, error) {
+	if len(columns) == 0 {
+		return logDefaultColumns, nil
+	}
+	specs, err := query.ParseColumns(columns)
+	if err != nil {
+		return nil, err
+	}
+	return query.ResolveColumns(specs, logKnownColumns), nil
+}
+
+// flatRecord holds a flattened log record for table/CSV rendering.
+type flatRecord struct {
+	timestamp      string
+	severityRange  string
+	severityNumber string
+	severityText   string
+	body           string
+	traceID        string
+	spanID         string
+	flags          string
+	eventName      string
+	scopeName      string
+	scopeVersion   string
+	rawAttrs       []dash0api.KeyValue
+}
+
+// values returns a map of predefined column values.
+func (r flatRecord) values() map[string]string {
+	return map[string]string{
+		"otel.log.time":            r.timestamp,
+		"otel.log.severity.range":  r.severityRange,
+		"otel.log.severity.number": r.severityNumber,
+		"otel.log.severity.text":   r.severityText,
+		"otel.log.body":            r.body,
+		"otel.trace.id":            r.traceID,
+		"otel.span.id":             r.spanID,
+		"otel.flags":               r.flags,
+		"otel.event.name":          r.eventName,
+		"otel.scope.name":          r.scopeName,
+		"otel.scope.version":       r.scopeVersion,
 	}
 }
 
@@ -183,11 +284,27 @@ func iterateRecords(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64
 	for iter.Next() {
 		rl := iter.Current()
 		for _, sl := range rl.ScopeLogs {
+			var scopeAttrs []dash0api.KeyValue
+			var scopeName, scopeVersion string
+			if sl.Scope != nil {
+				scopeAttrs = sl.Scope.Attributes
+				scopeName = otlp.DerefString(sl.Scope.Name)
+				scopeVersion = otlp.DerefString(sl.Scope.Version)
+			}
 			for _, lr := range sl.LogRecords {
 				emit(flatRecord{
-					timestamp: formatTimestamp(lr.TimeUnixNano),
-					severity:  severityRange(lr.SeverityNumber),
-					body:      extractBodyString(lr.Body),
+					timestamp:      formatTimestamp(lr.TimeUnixNano),
+					severityRange:  severityRange(lr.SeverityNumber),
+					severityNumber: formatSeverityNumber(lr.SeverityNumber),
+					severityText:   otlp.DerefString(lr.SeverityText),
+					body:           extractBodyString(lr.Body),
+					traceID:        otlp.DerefHexBytes(lr.TraceId),
+					spanID:         otlp.DerefHexBytes(lr.SpanId),
+					flags:          otlp.DerefInt64(lr.Flags),
+					eventName:      otlp.DerefString(lr.EventName),
+					scopeName:      scopeName,
+					scopeVersion:   scopeVersion,
+					rawAttrs:       otlp.MergeAttributes(rl.Resource.Attributes, scopeAttrs, lr.Attributes),
 				})
 				total++
 				if totalLimit > 0 && total >= totalLimit {
@@ -210,43 +327,36 @@ func countRecords(resourceLogs []dash0api.ResourceLogs) int64 {
 	return count
 }
 
-// flatRecord holds a flattened log record for table/CSV rendering.
-type flatRecord struct {
-	timestamp string
-	severity  string
-	body      string
-}
-
-func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool) error {
-	headerPrinted := false
+func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
+	var rows []map[string]string
 
 	total, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
-		if !headerPrinted && !skipHeader {
-			fmt.Fprintf(os.Stdout, "%-28s  %-10s  %s\n", "TIMESTAMP", "SEVERITY", "BODY")
-			headerPrinted = true
-		}
-		fmt.Fprintf(os.Stdout, "%-28s  %s  %s\n", r.timestamp, colorpkg.SprintSeverity(r.severity), r.body)
+		values := query.BuildValues(r.values(), cols, r.rawAttrs)
+		rows = append(rows, values)
 	})
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: logRecordsAssetType})
 	}
 	if total == 0 {
 		fmt.Println("No log records found.")
+		return nil
 	}
+	query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	return nil
 }
 
-func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool) error {
+func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
-		if err := w.Write([]string{"otel.log.time", "otel.log.severity.range", "otel.log.body"}); err != nil {
+		if err := query.WriteCSVHeader(w, cols); err != nil {
 			return err
 		}
 		w.Flush()
 	}
 
 	_, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
-		w.Write([]string{r.timestamp, r.severity, r.body})
+		values := query.BuildValues(r.values(), cols, r.rawAttrs)
+		query.WriteCSVRow(w, cols, values)
 		w.Flush()
 	})
 	if err != nil {
@@ -314,6 +424,14 @@ func formatTimestamp(nanoStr string) string {
 func severityRange(num *int32) string {
 	if num != nil {
 		return otlp.SeverityNumberToRange(*num)
+	}
+	return ""
+}
+
+// formatSeverityNumber returns the severity number as a string, or "" if nil.
+func formatSeverityNumber(num *int32) string {
+	if num != nil {
+		return strconv.FormatInt(int64(*num), 10)
 	}
 	return ""
 }

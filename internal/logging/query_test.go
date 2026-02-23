@@ -61,6 +61,13 @@ func TestQuerySkipHeaderFlag(t *testing.T) {
 	assert.Equal(t, "false", flag.DefValue)
 }
 
+func TestQueryColumnFlag(t *testing.T) {
+	_, queryCmd := newLogsQueryCmd()
+	flag := queryCmd.Flags().Lookup("column")
+	require.NotNil(t, flag, "--column flag should be registered on logs query")
+	assert.Equal(t, "[]", flag.DefValue)
+}
+
 func TestParseQueryFormat(t *testing.T) {
 	tests := []struct {
 		input   string

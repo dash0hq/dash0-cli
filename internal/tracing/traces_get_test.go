@@ -62,6 +62,13 @@ func TestGetSkipHeaderFlag(t *testing.T) {
 	assert.Equal(t, "false", flag.DefValue)
 }
 
+func TestGetColumnFlag(t *testing.T) {
+	_, getCmd := newTracesGetCmd()
+	flag := getCmd.Flags().Lookup("column")
+	require.NotNil(t, flag, "--column flag should be registered on traces get")
+	assert.Equal(t, "[]", flag.DefValue)
+}
+
 func TestGetFollowSpanLinksFlag(t *testing.T) {
 	_, getCmd := newTracesGetCmd()
 	flag := getCmd.Flags().Lookup("follow-span-links")

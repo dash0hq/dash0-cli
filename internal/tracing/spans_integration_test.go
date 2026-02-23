@@ -130,7 +130,7 @@ func TestQuerySpans_CsvFormat(t *testing.T) {
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	require.GreaterOrEqual(t, len(lines), 4) // header + 3 spans
-	assert.Equal(t, "otel.span.start_time,otel.span.duration,otel.span.name,otel.span.status.code,service.name,otel.parent.id,otel.trace.id,otel.span.links", lines[0])
+	assert.Equal(t, "otel.span.start_time,otel.span.duration,otel.span.name,otel.span.status.code,service.name,otel.parent.id,otel.trace.id,otel.span.id,otel.span.links", lines[0])
 	assert.Contains(t, lines[1], "GET /api/users")
 }
 
