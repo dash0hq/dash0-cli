@@ -10,10 +10,12 @@
 - `/internal/config`: Configuration management (profiles, resolution)
 - `/internal/experimental`: Gate for commands behind the `--experimental` (`-X`) flag
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)
+- `/internal/members`: The `members` command group — `members list`, `members invite`, `members remove` (experimental, org-wide, no dataset)
 - `/internal/metrics`: Commands and utilities to retrieve metrics from Dash0
 - `/internal/otlp`: Shared OTLP utilities (key-value pairs, trace/span ID parsing, scope defaults, log severity range constants and number-to-range mapping) used by send and query commands across signal types
 - `/internal/output`: Output format parsing and formatting (table, wide, JSON, YAML)
 - `/internal/query`: Shared query utilities (filter parsing, timestamp normalization, timestamp formatting) used by query commands across signal types (e.g., `logs query`, `spans query`)
+- `/internal/teams`: The `teams` command group — `teams list`, `teams get`, `teams create`, `teams update`, `teams delete`, `teams add-members`, `teams remove-members` (experimental, org-wide, no dataset)
 - `/internal/testutil`: Test helpers — mock HTTP server, fixture constants
 - `/internal/tracing`: The `spans` and `traces` command groups — `spans send`, `spans query`, `traces get` — plus shared span helpers (kind/status conversions, duration formatting/parsing)
 - `/internal/version`: Build version (set at build time via linker flags)

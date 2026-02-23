@@ -31,9 +31,33 @@ The `config profiles` command uses:
 | `delete`   | `remove` | Delete a profile |
 | `select`   | `activate` | Set the active profile |
 
+## Teams Subcommands (experimental)
+The `teams` command manages organizational teams (not assets — no dataset, no YAML input, no `apply`):
+
+| Subcommand | Alias    | Description |
+|------------|----------|-------------|
+| `list`     | `ls`     | List all teams |
+| `get`      | -        | Get team details (members + accessible assets) |
+| `create`   | `add`    | Create a team (flag-based, not file-based) |
+| `update`   | -        | Update team display settings |
+| `delete`   | `remove` | Delete a team |
+| `list-members` | -    | List members of a team |
+| `add-members` | -     | Add members to a team |
+| `remove-members` | -  | Remove members from a team |
+
+## Members Subcommands (experimental)
+The `members` command manages organization membership:
+
+| Subcommand | Alias    | Description |
+|------------|----------|-------------|
+| `list`     | `ls`     | List all organization members |
+| `invite`   | `add`    | Invite members by email |
+| `remove`   | `delete` | Remove members from the organization |
+
 ## Aliases
 - `activate` → `select`
-- `add` → `create`
+- `add` → `create` / `invite`
+- `delete` → `remove`
 - `remove` → `delete`
 - `ls` → `list`
 

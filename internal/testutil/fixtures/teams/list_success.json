@@ -1,0 +1,59 @@
+[
+  {
+    "id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+    "name": "Backend Team",
+    "color": {
+      "from": "#FF6B6B",
+      "to": "#4ECDC4"
+    },
+    "origin": "dash0-cli",
+    "totalMemberCount": 3,
+    "members": [
+      {
+        "kind": "Member",
+        "metadata": {
+          "name": "user-1",
+          "labels": {
+            "dash0.com/id": "m1-0000-0000-0000-000000000001",
+            "dash0.com/joinedAt": "2025-06-15T10:00:00Z"
+          }
+        },
+        "spec": {
+          "display": {
+            "firstName": "Alice",
+            "lastName": "Smith",
+            "email": "alice@example.com"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "b2c3d4e5-6789-01bc-def0-234567890abc",
+    "name": "Frontend Team",
+    "color": {
+      "from": "#A8E6CF",
+      "to": "#FFD3B6"
+    },
+    "totalMemberCount": 2,
+    "members": [
+      {
+        "kind": "Member",
+        "metadata": {
+          "name": "user-2",
+          "labels": {
+            "dash0.com/id": "m2-0000-0000-0000-000000000002",
+            "dash0.com/joinedAt": "2025-07-01T14:30:00Z"
+          }
+        },
+        "spec": {
+          "display": {
+            "firstName": "Bob",
+            "lastName": "Jones",
+            "email": "bob@example.com"
+          }
+        }
+      }
+    ]
+  }
+]

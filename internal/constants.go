@@ -2,6 +2,8 @@ package internal
 
 const HEADER_ID = "ID"
 const HEADER_DATASET = "DATASET"
+const HEADER_EMAIL = "EMAIL"
+const HEADER_MEMBERS = "MEMBERS"
 const HEADER_NAME = "NAME"
 const HEADER_ORIGIN = "ORIGIN"
 const HEADER_URL = "URL"

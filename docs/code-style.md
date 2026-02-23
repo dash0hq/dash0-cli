@@ -40,6 +40,9 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
   Use `<id>` as a placeholder for asset IDs — never use actual or fake UUIDs.
   Precede each example with a `#` comment explaining the use-case.
   Keep examples practical: show the most common flags and workflows users will reach for.
+- Command output: avoid the word "successfully" in confirmation messages.
+  Write `Team "Backend Team" created` instead of `Team "Backend Team" created successfully`.
+  The absence of an error already implies success; the extra word adds no information.
 - Never introduce test-specific behavior (env var checks, test flags, etc.) in production code.
   Tests must exercise the real code paths.
   Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables, or CLI flags) to set up the state tests need.

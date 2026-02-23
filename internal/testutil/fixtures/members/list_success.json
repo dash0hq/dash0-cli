@@ -1,0 +1,53 @@
+[
+  {
+    "kind": "Member",
+    "metadata": {
+      "name": "user-1",
+      "labels": {
+        "dash0.com/id": "m1-0000-0000-0000-000000000001",
+        "dash0.com/joinedAt": "2025-06-15T10:00:00Z"
+      }
+    },
+    "spec": {
+      "display": {
+        "firstName": "Alice",
+        "lastName": "Smith",
+        "email": "alice@example.com"
+      }
+    }
+  },
+  {
+    "kind": "Member",
+    "metadata": {
+      "name": "user-2",
+      "labels": {
+        "dash0.com/id": "m2-0000-0000-0000-000000000002",
+        "dash0.com/joinedAt": "2025-07-01T14:30:00Z"
+      }
+    },
+    "spec": {
+      "display": {
+        "firstName": "Bob",
+        "lastName": "Jones",
+        "email": "bob@example.com"
+      }
+    }
+  },
+  {
+    "kind": "Member",
+    "metadata": {
+      "name": "user-3",
+      "labels": {
+        "dash0.com/id": "m3-0000-0000-0000-000000000003",
+        "dash0.com/joinedAt": "2025-08-20T09:15:00Z"
+      }
+    },
+    "spec": {
+      "display": {
+        "firstName": "Carol",
+        "lastName": "Williams",
+        "email": "carol@example.com"
+      }
+    }
+  }
+]

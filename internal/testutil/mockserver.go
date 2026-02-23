@@ -53,12 +53,25 @@ const (
 	FixtureTracesGetSuccess   = "traces/get_success.json"
 	FixtureTracesGetWithLinks = "traces/get_with_links.json"
 
+	// Members fixtures
+	FixtureMembersListSuccess   = "members/list_success.json"
+	FixtureMembersListEmpty     = "members/list_empty.json"
+	FixtureMembersUnauthorized  = "members/error_unauthorized.json"
+
 	// Synthetic checks fixtures
 	FixtureSyntheticChecksListSuccess   = "syntheticchecks/list_success.json"
 	FixtureSyntheticChecksListEmpty     = "syntheticchecks/list_empty.json"
 	FixtureSyntheticChecksGetSuccess    = "syntheticchecks/get_success.json"
 	FixtureSyntheticChecksImportSuccess = "syntheticchecks/import_success.json"
 	FixtureSyntheticChecksNotFound      = "syntheticchecks/error_not_found.json"
+
+	// Teams fixtures
+	FixtureTeamsListSuccess   = "teams/list_success.json"
+	FixtureTeamsListEmpty     = "teams/list_empty.json"
+	FixtureTeamsGetSuccess    = "teams/get_success.json"
+	FixtureTeamsCreateSuccess = "teams/create_success.json"
+	FixtureTeamsNotFound      = "teams/error_not_found.json"
+	FixtureTeamsUnauthorized  = "teams/error_unauthorized.json"
 )
 
 // FixturesDir returns the absolute path to the fixtures directory.
