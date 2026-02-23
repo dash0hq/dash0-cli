@@ -29,6 +29,9 @@ vendor/
 # GoReleaser
 dist/
 
+# Generated shell completions
+completions/
+
 # IDE files
 .idea/
 .vscode/
