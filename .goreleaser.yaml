@@ -6,6 +6,7 @@ version: 2
 before:
   hooks:
     - go mod download
+    - sh scripts/completions.sh
 
 builds:
   - id: dash0
@@ -36,6 +37,8 @@ archives:
       {{- if eq .Os "darwin" }}macos
       {{- else }}{{ .Os }}{{ end }}_
       {{- .Arch }}
+    files:
+      - completions/*
     format_overrides:
       - goos: windows
         format: zip
@@ -105,3 +108,7 @@ brews:
     directory: Formula
     homepage: https://github.com/dash0hq/dash0-cli
     description: CLI to interact with Dash0
+    extra_install: |
+      bash_completion.install "completions/dash0.bash" => "dash0"
+      zsh_completion.install "completions/dash0.zsh" => "_dash0"
+      fish_completion.install "completions/dash0.fish" => "dash0.fish"
