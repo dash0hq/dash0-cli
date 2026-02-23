@@ -38,7 +38,7 @@ func TestQueryLogs_Success(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()
@@ -66,7 +66,7 @@ func TestQueryLogs_Empty(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQueryEmpty,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()
@@ -88,7 +88,7 @@ func TestQueryLogs_OtlpJsonFormat(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()
@@ -114,7 +114,7 @@ func TestQueryLogs_CsvFormat(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()
@@ -140,7 +140,7 @@ func TestQueryLogs_WithFilter(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()
@@ -179,7 +179,7 @@ func TestQueryLogs_Unauthorized(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusUnauthorized,
 		BodyFile:   fixtureLogsUnauthorized,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()
@@ -210,7 +210,7 @@ func TestQueryLogs_RequestParams(t *testing.T) {
 	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQueryEmpty,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalLogsCmd()

@@ -6,6 +6,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-cli/internal/version"
 )
 
 // NewClientFromContext creates a new Dash0 API client using configuration from context.
@@ -33,6 +34,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 	client, err := dash0api.NewClient(
 		dash0api.WithApiUrl(apiUrl),
 		dash0api.WithAuthToken(authToken),
+		dash0api.WithUserAgent(version.UserAgent()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API client: %w", err)
@@ -70,6 +72,7 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 	client, err := dash0api.NewClient(
 		dash0api.WithOtlpEndpoint(dash0api.OtlpEncodingJson, finalOtlpUrl),
 		dash0api.WithAuthToken(finalAuthToken),
+		dash0api.WithUserAgent(version.UserAgent()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP client: %w", err)

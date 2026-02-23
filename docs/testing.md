@@ -19,7 +19,7 @@ The OpenAPI specification of the Dash0 API is available at `https://api-docs.das
 - Name files with `_integration_test.go` suffix for clarity
 - Use `testutil.NewMockServer(t, testutil.FixturesDir())` to create a mock server
 - Register routes with `server.On()` for exact paths or `server.OnPattern()` for regex patterns
-- Always use `testutil.RequireAuthHeader` as the validator to ensure auth token validation
+- Always use `testutil.RequireHeaders` as the validator to ensure auth token and user agent validation
 - Use constants for API paths and fixture filenames to avoid duplication
 - Use `http.MethodGet`, `http.StatusOK`, etc. instead of string/numeric literals
 

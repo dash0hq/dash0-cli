@@ -83,7 +83,7 @@ expression: up == 0
 	server.On(http.MethodGet, "/api/alerting/check-rules/47b6ccbe-82ab-47c6-a613-ce0d7f34353e", testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureCheckRulesImportSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
 	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
@@ -175,7 +175,7 @@ spec:
 	server.On(http.MethodGet, "/api/dashboards/existing-dashboard-id", testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDashboardsImportSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
 	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
@@ -730,7 +730,7 @@ spec:
 	server.On(http.MethodGet, "/api/dashboards/deleted-dashboard-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
 	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
@@ -774,7 +774,7 @@ expression: up == 0
 	server.On(http.MethodGet, "/api/alerting/check-rules/deleted-rule-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
 	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
@@ -827,7 +827,7 @@ spec:
 	server.On(http.MethodGet, "/api/views/"+viewID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureViewsImportSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
 	server.WithViewImport(testutil.FixtureViewsImportSuccess)
@@ -886,7 +886,7 @@ spec:
 	server.On(http.MethodGet, "/api/synthetic-checks/"+checkID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureSyntheticChecksImportSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
 	server.WithSyntheticCheckImport(testutil.FixtureSyntheticChecksImportSuccess)
@@ -1018,7 +1018,7 @@ spec:
 	server.On(http.MethodGet, "/api/views/deleted-view-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureViewsNotFound,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	server.WithViewImport(testutil.FixtureViewsImportSuccess)
 
@@ -1070,7 +1070,7 @@ spec:
 	server.On(http.MethodGet, "/api/synthetic-checks/deleted-check-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	server.WithSyntheticCheckImport(testutil.FixtureSyntheticChecksImportSuccess)
 

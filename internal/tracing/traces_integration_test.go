@@ -35,7 +35,7 @@ func TestGetTrace_Success(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalTracesCmd()
@@ -65,7 +65,7 @@ func TestGetTrace_CsvFormat(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalTracesCmd()
@@ -90,7 +90,7 @@ func TestGetTrace_OtlpJsonFormat(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalTracesCmd()
@@ -115,7 +115,7 @@ func TestGetTrace_Unauthorized(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusUnauthorized,
 		BodyFile:   fixtureTracesUnauthorized,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalTracesCmd()
@@ -134,7 +134,7 @@ func TestGetTrace_EmptyResult(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   "spans/query_empty.json",
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalTracesCmd()

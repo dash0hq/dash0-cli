@@ -38,7 +38,7 @@ func TestQuerySpans_Success(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()
@@ -69,7 +69,7 @@ func TestQuerySpans_Empty(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQueryEmpty,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()
@@ -91,7 +91,7 @@ func TestQuerySpans_OtlpJsonFormat(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()
@@ -116,7 +116,7 @@ func TestQuerySpans_CsvFormat(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()
@@ -141,7 +141,7 @@ func TestQuerySpans_WithFilter(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQuerySuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()
@@ -179,7 +179,7 @@ func TestQuerySpans_Unauthorized(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusUnauthorized,
 		BodyFile:   fixtureSpansUnauthorized,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()
@@ -210,7 +210,7 @@ func TestQuerySpans_RequestParams(t *testing.T) {
 	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureQueryEmpty,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := newExperimentalSpansCmd()

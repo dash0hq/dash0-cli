@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -86,6 +87,23 @@ func RequireAuthHeader(r *http.Request) error {
 		return fmt.Errorf("missing Authorization header")
 	}
 	return nil
+}
+
+// RequireUserAgentHeader is a validator that checks that the User-Agent header starts with "dash0-cli/".
+func RequireUserAgentHeader(r *http.Request) error {
+	ua := r.Header.Get("User-Agent")
+	if !strings.HasPrefix(ua, "dash0-cli/") {
+		return fmt.Errorf("expected User-Agent to start with \"dash0-cli/\", got %q", ua)
+	}
+	return nil
+}
+
+// RequireHeaders is a validator that checks for both the Authorization and User-Agent headers.
+func RequireHeaders(r *http.Request) error {
+	if err := RequireAuthHeader(r); err != nil {
+		return err
+	}
+	return RequireUserAgentHeader(r)
 }
 
 // routeKey uniquely identifies an HTTP route.
@@ -430,7 +448,7 @@ func (m *MockServer) WithDashboardImport(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/import/dashboard", MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
-		Validator:  RequireAuthHeader,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -439,7 +457,7 @@ func (m *MockServer) WithCheckRuleImport(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/import/check-rule", MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
-		Validator:  RequireAuthHeader,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -448,7 +466,7 @@ func (m *MockServer) WithViewImport(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/import/view", MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
-		Validator:  RequireAuthHeader,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -457,7 +475,7 @@ func (m *MockServer) WithSyntheticCheckImport(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/import/synthetic-check", MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
-		Validator:  RequireAuthHeader,
+		Validator:  RequireHeaders,
 	})
 }
 

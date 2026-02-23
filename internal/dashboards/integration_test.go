@@ -33,13 +33,13 @@ func TestListDashboards_Success(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureListSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	// Mock the GetDashboard calls for fetching display names
 	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -65,7 +65,7 @@ func TestListDashboards_Empty(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureListEmpty,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -87,7 +87,7 @@ func TestListDashboards_Unauthorized(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
 		StatusCode: http.StatusUnauthorized,
 		BodyFile:   fixtureUnauthorized,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -106,12 +106,12 @@ func TestListDashboards_WideFormat(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureListSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -136,7 +136,7 @@ func TestListDashboards_JSONFormat(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureListSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -160,7 +160,7 @@ func TestGetDashboard_Success(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards+"/"+testDashboardID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -186,7 +186,7 @@ func TestGetDashboard_NotFound(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards+"/"+nonexistentID, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   fixtureNotFound,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -205,7 +205,7 @@ func TestGetDashboard_YAMLFormat(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards+"/"+testDashboardID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -229,7 +229,7 @@ func TestGetDashboard_JSONFormat(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards+"/"+testDashboardID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
@@ -253,7 +253,7 @@ func TestListDashboards_RequestRecording(t *testing.T) {
 	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureListEmpty,
-		Validator:  testutil.RequireAuthHeader,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewDashboardsCmd()
