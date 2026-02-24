@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.5.0
+
+
+### New Components
+
+
+- `teams`: Add experimental team and member management commands (#47)
+  New `teams` commands: list, get, create, update, delete, add-members, remove-members.
+  New `members` commands: list, invite, remove.
+  All commands require the `--experimental` (`-X`) flag.
+  
+
+
+### Enhancements
+
+
+- `assets`: Add CSV output format to asset list commands (#62)
+  The `dashboards list`, `check-rules list`, `views list`, and `synthetic-checks list` commands now accept `-o csv`.
+  CSV output includes all columns from the `wide` format (name, id, dataset, origin, url).
+  
+
+- `query`: `--column` flag for `logs query`, `spans query`, and `traces get` to customize displayed columns (#56)
+  Users can now select which columns appear in table and CSV output using repeatable `--column` flags.
+  Predefined columns have short aliases (e.g., `time`, `severity`, `body` for logs).
+  Any OTLP attribute key can be used as a column, enabling ad-hoc display of arbitrary attributes.
+  
+
 ## 1.4.0
 
 
