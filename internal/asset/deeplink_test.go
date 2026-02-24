@@ -84,6 +84,13 @@ func TestDeeplinkURL(t *testing.T) {
 			assetID:   "a1b2c3d4-5678-90ab-cdef-1234567890ab",
 			expected:  "https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4-5678-90ab-cdef-1234567890ab",
 		},
+		{
+			name:      "member",
+			apiUrl:    "https://api.us-west-2.aws.dash0.com",
+			assetType: "member",
+			assetID:   "user_2TOneA9gdtUmokQ1QBbl0JPrml5",
+			expected:  "https://app.dash0.com/goto/settings/members?member_id=user_2TOneA9gdtUmokQ1QBbl0JPrml5",
+		},
 	}
 
 	for _, tt := range tests {
