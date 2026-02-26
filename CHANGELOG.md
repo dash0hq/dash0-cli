@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.5.1
+
+
+### Bug Fixes
+
+
+- `views`: Fix view deeplink URLs to use the correct path for each view type (#72)
+  Previously, all view deeplinks used `/goto/logs` regardless of view type.
+  Now each view type maps to its correct deeplink path (e.g., `/goto/traces/explorer` for span views, `/goto/metrics/explorer` for metric views).
+  The `views list` output also includes a new TYPE column.
+  
+
 ## 1.5.0
 
 
