@@ -45,6 +45,7 @@ archives:
 
 release:
   prerelease: auto
+  mode: replace
 
 changelog:
   # Disable auto-generated changelog; using curated CHANGELOG.md via chloggen
