@@ -6,6 +6,7 @@ const HEADER_EMAIL = "EMAIL"
 const HEADER_MEMBERS = "MEMBERS"
 const HEADER_NAME = "NAME"
 const HEADER_ORIGIN = "ORIGIN"
+const HEADER_TYPE = "TYPE"
 const HEADER_URL = "URL"
 
 // DEFAULT_ORIGIN is the value used to tag assets managed by the Dash0 CLI.

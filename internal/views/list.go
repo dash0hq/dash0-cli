@@ -7,9 +7,9 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
@@ -19,8 +19,8 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short: "List views",
-		Long: `List all views in the specified dataset.` + internal.CONFIG_HINT,
+		Short:   "List views",
+		Long:    `List all views in the specified dataset.` + internal.CONFIG_HINT,
 		Example: `  # List views (default: up to 50)
   dash0 views list
 
@@ -90,35 +90,39 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format, apiUrl string) error {
 	columns := []output.Column{
-		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
+		{Header: internal.HEADER_NAME, Width: 40, Value: func(item any) string {
 			v := item.(*dash0api.ViewApiListItem)
 			if v.Name != nil {
 				return *v.Name
 			}
 			return ""
 		}},
-		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
+		{Header: internal.HEADER_ID, Width: 36, Value: func(item any) string {
 			v := item.(*dash0api.ViewApiListItem)
 			return v.Id
+		}},
+		{Header: internal.HEADER_TYPE, Width: 15, Value: func(item any) string {
+			v := item.(*dash0api.ViewApiListItem)
+			return string(v.Type)
 		}},
 	}
 
 	if format == output.FormatWide || format == output.FormatCSV {
 		columns = append(columns,
-			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item any) string {
 				v := item.(*dash0api.ViewApiListItem)
 				return v.Dataset
 			}},
-			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item any) string {
 				v := item.(*dash0api.ViewApiListItem)
 				if v.Origin != nil {
 					return *v.Origin
 				}
 				return ""
 			}},
-			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item any) string {
 				v := item.(*dash0api.ViewApiListItem)
-				return asset.DeeplinkURL(apiUrl, "view", v.Id)
+				return asset.ViewDeeplinkURL(apiUrl, string(v.Type), v.Id)
 			}},
 		)
 	}
@@ -128,7 +132,7 @@ func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, form
 		return nil
 	}
 
-	data := make([]interface{}, len(views))
+	data := make([]any, len(views))
 	for i, v := range views {
 		data[i] = v
 	}

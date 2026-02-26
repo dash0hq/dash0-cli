@@ -2,121 +2,145 @@
   {
     "dataset": "default",
     "id": "058a2562-fada-40a9-8bc7-0bce27c1e2ee",
-    "name": "all-logs-"
+    "name": "all-logs-",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "06ec06eb-af4e-446a-b130-f9ff49e67181",
-    "name": "adservice-errors"
+    "name": "adservice-errors",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "0dee1e6f-73d8-44d3-8a2a-f33142a78a0d",
-    "name": "lambda-logs"
+    "name": "lambda-logs",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "1e25c9f4-5d1f-4261-9e84-69307ee6511a",
-    "name": "service-requests-copy"
+    "name": "service-requests-copy",
+    "type": "spans"
   },
   {
     "dataset": "default",
     "id": "1f8be7ec-9ef1-4826-859e-a6b74a6fd640",
-    "name": "short-tooltip"
+    "name": "short-tooltip",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "30a9cd03-c11f-4eb0-bb6a-86976e4c798a",
-    "name": "lambda-cold-starts"
+    "name": "lambda-cold-starts",
+    "type": "metrics"
   },
   {
     "dataset": "default",
     "id": "320c6d2d-9a42-479d-a20e-cc8b332c1e91",
-    "name": "tall-tooltip"
+    "name": "tall-tooltip",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "357f0b08-5aa5-46df-b0b2-6eed0e6b447a",
-    "name": "all-logs-copy"
+    "name": "all-logs-copy",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "446f50dc-5c74-4ac3-a8ca-41b80f37cf99",
-    "name": "xray-publisher"
+    "name": "xray-publisher",
+    "type": "spans"
   },
   {
     "dataset": "default",
     "id": "4aa99b20-eb13-45cc-ad3c-c2d95ffa3523",
-    "name": "kubernetes-copy"
+    "name": "kubernetes-copy",
+    "type": "resources"
   },
   {
     "dataset": "default",
     "id": "68414fed-08d6-48e2-8bc5-ffc135ce7408",
-    "name": "test"
+    "name": "test",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "88767fb2-5b22-4d0f-89a5-bb2490abfa17",
-    "name": "support-adservice-vidw"
+    "name": "support-adservice-vidw",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "98658dd0-2f36-439e-aa53-19bcabf0a564",
-    "name": "kubernetes-test"
+    "name": "kubernetes-test",
+    "type": "resources"
   },
   {
     "dataset": "default",
     "id": "9990e270-3f27-43e3-8005-f6e2a7ffc858",
-    "name": "my-view"
+    "name": "my-view",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "a20baf78-a9f6-4618-b65a-8e2f5eebd773",
-    "name": "eng-5530"
+    "name": "eng-5530",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "a772227d-ae8b-426f-b862-a61464cb306b",
-    "name": "otel-demo-links"
+    "name": "otel-demo-links",
+    "type": "spans"
   },
   {
     "dataset": "default",
     "id": "ac4afb65-2518-490d-b06b-1fdcf6ce18e5",
-    "name": "all-spans"
+    "name": "all-spans",
+    "type": "spans"
   },
   {
     "dataset": "default",
     "id": "b0645730-2ae3-446e-8bfc-8efa7d045266",
-    "name": "peters-view"
+    "name": "peters-view",
+    "type": "services"
   },
   {
     "dataset": "default",
     "id": "b224d81a-0d7c-4823-b2e7-f92e83dde87f",
-    "name": "asdf"
+    "name": "asdf",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "b4cb8256-4317-4404-9b3b-98b6d821d171",
-    "name": "all-services-copy"
+    "name": "all-services-copy",
+    "type": "services"
   },
   {
     "dataset": "default",
     "id": "b9ceae71-0248-433a-9438-3bc74ddbeeda",
-    "name": "service-logs-test"
+    "name": "service-logs-test",
+    "type": "logs"
   },
   {
     "dataset": "default",
     "id": "c8cbca7c-04b3-4162-b545-eb08c0848ef3",
-    "name": "meine-tolle-view"
+    "name": "meine-tolle-view",
+    "type": "failed_checks"
   },
   {
     "dataset": "default",
     "id": "d34dee84-206d-4c59-b79b-899e3b455cc1",
-    "name": "traces-copy"
+    "name": "traces-copy",
+    "type": "spans"
   },
   {
     "dataset": "default",
     "id": "f8e3f5cf-fbb8-467a-938d-dfedeac61fa1",
-    "name": "test"
+    "name": "test",
+    "type": "web_events"
   }
 ]
