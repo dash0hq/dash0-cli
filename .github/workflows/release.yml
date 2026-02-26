@@ -48,6 +48,6 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --release-notes < release-notes.md
+          args: release --clean --release-notes release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
