@@ -15,6 +15,15 @@ const (
 	deeplinkPathTeam           = "/goto/settings/teams"
 	deeplinkPathMember         = "/goto/settings/members"
 
+	// View-type-specific deeplink paths.
+	deeplinkPathViewLogs         = "/goto/logs"
+	deeplinkPathViewTracing      = "/goto/traces/explorer"
+	deeplinkPathViewMetrics      = "/goto/metrics/explorer"
+	deeplinkPathViewServiceMap   = "/goto/services/map"
+	deeplinkPathViewResources    = "/goto/resources/table"
+	deeplinkPathViewFailedChecks = "/goto/alerting/failed-checks"
+	deeplinkPathViewWebEvents    = "/goto/web-events/explorer"
+
 	deeplinkQueryDashboard      = "dashboard_id"
 	deeplinkQueryCheckRule      = "check_rule_id"
 	deeplinkQuerySyntheticCheck = "check_id"
@@ -39,6 +48,46 @@ func DeeplinkURL(apiUrl, assetType, assetID string) string {
 	}
 
 	return fmt.Sprintf("%s%s?%s=%s", baseURL, path, queryParam, url.QueryEscape(assetID))
+}
+
+// ViewDeeplinkURL constructs a deeplink URL for a view, using the view's type
+// to determine the correct path (e.g. /goto/spans for span views, /goto/logs
+// for log views). Returns an empty string if the API URL is empty, cannot be
+// parsed, or the view type is unknown.
+func ViewDeeplinkURL(apiUrl, viewType, assetID string) string {
+	baseURL := deeplinkBaseURL(apiUrl)
+	if baseURL == "" {
+		return ""
+	}
+
+	path := viewTypePath(viewType)
+	if path == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s%s?%s=%s", baseURL, path, deeplinkQueryView, url.QueryEscape(assetID))
+}
+
+// viewTypePath maps a view type string to the corresponding deeplink path.
+func viewTypePath(viewType string) string {
+	switch strings.ToLower(viewType) {
+	case "logs":
+		return deeplinkPathViewLogs
+	case "spans":
+		return deeplinkPathViewTracing
+	case "metrics":
+		return deeplinkPathViewMetrics
+	case "services":
+		return deeplinkPathViewServiceMap
+	case "resources":
+		return deeplinkPathViewResources
+	case "failed_checks":
+		return deeplinkPathViewFailedChecks
+	case "web_events":
+		return deeplinkPathViewWebEvents
+	default:
+		return ""
+	}
 }
 
 // deeplinkBaseURL extracts the domain suffix from an API URL and returns

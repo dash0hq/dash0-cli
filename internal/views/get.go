@@ -19,7 +19,7 @@ func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get a view by ID",
-		Long: `Retrieve a view definition by its ID.` + internal.CONFIG_HINT,
+		Long:  `Retrieve a view definition by its ID.` + internal.CONFIG_HINT,
 		Example: `  # Show view summary
   dash0 views get <id>
 
@@ -87,7 +87,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		}
 		fmt.Printf("Dataset: %s\n", dataset)
 		fmt.Printf("Origin: %s\n", origin)
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "view", id); deeplinkURL != "" {
+		if deeplinkURL := asset.ViewDeeplinkURL(apiUrl, string(view.Spec.Type), id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

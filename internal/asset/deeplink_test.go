@@ -101,6 +101,79 @@ func TestDeeplinkURL(t *testing.T) {
 	}
 }
 
+func TestViewDeeplinkURL(t *testing.T) {
+	apiUrl := "https://api.us-west-2.aws.dash0.com"
+	viewID := "d4e5f6a7-8901-23de-f012-456789abcdef"
+
+	tests := []struct {
+		name     string
+		viewType string
+		expected string
+	}{
+		{
+			name:     "logs view",
+			viewType: "logs",
+			expected: "https://app.dash0.com/goto/logs?view_id=" + viewID,
+		},
+		{
+			name:     "spans view",
+			viewType: "spans",
+			expected: "https://app.dash0.com/goto/traces/explorer?view_id=" + viewID,
+		},
+		{
+			name:     "metrics view",
+			viewType: "metrics",
+			expected: "https://app.dash0.com/goto/metrics/explorer?view_id=" + viewID,
+		},
+		{
+			name:     "services view",
+			viewType: "services",
+			expected: "https://app.dash0.com/goto/services/map?view_id=" + viewID,
+		},
+		{
+			name:     "resources view",
+			viewType: "resources",
+			expected: "https://app.dash0.com/goto/resources/table?view_id=" + viewID,
+		},
+		{
+			name:     "failed_checks view",
+			viewType: "failed_checks",
+			expected: "https://app.dash0.com/goto/alerting/failed-checks?view_id=" + viewID,
+		},
+		{
+			name:     "web_events view",
+			viewType: "web_events",
+			expected: "https://app.dash0.com/goto/web-events/explorer?view_id=" + viewID,
+		},
+		{
+			name:     "unknown view type",
+			viewType: "unknown",
+			expected: "",
+		},
+		{
+			name:     "empty view type",
+			viewType: "",
+			expected: "",
+		},
+		{
+			name:     "empty API URL",
+			viewType: "logs",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testApiUrl := apiUrl
+			if tt.name == "empty API URL" {
+				testApiUrl = ""
+			}
+			result := ViewDeeplinkURL(testApiUrl, tt.viewType, viewID)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestDomainSuffix(t *testing.T) {
 	tests := []struct {
 		hostname string
