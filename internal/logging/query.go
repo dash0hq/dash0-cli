@@ -10,6 +10,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
@@ -217,11 +218,15 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 		},
 	}
 
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+	deeplinkFilters := asset.FiltersToDeeplinkFilters(filters)
+	explorerURL := asset.LogsExplorerURL(apiUrl, deeplinkFilters, flags.From, flags.To, dataset)
+
 	iter := apiClient.GetLogRecordsIter(ctx, &request)
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader, cols)
+		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
 	case queryFormatCSV:
 		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
@@ -327,7 +332,7 @@ func countRecords(resourceLogs []dash0api.ResourceLogs) int64 {
 	return count
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
+func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
 	var rows []map[string]string
 
 	total, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
@@ -339,9 +344,12 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, s
 	}
 	if total == 0 {
 		fmt.Println("No log records found.")
-		return nil
+	} else {
+		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	query.RenderTable(os.Stdout, cols, rows, skipHeader)
+	if explorerURL != "" {
+		fmt.Printf("\nOpen this query in Dash0:\n    %s\n", explorerURL)
+	}
 	return nil
 }
 
