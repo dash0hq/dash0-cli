@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/config"
@@ -141,32 +143,66 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 		return fmt.Errorf("asset not found: %w", err)
 	}
 	if dash0api.IsUnauthorized(err) {
-		return fmt.Errorf("authentication failed; check your auth token: %w", err)
+		return formatAPIError("authentication failed; check your auth token", err)
 	}
 	if dash0api.IsForbidden(err) {
-		return fmt.Errorf("access denied; check your permissions: %w", err)
+		return formatAPIError("access denied; check your permissions", err)
 	}
 	if dash0api.IsBadRequest(err) {
-		return fmt.Errorf("invalid request: %w", err)
+		return formatAPIError("invalid request", err)
 	}
 	if dash0api.IsConflict(err) {
 		assetType := getAssetType()
 		identifier := getIdentifier()
 		if assetType != "" {
 			if identifier != "" {
-				return fmt.Errorf("%s %q already exists or conflicts with existing asset: %w", assetType, identifier, err)
+				return formatAPIError(fmt.Sprintf("%s %q already exists or conflicts with existing asset", assetType, identifier), err)
 			}
-			return fmt.Errorf("%s already exists or conflicts with existing asset: %w", assetType, err)
+			return formatAPIError(fmt.Sprintf("%s already exists or conflicts with existing asset", assetType), err)
 		}
-		return fmt.Errorf("asset conflict: %w", err)
+		return formatAPIError("asset conflict", err)
 	}
 	if dash0api.IsRateLimited(err) {
-		return fmt.Errorf("rate limited; please try again later: %w", err)
+		return formatAPIError("rate limited; please try again later", err)
 	}
 	if dash0api.IsServerError(err) {
-		return fmt.Errorf("server error; please try again later: %w", err)
+		return formatAPIError("server error; please try again later", err)
 	}
 
 	return err
+}
+
+// formatAPIError builds a user-friendly error message. When the underlying
+// error is an APIError with a non-empty body, the output uses a two-line
+// format with the status metadata on the first line and the response body
+// indented on the second:
+//
+//	invalid request (status: 400, trace_id: abc123):
+//	  {"error": {"message": "..."}}
+//
+// When the body is empty, it falls back to wrapping the original error.
+func formatAPIError(prefix string, err error) error {
+	var apiErr *dash0api.APIError
+	if !errors.As(err, &apiErr) {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+
+	body := strings.TrimSpace(apiErr.Body)
+	if body == "" {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+
+	const maxBodyLen = 500
+	if len(body) > maxBodyLen {
+		body = body[:maxBodyLen] + "..."
+	}
+
+	statusLine := fmt.Sprintf("%s (status: %d", prefix, apiErr.StatusCode)
+	if apiErr.TraceID != "" {
+		statusLine += ", trace_id: " + apiErr.TraceID
+	}
+	statusLine += "):\n  " + body
+
+	return fmt.Errorf("%s", statusLine)
 }
 

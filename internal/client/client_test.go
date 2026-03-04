@@ -2,9 +2,11 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 )
@@ -130,4 +132,93 @@ func TestResolveDataset_DefaultFlagOverridesConfig(t *testing.T) {
 func TestResolveDataset_NilWithoutContext(t *testing.T) {
 	result := ResolveDataset(context.Background(), "")
 	assert.Nil(t, result)
+}
+
+func TestFormatAPIError_BodyOnSecondLine(t *testing.T) {
+	apiErr := &dash0api.APIError{
+		StatusCode: 400,
+		Status:     "400 Bad Request",
+		Body:       `{"error":{"code":400,"message":"Bad Request: origin mismatch"}}`,
+		TraceID:    "abc123",
+	}
+
+	result := formatAPIError("invalid request", apiErr)
+	expected := "invalid request (status: 400, trace_id: abc123):\n" +
+		`  {"error":{"code":400,"message":"Bad Request: origin mismatch"}}`
+	assert.Equal(t, expected, result.Error())
+}
+
+func TestFormatAPIError_BodyWithoutTraceID(t *testing.T) {
+	apiErr := &dash0api.APIError{
+		StatusCode: 400,
+		Status:     "400 Bad Request",
+		Body:       `{"details": "field 'expression' is required"}`,
+	}
+
+	result := formatAPIError("invalid request", apiErr)
+	expected := "invalid request (status: 400):\n" +
+		`  {"details": "field 'expression' is required"}`
+	assert.Equal(t, expected, result.Error())
+}
+
+func TestFormatAPIError_EmptyBody(t *testing.T) {
+	apiErr := &dash0api.APIError{
+		StatusCode: 400,
+		Status:     "400 Bad Request",
+		TraceID:    "abc123",
+	}
+
+	result := formatAPIError("invalid request", apiErr)
+	assert.Contains(t, result.Error(), "invalid request")
+	assert.Contains(t, result.Error(), "400 Bad Request")
+}
+
+func TestFormatAPIError_NonAPIError(t *testing.T) {
+	err := fmt.Errorf("some other error")
+	result := formatAPIError("invalid request", err)
+	assert.Equal(t, "invalid request: some other error", result.Error())
+}
+
+func TestFormatAPIError_WrappedAPIError(t *testing.T) {
+	apiErr := &dash0api.APIError{
+		StatusCode: 400,
+		Status:     "400 Bad Request",
+		Body:       `{"details": "missing required field"}`,
+		TraceID:    "def456",
+	}
+	wrapped := fmt.Errorf("update dashboard failed: %w", apiErr)
+
+	result := formatAPIError("invalid request", wrapped)
+	assert.Contains(t, result.Error(), "invalid request (status: 400, trace_id: def456):")
+	assert.Contains(t, result.Error(), "missing required field")
+}
+
+func TestFormatAPIError_LongBodyTruncated(t *testing.T) {
+	longBody := string(make([]byte, 600))
+	apiErr := &dash0api.APIError{
+		StatusCode: 400,
+		Status:     "400 Bad Request",
+		Body:       longBody,
+	}
+
+	result := formatAPIError("invalid request", apiErr)
+	assert.Contains(t, result.Error(), "...")
+	// status line + ":\n  " + 500 chars + "..."
+	assert.LessOrEqual(t, len(result.Error()), 600)
+}
+
+func TestFormatAPIError_MessageInBody(t *testing.T) {
+	// When the API client already extracted a Message, the body is still
+	// shown because it may contain additional context.
+	apiErr := &dash0api.APIError{
+		StatusCode: 400,
+		Status:     "400 Bad Request",
+		Message:    "validation failed",
+		Body:       `{"message": "validation failed", "details": "extra info"}`,
+		TraceID:    "trace1",
+	}
+
+	result := formatAPIError("invalid request", apiErr)
+	assert.Contains(t, result.Error(), "invalid request (status: 400, trace_id: trace1):")
+	assert.Contains(t, result.Error(), "extra info")
 }
