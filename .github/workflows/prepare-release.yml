@@ -3,45 +3,64 @@ name: Prepare Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version number (without v prefix, e.g., 1.0.0)'
+      bump:
+        description: 'Version bump type'
         required: true
-        type: string
+        type: choice
+        default: minor
+        options:
+          - major
+          - minor
+          - patch
 
 jobs:
   prepare:
     name: Prepare and Tag Release
     runs-on: ubuntu-latest
     steps:
-      - name: Validate version format
-        run: |
-          VERSION="${{ inputs.version }}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-            echo "Error: Invalid version format '$VERSION'"
-            echo "Expected: MAJOR.MINOR.PATCH (e.g., 1.0.0) or MAJOR.MINOR.PATCH-PRERELEASE (e.g., 1.0.0-rc.1)"
-            echo "Note: Do not include the 'v' prefix"
-            exit 1
-          fi
-          if [[ "$VERSION" =~ ^v ]]; then
-            echo "Error: Version should not start with 'v' prefix"
-            echo "Use '${{ inputs.version }}' instead of 'v${{ inputs.version }}'"
-            exit 1
-          fi
-          echo "Version format valid: $VERSION"
-
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
 
+      - name: Calculate next version
+        id: version
+        run: |
+          # Find the highest semver tag (not necessarily the latest by date)
+          HIGHEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          if [ -z "$HIGHEST" ]; then
+            HIGHEST="0.0.0"
+          fi
+          echo "Highest existing version: $HIGHEST"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$HIGHEST"
+          case "${{ inputs.bump }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "Next version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Verify tag does not exist
         run: |
-          if git ls-remote --tags origin | grep -q "refs/tags/v${{ inputs.version }}$"; then
-            echo "Error: Tag v${{ inputs.version }} already exists"
+          if git ls-remote --tags origin | grep -q "refs/tags/v${{ steps.version.outputs.version }}$"; then
+            echo "Error: Tag v${{ steps.version.outputs.version }} already exists"
             exit 1
           fi
-          echo "Tag v${{ inputs.version }} is available"
+          echo "Tag v${{ steps.version.outputs.version }} is available"
 
       - name: Set up Go
         uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5
@@ -58,7 +77,7 @@ jobs:
           echo "Found $ENTRY_COUNT changelog entries"
 
       - name: Update changelog
-        run: make chlog-update VERSION=${{ inputs.version }}
+        run: make chlog-update VERSION=${{ steps.version.outputs.version }}
 
       - name: Commit and push changelog
         env:
@@ -69,7 +88,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           find .chloggen -name "*.yaml" ! -name "config.yaml" ! -name "TEMPLATE.yaml" -exec git rm -f {} + 2>/dev/null || true
           git add CHANGELOG.md .chloggen
-          git commit -m "chore: update changelog for v${{ inputs.version }}"
+          git commit -m "chore: update changelog for v${{ steps.version.outputs.version }}"
           git push origin main
 
       - name: Create and push tag
@@ -79,12 +98,12 @@ jobs:
           gh auth setup-git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag v${{ inputs.version }}
-          git push origin v${{ inputs.version }}
+          git tag v${{ steps.version.outputs.version }}
+          git push origin v${{ steps.version.outputs.version }}
 
       - name: Summary
         run: |
-          echo "## Release v${{ inputs.version }} prepared successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "## Release v${{ steps.version.outputs.version }} prepared successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The release workflow has been triggered automatically." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
