@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.5.4
+
+
+### Enhancements
+
+
+- `logs, spans, traces`: Add explorer deep link URL as the first line of output for logs query, spans query, and traces get (#71)
+  The URL is printed after the table output and links to the corresponding Dash0 explorer view.
+  
+
 ## 1.5.3
 
 
