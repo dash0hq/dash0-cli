@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.5.3
+
+
+### Bug Fixes
+
+
+- `synthetic-checks, views`: Display the human-readable name instead of the CRD name for synthetic checks and views (#80)
+  The get, create, and update commands for synthetic checks and views now read from
+  spec.display.name instead of metadata.name, consistent with dashboards.
+  
+
 ## 1.5.2
 
 
