@@ -39,3 +39,11 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 	}
 	return ImportResult{Name: result.Name, ID: id, Action: action}, nil
 }
+
+// ExtractCheckRuleID extracts the ID from a check rule definition.
+func ExtractCheckRuleID(rule *dash0api.PrometheusAlertRule) string {
+	if rule.Id != nil {
+		return *rule.Id
+	}
+	return ""
+}

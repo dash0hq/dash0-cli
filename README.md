@@ -157,7 +157,7 @@ dash0 dashboards list
 dash0 dashboards get <id>
 dash0 dashboards get <id> -o yaml
 dash0 dashboards create -f dashboard.yaml
-dash0 dashboards update <id> -f dashboard.yaml
+dash0 dashboards update [id] -f dashboard.yaml
 dash0 dashboards delete <id> [--force]
 ```
 
@@ -166,9 +166,10 @@ dash0 dashboards delete <id> [--force]
 ```bash
 dash0 check-rules list
 dash0 check-rules get <id>
+dash0 check-rules get <id> -o yaml
 dash0 check-rules create -f rule.yaml
 dash0 check-rules create -f prometheus-rules.yaml
-dash0 check-rules update <id> -f rule.yaml
+dash0 check-rules update [id] -f rule.yaml
 dash0 check-rules delete <id> [--force]
 ```
 
@@ -179,8 +180,9 @@ Both `apply` and `check-rules create` also accept PrometheusRule CRD files.
 ```bash
 dash0 synthetic-checks list
 dash0 synthetic-checks get <id>
+dash0 synthetic-checks get <id> -o yaml
 dash0 synthetic-checks create -f check.yaml
-dash0 synthetic-checks update <id> -f check.yaml
+dash0 synthetic-checks update [id] -f check.yaml
 dash0 synthetic-checks delete <id> [--force]
 ```
 
@@ -189,8 +191,9 @@ dash0 synthetic-checks delete <id> [--force]
 ```bash
 dash0 views list
 dash0 views get <id>
+dash0 views get <id> -o yaml
 dash0 views create -f view.yaml
-dash0 views update <id> -f view.yaml
+dash0 views update [id] -f view.yaml
 dash0 views delete <id> [--force]
 ```
 

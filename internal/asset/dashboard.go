@@ -67,6 +67,14 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	return ImportResult{Name: name, ID: id, Action: action}, nil
 }
 
+// ExtractDashboardID extracts the ID from a dashboard definition.
+func ExtractDashboardID(dashboard *dash0api.DashboardDefinition) string {
+	if dashboard.Metadata.Dash0Extensions != nil && dashboard.Metadata.Dash0Extensions.Id != nil {
+		return *dashboard.Metadata.Dash0Extensions.Id
+	}
+	return ""
+}
+
 // ExtractDashboardDisplayName extracts the display name from a dashboard definition.
 func ExtractDashboardDisplayName(dashboard *dash0api.DashboardDefinition) string {
 	if dashboard == nil || dashboard.Spec == nil {

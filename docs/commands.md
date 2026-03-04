@@ -280,15 +280,21 @@ Aliases: `add`
 ### `update`
 
 Update an existing asset from a YAML or JSON file.
+If the ID argument is omitted, the ID is extracted from the file content.
 
 ```bash
-dash0 dashboards update <id> -f <file> [--dry-run] [-o <format>]
+dash0 dashboards update [id] -f <file> [--dry-run] [-o <format>]
 ```
 
-Example:
+Examples:
 
 ```bash
-$ dash0 dashboards update a1b2c3d4-5678-90ab-cdef-1234567890ab -f dashboard.yaml
+# Update with explicit ID
+$ dash0 dashboards update <id> -f dashboard.yaml
+Dashboard "My Dashboard" updated successfully
+
+# Update using the ID from the file
+$ dash0 dashboards update -f dashboard.yaml
 Dashboard "My Dashboard" updated successfully
 ```
 
@@ -1107,10 +1113,10 @@ dash0 -X logs query --from now-1h
 
 ```bash
 # Export to YAML
-dash0 dashboards get a1b2c3d4-... -o yaml > dashboard.yaml
+dash0 dashboards get <id> -o yaml > dashboard.yaml
 
-# Edit the file, then update
-dash0 dashboards update a1b2c3d4-... -f dashboard.yaml
+# Edit the file, then update (ID is read from the file)
+dash0 dashboards update -f dashboard.yaml
 
 # Or use apply (auto-detects create vs update)
 dash0 apply -f dashboard.yaml
