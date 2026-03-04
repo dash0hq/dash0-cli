@@ -45,3 +45,11 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 	}
 	return ImportResult{Name: result.Metadata.Name, ID: id, Action: action}, nil
 }
+
+// ExtractSyntheticCheckID extracts the ID from a synthetic check definition.
+func ExtractSyntheticCheckID(check *dash0api.SyntheticCheckDefinition) string {
+	if check.Metadata.Labels != nil && check.Metadata.Labels.Dash0Comid != nil {
+		return *check.Metadata.Labels.Dash0Comid
+	}
+	return ""
+}

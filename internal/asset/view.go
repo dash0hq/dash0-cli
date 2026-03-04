@@ -47,3 +47,11 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 	}
 	return ImportResult{Name: result.Metadata.Name, ID: id, Action: action}, nil
 }
+
+// ExtractViewID extracts the ID from a view definition.
+func ExtractViewID(view *dash0api.ViewDefinition) string {
+	if view.Metadata.Labels != nil && view.Metadata.Labels.Dash0Comid != nil {
+		return *view.Metadata.Labels.Dash0Comid
+	}
+	return ""
+}
