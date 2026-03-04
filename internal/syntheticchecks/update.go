@@ -76,10 +76,10 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",
 			AssetID:   id,
-			AssetName: check.Metadata.Name,
+			AssetName: asset.ExtractSyntheticCheckName(&check),
 		})
 	}
 
-	fmt.Printf("Synthetic check %q updated successfully\n", result.Metadata.Name)
+	fmt.Printf("Synthetic check %q updated successfully\n", asset.ExtractSyntheticCheckName(result))
 	return nil
 }

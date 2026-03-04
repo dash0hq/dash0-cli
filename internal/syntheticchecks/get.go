@@ -74,7 +74,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return formatter.Print(check)
 	default:
 		fmt.Printf("Kind: %s\n", check.Kind)
-		fmt.Printf("Name: %s\n", check.Metadata.Name)
+		fmt.Printf("Name: %s\n", asset.ExtractSyntheticCheckName(check))
 		dataset := ""
 		origin := ""
 		if check.Metadata.Labels != nil {

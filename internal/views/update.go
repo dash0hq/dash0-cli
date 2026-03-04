@@ -76,10 +76,10 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "view",
 			AssetID:   id,
-			AssetName: view.Metadata.Name,
+			AssetName: asset.ExtractViewName(&view),
 		})
 	}
 
-	fmt.Printf("View %q updated successfully\n", result.Metadata.Name)
+	fmt.Printf("View %q updated successfully\n", asset.ExtractViewName(result))
 	return nil
 }
