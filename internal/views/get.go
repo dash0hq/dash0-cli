@@ -74,7 +74,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return formatter.Print(view)
 	default:
 		fmt.Printf("Kind: %s\n", view.Kind)
-		fmt.Printf("Name: %s\n", view.Metadata.Name)
+		fmt.Printf("Name: %s\n", asset.ExtractViewName(view))
 		dataset := ""
 		origin := ""
 		if view.Metadata.Labels != nil {
