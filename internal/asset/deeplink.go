@@ -1,9 +1,12 @@
 package asset
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
 // Deeplink path patterns per asset type.
@@ -118,6 +121,111 @@ func domainSuffix(hostname string) string {
 		return ""
 	}
 	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// DeeplinkFilter represents a single filter criterion for explorer deep links.
+type DeeplinkFilter struct {
+	Key      string `json:"key"`
+	Operator string `json:"operator"`
+	Value    string `json:"value,omitempty"`
+}
+
+// FiltersToDeeplinkFilters converts parsed API filter criteria to deep link
+// filter objects suitable for URL serialization.
+func FiltersToDeeplinkFilters(filters *dash0api.FilterCriteria) []DeeplinkFilter {
+	if filters == nil {
+		return nil
+	}
+
+	result := make([]DeeplinkFilter, 0, len(*filters))
+	for _, f := range *filters {
+		df := DeeplinkFilter{
+			Key:      string(f.Key),
+			Operator: string(f.Operator),
+		}
+
+		switch {
+		case f.Values != nil:
+			// Multi-value operators (is_one_of, is_not_one_of): join values with space.
+			var parts []string
+			for _, item := range *f.Values {
+				if sv, err := item.AsAttributeFilterStringValue(); err == nil {
+					parts = append(parts, sv)
+				}
+			}
+			df.Value = strings.Join(parts, " ")
+		case f.Value != nil:
+			// Single-value operators.
+			if sv, err := f.Value.AsAttributeFilterStringValue(); err == nil {
+				df.Value = sv
+			}
+		}
+		// No-value operators (is_set, is_not_set): Value stays empty.
+
+		result = append(result, df)
+	}
+	return result
+}
+
+// LogsExplorerURL builds a deep link URL to the Dash0 logs explorer.
+// The URL includes filter criteria, time range, and optional dataset as query parameters.
+// Returns an empty string if the API URL is empty or cannot be parsed.
+func LogsExplorerURL(apiUrl string, filters []DeeplinkFilter, from, to string, dataset *string) string {
+	return explorerURL(apiUrl, deeplinkPathViewLogs, filters, from, to, dataset)
+}
+
+// SpansExplorerURL builds a deep link URL to the Dash0 traces explorer.
+// The URL includes optional filter criteria, time range, and optional dataset as query parameters.
+// Returns an empty string if the API URL is empty or cannot be parsed.
+func SpansExplorerURL(apiUrl string, filters []DeeplinkFilter, from, to string, dataset *string) string {
+	return explorerURL(apiUrl, deeplinkPathViewTracing, filters, from, to, dataset)
+}
+
+// TracesExplorerURL builds a deep link URL to the Dash0 traces explorer for a
+// specific trace. The URL includes the trace ID and optional dataset as query
+// parameters.
+// Returns an empty string if the API URL is empty or cannot be parsed.
+func TracesExplorerURL(apiUrl, traceID string, dataset *string) string {
+	baseURL := deeplinkBaseURL(apiUrl)
+	if baseURL == "" {
+		return ""
+	}
+
+	params := url.Values{}
+	if dataset != nil && *dataset != "" {
+		params.Set("dataset", *dataset)
+	}
+	params.Set("trace_id", traceID)
+
+	return fmt.Sprintf("%s%s?%s", baseURL, deeplinkPathViewTracing, params.Encode())
+}
+
+// explorerURL builds a deep link URL to a Dash0 explorer page.
+func explorerURL(apiUrl, path string, filters []DeeplinkFilter, from, to string, dataset *string) string {
+	baseURL := deeplinkBaseURL(apiUrl)
+	if baseURL == "" {
+		return ""
+	}
+
+	params := explorerParams(filters, from, to, dataset)
+	return fmt.Sprintf("%s%s?%s", baseURL, path, params.Encode())
+}
+
+// explorerParams builds the common query parameters for explorer deep links.
+func explorerParams(filters []DeeplinkFilter, from, to string, dataset *string) url.Values {
+	params := url.Values{}
+	if dataset != nil && *dataset != "" {
+		params.Set("dataset", *dataset)
+	}
+	if len(filters) > 0 {
+		filterJSON, err := json.Marshal(filters)
+		if err == nil {
+			params.Set("filter", string(filterJSON))
+		}
+	}
+	params.Set("from", from)
+	params.Set("to", to)
+	return params
 }
 
 // deeplinkPathAndQuery returns the URL path and query parameter name for a

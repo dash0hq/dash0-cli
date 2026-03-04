@@ -11,6 +11,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
@@ -240,9 +241,12 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 		}
 	}
 
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+	explorerURL := asset.TracesExplorerURL(apiUrl, traceID, dataset)
+
 	switch format {
 	case getFormatTable:
-		return renderTable(results, flags.SkipHeader, cols)
+		return renderTable(results, flags.SkipHeader, cols, explorerURL)
 	case getFormatCSV:
 		return renderCSV(results, flags.SkipHeader, cols)
 	case getFormatJSON:
@@ -427,7 +431,7 @@ func buildTree(spans []flatTraceSpan) []flatTraceSpan {
 	return result
 }
 
-func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef) error {
+func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
 	var rows []map[string]string
 
 	for _, tr := range results {
@@ -440,9 +444,12 @@ func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef) 
 	}
 	if len(rows) == 0 {
 		fmt.Println("No spans found for this trace.")
-		return nil
+	} else {
+		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	query.RenderTable(os.Stdout, cols, rows, skipHeader)
+	if explorerURL != "" {
+		fmt.Printf("\nOpen this trace in Dash0:\n    %s\n", explorerURL)
+	}
 	return nil
 }
 
