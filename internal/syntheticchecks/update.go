@@ -61,13 +61,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	// Set origin to dash0-cli
-	if check.Metadata.Labels == nil {
-		check.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
-	}
-	origin := internal.DEFAULT_ORIGIN
-	check.Metadata.Labels.Dash0Comorigin = &origin
-
 	if flags.DryRun {
 		fmt.Println("Dry run: synthetic check definition is valid")
 		return nil

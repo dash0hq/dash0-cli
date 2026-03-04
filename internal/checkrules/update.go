@@ -61,13 +61,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	// Set origin to dash0-cli
-	if rule.Labels == nil {
-		labels := make(map[string]string)
-		rule.Labels = &labels
-	}
-	(*rule.Labels)["dash0.com/origin"] = internal.DEFAULT_ORIGIN
-
 	if flags.DryRun {
 		fmt.Println("Dry run: check rule definition is valid")
 		return nil

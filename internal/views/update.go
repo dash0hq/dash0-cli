@@ -61,13 +61,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	// Set origin to dash0-cli
-	if view.Metadata.Labels == nil {
-		view.Metadata.Labels = &dash0api.ViewLabels{}
-	}
-	origin := internal.DEFAULT_ORIGIN
-	view.Metadata.Labels.Dash0Comorigin = &origin
-
 	if flags.DryRun {
 		fmt.Println("Dry run: view definition is valid")
 		return nil
