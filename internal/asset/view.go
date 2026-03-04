@@ -55,3 +55,8 @@ func ExtractViewID(view *dash0api.ViewDefinition) string {
 	}
 	return ""
 }
+
+// ExtractViewName extracts the name from a view definition.
+func ExtractViewName(view *dash0api.ViewDefinition) string {
+	return view.Metadata.Name
+}

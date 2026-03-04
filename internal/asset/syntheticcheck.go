@@ -53,3 +53,8 @@ func ExtractSyntheticCheckID(check *dash0api.SyntheticCheckDefinition) string {
 	}
 	return ""
 }
+
+// ExtractSyntheticCheckName extracts the name from a synthetic check definition.
+func ExtractSyntheticCheckName(check *dash0api.SyntheticCheckDefinition) string {
+	return check.Metadata.Name
+}

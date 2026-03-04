@@ -61,13 +61,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	// Set origin to dash0-cli (using Id field since Origin is deprecated)
-	if dashboard.Metadata.Dash0Extensions == nil {
-		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
-	}
-	origin := internal.DEFAULT_ORIGIN
-	dashboard.Metadata.Dash0Extensions.Id = &origin
-
 	if flags.DryRun {
 		fmt.Println("Dry run: dashboard definition is valid")
 		return nil

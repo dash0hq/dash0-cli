@@ -23,7 +23,7 @@ func TestExtractDashboardID(t *testing.T) {
 			want:      "",
 		},
 		{
-			name: "nil id",
+			name: "nil id in dash0Extensions",
 			dashboard: &dash0api.DashboardDefinition{
 				Metadata: dash0api.DashboardMetadata{
 					Dash0Extensions: &dash0api.DashboardMetadataExtensions{},
@@ -32,7 +32,7 @@ func TestExtractDashboardID(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "valid id",
+			name: "valid dash0Extensions.id",
 			dashboard: &dash0api.DashboardDefinition{
 				Metadata: dash0api.DashboardMetadata{
 					Dash0Extensions: &dash0api.DashboardMetadataExtensions{
@@ -41,6 +41,26 @@ func TestExtractDashboardID(t *testing.T) {
 				},
 			},
 			want: "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+		},
+		{
+			name: "empty dash0Extensions.id returns empty",
+			dashboard: &dash0api.DashboardDefinition{
+				Metadata: dash0api.DashboardMetadata{
+					Dash0Extensions: &dash0api.DashboardMetadataExtensions{
+						Id: strPtr(""),
+					},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "metadata.name is not used as ID",
+			dashboard: &dash0api.DashboardDefinition{
+				Metadata: dash0api.DashboardMetadata{
+					Name: "My Dashboard",
+				},
+			},
+			want: "",
 		},
 	}
 
