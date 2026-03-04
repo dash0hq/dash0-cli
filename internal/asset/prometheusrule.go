@@ -78,6 +78,19 @@ func ImportPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRu
 	return results, nil
 }
 
+// ExtractPrometheusRuleID extracts the ID from a PrometheusRule definition.
+func ExtractPrometheusRuleID(rule *PrometheusRule) string {
+	if rule.Metadata.Labels != nil {
+		return rule.Metadata.Labels["dash0.com/id"]
+	}
+	return ""
+}
+
+// ExtractPrometheusRuleName extracts the name from a PrometheusRule definition.
+func ExtractPrometheusRuleName(rule *PrometheusRule) string {
+	return rule.Metadata.Name
+}
+
 // ConvertToCheckRule converts a Prometheus alerting rule to a Dash0 CheckRule
 func ConvertToCheckRule(rule *PrometheusAlertingRule, groupInterval string, ruleID string) *dash0api.PrometheusAlertRule {
 	checkRule := &dash0api.PrometheusAlertRule{

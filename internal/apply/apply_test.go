@@ -421,10 +421,12 @@ func TestReadMultiDocumentYAML_ExtractsNameAndId(t *testing.T) {
 		expectedId   string
 	}{
 		{
-			name: "Dashboard: display name and metadata.name as ID",
+			name: "Dashboard: display name and dash0Extensions.id",
 			yaml: `kind: Dashboard
 metadata:
-  name: a1b2c3d4-5678-90ab-cdef-1234567890ab
+  name: Production Overview
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
 spec:
   display:
     name: Production Overview
@@ -517,11 +519,18 @@ func TestParseDocumentHeader(t *testing.T) {
 		expectedId   string
 	}{
 		{
-			name:         "Dashboard: display name and metadata.name as ID",
-			yaml:         "kind: Dashboard\nmetadata:\n  name: uuid-123\nspec:\n  display:\n    name: My Dashboard\n",
+			name:         "Dashboard: display name and dash0Extensions.id",
+			yaml:         "kind: Dashboard\nmetadata:\n  name: My Dashboard\n  dash0Extensions:\n    id: uuid-123\nspec:\n  display:\n    name: My Dashboard\n",
 			expectedKind: "Dashboard",
 			expectedName: "My Dashboard",
 			expectedId:   "uuid-123",
+		},
+		{
+			name:         "Dashboard: metadata.name as display name fallback, no ID without dash0Extensions",
+			yaml:         "kind: Dashboard\nmetadata:\n  name: My Dashboard\n",
+			expectedKind: "Dashboard",
+			expectedName: "My Dashboard",
+			expectedId:   "",
 		},
 		{
 			name:         "CheckRule: top-level name and id",

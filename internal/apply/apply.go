@@ -271,37 +271,61 @@ func formatNameAndId(name, id string) string {
 }
 
 // parseDocumentHeader extracts the kind, human-readable name, and ID from
-// raw YAML bytes. The name and ID locations vary by asset kind:
-//
-//	Kind            | Name source          | ID source
-//	----------------|----------------------|----------------------------
-//	Dashboard       | spec.display.name    | metadata.name (the UUID)
-//	CheckRule       | top-level name       | top-level id
-//	View            | metadata.name        | metadata.labels["dash0.com/id"]
-//	SyntheticCheck  | metadata.name        | metadata.labels["dash0.com/id"]
-//	PrometheusRule  | metadata.name        | metadata.labels["dash0.com/id"]
+// raw YAML bytes. It unmarshals into typed structs and delegates to the
+// Extract* functions in internal/asset/ so that apply and the per-asset
+// CRUD commands use the same extraction logic.
 func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
-	var raw map[string]any
-	if err := sigsyaml.Unmarshal(data, &raw); err != nil {
-		return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-	}
-
 	kind = asset.DetectKind(data)
 
 	switch normalizeKind(kind) {
 	case "dashboard":
-		name = yamlStringFromMap(raw, "spec", "display", "name")
-		id = yamlStringFromMap(raw, "metadata", "name")
+		var dashboard dash0api.DashboardDefinition
+		if err := sigsyaml.Unmarshal(data, &dashboard); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractDashboardDisplayName(&dashboard)
+		if name == "" {
+			name = dashboard.Metadata.Name
+		}
+		id = asset.ExtractDashboardID(&dashboard)
 
 	case "checkrule":
-		name, _ = raw["name"].(string)
-		id, _ = raw["id"].(string)
+		var rule dash0api.PrometheusAlertRule
+		if err := sigsyaml.Unmarshal(data, &rule); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractCheckRuleName(&rule)
+		id = asset.ExtractCheckRuleID(&rule)
 
-	case "view", "syntheticcheck", "prometheusrule":
-		name = yamlStringFromMap(raw, "metadata", "name")
-		id = yamlStringFromMap(raw, "metadata", "labels", "dash0.com/id")
+	case "view":
+		var view dash0api.ViewDefinition
+		if err := sigsyaml.Unmarshal(data, &view); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractViewName(&view)
+		id = asset.ExtractViewID(&view)
+
+	case "syntheticcheck":
+		var check dash0api.SyntheticCheckDefinition
+		if err := sigsyaml.Unmarshal(data, &check); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractSyntheticCheckName(&check)
+		id = asset.ExtractSyntheticCheckID(&check)
+
+	case "prometheusrule":
+		var promRule asset.PrometheusRule
+		if err := sigsyaml.Unmarshal(data, &promRule); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractPrometheusRuleName(&promRule)
+		id = asset.ExtractPrometheusRuleID(&promRule)
 
 	default:
+		var raw map[string]any
+		if err := sigsyaml.Unmarshal(data, &raw); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
 		name = yamlStringFromMap(raw, "metadata", "name")
 	}
 

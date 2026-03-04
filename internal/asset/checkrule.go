@@ -47,3 +47,8 @@ func ExtractCheckRuleID(rule *dash0api.PrometheusAlertRule) string {
 	}
 	return ""
 }
+
+// ExtractCheckRuleName extracts the name from a check rule definition.
+func ExtractCheckRuleName(rule *dash0api.PrometheusAlertRule) string {
+	return rule.Name
+}
