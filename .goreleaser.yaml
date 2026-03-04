@@ -48,8 +48,7 @@ release:
   mode: replace
 
 changelog:
-  # Disable auto-generated changelog; using curated CHANGELOG.md via chloggen
-  disable: true
+  disable: false
 
 dockers:
   - image_templates:
