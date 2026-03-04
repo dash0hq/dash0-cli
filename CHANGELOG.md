@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.5.2
+
+
+### Enhancements
+
+
+- `errors`: Include API response body in error messages when the backend does not return a structured error (#75)
+  Previously, errors like 400 Bad Request only showed the HTTP status code and trace ID.
+  Now, the full response body is displayed so that users can see the reason for the failure.
+  
+
+- `dashboards`: Make the `<id>` argument of `dash0 <asset> update` optional (#76)
+  When the `<id>` argument is omitted, the ID is extracted from the file content.
+  This applies to all asset types: dashboards, check rules, synthetic checks, and views.
+  
+
+
+### Bug Fixes
+
+
+- `dashboards`: Fix `dashboards update` overwriting `dash0Extensions.id` with the origin string (#77)
+  Unify ID and name extraction between `apply` and per-asset CRUD commands by
+  delegating to shared `Extract*` functions in `internal/asset/`.
+  
+
+- `dashboards`: Stop force-setting origin in asset update commands (#78)
+  The `synthetic-checks update`, `views update`, and `check-rules update` commands
+  were force-setting the origin to `"dash0-cli"`, causing 400 errors when updating
+  assets originally created with a different origin.
+  
+
 ## 1.5.1
 
 
