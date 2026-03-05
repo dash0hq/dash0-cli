@@ -23,3 +23,8 @@ Detailed guidelines are split into focused documents:
 - @docs/testing.md — test strategies, integration tests, fixtures, mock server
 - @docs/github-actions.md — how to create GitHub actions based on the `dash0` CLI, existing actions and their maintenance
 - @docs/changelog-maintenance.md — when and how to create changelog entries
+
+## GitHub issues
+
+When creating GitHub issues, describe **what** and **why** — not **how**.
+Issues should only contain the problem statement, user-facing behavior, and acceptance criteria.
