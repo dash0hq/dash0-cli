@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.6.0
+
+
+### Enhancements
+
+
+- `dashboards`: Accept PersesDashboard CRD files in `apply` and `dashboards create` (#85)
+  PersesDashboard CRDs (perses.dev/v1alpha1 and perses.dev/v1alpha2) are now accepted as input.
+  
+
 ## 1.5.4
 
 
