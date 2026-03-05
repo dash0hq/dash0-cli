@@ -267,6 +267,13 @@ $ dash0 dashboards create -f dashboard.yaml
 Dashboard "My Dashboard" created successfully
 ```
 
+`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and `perses.dev/v1alpha2`).
+
+```bash
+$ dash0 dashboards create -f persesdashboard.yaml
+Dashboard "My Perses Dashboard" created
+```
+
 `check-rules create` also accepts PrometheusRule CRD files.
 Each alerting rule in the CRD is created as a separate check rule (recording rules are skipped):
 
@@ -324,7 +331,7 @@ Aliases: `remove`
 
 | Asset type | Command | Notes |
 |------------|---------|-------|
-| Dashboards | `dash0 dashboards <subcommand>` | |
+| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | Views | `dash0 views <subcommand>` | |
@@ -348,8 +355,13 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`.
 A single file may contain multiple documents separated by `---`.
+
+> [!NOTE]
+> The `-f` flag accepts a single path.
+> Do not use shell glob patterns like `-f assets/*` — the shell expands the glob into multiple arguments and only the first file is passed to `-f`.
+> Use `-f assets/` (the directory) instead.
 
 Examples:
 
@@ -386,6 +398,20 @@ metadata:
 spec:
   display:
     name: Production Overview
+```
+
+PersesDashboard (Perses CRD, converted to a Dashboard on import):
+
+```yaml
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: my-perses-dashboard
+spec:
+  display:
+    name: My Perses Dashboard
+  duration: 5m
+  panels: {}
 ```
 
 Check rule:

@@ -30,6 +30,8 @@ func TestNormalizeKind(t *testing.T) {
 		{"synthetic-check", "syntheticcheck"},
 		{"View", "view"},
 		{"Dash0View", "view"},
+		{"PersesDashboard", "persesdashboard"},
+		{"persesdashboard", "persesdashboard"},
 	}
 
 	for _, tt := range tests {
@@ -56,6 +58,8 @@ func TestIsValidKind(t *testing.T) {
 		"view",
 		"Dash0Dashboard",
 		"Dash0View",
+		"PersesDashboard",
+		"persesdashboard",
 	}
 
 	for _, kind := range validKinds {
@@ -257,6 +261,45 @@ spec:
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
 	assert.Equal(t, "PrometheusRule", docs[0].kind)
+}
+
+func TestPersesDashboardParsing(t *testing.T) {
+	yaml := `apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: test-perses-dashboard
+  labels:
+    dash0.com/id: test-perses-id
+spec:
+  display:
+    name: Test Perses Dashboard
+  duration: 5m
+  panels: {}
+`
+	docs, err := readMultiDocumentYAML("-", strings.NewReader(yaml))
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	assert.Equal(t, "PersesDashboard", docs[0].kind)
+	assert.Equal(t, "Test Perses Dashboard", docs[0].name)
+	assert.Equal(t, "test-perses-id", docs[0].id)
+}
+
+func TestPersesDashboardParsing_V1Alpha2(t *testing.T) {
+	yaml := `apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: test-v1alpha2
+spec:
+  config:
+    display:
+      name: V1Alpha2 Dashboard
+    duration: 10m
+`
+	docs, err := readMultiDocumentYAML("-", strings.NewReader(yaml))
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	assert.Equal(t, "PersesDashboard", docs[0].kind)
+	assert.Equal(t, "V1Alpha2 Dashboard", docs[0].name)
 }
 
 func TestReadMultiDocumentYAML_FromBuffer(t *testing.T) {
@@ -480,6 +523,33 @@ metadata:
 			expectedId:   "prom-rule-id",
 		},
 		{
+			name: "PersesDashboard: display name and dash0.com/id label",
+			yaml: `apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: my-perses-dashboard
+  labels:
+    dash0.com/id: perses-dashboard-id
+spec:
+  display:
+    name: My Perses Dashboard
+`,
+			expectedName: "My Perses Dashboard",
+			expectedId:   "perses-dashboard-id",
+		},
+		{
+			name: "PersesDashboard: metadata.name as fallback, no ID",
+			yaml: `apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: fallback-perses-name
+spec:
+  duration: 5m
+`,
+			expectedName: "fallback-perses-name",
+			expectedId:   "",
+		},
+		{
 			name: "CheckRule without ID",
 			yaml: `kind: CheckRule
 name: No ID Rule
@@ -572,6 +642,20 @@ func TestParseDocumentHeader(t *testing.T) {
 			yaml:         "kind: CheckRule\nname: some-name\nexpression: up == 0\n",
 			expectedKind: "CheckRule",
 			expectedName: "some-name",
+			expectedId:   "",
+		},
+		{
+			name:         "PersesDashboard: display name and label ID",
+			yaml:         "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: perses-name\n  labels:\n    dash0.com/id: perses-id\nspec:\n  display:\n    name: Perses Display Name\n",
+			expectedKind: "PersesDashboard",
+			expectedName: "Perses Display Name",
+			expectedId:   "perses-id",
+		},
+		{
+			name:         "PersesDashboard: metadata.name fallback without display name",
+			yaml:         "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: perses-fallback\nspec:\n  duration: 5m\n",
+			expectedKind: "PersesDashboard",
+			expectedName: "perses-fallback",
 			expectedId:   "",
 		},
 		{

@@ -42,7 +42,7 @@ Each document must have a "kind" field specifying the asset type. Use '-f -' to 
 When a directory is specified, all .yaml and .yml files are discovered recursively. Hidden files and directories (starting with '.') are skipped. All documents are validated before any are applied; if any document fails validation, no changes are made.
 
 Supported asset types:
-  - Dashboard
+  - Dashboard (or PersesDashboard CRD)
   - CheckRule (or PrometheusRule CRD)
   - SyntheticCheck
   - View
@@ -66,6 +66,9 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
   # Validate a directory without applying
   dash0 apply -f dashboards/ --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("unexpected arguments: %s\nTo apply multiple files, pass a directory with -f instead of a glob pattern", strings.Join(args, " "))
+			}
 			if flags.File == "" {
 				return fmt.Errorf("file is required; use -f to specify the file (use '-' for stdin)")
 			}
@@ -161,7 +164,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, CheckRule, PrometheusRule, SyntheticCheck, View)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View)", doc.location(), doc.kind))
 		}
 	}
 	if len(validationErrors) > 0 {
@@ -320,6 +323,14 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = asset.ExtractPrometheusRuleName(&promRule)
 		id = asset.ExtractPrometheusRuleID(&promRule)
+
+	case "persesdashboard":
+		var perses asset.PersesDashboard
+		if err := sigsyaml.Unmarshal(data, &perses); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractPersesDashboardName(&perses)
+		id = asset.ExtractPersesDashboardID(&perses)
 
 	default:
 		var raw map[string]any
@@ -510,7 +521,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 
 func isValidKind(kind string) bool {
 	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule":
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard":
 		return true
 	default:
 		return false
@@ -561,6 +572,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
 		}
 		return applyPrometheusRule(ctx, apiClient, &promRule, dataset)
+
+	case "persesdashboard":
+		var perses asset.PersesDashboard
+		if err := sigsyaml.Unmarshal(doc.raw, &perses); err != nil {
+			return nil, fmt.Errorf("failed to parse PersesDashboard: %w", err)
+		}
+		result, err := asset.ImportPersesDashboard(ctx, apiClient, &perses, dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "dashboard",
+				AssetName: asset.ExtractPersesDashboardName(&perses),
+			})
+		}
+		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition

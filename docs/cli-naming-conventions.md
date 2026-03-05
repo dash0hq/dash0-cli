@@ -12,46 +12,46 @@ Use the word "asset" consistently where appropriate.
 ## Standard CRUD Subcommands for Assets
 All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`) use these subcommands:
 
-| Subcommand | Alias    | Description |
-|------------|----------|-------------|
-| `list`     | `ls`     | List all assets |
-| `get`      | -        | Get a single asset by ID |
-| `create`   | `add`    | Create a new asset from a file |
+| Subcommand | Alias    | Description                          |
+|------------|----------|--------------------------------------|
+| `list`     | `ls`     | List all assets                      |
+| `get`      | -        | Get a single asset by ID             |
+| `create`   | `add`    | Create a new asset from a file       |
 | `update`   | -        | Update an existing asset from a file |
-| `delete`   | `remove` | Delete an asset by ID |
+| `delete`   | `remove` | Delete an asset by ID                |
 
 ## Config Profiles Subcommands
 The `config profiles` command uses:
 
-| Subcommand | Alias    | Description |
-|------------|----------|-------------|
-| `list`     | `ls`     | List all profiles |
-| `create`   | `add`    | Create a new profile |
-| `update`   | -        | Update an existing profile |
-| `delete`   | `remove` | Delete a profile |
-| `select`   | `activate` | Set the active profile |
+| Subcommand | Alias      | Description                |
+|------------|------------|----------------------------|
+| `list`     | `ls`       | List all profiles          |
+| `create`   | `add`      | Create a new profile       |
+| `update`   | -          | Update an existing profile |
+| `delete`   | `remove`   | Delete a profile           |
+| `select`   | `activate` | Set the active profile     |
 
 ## Teams Subcommands (experimental)
 The `teams` command manages organizational teams (not assets — no dataset, no YAML input, no `apply`):
 
-| Subcommand | Alias    | Description |
-|------------|----------|-------------|
-| `list`     | `ls`     | List all teams |
-| `get`      | -        | Get team details (members + accessible assets) |
-| `create`   | `add`    | Create a team (flag-based, not file-based) |
-| `update`   | -        | Update team display settings |
-| `delete`   | `remove` | Delete a team |
-| `list-members` | -    | List members of a team |
-| `add-members` | -     | Add members to a team |
-| `remove-members` | -  | Remove members from a team |
+| Subcommand       | Alias    | Description                                     |
+|------------------|----------|-------------------------------------------------|
+| `list`           | `ls`     | List all teams                                  |
+| `get`            | -        | Get team details (members + accessible assets)  |
+| `create`         | `add`    | Create a team (flag-based, not file-based)      |
+| `update`         | -        | Update team display settings                    |
+| `delete`         | `remove` | Delete a team                                   |
+| `list-members`   | -        | List members of a team                          |
+| `add-members`    | -        | Add members to a team                           |
+| `remove-members` | -        | Remove members from a team                      |
 
 ## Members Subcommands (experimental)
 The `members` command manages organization membership:
 
-| Subcommand | Alias    | Description |
-|------------|----------|-------------|
-| `list`     | `ls`     | List all organization members |
-| `invite`   | `add`    | Invite members by email |
+| Subcommand | Alias    | Description                          |
+|------------|----------|--------------------------------------|
+| `list`     | `ls`     | List all organization members        |
+| `invite`   | `add`    | Invite members by email              |
 | `remove`   | `delete` | Remove members from the organization |
 
 ## Aliases
@@ -64,13 +64,14 @@ The `members` command manages organization membership:
 ## Asset Kind Display Names
 In user-facing output (success messages, dry-run listings, error messages), use human-readable names for asset kinds — **not** PascalCase identifiers:
 
-| Kind identifier   | Display name       |
-|-------------------|--------------------|
-| `Dashboard`       | Dashboard          |
-| `CheckRule`       | Check rule         |
-| `SyntheticCheck`  | Synthetic check    |
-| `View`            | View               |
-| `PrometheusRule`  | PrometheusRule     |
+| Kind identifier    | Display name    |
+|--------------------|-----------------|
+| `Dashboard`        | Dashboard       |
+| `CheckRule`        | Check rule      |
+| `SyntheticCheck`   | Synthetic check |
+| `View`             | View            |
+| `PrometheusRule`   | PrometheusRule  |
+| `PersesDashboard`  | PersesDashboard |
 
 For example: `Check rule "High Error Rate" created successfully`, not `CheckRule "High Error Rate" created successfully`.
 
@@ -85,4 +86,5 @@ For example: `Check rule "High Error Rate" created successfully`, not `CheckRule
 The `apply` command and the individual CRUD subcommands (e.g., `check-rules create`, `dashboards create`) must have the same expressiveness.
 Any asset format accepted by `apply` must also be accepted by the corresponding `create` command, and vice versa.
 For example, `dash0 apply -f prometheusrule.yaml` and `dash0 check-rules create -f prometheusrule.yaml` both accept PrometheusRule CRD files.
+Similarly, `dash0 apply -f persesdashboard.yaml` and `dash0 dashboards create -f persesdashboard.yaml` both accept PersesDashboard CRD files.
 Shared parsing and import logic lives in `internal/asset/` so that both code paths stay in sync.
