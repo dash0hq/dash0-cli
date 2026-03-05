@@ -46,6 +46,8 @@ func KindDisplayName(kind string) string {
 		return "View"
 	case "prometheusrule":
 		return "PrometheusRule"
+	case "persesdashboard":
+		return "PersesDashboard"
 	default:
 		return kind
 	}

@@ -138,7 +138,7 @@ Currently only HTTP OTLP endpoints are supported.
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `CheckRule`, `SyntheticCheck`, and `View`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `SyntheticCheck`, and `View`.
 
 ```bash
 dash0 apply -f assets.yaml
@@ -157,6 +157,7 @@ dash0 dashboards list
 dash0 dashboards get <id>
 dash0 dashboards get <id> -o yaml
 dash0 dashboards create -f dashboard.yaml
+dash0 dashboards create -f persesdashboard.yaml
 dash0 dashboards update [id] -f dashboard.yaml
 dash0 dashboards delete <id> [--force]
 ```
@@ -173,6 +174,7 @@ dash0 check-rules update [id] -f rule.yaml
 dash0 check-rules delete <id> [--force]
 ```
 
+Both `apply` and `dashboards create` also accept PersesDashboard CRD files.
 Both `apply` and `check-rules create` also accept PrometheusRule CRD files.
 
 ### Synthetic checks

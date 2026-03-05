@@ -510,6 +510,95 @@ spec:
 	assert.Contains(t, output, "created")
 }
 
+func TestApply_PersesDashboard_Created(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "persesdashboard.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: test-perses-dashboard
+spec:
+  display:
+    name: Test Perses Dashboard
+  duration: 5m
+  panels: {}
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+	})
+	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	// PersesDashboard is converted to a Dashboard
+	assert.Contains(t, output, "Dashboard")
+	assert.Contains(t, output, "created")
+
+	// Verify the import request contains the Perses spec fields
+	importReq := findImportRequest(server.Requests(), apiPathImportDashboard)
+	require.NotNil(t, importReq, "expected an import request for dashboard")
+	body := string(importReq.Body)
+	assert.Contains(t, body, "Test Perses Dashboard")
+	assert.Contains(t, body, "5m")
+}
+
+func TestApply_PersesDashboard_V1Alpha2(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "persesdashboard-v1alpha2.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: v1alpha2-dashboard
+spec:
+  config:
+    display:
+      name: V1Alpha2 Dashboard
+    duration: 10m
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+	})
+	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Dashboard")
+	assert.Contains(t, output, "created")
+
+	// Verify the spec.config wrapper was unwrapped
+	importReq := findImportRequest(server.Requests(), apiPathImportDashboard)
+	require.NotNil(t, importReq, "expected an import request for dashboard")
+	body := string(importReq.Body)
+	assert.Contains(t, body, "V1Alpha2 Dashboard")
+	assert.Contains(t, body, "10m")
+}
+
 func TestApply_Directory_MultipleFiles(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
