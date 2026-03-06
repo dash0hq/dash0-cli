@@ -55,7 +55,8 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	iter := apiClient.ListSyntheticChecksIter(ctx, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	iter := apiClient.ListSyntheticChecksIter(ctx, dataset)
 
 	var checks []*dash0api.SyntheticChecksApiListItem
 	count := 0
@@ -82,9 +83,48 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		return formatter.Print(checks)
+		definitions, err := fetchFullSyntheticChecks(ctx, apiClient, checks, dataset)
+		if err != nil {
+			return err
+		}
+		if format == output.FormatYAML {
+			return formatter.PrintMultiDocYAML(definitions)
+		}
+		return formatter.PrintJSON(definitions)
 	default:
 		return printSyntheticCheckTable(formatter, checks, format, apiUrl)
+	}
+}
+
+func fetchFullSyntheticChecks(
+	ctx context.Context,
+	apiClient dash0api.Client,
+	checks []*dash0api.SyntheticChecksApiListItem,
+	dataset *string,
+) ([]interface{}, error) {
+	progress := output.NewProgress("synthetic checks", len(checks))
+	defer progress.Done()
+	definitions := make([]interface{}, 0, len(checks))
+	for i, item := range checks {
+		progress.Update(i + 1)
+		check, err := apiClient.GetSyntheticCheck(ctx, item.Id, dataset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch synthetic check %q: %w", item.Id, err)
+		}
+		enrichSyntheticCheck(check, item.Id)
+		definitions = append(definitions, check)
+	}
+	return definitions, nil
+}
+
+// enrichSyntheticCheck restores the check ID in labels so that exported YAML
+// can be re-applied (the import API uses the ID for upsert).
+func enrichSyntheticCheck(check *dash0api.SyntheticCheckDefinition, id string) {
+	if check.Metadata.Labels == nil {
+		check.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
+	}
+	if check.Metadata.Labels.Dash0Comid == nil {
+		check.Metadata.Labels.Dash0Comid = &id
 	}
 }
 

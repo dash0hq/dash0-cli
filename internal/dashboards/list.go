@@ -97,7 +97,14 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		return formatter.Print(listItems)
+		definitions, err := fetchFullDashboards(ctx, apiClient, listItems, dataset)
+		if err != nil {
+			return err
+		}
+		if format == output.FormatYAML {
+			return formatter.PrintMultiDocYAML(definitions)
+		}
+		return formatter.PrintJSON(definitions)
 	default:
 		// Fetch full dashboard details to get display names
 		dashboards := make([]dashboardListItem, 0, len(listItems))
@@ -111,6 +118,38 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 			})
 		}
 		return printDashboardTable(formatter, dashboards, format, apiUrl)
+	}
+}
+
+func fetchFullDashboards(
+	ctx context.Context,
+	apiClient dash0api.Client,
+	listItems []*dash0api.DashboardApiListItem,
+	dataset *string,
+) ([]interface{}, error) {
+	progress := output.NewProgress("dashboards", len(listItems))
+	defer progress.Done()
+	definitions := make([]interface{}, 0, len(listItems))
+	for i, item := range listItems {
+		progress.Update(i + 1)
+		dashboard, err := apiClient.GetDashboard(ctx, item.Id, dataset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch dashboard %q: %w", item.Id, err)
+		}
+		enrichDashboard(dashboard, item.Id)
+		definitions = append(definitions, dashboard)
+	}
+	return definitions, nil
+}
+
+// enrichDashboard restores the dashboard ID in dash0Extensions so that exported
+// YAML can be re-applied (the API does not persist dash0Extensions.id).
+func enrichDashboard(dashboard *dash0api.DashboardDefinition, id string) {
+	if dashboard.Metadata.Dash0Extensions == nil {
+		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
+	}
+	if dashboard.Metadata.Dash0Extensions.Id == nil {
+		dashboard.Metadata.Dash0Extensions.Id = &id
 	}
 }
 

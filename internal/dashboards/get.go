@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -53,15 +52,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	// The API does not persist dash0Extensions.id for dashboards. Restore the
-	// ID we used for lookup so that exported YAML can be re-applied (the import
-	// API uses dash0Extensions.id as the upsert key).
-	if dashboard.Metadata.Dash0Extensions == nil {
-		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
-	}
-	if dashboard.Metadata.Dash0Extensions.Id == nil {
-		dashboard.Metadata.Dash0Extensions.Id = &id
-	}
+	enrichDashboard(dashboard, id)
 
 	// Format output
 	format, err := output.ParseFormat(flags.Output)

@@ -5,14 +5,14 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/mattn/go-isatty"
+	"golang.org/x/term"
 )
 
 // SprintSpanStatus returns the span status string color-coded and padded to
 // width visible characters for terminal output. When width is 0, no padding
 // is applied.
 func SprintSpanStatus(status string, width int) string {
-	if color.NoColor || !isatty.IsTerminal(os.Stdout.Fd()) {
+	if color.NoColor || !term.IsTerminal(int(os.Stdout.Fd())) {
 		if width > 0 {
 			return fmt.Sprintf("%-*s", width, status)
 		}

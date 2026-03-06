@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -53,14 +52,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	// Restore the ID so that exported YAML can be re-applied (the import
-	// API uses the ID for upsert).
-	if view.Metadata.Labels == nil {
-		view.Metadata.Labels = &dash0api.ViewLabels{}
-	}
-	if view.Metadata.Labels.Dash0Comid == nil {
-		view.Metadata.Labels.Dash0Comid = &id
-	}
+	enrichView(view, id)
 
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
