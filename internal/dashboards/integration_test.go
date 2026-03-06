@@ -201,9 +201,15 @@ func TestListDashboards_JSONFormat(t *testing.T) {
 		BodyFile:   fixtureListSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
 
 	cmd := NewDashboardsCmd()
-	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "json"})
+	// Use --limit 2 to keep the output small enough for the CaptureStdout pipe.
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "json", "--limit", "2"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -211,9 +217,44 @@ func TestListDashboards_JSONFormat(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	// JSON format should be valid JSON with dashboard data
-	assert.Contains(t, output, `"id"`)
-	assert.Contains(t, output, `"0c3893ac-3d26-11ef-943e-eedf0419e619"`)
+	// JSON output should contain full dashboard definitions
+	assert.Contains(t, output, `"kind": "Dashboard"`)
+	assert.Contains(t, output, `"metadata"`)
+	assert.Contains(t, output, `"spec"`)
+}
+
+func TestListDashboards_YAMLFormat(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewDashboardsCmd()
+	// Use --limit 2 to keep the output small enough for the CaptureStdout pipe
+	// while still verifying multi-document output.
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "yaml", "--limit", "2"})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	// YAML output should contain full dashboard definitions as multi-document YAML
+	assert.Contains(t, output, "kind: Dashboard")
+	assert.Contains(t, output, "metadata:")
+	assert.Contains(t, output, "spec:")
+	// Multiple documents should be separated by ---
+	assert.Contains(t, output, "---")
 }
 
 func TestGetDashboard_Success(t *testing.T) {

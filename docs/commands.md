@@ -203,7 +203,8 @@ NAME                  ID                                    DATASET   ORIGIN    
 Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   gitops/prod  https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
-Use `-o json` or `-o yaml` to get the full asset payload, suitable for piping or saving to a file.
+Use `-o json` or `-o yaml` to get the full asset definitions, suitable for backup or re-applying with `apply -f -`.
+The YAML output is a multi-document stream (documents separated by `---`) so it can be piped directly to `dash0 apply -f -`.
 Use `-o csv` for a pipe-friendly, machine-readable format with the same columns as `wide`:
 
 ```bash
@@ -1174,8 +1175,14 @@ dash0 apply -f dashboard.yaml
 
 ### Bulk export all assets of one type
 
+The YAML output contains full asset definitions as a multi-document stream, ready to be re-applied:
+
 ```bash
+# Export all dashboards
 dash0 dashboards list -o yaml > all-dashboards.yaml
+
+# Re-apply them later
+dash0 apply -f all-dashboards.yaml
 ```
 
 ### Send a deployment event

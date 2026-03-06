@@ -55,7 +55,8 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	iter := apiClient.ListViewsIter(ctx, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	iter := apiClient.ListViewsIter(ctx, dataset)
 
 	var views []*dash0api.ViewApiListItem
 	count := 0
@@ -82,9 +83,48 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		return formatter.Print(views)
+		definitions, err := fetchFullViews(ctx, apiClient, views, dataset)
+		if err != nil {
+			return err
+		}
+		if format == output.FormatYAML {
+			return formatter.PrintMultiDocYAML(definitions)
+		}
+		return formatter.PrintJSON(definitions)
 	default:
 		return printViewTable(formatter, views, format, apiUrl)
+	}
+}
+
+func fetchFullViews(
+	ctx context.Context,
+	apiClient dash0api.Client,
+	views []*dash0api.ViewApiListItem,
+	dataset *string,
+) ([]interface{}, error) {
+	progress := output.NewProgress("views", len(views))
+	defer progress.Done()
+	definitions := make([]interface{}, 0, len(views))
+	for i, item := range views {
+		progress.Update(i + 1)
+		view, err := apiClient.GetView(ctx, item.Id, dataset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch view %q: %w", item.Id, err)
+		}
+		enrichView(view, item.Id)
+		definitions = append(definitions, view)
+	}
+	return definitions, nil
+}
+
+// enrichView restores the view ID in labels so that exported YAML can be
+// re-applied (the import API uses the ID for upsert).
+func enrichView(view *dash0api.ViewDefinition, id string) {
+	if view.Metadata.Labels == nil {
+		view.Metadata.Labels = &dash0api.ViewLabels{}
+	}
+	if view.Metadata.Labels.Dash0Comid == nil {
+		view.Metadata.Labels.Dash0Comid = &id
 	}
 }
 

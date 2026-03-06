@@ -6,7 +6,7 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/fatih/color"
-	"github.com/mattn/go-isatty"
+	"golang.org/x/term"
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 // When color is disabled (via color.NoColor) or stdout is not a TTY, the
 // severity is returned as plain left-padded text.
 func SprintSeverity(sev string, width int) string {
-	if color.NoColor || !isatty.IsTerminal(os.Stdout.Fd()) {
+	if color.NoColor || !term.IsTerminal(int(os.Stdout.Fd())) {
 		if width > 0 {
 			return fmt.Sprintf("%-*s", width, sev)
 		}

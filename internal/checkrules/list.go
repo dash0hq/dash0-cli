@@ -55,7 +55,8 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	iter := apiClient.ListCheckRulesIter(ctx, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	iter := apiClient.ListCheckRulesIter(ctx, dataset)
 
 	var rules []*dash0api.PrometheusAlertRuleApiListItem
 	count := 0
@@ -82,9 +83,45 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		return formatter.Print(rules)
+		definitions, err := fetchFullCheckRules(ctx, apiClient, rules, dataset)
+		if err != nil {
+			return err
+		}
+		if format == output.FormatYAML {
+			return formatter.PrintMultiDocYAML(definitions)
+		}
+		return formatter.PrintJSON(definitions)
 	default:
 		return printCheckRuleTable(formatter, rules, format, apiUrl)
+	}
+}
+
+func fetchFullCheckRules(
+	ctx context.Context,
+	apiClient dash0api.Client,
+	rules []*dash0api.PrometheusAlertRuleApiListItem,
+	dataset *string,
+) ([]interface{}, error) {
+	progress := output.NewProgress("check rules", len(rules))
+	defer progress.Done()
+	definitions := make([]interface{}, 0, len(rules))
+	for i, item := range rules {
+		progress.Update(i + 1)
+		rule, err := apiClient.GetCheckRule(ctx, item.Id, dataset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch check rule %q: %w", item.Id, err)
+		}
+		enrichCheckRule(rule, item.Id)
+		definitions = append(definitions, rule)
+	}
+	return definitions, nil
+}
+
+// enrichCheckRule restores the rule ID so that exported YAML can be re-applied
+// (the API does not return the rule ID in the response body).
+func enrichCheckRule(rule *dash0api.PrometheusAlertRule, id string) {
+	if rule.Id == nil {
+		rule.Id = &id
 	}
 }
 

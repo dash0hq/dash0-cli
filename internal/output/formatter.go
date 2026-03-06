@@ -91,6 +91,26 @@ func (f *Formatter) PrintYAML(data interface{}) error {
 	return err
 }
 
+// PrintMultiDocYAML outputs each item as a separate YAML document separated
+// by "---". This produces a YAML stream that can be fed back to `apply -f -`.
+func (f *Formatter) PrintMultiDocYAML(items []interface{}) error {
+	for i, item := range items {
+		if i > 0 {
+			if _, err := fmt.Fprintln(f.writer, "---"); err != nil {
+				return err
+			}
+		}
+		out, err := yaml.Marshal(item)
+		if err != nil {
+			return err
+		}
+		if _, err := f.writer.Write(out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Print outputs data in the configured format (JSON or YAML only)
 // For table format, use the type-specific table printing functions
 func (f *Formatter) Print(data interface{}) error {

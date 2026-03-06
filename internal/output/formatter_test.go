@@ -67,6 +67,53 @@ func TestFormatter_PrintYAML(t *testing.T) {
 	assert.Contains(t, buf.String(), "id: \"123\"")
 }
 
+func TestFormatter_PrintMultiDocYAML(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatYAML, &buf)
+
+	items := []interface{}{
+		map[string]string{"name": "first", "id": "1"},
+		map[string]string{"name": "second", "id": "2"},
+	}
+	err := f.PrintMultiDocYAML(items)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "name: first")
+	assert.Contains(t, output, "---")
+	assert.Contains(t, output, "name: second")
+
+	// Verify the documents are separated by ---
+	docs := strings.Split(output, "---\n")
+	assert.Len(t, docs, 2)
+	assert.Contains(t, docs[0], "name: first")
+	assert.Contains(t, docs[1], "name: second")
+}
+
+func TestFormatter_PrintMultiDocYAML_SingleItem(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatYAML, &buf)
+
+	items := []interface{}{
+		map[string]string{"name": "only"},
+	}
+	err := f.PrintMultiDocYAML(items)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "name: only")
+	assert.NotContains(t, output, "---")
+}
+
+func TestFormatter_PrintMultiDocYAML_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter(FormatYAML, &buf)
+
+	err := f.PrintMultiDocYAML([]interface{}{})
+	assert.NoError(t, err)
+	assert.Empty(t, buf.String())
+}
+
 func TestFormatter_Print(t *testing.T) {
 	data := map[string]string{"name": "test"}
 
