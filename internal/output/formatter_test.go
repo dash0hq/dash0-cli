@@ -25,6 +25,7 @@ func TestParseFormat(t *testing.T) {
 		{"wide", FormatWide, false},
 		{"csv", FormatCSV, false},
 		{"CSV", FormatCSV, false},
+		{"diff", "", true},
 		{"invalid", "", true},
 	}
 

@@ -97,8 +97,9 @@ expression: up == 0
 	})
 
 	require.NoError(t, cmdErr)
+	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
 	assert.Contains(t, output, "Check rule")
-	assert.Contains(t, output, "updated")
+	assert.Contains(t, output, "no changes")
 
 	// Verify the import request body
 	importReq := findImportRequest(server.Requests(), apiPathImportCheckRule)
@@ -189,8 +190,9 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
+	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
 	assert.Contains(t, output, "Dashboard")
-	assert.Contains(t, output, "updated")
+	assert.Contains(t, output, "no changes")
 
 	// Verify the import request body has server-generated fields stripped
 	importReq := findImportRequest(server.Requests(), apiPathImportDashboard)
@@ -930,8 +932,9 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
+	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
 	assert.Contains(t, output, "View")
-	assert.Contains(t, output, "updated")
+	assert.Contains(t, output, "no changes")
 
 	// Verify the import request body has server-generated fields stripped
 	importReq := findImportRequest(server.Requests(), apiPathImportView)
@@ -989,8 +992,9 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
+	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
 	assert.Contains(t, output, "Synthetic check")
-	assert.Contains(t, output, "updated")
+	assert.Contains(t, output, "no changes")
 
 	// Verify the import request body has server-generated fields stripped
 	importReq := findImportRequest(server.Requests(), apiPathImportSyntheticCheck)

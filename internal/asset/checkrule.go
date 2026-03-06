@@ -6,22 +6,29 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
+// StripCheckRuleServerFields removes server-generated fields from a check rule
+// definition. Used by both Import (to avoid sending rejected fields to the API)
+// and diff rendering (to suppress noise).
+func StripCheckRuleServerFields(r *dash0api.PrometheusAlertRule) {
+	r.Dataset = nil
+	if r.Labels != nil {
+		delete(*r.Labels, "dash0.com/origin")
+	}
+}
+
 // ImportCheckRule checks existence by rule ID, strips the ID when the asset
 // is not found, and calls the import API.
 func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
-	// Strip server-managed fields — the import API manages these and rejects
-	// requests that include them (e.g. dataset).
-	rule.Dataset = nil
-	if rule.Labels != nil {
-		delete(*rule.Labels, "dash0.com/origin")
-	}
+	StripCheckRuleServerFields(rule)
 
 	// Check if check rule exists
 	action := ActionCreated
+	var before any
 	if rule.Id != nil && *rule.Id != "" {
-		_, err := apiClient.GetCheckRule(ctx, *rule.Id, dataset)
+		existing, err := apiClient.GetCheckRule(ctx, *rule.Id, dataset)
 		if err == nil {
 			action = ActionUpdated
+			before = existing
 		} else {
 			// Asset not found — strip ID so the API creates a fresh asset.
 			rule.Id = nil
@@ -37,7 +44,7 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 	if result.Id != nil {
 		id = *result.Id
 	}
-	return ImportResult{Name: result.Name, ID: id, Action: action}, nil
+	return ImportResult{Name: result.Name, ID: id, Action: action, Before: before, After: result}, nil
 }
 
 // ExtractCheckRuleID extracts the ID from a check rule definition.

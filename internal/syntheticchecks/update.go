@@ -61,17 +61,26 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	if flags.DryRun {
-		fmt.Println("Dry run: synthetic check definition is valid")
-		return nil
-	}
-
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	result, err := apiClient.UpdateSyntheticCheck(ctx, id, &check, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
+	before, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "synthetic check",
+			AssetID:   id,
+		})
+	}
+
+	if flags.DryRun {
+		return asset.PrintDiff(os.Stdout, "Synthetic check", check.Metadata.Name, before, &check)
+	}
+
+	result, err := apiClient.UpdateSyntheticCheck(ctx, id, &check, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",
@@ -80,6 +89,5 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	fmt.Printf("Synthetic check %q updated successfully\n", asset.ExtractSyntheticCheckName(result))
-	return nil
+	return asset.PrintDiff(os.Stdout, "Synthetic check", asset.ExtractSyntheticCheckName(result), before, result)
 }

@@ -343,6 +343,8 @@ The `list` and `get` commands for assets support multiple output formats via `-o
 - **`yaml`**: Full asset data in YAML format
 - **`csv`**: Comma-separated values with the same columns as `wide`, suitable for piping and automation
 
+The `update` and `apply` commands show a unified diff of changes.
+
 The `logs query`, `spans query`, and `traces get` commands support a different set of formats via `-o`:
 
 - **`table`** (default): Columnar output (`logs query` shows timestamp, severity, and body; `spans query` shows timestamp, duration, name, status, service, and trace ID; `traces get` shows a hierarchical span tree)
