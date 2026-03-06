@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.7.0
+
+
+### Enhancements
+
+
+- `output`: The `update` and `apply` commands now show a unified diff of changes (#66)
+
+- `dashboards`: `<asset> list -o yaml` and `-o json` now output full asset definitions instead of summary list items (#67)
+  YAML output is a multi-document stream (separated by `---`) that can be piped directly to `dash0 apply -f -`.
+  JSON output is an array of full asset definitions.
+  This applies to all four asset types: dashboards, check-rules, views, and synthetic-checks.
+  
+
 ## 1.6.0
 
 
