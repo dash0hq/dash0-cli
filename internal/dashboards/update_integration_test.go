@@ -28,6 +28,11 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+testDashboardID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
 	server.On(http.MethodPut, "/api/dashboards/"+testDashboardID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
@@ -43,8 +48,8 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Contains(t, output, "Dashboard")
-	assert.Contains(t, output, "updated")
+	// Output is a diff; since GET and PUT return the same fixture, expect "no changes"
+	assert.Contains(t, output, "no changes")
 }
 
 func TestUpdateDashboard_WithIDFromFile(t *testing.T) {
@@ -65,6 +70,11 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+dashboardID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
 	server.On(http.MethodPut, "/api/dashboards/"+dashboardID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
@@ -80,8 +90,8 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Contains(t, output, "Dashboard")
-	assert.Contains(t, output, "updated")
+	// Output is a diff; since GET and PUT return the same fixture, expect "no changes"
+	assert.Contains(t, output, "no changes")
 }
 
 func TestUpdateDashboard_IDMismatch(t *testing.T) {

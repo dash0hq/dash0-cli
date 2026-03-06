@@ -288,21 +288,42 @@ Aliases: `add`
 
 Update an existing asset from a YAML or JSON file.
 If the ID argument is omitted, the ID is extracted from the file content.
+The output shows a unified diff of what changed.
+The `--dry-run` flag shows the diff without applying the update.
 
 ```bash
-dash0 dashboards update [id] -f <file> [--dry-run] [-o <format>]
+dash0 dashboards update [id] -f <file> [--dry-run]
 ```
 
 Examples:
 
 ```bash
-# Update with explicit ID
+# Update a dashboard from a file
 $ dash0 dashboards update <id> -f dashboard.yaml
-Dashboard "My Dashboard" updated successfully
+--- Dashboard (before)
++++ Dashboard (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Old Dashboard Name
++    name: New Dashboard Name
 
-# Update using the ID from the file
+# Preview changes without applying
+$ dash0 dashboards update -f dashboard.yaml --dry-run
+--- Dashboard (before)
++++ Dashboard (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Old Dashboard Name
++    name: New Dashboard Name
+```
+
+When nothing changed:
+
+```bash
 $ dash0 dashboards update -f dashboard.yaml
-Dashboard "My Dashboard" updated successfully
+Dashboard "My Dashboard": no changes
 ```
 
 ### `delete`
@@ -349,6 +370,9 @@ dash0 apply -f <file|directory> [--dry-run]
 |------|-------|-------------|
 | `--file` | `-f` | Path to a YAML/JSON file, a directory, or `-` for stdin |
 | `--dry-run` | | Validate without applying |
+
+For assets that are updated, a unified diff of the changes is shown.
+Assets that are created show the standard creation message.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped.

@@ -61,17 +61,26 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	if flags.DryRun {
-		fmt.Println("Dry run: view definition is valid")
-		return nil
-	}
-
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	result, err := apiClient.UpdateView(ctx, id, &view, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
+	before, err := apiClient.GetView(ctx, id, dataset)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "view",
+			AssetID:   id,
+		})
+	}
+
+	if flags.DryRun {
+		return asset.PrintDiff(os.Stdout, "View", view.Metadata.Name, before, &view)
+	}
+
+	result, err := apiClient.UpdateView(ctx, id, &view, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "view",
@@ -80,6 +89,5 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	fmt.Printf("View %q updated successfully\n", asset.ExtractViewName(result))
-	return nil
+	return asset.PrintDiff(os.Stdout, "View", asset.ExtractViewName(result), before, result)
 }

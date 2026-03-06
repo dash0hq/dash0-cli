@@ -61,17 +61,26 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	if flags.DryRun {
-		fmt.Println("Dry run: check rule definition is valid")
-		return nil
-	}
-
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	result, err := apiClient.UpdateCheckRule(ctx, id, &rule, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
+	before, err := apiClient.GetCheckRule(ctx, id, dataset)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "check rule",
+			AssetID:   id,
+		})
+	}
+
+	if flags.DryRun {
+		return asset.PrintDiff(os.Stdout, "Check rule", rule.Name, before, &rule)
+	}
+
+	result, err := apiClient.UpdateCheckRule(ctx, id, &rule, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "check rule",
@@ -80,6 +89,5 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	fmt.Printf("Check rule %q updated successfully\n", result.Name)
-	return nil
+	return asset.PrintDiff(os.Stdout, "Check rule", result.Name, before, result)
 }

@@ -13,4 +13,6 @@ type ImportResult struct {
 	Name   string
 	ID     string
 	Action ImportAction
+	Before any // asset state before update (nil for creates)
+	After  any // asset state after update/create
 }

@@ -7,35 +7,38 @@ import (
 	"github.com/google/uuid"
 )
 
+// StripDashboardServerFields removes server-generated metadata fields from a
+// dashboard definition. Used by both Import (to avoid sending stale values to
+// the API) and diff rendering (to suppress noise like timestamps and version).
+func StripDashboardServerFields(d *dash0api.DashboardDefinition) {
+	d.Metadata.Annotations = nil
+	d.Metadata.CreatedAt = nil
+	d.Metadata.UpdatedAt = nil
+	d.Metadata.Version = nil
+	if d.Metadata.Dash0Extensions != nil {
+		d.Metadata.Dash0Extensions.Dataset = nil
+	}
+}
+
 // ImportDashboard checks existence by dash0Extensions.id,
 // strips server-generated fields when the asset is not found, and calls the
 // import API. The import API uses dash0Extensions.id as the upsert key; when
 // the input has no id, a fresh UUID is generated so re-applying the exported
 // YAML updates the dashboard instead of creating a duplicate.
 func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
-	// Use dash0Extensions.id for the existence check — this is the upsert key
-	// used by the import API. Note: metadata.name for dashboards is the display
-	// name, not a UUID, so it cannot be used for lookups.
-
-	// Strip server-generated metadata fields — the import API manages these
-	// and rejects requests that include stale values (e.g. an outdated version).
-	dashboard.Metadata.Annotations = nil
-	dashboard.Metadata.CreatedAt = nil
-	dashboard.Metadata.UpdatedAt = nil
-	dashboard.Metadata.Version = nil
-	if dashboard.Metadata.Dash0Extensions != nil {
-		dashboard.Metadata.Dash0Extensions.Dataset = nil
-	}
+	StripDashboardServerFields(dashboard)
 
 	action := ActionCreated
+	var before any
 	id := ""
 	if dashboard.Metadata.Dash0Extensions != nil && dashboard.Metadata.Dash0Extensions.Id != nil {
 		id = *dashboard.Metadata.Dash0Extensions.Id
 	}
 	if id != "" {
-		_, err := apiClient.GetDashboard(ctx, id, dataset)
+		existing, err := apiClient.GetDashboard(ctx, id, dataset)
 		if err == nil {
 			action = ActionUpdated
+			before = existing
 		} else {
 			// Asset not found — strip the ID so the API creates a fresh asset
 			// instead of colliding with a soft-deleted record.
@@ -64,7 +67,7 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if name == "" {
 		name = result.Metadata.Name
 	}
-	return ImportResult{Name: name, ID: id, Action: action}, nil
+	return ImportResult{Name: name, ID: id, Action: action, Before: before, After: result}, nil
 }
 
 // ExtractDashboardID extracts the ID from a dashboard definition.

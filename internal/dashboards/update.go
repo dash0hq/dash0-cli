@@ -61,17 +61,31 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		}
 	}
 
-	if flags.DryRun {
-		fmt.Println("Dry run: dashboard definition is valid")
-		return nil
-	}
-
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	result, err := apiClient.UpdateDashboard(ctx, id, &dashboard, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
+	// Fetch the current state before updating so we can show what changed.
+	before, err := apiClient.GetDashboard(ctx, id, dataset)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "dashboard",
+			AssetID:   id,
+		})
+	}
+
+	if flags.DryRun {
+		displayName := asset.ExtractDashboardDisplayName(&dashboard)
+		if displayName == "" {
+			displayName = dashboard.Metadata.Name
+		}
+		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, &dashboard)
+	}
+
+	result, err := apiClient.UpdateDashboard(ctx, id, &dashboard, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",
@@ -80,6 +94,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	fmt.Printf("Dashboard %q updated successfully\n", result.Metadata.Name)
-	return nil
+	displayName := asset.ExtractDashboardDisplayName(result)
+	if displayName == "" {
+		displayName = result.Metadata.Name
+	}
+	return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, result)
 }

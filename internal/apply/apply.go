@@ -122,6 +122,8 @@ type applyResult struct {
 	name   string
 	id     string
 	action applyAction
+	before any // asset state before update (nil for creates)
+	after  any // asset state after update/create
 }
 
 func runApply(ctx context.Context, flags *applyFlags) error {
@@ -191,7 +193,12 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			displayKind := asset.KindDisplayName(r.kind)
 			label := formatNameAndId(r.name, r.id)
 			applied = append(applied, fmt.Sprintf("%s %s", displayKind, label))
-			if fromDirectory {
+
+			if r.action == actionUpdated && r.before != nil {
+				if err := asset.PrintDiff(os.Stdout, displayKind, r.name, r.before, r.after); err != nil {
+					return err
+				}
+			} else if fromDirectory {
 				fmt.Printf("%s: %s %s %s\n", doc.filePath, displayKind, label, r.action)
 			} else {
 				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
@@ -550,7 +557,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: asset.ExtractDashboardDisplayName(&dashboard),
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "checkrule":
 		var rule dash0api.PrometheusAlertRule
@@ -564,7 +571,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: rule.Name,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "prometheusrule":
 		var promRule asset.PrometheusRule
@@ -599,7 +606,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: check.Metadata.Name,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "view":
 		var view dash0api.ViewDefinition
@@ -613,7 +620,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: view.Metadata.Name,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
@@ -633,6 +640,8 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRul
 			name:   r.Name,
 			id:     r.ID,
 			action: applyAction(r.Action),
+			before: r.Before,
+			after:  r.After,
 		})
 	}
 
