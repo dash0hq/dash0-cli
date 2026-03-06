@@ -6,14 +6,14 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/fatih/color"
+	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPrintDiff_NoChanges(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
 
 	dashboard := &dash0api.DashboardDefinition{
 		Kind: "Dashboard",
@@ -41,8 +41,8 @@ func TestPrintDiff_NoChanges(t *testing.T) {
 }
 
 func TestPrintDiff_WithChanges(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
 
 	before := &dash0api.DashboardDefinition{
 		Kind: "Dashboard",
@@ -76,8 +76,8 @@ func TestPrintDiff_WithChanges(t *testing.T) {
 }
 
 func TestPrintDiff_StripsServerFields_Dashboard(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
 
 	t1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	t2 := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
@@ -123,8 +123,8 @@ func TestPrintDiff_StripsServerFields_Dashboard(t *testing.T) {
 }
 
 func TestPrintDiff_StripsServerFields_CheckRule(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
 
 	ds1 := dash0api.Dataset("default")
 	ds2 := dash0api.Dataset("other")
@@ -149,8 +149,8 @@ func TestPrintDiff_StripsServerFields_CheckRule(t *testing.T) {
 }
 
 func TestPrintDiff_StripsServerFields_View(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
 
 	v1 := "1"
 	v2 := "2"
@@ -190,7 +190,8 @@ func TestPrintDiff_StripsServerFields_View(t *testing.T) {
 }
 
 func TestPrintDiff_ColorOutput(t *testing.T) {
-	color.NoColor = false
+	dashcolor.NoColor = false
+	t.Setenv("CLICOLOR_FORCE", "1")
 
 	before := &dash0api.DashboardDefinition{
 		Kind:     "Dashboard",

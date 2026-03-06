@@ -13,10 +13,11 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 | Module | Purpose |
 |--------|---------|
 | `github.com/dash0hq/dash0-api-client-go` | API and OTLP client for the Dash0 backend |
-| `github.com/fatih/color` | Semantic coloring of terminal output (severity levels, errors) |
 | `github.com/google/uuid` | UUID generation for asset imports |
+| `github.com/muesli/termenv` | Semantic coloring of terminal output (severity levels, diffs, errors) |
 | `github.com/spf13/cobra` | CLI command structure, flag parsing, and routing |
 | `go.opentelemetry.io/collector/pdata` | OTLP data structures for logs, traces, and metrics |
+| `golang.org/x/term` | TTY detection and terminal size for progress bars |
 | `gopkg.in/yaml.v3` | YAML marshalling/unmarshalling for asset definitions, needed for YAML stream processing |
 | `sigs.k8s.io/yaml` | YAML handling that respects JSON struct tags and `omitempty` |
 

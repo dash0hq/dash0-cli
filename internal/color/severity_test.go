@@ -2,8 +2,6 @@ package color
 
 import (
 	"testing"
-
-	"github.com/fatih/color"
 )
 
 const testWidth = 10
@@ -24,8 +22,8 @@ func TestSprintSeverityColored(t *testing.T) {
 	}
 
 	// Force color on so ANSI codes are emitted regardless of terminal.
-	color.NoColor = false
-	defer func() { color.NoColor = false }()
+	NoColor = false
+	t.Setenv("CLICOLOR_FORCE", "1")
 
 	for _, tc := range tests {
 		t.Run(tc.severity, func(t *testing.T) {
@@ -48,8 +46,8 @@ func TestSprintSeverityColored(t *testing.T) {
 }
 
 func TestSprintSeverityNoColor(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	NoColor = true
+	defer func() { NoColor = false }()
 
 	tests := []string{"ERROR", "WARN", "INFO", "DEBUG", "TRACE", "FATAL", "UNKNOWN"}
 	for _, sev := range tests {
@@ -74,8 +72,8 @@ func TestSprintSeverityNoColor(t *testing.T) {
 }
 
 func TestSprintSeverityZeroWidth(t *testing.T) {
-	color.NoColor = true
-	defer func() { color.NoColor = false }()
+	NoColor = true
+	defer func() { NoColor = false }()
 
 	got := SprintSeverity("INFO", 0)
 	if got != "INFO" {
@@ -84,8 +82,8 @@ func TestSprintSeverityZeroWidth(t *testing.T) {
 }
 
 func TestSprintSeverityColorMapping(t *testing.T) {
-	color.NoColor = false
-	defer func() { color.NoColor = false }()
+	NoColor = false
+	t.Setenv("CLICOLOR_FORCE", "1")
 
 	// ERROR and FATAL should produce the same color (red)
 	errorOut := sprintSeverityColored("ERROR", testWidth)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
+	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/logging"
@@ -18,7 +19,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/tracing"
 	versionpkg "github.com/dash0hq/dash0-cli/internal/version"
 	"github.com/dash0hq/dash0-cli/internal/views"
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -97,20 +97,22 @@ func newVersionCmd() *cobra.Command {
 func printError(err error) {
 	errStr := err.Error()
 
-	red := color.New(color.FgRed, color.Bold)
-	cyan := color.New(color.FgCyan)
+	o := dashcolor.StderrOutput()
+
+	errorPrefix := o.String("Error: ").Foreground(o.Color("1")).Bold().String()
+	hintPrefix := o.String("Hint:").Foreground(o.Color("6")).String()
 
 	// Check if error contains a hint
 	if idx := strings.Index(errStr, "\nHint:"); idx != -1 {
 		mainError := errStr[:idx]
 		hint := errStr[idx+1:] // Skip the newline
 
-		red.Fprint(os.Stderr, "Error: ")
+		fmt.Fprint(os.Stderr, errorPrefix)
 		fmt.Fprintln(os.Stderr, mainError)
-		cyan.Fprint(os.Stderr, "Hint:")
+		fmt.Fprint(os.Stderr, hintPrefix)
 		fmt.Fprintln(os.Stderr, hint[5:]) // Skip "Hint:" prefix
 	} else {
-		red.Fprint(os.Stderr, "Error: ")
+		fmt.Fprint(os.Stderr, errorPrefix)
 		fmt.Fprintln(os.Stderr, errStr)
 	}
 }
@@ -168,7 +170,7 @@ func main() {
 		os.Exit(1)
 	}
 	if colorMode == colorModeNone {
-		color.NoColor = true
+		dashcolor.NoColor = true
 	}
 
 	// Always attempt to load configuration. Commands that don't need it

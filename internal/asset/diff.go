@@ -3,10 +3,12 @@ package asset
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/fatih/color"
+	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
+	"github.com/muesli/termenv"
 	"github.com/pmezard/go-difflib/difflib"
 	sigsyaml "sigs.k8s.io/yaml"
 )
@@ -92,7 +94,7 @@ func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 		return nil
 	}
 
-	if color.NoColor {
+	if dashcolor.NoColor {
 		_, err := io.WriteString(w, text)
 		return err
 	}
@@ -100,32 +102,26 @@ func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 	return writeColorizedDiff(w, text)
 }
 
-var (
-	colorRed   = color.New(color.FgRed)
-	colorGreen = color.New(color.FgGreen)
-	colorCyan  = color.New(color.FgCyan)
-	colorBold  = color.New(color.Bold)
-)
-
 func writeColorizedDiff(w io.Writer, text string) error {
+	o := termenv.NewOutput(os.Stdout)
 	for _, line := range strings.Split(text, "\n") {
 		if line == "" {
 			continue
 		}
-		var err error
+		var styled string
 		switch {
 		case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
-			_, err = colorBold.Fprintln(w, line)
+			styled = o.String(line).Bold().String()
 		case strings.HasPrefix(line, "@@"):
-			_, err = colorCyan.Fprintln(w, line)
+			styled = o.String(line).Foreground(o.Color("6")).String() // cyan
 		case strings.HasPrefix(line, "-"):
-			_, err = colorRed.Fprintln(w, line)
+			styled = o.String(line).Foreground(o.Color("1")).String() // red
 		case strings.HasPrefix(line, "+"):
-			_, err = colorGreen.Fprintln(w, line)
+			styled = o.String(line).Foreground(o.Color("2")).String() // green
 		default:
-			_, err = fmt.Fprintln(w, line)
+			styled = line
 		}
-		if err != nil {
+		if _, err := fmt.Fprintln(w, styled); err != nil {
 			return err
 		}
 	}
