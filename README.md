@@ -116,6 +116,11 @@ For the full command reference with detailed flags, output examples, and AI-agen
 
 ### Configuration
 
+The CLI resolves connection settings from profiles stored on disk, [environment variables](#common-settings), and CLI flags, in that order.
+Profiles are the recommended way to manage credentials locally; environment variables are convenient for CI/CD and agentic workflows.
+
+#### Profiles
+
 Configure API access using profiles.
 All profile fields are optional at creation time.
 Missing values can be supplied later via `config profiles update` or overridden at runtime with [environment variables or CLI flags](#common-settings).
@@ -133,6 +138,24 @@ dash0 config show
 
 You can find the API endpoint for your organization on the [Endpoints](https://app.dash0.com/settings/endpoints) page, under the `API` entry, and the OTLP HTTP endpoint under the `OTLP via HTTP` entry.
 Currently only HTTP OTLP endpoints are supported.
+
+#### Configuration storage
+
+Profiles and the active-profile selection are stored on disk in `~/.dash0/`:
+
+| File | Content |
+|------|---------|
+| `profiles.json` | All configured profiles (name, URLs, auth token, dataset) |
+| `activeProfile` | Name of the currently active profile |
+
+The directory is created automatically when you create your first profile.
+
+To store configuration elsewhere, set the `DASH0_CONFIG_DIR` environment variable:
+
+```bash
+export DASH0_CONFIG_DIR=~/.local/dash0
+dash0 config profiles create dev --api-url https://api.us-west-2.aws.dash0.com
+```
 
 ### Applying assets
 
