@@ -341,8 +341,9 @@ func (m *MockServer) WithDashboardsGet(fixture string) *MockServer {
 // WithDashboardsCreate sets up the mock server to accept dashboard creation.
 func (m *MockServer) WithDashboardsCreate(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/dashboards", MockResponse{
-		StatusCode: http.StatusCreated,
+		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -351,6 +352,7 @@ func (m *MockServer) WithDashboardsUpdate(fixture string) *MockServer {
 	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/dashboards/[^/]+$`), MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -380,8 +382,18 @@ func (m *MockServer) WithCheckRulesGet(fixture string) *MockServer {
 // WithCheckRulesCreate sets up the mock server to accept check rule creation.
 func (m *MockServer) WithCheckRulesCreate(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/alerting/check-rules", MockResponse{
-		StatusCode: http.StatusCreated,
+		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithCheckRulesUpdate sets up the mock server to accept check rule updates.
+func (m *MockServer) WithCheckRulesUpdate(fixture string) *MockServer {
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -411,8 +423,18 @@ func (m *MockServer) WithViewsGet(fixture string) *MockServer {
 // WithViewsCreate sets up the mock server to accept view creation.
 func (m *MockServer) WithViewsCreate(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/views", MockResponse{
-		StatusCode: http.StatusCreated,
+		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithViewsUpdate sets up the mock server to accept view updates.
+func (m *MockServer) WithViewsUpdate(fixture string) *MockServer {
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/views/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -442,8 +464,18 @@ func (m *MockServer) WithSyntheticChecksGet(fixture string) *MockServer {
 // WithSyntheticChecksCreate sets up the mock server to accept synthetic check creation.
 func (m *MockServer) WithSyntheticChecksCreate(fixture string) *MockServer {
 	return m.On(http.MethodPost, "/api/synthetic-checks", MockResponse{
-		StatusCode: http.StatusCreated,
+		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithSyntheticChecksUpdate sets up the mock server to accept synthetic check updates.
+func (m *MockServer) WithSyntheticChecksUpdate(fixture string) *MockServer {
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
 	})
 }
 
@@ -451,44 +483,6 @@ func (m *MockServer) WithSyntheticChecksCreate(fixture string) *MockServer {
 func (m *MockServer) WithSyntheticChecksDelete() *MockServer {
 	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`), MockResponse{
 		StatusCode: http.StatusNoContent,
-	})
-}
-
-// --- Import endpoint helpers ---
-
-// WithDashboardImport sets up the mock server to accept dashboard imports.
-func (m *MockServer) WithDashboardImport(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/import/dashboard", MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   fixture,
-		Validator:  RequireHeaders,
-	})
-}
-
-// WithCheckRuleImport sets up the mock server to accept check rule imports.
-func (m *MockServer) WithCheckRuleImport(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/import/check-rule", MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   fixture,
-		Validator:  RequireHeaders,
-	})
-}
-
-// WithViewImport sets up the mock server to accept view imports.
-func (m *MockServer) WithViewImport(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/import/view", MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   fixture,
-		Validator:  RequireHeaders,
-	})
-}
-
-// WithSyntheticCheckImport sets up the mock server to accept synthetic check imports.
-func (m *MockServer) WithSyntheticCheckImport(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/import/synthetic-check", MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   fixture,
-		Validator:  RequireHeaders,
 	})
 }
 

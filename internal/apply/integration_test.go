@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -17,11 +18,11 @@ import (
 const (
 	testAuthToken = "auth_test_token"
 
-	// Import API paths
-	apiPathImportDashboard      = "/api/import/dashboard"
-	apiPathImportCheckRule      = "/api/import/check-rule"
-	apiPathImportView           = "/api/import/view"
-	apiPathImportSyntheticCheck = "/api/import/synthetic-check"
+	// Standard CRUD API paths
+	apiPathDashboards      = "/api/dashboards"
+	apiPathCheckRules      = "/api/alerting/check-rules"
+	apiPathViews           = "/api/views"
+	apiPathSyntheticChecks = "/api/synthetic-checks"
 )
 
 var (
@@ -50,7 +51,7 @@ expression: up == 0
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
 	// Import succeeds
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -85,8 +86,8 @@ expression: up == 0
 		BodyFile:   testutil.FixtureCheckRulesImportSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Import succeeds
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	// Update succeeds
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -97,14 +98,14 @@ expression: up == 0
 	})
 
 	require.NoError(t, cmdErr)
-	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
+	// Output is a diff; since GET and Update return the same fixture, expect "no changes"
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "no changes")
 
-	// Verify the import request body
-	importReq := findImportRequest(server.Requests(), apiPathImportCheckRule)
-	require.NotNil(t, importReq, "expected an import request for check rule")
-	body := string(importReq.Body)
+	// Verify the update request body
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathCheckRules)
+	require.NotNil(t, updateReq, "expected an update request for check rule")
+	body := string(updateReq.Body)
 	assert.NotContains(t, body, "dash0.com/origin")
 	assert.Contains(t, body, "47b6ccbe-82ab-47c6-a613-ce0d7f34353e")
 }
@@ -135,7 +136,7 @@ spec:
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
 	// Import succeeds
-	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -178,8 +179,8 @@ spec:
 		BodyFile:   testutil.FixtureDashboardsImportSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Import succeeds
-	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+	// Update succeeds
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -190,14 +191,14 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
+	// Output is a diff; since GET and Update return the same fixture, expect "no changes"
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "no changes")
 
-	// Verify the import request body has server-generated fields stripped
-	importReq := findImportRequest(server.Requests(), apiPathImportDashboard)
-	require.NotNil(t, importReq, "expected an import request for dashboard")
-	body := string(importReq.Body)
+	// Verify the update request body has server-generated fields stripped
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards)
+	require.NotNil(t, updateReq, "expected an update request for dashboard")
+	body := string(updateReq.Body)
 	assert.NotContains(t, body, `"createdAt"`)
 	assert.NotContains(t, body, `"updatedAt"`)
 	assert.NotContains(t, body, `"version"`)
@@ -227,7 +228,7 @@ expression: down == 1
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
 	// Import succeeds
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -324,7 +325,7 @@ func TestApply_FromStdin(t *testing.T) {
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 
 	// Create a temp file to simulate stdin
 	tmpDir := t.TempDir()
@@ -387,7 +388,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureViewsNotFound,
 	})
-	server.WithViewImport(testutil.FixtureViewsImportSuccess)
+	server.WithViewsCreate(testutil.FixtureViewsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -429,7 +430,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
 	})
-	server.WithSyntheticCheckImport(testutil.FixtureSyntheticChecksImportSuccess)
+	server.WithSyntheticChecksCreate(testutil.FixtureSyntheticChecksImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -497,7 +498,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -534,7 +535,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -549,10 +550,10 @@ spec:
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created")
 
-	// Verify the import request contains the Perses spec fields
-	importReq := findImportRequest(server.Requests(), apiPathImportDashboard)
-	require.NotNil(t, importReq, "expected an import request for dashboard")
-	body := string(importReq.Body)
+	// Verify the create request contains the Perses spec fields
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	require.NotNil(t, createReq, "expected a create request for dashboard")
+	body := string(createReq.Body)
 	assert.Contains(t, body, "Test Perses Dashboard")
 	assert.Contains(t, body, "5m")
 }
@@ -579,7 +580,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -594,9 +595,9 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the spec.config wrapper was unwrapped
-	importReq := findImportRequest(server.Requests(), apiPathImportDashboard)
-	require.NotNil(t, importReq, "expected an import request for dashboard")
-	body := string(importReq.Body)
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	require.NotNil(t, createReq, "expected a create request for dashboard")
+	body := string(createReq.Body)
 	assert.Contains(t, body, "V1Alpha2 Dashboard")
 	assert.Contains(t, body, "10m")
 }
@@ -627,12 +628,12 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureViewsNotFound,
 	})
-	server.WithViewImport(testutil.FixtureViewsImportSuccess)
+	server.WithViewsCreate(testutil.FixtureViewsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -667,7 +668,7 @@ expression: down == 1
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -824,7 +825,7 @@ spec:
 		Validator:  testutil.RequireHeaders,
 	})
 	// Import succeeds
-	server.WithDashboardImport(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -838,13 +839,11 @@ spec:
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created")
 
-	// Verify the import request body has dash0Extensions.id stripped (replaced with a new UUID)
-	for _, req := range server.Requests() {
-		if req.Method == http.MethodPost && req.Path == apiPathImportDashboard {
-			body := string(req.Body)
-			assert.NotContains(t, body, "deleted-dashboard-uuid")
-		}
-	}
+	// Verify the create request body has dash0Extensions.id stripped (replaced with a new UUID)
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	require.NotNil(t, createReq, "expected a create request for dashboard")
+	body := string(createReq.Body)
+	assert.NotContains(t, body, "deleted-dashboard-uuid")
 }
 
 func TestApply_CheckRule_Created_StripsId(t *testing.T) {
@@ -867,8 +866,8 @@ expression: up == 0
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Import succeeds
-	server.WithCheckRuleImport(testutil.FixtureCheckRulesImportSuccess)
+	// Create succeeds
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -882,13 +881,11 @@ expression: up == 0
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "created")
 
-	// Verify the import request body has the ID stripped
-	for _, req := range server.Requests() {
-		if req.Method == http.MethodPost && req.Path == apiPathImportCheckRule {
-			body := string(req.Body)
-			assert.NotContains(t, body, "deleted-rule-uuid")
-		}
-	}
+	// Verify the create request body has the ID stripped
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathCheckRules)
+	require.NotNil(t, createReq, "expected a create request for check rule")
+	body := string(createReq.Body)
+	assert.NotContains(t, body, "deleted-rule-uuid")
 }
 
 func TestApply_View_Updated(t *testing.T) {
@@ -920,8 +917,8 @@ spec:
 		BodyFile:   testutil.FixtureViewsImportSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Import succeeds
-	server.WithViewImport(testutil.FixtureViewsImportSuccess)
+	// Update succeeds
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -932,14 +929,14 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
+	// Output is a diff; since GET and Update return the same fixture, expect "no changes"
 	assert.Contains(t, output, "View")
 	assert.Contains(t, output, "no changes")
 
-	// Verify the import request body has server-generated fields stripped
-	importReq := findImportRequest(server.Requests(), apiPathImportView)
-	require.NotNil(t, importReq, "expected an import request for view")
-	body := string(importReq.Body)
+	// Verify the update request body has server-generated fields stripped
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathViews)
+	require.NotNil(t, updateReq, "expected an update request for view")
+	body := string(updateReq.Body)
 	assert.NotContains(t, body, `"dash0.com/origin"`)
 	assert.NotContains(t, body, `"dash0.com/version"`)
 	assert.NotContains(t, body, `"dash0.com/source"`)
@@ -980,8 +977,8 @@ spec:
 		BodyFile:   testutil.FixtureSyntheticChecksImportSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Import succeeds
-	server.WithSyntheticCheckImport(testutil.FixtureSyntheticChecksImportSuccess)
+	// Update succeeds
+	server.WithSyntheticChecksUpdate(testutil.FixtureSyntheticChecksImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -992,14 +989,14 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	// Output is a diff; since GET and Import return the same fixture, expect "no changes"
+	// Output is a diff; since GET and Update return the same fixture, expect "no changes"
 	assert.Contains(t, output, "Synthetic check")
 	assert.Contains(t, output, "no changes")
 
-	// Verify the import request body has server-generated fields stripped
-	importReq := findImportRequest(server.Requests(), apiPathImportSyntheticCheck)
-	require.NotNil(t, importReq, "expected an import request for synthetic check")
-	body := string(importReq.Body)
+	// Verify the update request body has server-generated fields stripped
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathSyntheticChecks)
+	require.NotNil(t, updateReq, "expected an update request for synthetic check")
+	body := string(updateReq.Body)
 	assert.NotContains(t, body, `"dash0.com/origin"`)
 	assert.NotContains(t, body, `"dash0.com/version"`)
 	assert.NotContains(t, body, `"dash0.com/dataset"`)
@@ -1018,10 +1015,10 @@ func countOccurrences(s, substr string) int {
 	return count
 }
 
-// findImportRequest finds the first POST request to the given import API path.
-func findImportRequest(requests []testutil.RecordedRequest, path string) *testutil.RecordedRequest {
+// findRequest finds the first request matching the given method whose path starts with pathPrefix.
+func findRequest(requests []testutil.RecordedRequest, method string, pathPrefix string) *testutil.RecordedRequest {
 	for _, req := range requests {
-		if req.Method == http.MethodPost && req.Path == path {
+		if req.Method == method && strings.HasPrefix(req.Path, pathPrefix) {
 			return &req
 		}
 	}
@@ -1060,7 +1057,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureViewsNotFound,
 	})
-	server.WithViewImport(testutil.FixtureViewsImportSuccess)
+	server.WithViewsCreate(testutil.FixtureViewsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1075,9 +1072,9 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify filter values survive the YAML parse → JSON serialize round-trip
-	importReq := findImportRequest(server.Requests(), apiPathImportView)
-	require.NotNil(t, importReq, "expected an import request for view")
-	body := string(importReq.Body)
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathViews)
+	require.NotNil(t, createReq, "expected a create request for view")
+	body := string(createReq.Body)
 	assert.Contains(t, body, "ERROR")
 	assert.Contains(t, body, "FATAL")
 	assert.Contains(t, body, "my-service")
@@ -1113,7 +1110,7 @@ spec:
 		BodyFile:   testutil.FixtureViewsNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	server.WithViewImport(testutil.FixtureViewsImportSuccess)
+	server.WithViewsCreate(testutil.FixtureViewsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1127,10 +1124,10 @@ spec:
 	assert.Contains(t, output, "View")
 	assert.Contains(t, output, "created")
 
-	// Verify the import request body has the ID stripped
-	importReq := findImportRequest(server.Requests(), apiPathImportView)
-	require.NotNil(t, importReq, "expected an import request for view")
-	body := string(importReq.Body)
+	// Verify the create request body has the ID stripped
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathViews)
+	require.NotNil(t, createReq, "expected a create request for view")
+	body := string(createReq.Body)
 	assert.NotContains(t, body, "deleted-view-uuid")
 }
 
@@ -1165,7 +1162,7 @@ spec:
 		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	server.WithSyntheticCheckImport(testutil.FixtureSyntheticChecksImportSuccess)
+	server.WithSyntheticChecksCreate(testutil.FixtureSyntheticChecksImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1179,9 +1176,9 @@ spec:
 	assert.Contains(t, output, "Synthetic check")
 	assert.Contains(t, output, "created")
 
-	// Verify the import request body has the ID stripped
-	importReq := findImportRequest(server.Requests(), apiPathImportSyntheticCheck)
-	require.NotNil(t, importReq, "expected an import request for synthetic check")
-	body := string(importReq.Body)
+	// Verify the create request body has the ID stripped
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathSyntheticChecks)
+	require.NotNil(t, createReq, "expected a create request for synthetic check")
+	body := string(createReq.Body)
 	assert.NotContains(t, body, "deleted-check-uuid")
 }

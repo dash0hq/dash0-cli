@@ -22,30 +22,38 @@ func StripViewServerFields(v *dash0api.ViewDefinition) {
 }
 
 // ImportView checks existence by Dash0Comid, strips server-generated fields,
-// and calls the import API.
+// and creates or updates the view via the standard CRUD APIs.
 func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.ViewDefinition, dataset *string) (ImportResult, error) {
 	StripViewServerFields(view)
 
 	// Check if view exists using its ID
 	action := ActionCreated
 	var before any
+	id := ""
 	if view.Metadata.Labels.Dash0Comid != nil && *view.Metadata.Labels.Dash0Comid != "" {
-		existing, err := apiClient.GetView(ctx, *view.Metadata.Labels.Dash0Comid, dataset)
+		id = *view.Metadata.Labels.Dash0Comid
+		existing, err := apiClient.GetView(ctx, id, dataset)
 		if err == nil {
 			action = ActionUpdated
 			before = existing
 		} else {
 			// Asset not found — strip the ID so the API creates a fresh asset.
 			view.Metadata.Labels.Dash0Comid = nil
+			id = ""
 		}
 	}
 
-	result, err := apiClient.ImportView(ctx, view, dataset)
+	var result *dash0api.ViewDefinition
+	var err error
+	if action == ActionUpdated {
+		result, err = apiClient.UpdateView(ctx, id, view, dataset)
+	} else {
+		result, err = apiClient.CreateView(ctx, view, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}
 
-	id := ""
 	if result.Metadata.Labels != nil && result.Metadata.Labels.Dash0Comid != nil {
 		id = *result.Metadata.Labels.Dash0Comid
 	}

@@ -22,30 +22,38 @@ func StripSyntheticCheckServerFields(c *dash0api.SyntheticCheckDefinition) {
 }
 
 // ImportSyntheticCheck checks existence by Dash0Comid, strips server-generated
-// fields, and calls the import API.
+// fields, and creates or updates the synthetic check via the standard CRUD APIs.
 func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportResult, error) {
 	StripSyntheticCheckServerFields(check)
 
 	// Check if synthetic check exists using its ID
 	action := ActionCreated
 	var before any
+	id := ""
 	if check.Metadata.Labels.Dash0Comid != nil && *check.Metadata.Labels.Dash0Comid != "" {
-		existing, err := apiClient.GetSyntheticCheck(ctx, *check.Metadata.Labels.Dash0Comid, dataset)
+		id = *check.Metadata.Labels.Dash0Comid
+		existing, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
 		if err == nil {
 			action = ActionUpdated
 			before = existing
 		} else {
 			// Asset not found — strip the ID so the API creates a fresh asset.
 			check.Metadata.Labels.Dash0Comid = nil
+			id = ""
 		}
 	}
 
-	result, err := apiClient.ImportSyntheticCheck(ctx, check, dataset)
+	var result *dash0api.SyntheticCheckDefinition
+	var err error
+	if action == ActionUpdated {
+		result, err = apiClient.UpdateSyntheticCheck(ctx, id, check, dataset)
+	} else {
+		result, err = apiClient.CreateSyntheticCheck(ctx, check, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}
 
-	id := ""
 	if result.Metadata.Labels != nil && result.Metadata.Labels.Dash0Comid != nil {
 		id = *result.Metadata.Labels.Dash0Comid
 	}

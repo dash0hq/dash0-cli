@@ -21,10 +21,10 @@ func StripDashboardServerFields(d *dash0api.DashboardDefinition) {
 }
 
 // ImportDashboard checks existence by dash0Extensions.id,
-// strips server-generated fields when the asset is not found, and calls the
-// import API. The import API uses dash0Extensions.id as the upsert key; when
-// the input has no id, a fresh UUID is generated so re-applying the exported
-// YAML updates the dashboard instead of creating a duplicate.
+// strips server-generated fields, and creates or updates the dashboard via the
+// standard CRUD APIs. When the input has no id (e.g. fresh YAML), a fresh UUID
+// is generated so re-applying the exported YAML updates the dashboard instead
+// of creating a duplicate.
 func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
 	StripDashboardServerFields(dashboard)
 
@@ -46,7 +46,7 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 		}
 	}
 
-	// Ensure dash0Extensions.id is set so the import API can perform upserts.
+	// Ensure dash0Extensions.id is set so the create API assigns a stable ID.
 	// When the input has no id (e.g. fresh YAML), generate a unique one. This
 	// makes re-applying the exported output update the existing dashboard rather
 	// than creating a duplicate.
@@ -58,7 +58,13 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 		dashboard.Metadata.Dash0Extensions.Id = &id
 	}
 
-	result, err := apiClient.ImportDashboard(ctx, dashboard, dataset)
+	var result *dash0api.DashboardDefinition
+	var err error
+	if action == ActionUpdated {
+		result, err = apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
+	} else {
+		result, err = apiClient.CreateDashboard(ctx, dashboard, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}

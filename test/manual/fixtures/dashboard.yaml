@@ -1,14 +1,6 @@
 kind: Dashboard
 metadata:
-  annotations:
-    dash0.com/source: ui
-  createdAt: "2026-02-13T17:54:17.121675493Z"
-  dash0Extensions:
-    dataset: default
-    id: 14e92422-c094-4cc6-a857-7d892044749e
   name: ""
-  updatedAt: "2026-02-13T17:54:17.121675493Z"
-  version: 8
 spec:
   display:
     description: ""
