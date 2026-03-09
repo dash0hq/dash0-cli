@@ -33,7 +33,7 @@ if [ $? -ne 0 ]; then
   echo "FAIL: dashboards list -o json failed"
   exit 1
 fi
-ID=$(echo "$LIST_JSON" | jq -r --arg name "$ASSET_NAME" '[.[] | select(.name == $name)][0].id // empty')
+ID=$(echo "$LIST_JSON" | jq -r --arg name "$ASSET_NAME" '[.[] | select(.spec.display.name == $name)][0].metadata.dash0Extensions.id // empty')
 if [ -z "$ID" ]; then
   echo "FAIL: Could not find created dashboard '$ASSET_NAME' in list"
   exit 1
@@ -76,7 +76,7 @@ if [ $? -ne 0 ]; then
   echo "FAIL: dashboards list -o json failed"
   exit 1
 fi
-if echo "$LIST_JSON" | jq -e --arg id "$ID" '.[] | select(.id == $id)' > /dev/null 2>&1; then
+if echo "$LIST_JSON" | jq -e --arg id "$ID" '.[] | select(.metadata.dash0Extensions.id == $id)' > /dev/null 2>&1; then
   echo "FAIL: Dashboard '$ID' still exists after deletion"
   exit 1
 fi
