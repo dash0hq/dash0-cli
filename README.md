@@ -16,8 +16,12 @@ Interactive prompts can be skipped with `--force`.
 
 ```bash
 brew tap dash0hq/dash0-cli https://github.com/dash0hq/dash0-cli
-brew install dash0hq/dash0-cli/dash0
+brew install --cask dash0hq/dash0-cli/dash0
 ```
+
+> [!NOTE]
+> The `dash0` CLI was previously distributed as a Homebrew Formula.
+> If you installed it via `brew install dash0hq/dash0-cli/dash0`, run `brew update` to migrate to the Cask automatically.
 
 ### GitHub Releases
 

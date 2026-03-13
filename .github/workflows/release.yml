@@ -51,3 +51,15 @@ jobs:
           args: release --clean --release-notes release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+
+      - name: Remove old Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/contents/Formula/dash0.rb \
+            -f message="chore: remove old Homebrew formula in favor of Cask" \
+            -f sha="$(gh api repos/${{ github.repository }}/contents/Formula/dash0.rb --jq .sha)" \
+            2>/dev/null || echo "Formula/dash0.rb already removed, skipping."

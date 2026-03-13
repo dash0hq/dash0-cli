@@ -96,7 +96,7 @@ docker_signs:
       - "${artifact}"
       - "--yes"
 
-brews:
+homebrew_casks:
   - name: dash0
     repository:
       owner: dash0hq
@@ -104,11 +104,18 @@ brews:
     commit_author:
       name: github-actions[bot]
       email: github-actions[bot]@users.noreply.github.com
-    commit_msg_template: "chore: brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    directory: Formula
+    commit_msg_template: "chore: brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    directory: Casks
     homepage: https://github.com/dash0hq/dash0-cli
     description: CLI to interact with Dash0
-    extra_install: |
-      bash_completion.install "completions/dash0.bash" => "dash0"
-      zsh_completion.install "completions/dash0.zsh" => "_dash0"
-      fish_completion.install "completions/dash0.fish" => "dash0.fish"
+    binaries:
+      - dash0
+    completions:
+      bash: completions/dash0.bash
+      zsh: completions/dash0.zsh
+      fish: completions/dash0.fish
+    hooks:
+      post:
+        install: |
+          system_command "/usr/bin/xattr",
+                         args: ["-dr", "com.apple.quarantine", "#{staged_path}/dash0"]
