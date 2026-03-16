@@ -51,6 +51,13 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		StripSyntheticCheckServerFields(&c)
 		stripped = &c
+	case *dash0api.RecordingRuleGroupDefinition:
+		var g dash0api.RecordingRuleGroupDefinition
+		if err := sigsyaml.Unmarshal(jsonBytes, &g); err != nil {
+			return "", fmt.Errorf("failed to unmarshal recording rule group: %w", err)
+		}
+		StripRecordingRuleGroupServerFields(&g)
+		stripped = &g
 	default:
 		stripped = asset
 	}

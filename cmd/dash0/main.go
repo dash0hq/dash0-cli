@@ -14,6 +14,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/members"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
+	"github.com/dash0hq/dash0-cli/internal/recordingrulegroups"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/tracing"
@@ -63,6 +64,7 @@ func init() {
 	rootCmd.AddCommand(logging.NewLogsCmd())
 	rootCmd.AddCommand(members.NewMembersCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
+	rootCmd.AddCommand(recordingrulegroups.NewRecordingRuleGroupsCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())
 	rootCmd.AddCommand(tracing.NewSpansCmd())

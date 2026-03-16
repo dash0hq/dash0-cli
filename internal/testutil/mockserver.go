@@ -65,6 +65,13 @@ const (
 	FixtureSyntheticChecksImportSuccess = "syntheticchecks/import_success.json"
 	FixtureSyntheticChecksNotFound      = "syntheticchecks/error_not_found.json"
 
+	// Recording rule groups fixtures
+	FixtureRecordingRuleGroupsListSuccess   = "recordingrulegroups/list_success.json"
+	FixtureRecordingRuleGroupsListEmpty     = "recordingrulegroups/list_empty.json"
+	FixtureRecordingRuleGroupsGetSuccess    = "recordingrulegroups/get_success.json"
+	FixtureRecordingRuleGroupsImportSuccess = "recordingrulegroups/import_success.json"
+	FixtureRecordingRuleGroupsNotFound      = "recordingrulegroups/error_not_found.json"
+
 	// Teams fixtures
 	FixtureTeamsListSuccess   = "teams/list_success.json"
 	FixtureTeamsListEmpty     = "teams/list_empty.json"
@@ -482,6 +489,47 @@ func (m *MockServer) WithSyntheticChecksUpdate(fixture string) *MockServer {
 // WithSyntheticChecksDelete sets up the mock server to accept synthetic check deletion.
 func (m *MockServer) WithSyntheticChecksDelete() *MockServer {
 	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`), MockResponse{
+		StatusCode: http.StatusNoContent,
+	})
+}
+
+// WithRecordingRuleGroupsList sets up the mock server to return a list of recording rule groups.
+func (m *MockServer) WithRecordingRuleGroupsList(fixture string) *MockServer {
+	return m.On(http.MethodGet, "/api/recording-rule-groups", MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+	})
+}
+
+// WithRecordingRuleGroupsGet sets up the mock server to return a recording rule group by origin or ID.
+func (m *MockServer) WithRecordingRuleGroupsGet(fixture string) *MockServer {
+	return m.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/recording-rule-groups/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+	})
+}
+
+// WithRecordingRuleGroupsCreate sets up the mock server to accept recording rule group creation.
+func (m *MockServer) WithRecordingRuleGroupsCreate(fixture string) *MockServer {
+	return m.On(http.MethodPost, "/api/recording-rule-groups", MockResponse{
+		StatusCode: http.StatusCreated,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithRecordingRuleGroupsUpdate sets up the mock server to accept recording rule group updates.
+func (m *MockServer) WithRecordingRuleGroupsUpdate(fixture string) *MockServer {
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/recording-rule-groups/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithRecordingRuleGroupsDelete sets up the mock server to accept recording rule group deletion.
+func (m *MockServer) WithRecordingRuleGroupsDelete() *MockServer {
+	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/recording-rule-groups/[^/]+$`), MockResponse{
 		StatusCode: http.StatusNoContent,
 	})
 }

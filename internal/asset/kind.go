@@ -48,6 +48,8 @@ func KindDisplayName(kind string) string {
 		return "PrometheusRule"
 	case "persesdashboard":
 		return "PersesDashboard"
+	case "recordingrulegroup":
+		return "Recording rule group"
 	default:
 		return kind
 	}

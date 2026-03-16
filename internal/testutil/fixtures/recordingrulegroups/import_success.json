@@ -1,0 +1,35 @@
+{
+  "kind": "Dash0RecordingRuleGroup",
+  "metadata": {
+    "name": "http_metrics",
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "aaaa1111-1234-5678-abcd-000000000001",
+      "dash0.com/origin": "tf_aaaa1111-1234-5678-abcd-000000000001",
+      "dash0.com/version": "1"
+    }
+  },
+  "spec": {
+    "display": {
+      "name": "HTTP Metrics"
+    },
+    "enabled": true,
+    "interval": "1m",
+    "rules": [
+      {
+        "record": "http_request_rate",
+        "expression": "rate(http_requests_total[5m])"
+      }
+    ],
+    "permissions": [
+      {
+        "actions": [
+          "recording_rule_group:read",
+          "recording_rule_group:write",
+          "recording_rule_group:delete"
+        ],
+        "role": "admin"
+      }
+    ]
+  }
+}
