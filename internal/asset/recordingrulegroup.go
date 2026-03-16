@@ -13,14 +13,33 @@ import (
 // Fields NOT stripped (user-specified, round-trippable):
 //   - dash0.com/origin — external identifier set by Terraform/operator/user
 //   - dash0.com/dataset — dataset routing, user-supplied
+//   - annotations.dash0.com/folder-path — optional UI folder path
+//   - annotations.dash0.com/sharing — optional sharing config
 func StripRecordingRuleGroupServerFields(g *dash0api.RecordingRuleGroupDefinition) {
 	if g.Metadata.Labels != nil {
 		g.Metadata.Labels.Dash0Comid = nil
 		g.Metadata.Labels.Dash0Comversion = nil
 		g.Metadata.Labels.Dash0Comsource = nil
 	}
+	if g.Metadata.Annotations != nil {
+		g.Metadata.Annotations.Dash0ComcreatedAt = nil
+		g.Metadata.Annotations.Dash0ComdeletedAt = nil
+		g.Metadata.Annotations.Dash0ComupdatedAt = nil
+	}
 	g.Spec.Permissions = nil
 	g.Spec.PermittedActions = nil
+}
+
+// InjectRecordingRuleGroupVersion copies the dash0.com/version label from source
+// into group before an update call, to satisfy the API's optimistic concurrency check.
+func InjectRecordingRuleGroupVersion(group, source *dash0api.RecordingRuleGroupDefinition) {
+	if source.Metadata.Labels == nil || source.Metadata.Labels.Dash0Comversion == nil {
+		return
+	}
+	if group.Metadata.Labels == nil {
+		group.Metadata.Labels = &dash0api.RecordingRuleGroupLabels{}
+	}
+	group.Metadata.Labels.Dash0Comversion = source.Metadata.Labels.Dash0Comversion
 }
 
 // ImportRecordingRuleGroup checks existence by origin or ID, strips
@@ -45,6 +64,8 @@ func ImportRecordingRuleGroup(ctx context.Context, apiClient dash0api.Client, gr
 		if err == nil {
 			action = ActionUpdated
 			before = existing
+			// Inject the current version for optimistic concurrency control.
+			InjectRecordingRuleGroupVersion(group, existing)
 		} else {
 			// Asset not found — clear the origin so the API creates a fresh asset.
 			group.Metadata.Labels.Dash0Comorigin = nil
