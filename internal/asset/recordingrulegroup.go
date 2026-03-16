@@ -9,15 +9,16 @@ import (
 // StripRecordingRuleGroupServerFields removes server-generated fields from a
 // recording rule group definition. Used by both Import (to avoid sending
 // rejected fields to the API) and diff rendering (to suppress noise).
+//
+// Fields NOT stripped (user-specified, round-trippable):
+//   - dash0.com/origin — external identifier set by Terraform/operator/user
+//   - dash0.com/dataset — dataset routing, user-supplied
 func StripRecordingRuleGroupServerFields(g *dash0api.RecordingRuleGroupDefinition) {
-	if g.Metadata.Labels == nil {
-		g.Metadata.Labels = &dash0api.RecordingRuleGroupLabels{}
+	if g.Metadata.Labels != nil {
+		g.Metadata.Labels.Dash0Comid = nil
+		g.Metadata.Labels.Dash0Comversion = nil
+		g.Metadata.Labels.Dash0Comsource = nil
 	}
-	g.Metadata.Labels.Dash0Comid = nil
-	g.Metadata.Labels.Dash0Comorigin = nil
-	g.Metadata.Labels.Dash0Comversion = nil
-	g.Metadata.Labels.Dash0Comdataset = nil
-	g.Metadata.Labels.Dash0Comsource = nil
 	g.Spec.Permissions = nil
 	g.Spec.PermittedActions = nil
 }
@@ -28,8 +29,11 @@ func StripRecordingRuleGroupServerFields(g *dash0api.RecordingRuleGroupDefinitio
 func ImportRecordingRuleGroup(ctx context.Context, apiClient dash0api.Client, group *dash0api.RecordingRuleGroupDefinition, dataset *string) (ImportResult, error) {
 	StripRecordingRuleGroupServerFields(group)
 
-	// Inject dataset into body — Create/Update have no dataset query param.
+	// Override dataset in body if --dataset flag was provided.
 	if dataset != nil && *dataset != "" {
+		if group.Metadata.Labels == nil {
+			group.Metadata.Labels = &dash0api.RecordingRuleGroupLabels{}
+		}
 		group.Metadata.Labels.Dash0Comdataset = dataset
 	}
 
