@@ -68,6 +68,6 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		})
 	}
 
-	fmt.Printf("Recording rule group %q %s successfully\n", result.Name, result.Action)
+	fmt.Printf("Recording rule group %q %s\n", result.Name, result.Action)
 	return nil
 }

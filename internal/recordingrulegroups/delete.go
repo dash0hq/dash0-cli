@@ -65,6 +65,6 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		})
 	}
 
-	fmt.Printf("Recording rule group %q deleted successfully\n", id)
+	fmt.Printf("Recording rule group %q deleted\n", id)
 	return nil
 }
