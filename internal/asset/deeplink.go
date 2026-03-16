@@ -15,9 +15,8 @@ const (
 	deeplinkPathCheckRule      = "/goto/alerting/check-rules"
 	deeplinkPathSyntheticCheck = "/goto/alerting/synthetics"
 	deeplinkPathView           = "/goto/logs"
-	deeplinkPathTeam                 = "/goto/settings/teams"
-	deeplinkPathMember               = "/goto/settings/members"
-	deeplinkPathRecordingRuleGroup   = "/goto/alerting/recording-rule-groups"
+	deeplinkPathTeam           = "/goto/settings/teams"
+	deeplinkPathMember         = "/goto/settings/members"
 
 	deeplinkQueryRecordingRuleGroup = "recording_rule_group_id"
 
@@ -247,8 +246,6 @@ func deeplinkPathAndQuery(assetType string) (string, string) {
 		return deeplinkPathTeam, deeplinkQueryTeam
 	case "member":
 		return deeplinkPathMember, deeplinkQueryMember
-	case "dash0recordingrulegroup", "recording rule group":
-		return deeplinkPathRecordingRuleGroup, deeplinkQueryRecordingRuleGroup
 	default:
 		return "", ""
 	}
