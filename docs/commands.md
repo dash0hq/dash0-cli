@@ -480,14 +480,25 @@ Recording rule group:
 kind: Dash0RecordingRuleGroup
 metadata:
   name: http_metrics
+  annotations:
+    dash0.com/folder-path: /infrastructure/http
+    dash0.com/sharing: "team:team_01abc,user:alice@example.com"
 spec:
   display:
     name: HTTP Metrics
   enabled: true
   interval: 1m
   rules:
-    - record: job:http_requests_total:rate5m
-      expr: sum(rate(http_requests_total[5m])) by (job)
+    - record: http_requests_total:rate5m
+      expression: rate(http_requests_total[5m])
+      labels:
+        env: production
+    - record: http_errors_total:rate5m
+      expression: rate(http_requests_total{status=~"5.."}[5m])
+      labels:
+        env: production
+    - record: http_request_duration_seconds:p99
+      expression: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service_name))
 ```
 
 Multi-document file (separated by `---`):

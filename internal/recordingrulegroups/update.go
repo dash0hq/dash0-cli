@@ -81,7 +81,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return asset.PrintDiff(os.Stdout, "Recording rule group", group.Metadata.Name, before, &group)
 	}
 
-	// Inject the current version for optimistic concurrency control.
+	// Inject dataset and version before the PUT.
+	asset.InjectRecordingRuleGroupDataset(&group, dataset)
 	asset.InjectRecordingRuleGroupVersion(&group, before)
 	result, err := apiClient.UpdateRecordingRuleGroup(ctx, id, &group)
 	if err != nil {

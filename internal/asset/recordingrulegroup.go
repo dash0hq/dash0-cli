@@ -30,6 +30,19 @@ func StripRecordingRuleGroupServerFields(g *dash0api.RecordingRuleGroupDefinitio
 	g.Spec.PermittedActions = nil
 }
 
+// InjectRecordingRuleGroupDataset injects the dataset into metadata.labels, which
+// is how Create and Update receive the dataset (no query param for these endpoints).
+// If dataset is nil or empty, the existing value in the file is left unchanged.
+func InjectRecordingRuleGroupDataset(group *dash0api.RecordingRuleGroupDefinition, dataset *string) {
+	if dataset == nil || *dataset == "" {
+		return
+	}
+	if group.Metadata.Labels == nil {
+		group.Metadata.Labels = &dash0api.RecordingRuleGroupLabels{}
+	}
+	group.Metadata.Labels.Dash0Comdataset = dataset
+}
+
 // InjectRecordingRuleGroupVersion copies the dash0.com/version label from source
 // into group before an update call, to satisfy the API's optimistic concurrency check.
 func InjectRecordingRuleGroupVersion(group, source *dash0api.RecordingRuleGroupDefinition) {
@@ -49,12 +62,7 @@ func ImportRecordingRuleGroup(ctx context.Context, apiClient dash0api.Client, gr
 	StripRecordingRuleGroupServerFields(group)
 
 	// Override dataset in body if --dataset flag was provided.
-	if dataset != nil && *dataset != "" {
-		if group.Metadata.Labels == nil {
-			group.Metadata.Labels = &dash0api.RecordingRuleGroupLabels{}
-		}
-		group.Metadata.Labels.Dash0Comdataset = dataset
-	}
+	InjectRecordingRuleGroupDataset(group, dataset)
 
 	action := ActionCreated
 	var before any

@@ -10,7 +10,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 func newCreateCmd() *cobra.Command {
@@ -19,10 +19,8 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "create -f <file>",
 		Aliases: []string{"add"},
-		Short:   "Create a recording rule group from a file",
-		Long: `Create a new recording rule group from a YAML or JSON definition file. Use '-f -' to read from stdin.
-
-If a recording rule group with the same origin already exists, it will be updated instead.` + internal.CONFIG_HINT,
+		Short: "Create a recording rule group from a file",
+		Long:  `Create a new recording rule group from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 recording-rule-groups create -f group.yaml
 
@@ -48,26 +46,29 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 
 	if flags.DryRun {
 		// Validate that it's valid YAML by marshaling
-		if _, err := yaml.Marshal(&group); err != nil {
+		if _, err := sigsyaml.Marshal(&group); err != nil {
 			return fmt.Errorf("recording rule group definition is not valid: %w", err)
 		}
 		fmt.Println("Dry run: recording rule group definition is valid")
 		return nil
 	}
 
+	asset.StripRecordingRuleGroupServerFields(&group)
+	asset.InjectRecordingRuleGroupDataset(&group, client.ResolveDataset(ctx, flags.Dataset))
+
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	result, importErr := asset.ImportRecordingRuleGroup(ctx, apiClient, &group, client.ResolveDataset(ctx, flags.Dataset))
-	if importErr != nil {
-		return client.HandleAPIError(importErr, client.ErrorContext{
+	result, err := apiClient.CreateRecordingRuleGroup(ctx, &group)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "recording rule group",
-			AssetName: group.Metadata.Name,
+			AssetName: asset.ExtractRecordingRuleGroupName(&group),
 		})
 	}
 
-	fmt.Printf("Recording rule group %q %s\n", result.Name, result.Action)
+	fmt.Printf("Recording rule group %q created\n", asset.ExtractRecordingRuleGroupName(result))
 	return nil
 }
