@@ -1,6 +1,7 @@
 package query
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -55,6 +56,10 @@ var multiValueOperators = map[dash0api.AttributeFilterOperator]bool{
 }
 
 // ParseFilters parses a list of filter strings into FilterCriteria.
+// Each string can be either a text expression ("key [operator] value") or a JSON
+// value. A JSON array of filter objects expands into multiple filters; a single
+// JSON object is treated as one filter. This allows users to paste the output of
+// the Dash0 UI "copy filter criteria" feature directly into --filter.
 func ParseFilters(filterStrings []string) (*dash0api.FilterCriteria, error) {
 	if len(filterStrings) == 0 {
 		return nil, nil
@@ -62,11 +67,26 @@ func ParseFilters(filterStrings []string) (*dash0api.FilterCriteria, error) {
 
 	filters := make(dash0api.FilterCriteria, 0, len(filterStrings))
 	for _, f := range filterStrings {
-		filter, err := ParseFilter(f)
-		if err != nil {
-			return nil, fmt.Errorf("invalid filter %q: %w", f, err)
+		trimmed := strings.TrimSpace(f)
+		if strings.HasPrefix(trimmed, "[") {
+			parsed, err := parseJSONFilterArray(trimmed)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON filter array: %w", err)
+			}
+			filters = append(filters, parsed...)
+		} else if strings.HasPrefix(trimmed, "{") {
+			parsed, err := parseJSONFilter(trimmed)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON filter object: %w", err)
+			}
+			filters = append(filters, parsed)
+		} else {
+			filter, err := ParseFilter(f)
+			if err != nil {
+				return nil, fmt.Errorf("invalid filter %q: %w", f, err)
+			}
+			filters = append(filters, filter)
 		}
-		filters = append(filters, filter)
 	}
 	return &filters, nil
 }
@@ -235,4 +255,92 @@ func nextQuotedToken(s string) (token, rest string, err error) {
 		return parts[0], strings.TrimSpace(parts[1]), nil
 	}
 	return parts[0], "", nil
+}
+
+// jsonFilter is the intermediate representation for a JSON filter object as
+// produced by the Dash0 UI "copy filter criteria" feature.
+type jsonFilter struct {
+	Key      string   `json:"key"`
+	Operator string   `json:"operator"`
+	Value    string   `json:"value,omitempty"`
+	Values   []string `json:"values,omitempty"`
+}
+
+// parseJSONFilterArray parses a JSON array of filter objects.
+func parseJSONFilterArray(s string) ([]dash0api.AttributeFilter, error) {
+	var raw []jsonFilter
+	if err := json.Unmarshal([]byte(s), &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	filters := make([]dash0api.AttributeFilter, 0, len(raw))
+	for _, jf := range raw {
+		f, err := convertJSONFilter(jf)
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, f)
+	}
+	return filters, nil
+}
+
+// parseJSONFilter parses a single JSON filter object.
+func parseJSONFilter(s string) (dash0api.AttributeFilter, error) {
+	var jf jsonFilter
+	if err := json.Unmarshal([]byte(s), &jf); err != nil {
+		return dash0api.AttributeFilter{}, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	return convertJSONFilter(jf)
+}
+
+// convertJSONFilter converts a parsed JSON filter into an API AttributeFilter.
+func convertJSONFilter(jf jsonFilter) (dash0api.AttributeFilter, error) {
+	if jf.Key == "" {
+		return dash0api.AttributeFilter{}, fmt.Errorf("filter object missing \"key\" field")
+	}
+	if jf.Operator == "" {
+		return dash0api.AttributeFilter{}, fmt.Errorf("filter object missing \"operator\" field")
+	}
+
+	op, known := knownOperators[jf.Operator]
+	if !known {
+		return dash0api.AttributeFilter{}, fmt.Errorf("unknown operator %q", jf.Operator)
+	}
+
+	filter := dash0api.AttributeFilter{
+		Key:      jf.Key,
+		Operator: op,
+	}
+
+	if noValueOperators[op] {
+		return filter, nil
+	}
+
+	if multiValueOperators[op] {
+		if len(jf.Values) == 0 {
+			return dash0api.AttributeFilter{}, fmt.Errorf("operator %q requires \"values\" array", jf.Operator)
+		}
+		items := make([]dash0api.AttributeFilter_Values_Item, 0, len(jf.Values))
+		for _, v := range jf.Values {
+			var item dash0api.AttributeFilter_Values_Item
+			if err := item.FromAttributeFilterStringValue(v); err != nil {
+				return dash0api.AttributeFilter{}, fmt.Errorf("failed to build filter value: %w", err)
+			}
+			items = append(items, item)
+		}
+		filter.Values = &items
+		return filter, nil
+	}
+
+	if jf.Value == "" {
+		return dash0api.AttributeFilter{}, fmt.Errorf("operator %q requires a \"value\" field", jf.Operator)
+	}
+	var val dash0api.AttributeFilter_Value
+	if err := val.FromAttributeFilterStringValue(jf.Value); err != nil {
+		return dash0api.AttributeFilter{}, fmt.Errorf("failed to build filter value: %w", err)
+	}
+	filter.Value = &val
+	return filter, nil
 }

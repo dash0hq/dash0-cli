@@ -101,6 +101,10 @@ func newQueryCmd() *cobra.Command {
       --filter "otel.span.status.code is ERROR" \
       --from now-1h --limit 100
 
+  # Use JSON filter criteria copied from the Dash0 UI
+  dash0 --experimental spans query \
+      --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+
   # Output as CSV for further processing
   dash0 --experimental spans query -o csv
 
@@ -163,7 +167,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, json (OTLP/JSON), csv (default: table)")
 	cmd.Flags().StringVar(&flags.From, "from", "now-15m", "Start of time range (e.g. now-1h, 2024-01-25T10:00:00.000Z)")
 	cmd.Flags().StringVar(&flags.To, "to", "now", "End of time range (e.g. now, 2024-01-25T11:00:00.000Z)")
-	cmd.Flags().StringArrayVar(&flags.Filter, "filter", nil, "Filter expression as 'key [operator] value' (repeatable)")
+	cmd.Flags().StringArrayVar(&flags.Filter, "filter", nil, "Filter expression as 'key [operator] value', or a JSON array/object from the Dash0 UI (repeatable)")
 	cmd.Flags().IntVar(&flags.Limit, "limit", 50, "Maximum number of spans to return")
 	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and CSV output")
 	cmd.Flags().StringArrayVar(&flags.Column, "column", nil, "Column to display (alias or attribute key; repeatable; table and CSV only)")
