@@ -49,7 +49,6 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -93,11 +92,11 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		}
 		return formatter.PrintJSON(definitions)
 	default:
-		return printRecordingRuleGroupTable(formatter, groups, format, apiUrl)
+		return printRecordingRuleGroupTable(formatter, groups, format)
 	}
 }
 
-func printRecordingRuleGroupTable(f *output.Formatter, groups []*dash0api.RecordingRuleGroupDefinition, format output.Format, apiUrl string) error {
+func printRecordingRuleGroupTable(f *output.Formatter, groups []*dash0api.RecordingRuleGroupDefinition, format output.Format) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			g := item.(*dash0api.RecordingRuleGroupDefinition)
@@ -135,10 +134,6 @@ func printRecordingRuleGroupTable(f *output.Formatter, groups []*dash0api.Record
 					return *g.Metadata.Labels.Dash0Comorigin
 				}
 				return ""
-			}},
-			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
-				g := item.(*dash0api.RecordingRuleGroupDefinition)
-				return asset.DeeplinkURL(apiUrl, "recording rule", asset.ExtractRecordingRuleGroupID(g))
 			}},
 		)
 	}
