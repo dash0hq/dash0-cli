@@ -49,7 +49,7 @@ func KindDisplayName(kind string) string {
 	case "persesdashboard":
 		return "PersesDashboard"
 	case "recordingrulegroup":
-		return "Recording rule group"
+		return "Recording rule"
 	default:
 		return kind
 	}

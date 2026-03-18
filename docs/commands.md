@@ -168,7 +168,7 @@ Auth Token: ...ULSzVkM
 
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All five asset types (`dashboards`, `check-rules`, `recording-rule-groups`, `synthetic-checks`, `views`) share the same CRUD subcommands.
+All five asset types (`dashboards`, `check-rules`, `recording-rules`, `synthetic-checks`, `views`) share the same CRUD subcommands.
 The examples below use `dashboards`, but the same patterns apply to every asset type.
 
 ### `list`
@@ -355,7 +355,7 @@ Aliases: `remove`
 |------------|---------|-------|
 | Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
-| Recording rule groups | `dash0 recording-rule-groups <subcommand>` | Alias: `rrg` |
+| Recording rules | `dash0 recording-rules <subcommand>` | Alias: `rr` |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | Views | `dash0 views <subcommand>` | |
 
@@ -474,7 +474,7 @@ spec:
   interval: 60s
 ```
 
-Recording rule group:
+Recording rule:
 
 ```yaml
 kind: Dash0RecordingRuleGroup

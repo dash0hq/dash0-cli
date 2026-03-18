@@ -222,18 +222,18 @@ dash0 views update [id] -f view.yaml
 dash0 views delete <id> [--force]
 ```
 
-### Recording rule groups
+### Recording rules
 
 ```bash
-dash0 recording-rule-groups list
-dash0 recording-rule-groups get <id>
-dash0 recording-rule-groups get <id> -o yaml
-dash0 recording-rule-groups create -f group.yaml
-dash0 recording-rule-groups update [id] -f group.yaml
-dash0 recording-rule-groups delete <id> [--force]
+dash0 recording-rules list
+dash0 recording-rules get <id>
+dash0 recording-rules get <id> -o yaml
+dash0 recording-rules create -f recording-rule.yaml
+dash0 recording-rules update [id] -f recording-rule.yaml
+dash0 recording-rules delete <id> [--force]
 ```
 
-Alias: `rrg` (e.g. `dash0 rrg list`)
+Alias: `rr` (e.g. `dash0 rr list`)
 
 ### Logging
 

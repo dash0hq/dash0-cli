@@ -17,16 +17,16 @@ func newGetCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "get <id>",
-		Short: "Get a recording rule group by ID",
-		Long:  `Retrieve a recording rule group definition by its origin or ID.` + internal.CONFIG_HINT,
-		Example: `  # Show recording rule group summary
-  dash0 recording-rule-groups get <id>
+		Short: "Get a recording rule by ID",
+		Long:  `Retrieve a recording rule definition by its origin or ID.` + internal.CONFIG_HINT,
+		Example: `  # Show recording rule summary
+  dash0 recording-rules get <id>
 
   # Export as YAML (suitable for re-applying)
-  dash0 recording-rule-groups get <id> -o yaml > group.yaml
+  dash0 recording-rules get <id> -o yaml > recording-rule.yaml
 
   # Export as JSON
-  dash0 recording-rule-groups get <id> -o json`,
+  dash0 recording-rules get <id> -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd.Context(), args[0], &flags)
@@ -47,7 +47,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	group, err := apiClient.GetRecordingRuleGroup(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "recording rule group",
+			AssetType: "recording rule",
 			AssetID:   id,
 		})
 	}
@@ -74,7 +74,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 				fmt.Printf("Origin: %s\n", *group.Metadata.Labels.Dash0Comorigin)
 			}
 		}
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "recording rule group", id); deeplinkURL != "" {
+		if deeplinkURL := asset.DeeplinkURL(apiUrl, "recording rule", id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

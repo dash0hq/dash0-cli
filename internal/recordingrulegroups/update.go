@@ -17,20 +17,20 @@ func newUpdateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update [id] -f <file>",
-		Short: "Update a recording rule group from a file",
-		Long: `Update an existing recording rule group from a YAML or JSON definition file. Use '-f -' to read from stdin.
+		Short: "Update a recording rule from a file",
+		Long: `Update an existing recording rule from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
 If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
-		Example: `  # Update a recording rule group from a file
-  dash0 recording-rule-groups update <id> -f group.yaml
+		Example: `  # Update a recording rule from a file
+  dash0 recording-rules update <id> -f recording-rule.yaml
 
   # Update using the ID from the file
-  dash0 recording-rule-groups update -f group.yaml
+  dash0 recording-rules update -f recording-rule.yaml
 
   # Export, edit, and update
-  dash0 recording-rule-groups get <id> -o yaml > group.yaml
-  # edit group.yaml
-  dash0 recording-rule-groups update -f group.yaml`,
+  dash0 recording-rules get <id> -o yaml > recording-rule.yaml
+  # edit recording-rule.yaml
+  dash0 recording-rules update -f recording-rule.yaml`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(cmd.Context(), args, &flags)
@@ -44,7 +44,7 @@ If the ID argument is omitted, the ID is extracted from the file content.` + int
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
 	var group dash0api.RecordingRuleGroupDefinition
 	if err := asset.ReadDefinition(flags.File, &group, os.Stdin); err != nil {
-		return fmt.Errorf("failed to read recording rule group definition: %w", err)
+		return fmt.Errorf("failed to read recording rule definition: %w", err)
 	}
 	asset.StripRecordingRuleGroupServerFields(&group)
 
@@ -58,7 +58,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	} else {
 		id = fileID
 		if id == "" {
-			return fmt.Errorf("no recording rule group ID provided as argument, and the file does not contain an ID")
+			return fmt.Errorf("no recording rule ID provided as argument, and the file does not contain an ID")
 		}
 	}
 
@@ -72,13 +72,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	before, err := apiClient.GetRecordingRuleGroup(ctx, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "recording rule group",
+			AssetType: "recording rule",
 			AssetID:   id,
 		})
 	}
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Recording rule group", group.Metadata.Name, before, &group)
+		return asset.PrintDiff(os.Stdout, "Recording rule", group.Metadata.Name, before, &group)
 	}
 
 	// Inject dataset and version before the PUT.
@@ -87,11 +87,11 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	result, err := apiClient.UpdateRecordingRuleGroup(ctx, id, &group)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "recording rule group",
+			AssetType: "recording rule",
 			AssetID:   id,
 			AssetName: asset.ExtractRecordingRuleGroupName(&group),
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, "Recording rule group", asset.ExtractRecordingRuleGroupName(result), before, result)
+	return asset.PrintDiff(os.Stdout, "Recording rule", asset.ExtractRecordingRuleGroupName(result), before, result)
 }

@@ -38,7 +38,7 @@ func TestListRecordingRuleGroups_JSONFormat(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	// JSON output should contain full recording rule group definitions
+	// JSON output should contain full recording rule definitions
 	assert.Contains(t, output, `"kind": "Dash0RecordingRuleGroup"`)
 	assert.Contains(t, output, `"metadata"`)
 	assert.Contains(t, output, `"spec"`)
@@ -64,7 +64,7 @@ func TestListRecordingRuleGroups_YAMLFormat(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	// YAML output should contain full recording rule group definitions as multi-document YAML
+	// YAML output should contain full recording rule definitions as multi-document YAML
 	assert.Contains(t, output, "kind: Dash0RecordingRuleGroup")
 	assert.Contains(t, output, "metadata:")
 	assert.Contains(t, output, "spec:")

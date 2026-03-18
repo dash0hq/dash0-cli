@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rule-groups`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rule-groups`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`
 - Group related functionality: `config profiles` for profile management
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `recording-rule-groups`) use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `recording-rules`) use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -72,7 +72,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `View`                       | View                 |
 | `PrometheusRule`             | PrometheusRule       |
 | `PersesDashboard`            | PersesDashboard      |
-| `Dash0RecordingRuleGroup`    | Recording rule group |
+| `Dash0RecordingRuleGroup`    | Recording rule       |
 
 For example: `Check rule "High Error Rate" created successfully`, not `CheckRule "High Error Rate" created successfully`.
 

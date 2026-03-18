@@ -19,16 +19,16 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "create -f <file>",
 		Aliases: []string{"add"},
-		Short: "Create a recording rule group from a file",
-		Long:  `Create a new recording rule group from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Short: "Create a recording rule from a file",
+		Long:  `Create a new recording rule from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
-  dash0 recording-rule-groups create -f group.yaml
+  dash0 recording-rules create -f recording-rule.yaml
 
   # Create from stdin
-  cat group.yaml | dash0 recording-rule-groups create -f -
+  cat recording-rule.yaml | dash0 recording-rules create -f -
 
   # Validate without creating
-  dash0 recording-rule-groups create -f group.yaml --dry-run`,
+  dash0 recording-rules create -f recording-rule.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd.Context(), &flags)
 		},
@@ -41,15 +41,15 @@ func newCreateCmd() *cobra.Command {
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	var group dash0api.RecordingRuleGroupDefinition
 	if err := asset.ReadDefinition(flags.File, &group, os.Stdin); err != nil {
-		return fmt.Errorf("failed to read recording rule group definition: %w", err)
+		return fmt.Errorf("failed to read recording rule definition: %w", err)
 	}
 
 	if flags.DryRun {
 		// Validate that it's valid YAML by marshaling
 		if _, err := sigsyaml.Marshal(&group); err != nil {
-			return fmt.Errorf("recording rule group definition is not valid: %w", err)
+			return fmt.Errorf("recording rule definition is not valid: %w", err)
 		}
-		fmt.Println("Dry run: recording rule group definition is valid")
+		fmt.Println("Dry run: recording rule definition is valid")
 		return nil
 	}
 
@@ -64,11 +64,11 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	result, err := apiClient.CreateRecordingRuleGroup(ctx, &group)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "recording rule group",
+			AssetType: "recording rule",
 			AssetName: asset.ExtractRecordingRuleGroupName(&group),
 		})
 	}
 
-	fmt.Printf("Recording rule group %q created\n", asset.ExtractRecordingRuleGroupName(result))
+	fmt.Printf("Recording rule %q created\n", asset.ExtractRecordingRuleGroupName(result))
 	return nil
 }

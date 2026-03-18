@@ -18,8 +18,6 @@ const (
 	deeplinkPathTeam           = "/goto/settings/teams"
 	deeplinkPathMember         = "/goto/settings/members"
 
-	deeplinkQueryRecordingRuleGroup = "recording_rule_group_id"
-
 	// View-type-specific deeplink paths.
 	deeplinkPathViewLogs         = "/goto/logs"
 	deeplinkPathViewTracing      = "/goto/traces/explorer"

@@ -2,13 +2,13 @@ package recordingrulegroups
 
 import "github.com/spf13/cobra"
 
-// NewRecordingRuleGroupsCmd creates the recording-rule-groups parent command.
+// NewRecordingRuleGroupsCmd creates the recording-rules parent command.
 func NewRecordingRuleGroupsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "recording-rule-groups",
-		Aliases: []string{"rrg"},
-		Short:   "Manage Dash0 recording rule groups",
-		Long:    `Create, list, get, update, and delete recording rule groups in Dash0`,
+		Use:     "recording-rules",
+		Aliases: []string{"rr"},
+		Short:   "Manage Dash0 recording rules",
+		Long:    `Create, list, get, update, and delete recording rules in Dash0`,
 	}
 
 	cmd.AddCommand(newListCmd())

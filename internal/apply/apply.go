@@ -639,7 +639,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		result, err := asset.ImportRecordingRuleGroup(ctx, apiClient, &group, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "recording rule group",
+				AssetType: "recording rule",
 				AssetName: group.Metadata.Name,
 			})
 		}

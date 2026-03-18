@@ -19,22 +19,22 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List recording rule groups",
-		Long:    `List all recording rule groups in the specified dataset.` + internal.CONFIG_HINT,
-		Example: `  # List recording rule groups (default: up to 50)
-  dash0 recording-rule-groups list
+		Short:   "List recording rules",
+		Long:    `List all recording rules in the specified dataset.` + internal.CONFIG_HINT,
+		Example: `  # List recording rules (default: up to 50)
+  dash0 recording-rules list
 
   # Output as YAML for backup or version control
-  dash0 recording-rule-groups list -o yaml > recording-rule-groups.yaml
+  dash0 recording-rules list -o yaml > recording-rules.yaml
 
   # Output as JSON for scripting
-  dash0 recording-rule-groups list -o json
+  dash0 recording-rules list -o json
 
   # Output as CSV (pipe-friendly)
-  dash0 recording-rule-groups list -o csv
+  dash0 recording-rules list -o csv
 
   # List without the header row (pipe-friendly)
-  dash0 recording-rule-groups list --skip-header`,
+  dash0 recording-rules list --skip-header`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd.Context(), &flags)
 		},
@@ -71,7 +71,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	if err := iter.Err(); err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "recording rule group",
+			AssetType: "recording rule",
 		})
 	}
 
@@ -138,13 +138,13 @@ func printRecordingRuleGroupTable(f *output.Formatter, groups []*dash0api.Record
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				g := item.(*dash0api.RecordingRuleGroupDefinition)
-				return asset.DeeplinkURL(apiUrl, "recording rule group", asset.ExtractRecordingRuleGroupID(g))
+				return asset.DeeplinkURL(apiUrl, "recording rule", asset.ExtractRecordingRuleGroupID(g))
 			}},
 		)
 	}
 
 	if len(groups) == 0 {
-		fmt.Println("No recording rule groups found.")
+		fmt.Println("No recording rules found.")
 		return nil
 	}
 

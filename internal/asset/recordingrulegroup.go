@@ -7,7 +7,7 @@ import (
 )
 
 // StripRecordingRuleGroupServerFields removes server-generated fields from a
-// recording rule group definition. Used by both Import (to avoid sending
+// recording rule definition. Used by both Import (to avoid sending
 // rejected fields to the API) and diff rendering (to suppress noise).
 //
 // Fields NOT stripped (user-specified, round-trippable):
@@ -57,7 +57,7 @@ func InjectRecordingRuleGroupVersion(group, source *dash0api.RecordingRuleGroupD
 
 // ImportRecordingRuleGroup checks existence by origin or ID, strips
 // server-generated fields, injects the dataset into the body, and creates or
-// updates the recording rule group via the standard CRUD APIs.
+// updates the recording rule via the standard CRUD APIs.
 func ImportRecordingRuleGroup(ctx context.Context, apiClient dash0api.Client, group *dash0api.RecordingRuleGroupDefinition, dataset *string) (ImportResult, error) {
 	StripRecordingRuleGroupServerFields(group)
 
@@ -97,7 +97,7 @@ func ImportRecordingRuleGroup(ctx context.Context, apiClient dash0api.Client, gr
 }
 
 // ExtractRecordingRuleGroupID extracts the external-facing ID from a recording
-// rule group definition. The origin label (set by Terraform/operator) is
+// rule definition. The origin label (set by Terraform/operator) is
 // preferred; the internal UUID is used as a fallback.
 func ExtractRecordingRuleGroupID(group *dash0api.RecordingRuleGroupDefinition) string {
 	if group.Metadata.Labels != nil {
@@ -112,7 +112,7 @@ func ExtractRecordingRuleGroupID(group *dash0api.RecordingRuleGroupDefinition) s
 }
 
 // ExtractRecordingRuleGroupName extracts the display name from a recording
-// rule group definition, falling back to metadata.name if no display name is set.
+// rule definition, falling back to metadata.name if no display name is set.
 func ExtractRecordingRuleGroupName(group *dash0api.RecordingRuleGroupDefinition) string {
 	if group.Spec.Display.Name != "" {
 		return group.Spec.Display.Name
