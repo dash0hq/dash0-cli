@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.7.1
+
+
+### Enhancements
+
+
+- `apply`: Migrate asset create/update from Import APIs to standard CRUD APIs (#90)
+  The `apply` command and individual asset `create`/`update` subcommands now use the standard
+  Create and Update APIs instead of the Import APIs, which are intended for one-time migrations.
+  
+
+
+### Bug Fixes
+
+
+- `apply`: When an asset definition includes a user-defined ID, `apply` now always upserts, making repeated applies idempotent and preventing duplicate assets from being created. (#94)
+
 ## 1.7.0
 
 

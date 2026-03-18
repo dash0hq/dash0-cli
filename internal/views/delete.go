@@ -65,6 +65,6 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		})
 	}
 
-	fmt.Printf("View %q deleted successfully\n", id)
+	fmt.Printf("View %q deleted\n", id)
 	return nil
 }

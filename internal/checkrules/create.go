@@ -81,7 +81,7 @@ func createFromCheckRule(ctx context.Context, flags *asset.FileInputFlags, data 
 		})
 	}
 
-	fmt.Printf("Check rule %q %s successfully\n", result.Name, result.Action)
+	fmt.Printf("Check rule %q %s\n", result.Name, result.Action)
 	return nil
 }
 
@@ -103,7 +103,7 @@ func createFromPrometheusRule(ctx context.Context, flags *asset.FileInputFlags, 
 
 	results, importErr := asset.ImportPrometheusRule(ctx, apiClient, &promRule, client.ResolveDataset(ctx, flags.Dataset))
 	for _, r := range results {
-		fmt.Printf("Check rule %q %s successfully\n", r.Name, r.Action)
+		fmt.Printf("Check rule %q %s\n", r.Name, r.Action)
 	}
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{

@@ -61,6 +61,6 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		})
 	}
 
-	fmt.Printf("Synthetic check %q %s successfully\n", result.Name, result.Action)
+	fmt.Printf("Synthetic check %q %s\n", result.Name, result.Action)
 	return nil
 }

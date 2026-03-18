@@ -277,7 +277,7 @@ func TestCreateProfileCmdPartialFields(t *testing.T) {
 				t.Fatalf("Unexpected error: %v", err)
 			}
 
-			if !bytes.Contains([]byte(output), []byte("Profile 'test-profile' added successfully")) {
+			if !bytes.Contains([]byte(output), []byte("Profile 'test-profile' added")) {
 				t.Errorf("Expected success message, got: %s", output)
 			}
 
@@ -490,7 +490,7 @@ func TestCreateProfileCmd(t *testing.T) {
 	}
 
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Profile 'new-profile' added successfully")) {
+	if !bytes.Contains([]byte(output), []byte("Profile 'new-profile' added")) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
 
@@ -557,7 +557,7 @@ func TestDeleteProfileCmd(t *testing.T) {
 	}
 
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Profile 'test2' deleted successfully")) {
+	if !bytes.Contains([]byte(output), []byte("Profile 'test2' deleted")) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
 

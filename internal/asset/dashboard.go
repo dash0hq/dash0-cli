@@ -4,7 +4,6 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/google/uuid"
 )
 
 // StripDashboardServerFields removes server-generated metadata fields from a
@@ -20,11 +19,11 @@ func StripDashboardServerFields(d *dash0api.DashboardDefinition) {
 	}
 }
 
-// ImportDashboard checks existence by dash0Extensions.id,
-// strips server-generated fields, and creates or updates the dashboard via the
-// standard CRUD APIs. When the input has no id (e.g. fresh YAML), a fresh UUID
-// is generated so re-applying the exported YAML updates the dashboard instead
-// of creating a duplicate.
+// ImportDashboard creates or updates a dashboard via the standard CRUD APIs.
+// When the input has a user-defined ID, UPDATE is always used — PUT has
+// create-or-replace semantics, so this is idempotent regardless of whether the
+// dashboard already exists.
+// When the input has no ID, CREATE is used and the server assigns an ID.
 func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
 	StripDashboardServerFields(dashboard)
 
@@ -39,34 +38,23 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 		if err == nil {
 			action = ActionUpdated
 			before = existing
-		} else {
-			// Asset not found — strip the ID so the API creates a fresh asset
-			// instead of colliding with a soft-deleted record.
-			dashboard.Metadata.Dash0Extensions.Id = nil
 		}
-	}
-
-	// Ensure dash0Extensions.id is set so the create API assigns a stable ID.
-	// When the input has no id (e.g. fresh YAML), generate a unique one. This
-	// makes re-applying the exported output update the existing dashboard rather
-	// than creating a duplicate.
-	if dashboard.Metadata.Dash0Extensions == nil {
-		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
-	}
-	if dashboard.Metadata.Dash0Extensions.Id == nil || *dashboard.Metadata.Dash0Extensions.Id == "" {
-		id = uuid.New().String()
-		dashboard.Metadata.Dash0Extensions.Id = &id
 	}
 
 	var result *dash0api.DashboardDefinition
 	var err error
-	if action == ActionUpdated {
+	if id != "" {
 		result, err = apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	} else {
 		result, err = apiClient.CreateDashboard(ctx, dashboard, dataset)
 	}
 	if err != nil {
 		return ImportResult{}, err
+	}
+
+	resultID := ExtractDashboardID(result)
+	if resultID != "" {
+		id = resultID
 	}
 
 	name := ExtractDashboardDisplayName(result)

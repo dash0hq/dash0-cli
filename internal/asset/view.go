@@ -21,12 +21,14 @@ func StripViewServerFields(v *dash0api.ViewDefinition) {
 	v.Spec.Permissions = nil
 }
 
-// ImportView checks existence by Dash0Comid, strips server-generated fields,
-// and creates or updates the view via the standard CRUD APIs.
+// ImportView creates or updates a view via the standard CRUD APIs.
+// When the input has a user-defined ID, UPDATE is always used — PUT has
+// create-or-replace semantics, so this is idempotent regardless of whether the
+// view already exists.
+// When the input has no ID, CREATE is used and the server assigns an ID.
 func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.ViewDefinition, dataset *string) (ImportResult, error) {
 	StripViewServerFields(view)
 
-	// Check if view exists using its ID
 	action := ActionCreated
 	var before any
 	id := ""
@@ -36,16 +38,12 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 		if err == nil {
 			action = ActionUpdated
 			before = existing
-		} else {
-			// Asset not found — strip the ID so the API creates a fresh asset.
-			view.Metadata.Labels.Dash0Comid = nil
-			id = ""
 		}
 	}
 
 	var result *dash0api.ViewDefinition
 	var err error
-	if action == ActionUpdated {
+	if id != "" {
 		result, err = apiClient.UpdateView(ctx, id, view, dataset)
 	} else {
 		result, err = apiClient.CreateView(ctx, view, dataset)

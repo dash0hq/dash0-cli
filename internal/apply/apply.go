@@ -221,7 +221,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 func printDryRun(documents []assetDocument, fromDirectory bool) error {
 	if !fromDirectory {
-		fmt.Printf("Dry run: %s validated successfully\n", pluralize(len(documents), "document"))
+		fmt.Printf("Dry run: %s validated\n", pluralize(len(documents), "document"))
 		for i, doc := range documents {
 			fmt.Printf("  %d. %s %s\n", i+1, asset.KindDisplayName(doc.kind), formatNameAndId(doc.name, doc.id))
 		}
@@ -233,7 +233,7 @@ func printDryRun(documents []assetDocument, fromDirectory bool) error {
 	for _, doc := range documents {
 		fileSet[doc.filePath] = true
 	}
-	fmt.Printf("Dry run: %s from %s validated successfully\n", pluralize(len(documents), "document"), pluralize(len(fileSet), "file"))
+	fmt.Printf("Dry run: %s from %s validated\n", pluralize(len(documents), "document"), pluralize(len(fileSet), "file"))
 
 	// Group by file, preserving order
 	var currentFile string
