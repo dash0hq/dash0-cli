@@ -26,6 +26,10 @@ for script in \
   "${SCRIPT_DIR}/test_check_rule_roundtrip.sh" \
   "${SCRIPT_DIR}/test_synthetic_check_roundtrip.sh" \
   "${SCRIPT_DIR}/test_view_roundtrip.sh" \
+  "${SCRIPT_DIR}/test_apply_dashboard_idempotency.sh" \
+  "${SCRIPT_DIR}/test_apply_check_rule_idempotency.sh" \
+  "${SCRIPT_DIR}/test_apply_view_idempotency.sh" \
+  "${SCRIPT_DIR}/test_apply_synthetic_check_idempotency.sh" \
   "${SCRIPT_DIR}/test_log_roundtrip.sh" \
   "${SCRIPT_DIR}/test_span_roundtrip.sh" \
   "${SCRIPT_DIR}/test_team_roundtrip.sh"; do

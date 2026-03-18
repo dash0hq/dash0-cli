@@ -16,12 +16,14 @@ func StripCheckRuleServerFields(r *dash0api.PrometheusAlertRule) {
 	}
 }
 
-// ImportCheckRule checks existence by rule ID, strips the ID when the asset
-// is not found, and creates or updates the check rule via the standard CRUD APIs.
+// ImportCheckRule creates or updates a check rule via the standard CRUD APIs.
+// When the input has a user-defined ID, UPDATE is always used — PUT has
+// create-or-replace semantics, so this is idempotent regardless of whether the
+// rule already exists.
+// When the input has no ID, CREATE is used and the server assigns an ID.
 func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
 	StripCheckRuleServerFields(rule)
 
-	// Check if check rule exists
 	action := ActionCreated
 	var before any
 	id := ""
@@ -31,16 +33,12 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 		if err == nil {
 			action = ActionUpdated
 			before = existing
-		} else {
-			// Asset not found — strip ID so the API creates a fresh asset.
-			rule.Id = nil
-			id = ""
 		}
 	}
 
 	var result *dash0api.PrometheusAlertRule
 	var err error
-	if action == ActionUpdated {
+	if id != "" {
 		result, err = apiClient.UpdateCheckRule(ctx, id, rule, dataset)
 	} else {
 		result, err = apiClient.CreateCheckRule(ctx, rule, dataset)

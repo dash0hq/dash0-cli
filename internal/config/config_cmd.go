@@ -193,7 +193,7 @@ func newCreateProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to add profile: %w", err)
 			}
 
-			fmt.Printf("Profile '%s' added successfully\n", name)
+			fmt.Printf("Profile '%s' added\n", name)
 
 			return nil
 		},
@@ -258,7 +258,7 @@ func newUpdateProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to update profile: %w", err)
 			}
 
-			fmt.Printf("Profile '%s' updated successfully\n", name)
+			fmt.Printf("Profile '%s' updated\n", name)
 
 			return nil
 		},
@@ -415,7 +415,7 @@ func newDeleteProfileCmd() *cobra.Command {
 				return fmt.Errorf("failed to remove profile: %w", err)
 			}
 
-			fmt.Printf("Profile '%s' deleted successfully\n", name)
+			fmt.Printf("Profile '%s' deleted\n", name)
 
 			return nil
 		},

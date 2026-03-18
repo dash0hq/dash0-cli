@@ -73,7 +73,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `PrometheusRule`   | PrometheusRule  |
 | `PersesDashboard`  | PersesDashboard |
 
-For example: `Check rule "High Error Rate" created successfully`, not `CheckRule "High Error Rate" created successfully`.
+For example: `Check rule "High Error Rate" created`, not `CheckRule "High Error Rate" created`.
 
 ## Naming Rules
 1. **Prefer verbs** for actions: `create`, `delete`, `list`, `get`, `update`, `select`

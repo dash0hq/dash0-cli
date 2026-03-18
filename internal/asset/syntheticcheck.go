@@ -21,12 +21,14 @@ func StripSyntheticCheckServerFields(c *dash0api.SyntheticCheckDefinition) {
 	c.Spec.Permissions = nil
 }
 
-// ImportSyntheticCheck checks existence by Dash0Comid, strips server-generated
-// fields, and creates or updates the synthetic check via the standard CRUD APIs.
+// ImportSyntheticCheck creates or updates a synthetic check via the standard CRUD APIs.
+// When the input has a user-defined ID, UPDATE is always used — PUT has
+// create-or-replace semantics, so this is idempotent regardless of whether the
+// check already exists.
+// When the input has no ID, CREATE is used and the server assigns an ID.
 func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportResult, error) {
 	StripSyntheticCheckServerFields(check)
 
-	// Check if synthetic check exists using its ID
 	action := ActionCreated
 	var before any
 	id := ""
@@ -36,16 +38,12 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		if err == nil {
 			action = ActionUpdated
 			before = existing
-		} else {
-			// Asset not found — strip the ID so the API creates a fresh asset.
-			check.Metadata.Labels.Dash0Comid = nil
-			id = ""
 		}
 	}
 
 	var result *dash0api.SyntheticCheckDefinition
 	var err error
-	if action == ActionUpdated {
+	if id != "" {
 		result, err = apiClient.UpdateSyntheticCheck(ctx, id, check, dataset)
 	} else {
 		result, err = apiClient.CreateSyntheticCheck(ctx, check, dataset)
