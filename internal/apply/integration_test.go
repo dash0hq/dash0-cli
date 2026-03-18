@@ -272,7 +272,7 @@ metadata:
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Contains(t, output, "Dry run: 3 documents validated successfully")
+	assert.Contains(t, output, "Dry run: 3 documents validated")
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "View")
@@ -714,7 +714,7 @@ metadata:
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Contains(t, output, "Dry run: 4 documents from 3 files validated successfully")
+	assert.Contains(t, output, "Dry run: 4 documents from 3 files validated")
 	assert.Contains(t, output, "dashboard.yaml")
 	assert.Contains(t, output, "rules.yaml")
 	assert.Contains(t, output, "view.yaml")
@@ -795,16 +795,18 @@ func TestApply_Directory_NonExistent(t *testing.T) {
 	assert.Contains(t, cmdErr.Error(), "failed to read input")
 }
 
-func TestApply_Dashboard_Created_StripsId(t *testing.T) {
+func TestApply_Dashboard_Created_PreservesId(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	// Dashboard has a dash0Extensions.id but the asset doesn't exist (404)
+	// Dashboard has a dash0Extensions.id but the asset doesn't exist yet (404).
+	// When an ID is present, apply always uses PUT (create-or-replace), so the
+	// dashboard is created with the user-defined ID.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "dashboard.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: Dashboard
 metadata:
   dash0extensions:
-    id: deleted-dashboard-uuid
+    id: new-dashboard-uuid
   name: Re-imported Dashboard
 spec:
   display:
@@ -818,14 +820,14 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	// GET returns 404 — the dashboard was deleted
-	server.On(http.MethodGet, "/api/dashboards/deleted-dashboard-uuid", testutil.MockResponse{
+	// GET returns 404 — the dashboard doesn't exist yet
+	server.On(http.MethodGet, "/api/dashboards/new-dashboard-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Import succeeds
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	// PUT (create-or-replace) succeeds
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -839,35 +841,106 @@ spec:
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created")
 
-	// Verify the create request body has dash0Extensions.id stripped (replaced with a new UUID)
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
-	require.NotNil(t, createReq, "expected a create request for dashboard")
-	body := string(createReq.Body)
-	assert.NotContains(t, body, "deleted-dashboard-uuid")
+	// Verify the PUT request body contains the user-defined ID.
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/dashboards/new-dashboard-uuid")
+	require.NotNil(t, putReq, "expected a PUT request for dashboard")
+	body := string(putReq.Body)
+	assert.Contains(t, body, "new-dashboard-uuid")
 }
 
-func TestApply_CheckRule_Created_StripsId(t *testing.T) {
+func TestApply_Dashboard_RoundTrip(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	// Check rule has an ID but the asset doesn't exist (404)
+	const dashboardID = "test-dashboard-id"
+	const getPath = "/api/dashboards/" + dashboardID
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "dashboard.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  dash0extensions:
+    id: test-dashboard-id
+  name: Test Dashboard
+spec:
+  display:
+    name: Test Dashboard
+  layouts:
+    - kind: Grid
+      spec:
+        items: []
+  panels: {}
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	// --- First apply: dashboard does not exist yet ---
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+	})
+	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd1 := NewApplyCmd()
+	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err1 error
+	output1 := testutil.CaptureStdout(t, func() {
+		err1 = cmd1.Execute()
+	})
+	require.NoError(t, err1)
+	assert.Contains(t, output1, "created")
+
+	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
+	require.NotNil(t, putReq, "expected a PUT request on first apply")
+	assert.Contains(t, string(putReq.Body), dashboardID)
+
+	// --- Second apply: dashboard now exists under the same ID ---
+	server.Reset()
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDashboardsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd2 := NewApplyCmd()
+	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err2 error
+	output2 := testutil.CaptureStdout(t, func() {
+		err2 = cmd2.Execute()
+	})
+	require.NoError(t, err2)
+	assert.NotContains(t, output2, "created")
+	assert.Contains(t, output2, "no changes")
+}
+
+func TestApply_CheckRule_Created_PreservesId(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	// Check rule has a user-defined ID but the asset doesn't exist yet (404).
+	// When an ID is present, apply always uses PUT (create-or-replace), so the
+	// rule is created with the user-defined ID.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
-id: deleted-rule-uuid
+id: new-rule-uuid
 name: test-check-rule
 expression: up == 0
 `), 0644)
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	// GET returns 404 — the check rule was deleted
-	server.On(http.MethodGet, "/api/alerting/check-rules/deleted-rule-uuid", testutil.MockResponse{
+	// GET returns 404 — the check rule doesn't exist yet
+	server.On(http.MethodGet, "/api/alerting/check-rules/new-rule-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	// Create succeeds
-	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
+	// PUT (create-or-replace) succeeds
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -881,11 +954,76 @@ expression: up == 0
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "created")
 
-	// Verify the create request body has the ID stripped
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathCheckRules)
-	require.NotNil(t, createReq, "expected a create request for check rule")
-	body := string(createReq.Body)
-	assert.NotContains(t, body, "deleted-rule-uuid")
+	// Verify the PUT request body contains the user-defined ID.
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/new-rule-uuid")
+	require.NotNil(t, putReq, "expected a PUT request for check rule")
+	body := string(putReq.Body)
+	assert.Contains(t, body, "new-rule-uuid")
+}
+
+func TestApply_CheckRule_RoundTrip(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	// A check rule YAML with a user-defined ID. Applying it twice must be
+	// idempotent: the first apply creates the rule (GET returns 404), and the
+	// second apply updates it (GET returns 200).
+	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
+	const getPath = "/api/alerting/check-rules/" + ruleID
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
+id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+name: test-check-rule
+expression: up == 0
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	// --- First apply: rule does not exist yet ---
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+
+	cmd1 := NewApplyCmd()
+	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err1 error
+	output1 := testutil.CaptureStdout(t, func() {
+		err1 = cmd1.Execute()
+	})
+	require.NoError(t, err1)
+	assert.Contains(t, output1, "created")
+
+	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
+	require.NotNil(t, putReq, "expected a PUT request on first apply")
+	assert.Contains(t, string(putReq.Body), ruleID)
+
+	// --- Second apply: rule now exists under the same user-defined ID ---
+	server.Reset()
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+
+	cmd2 := NewApplyCmd()
+	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err2 error
+	output2 := testutil.CaptureStdout(t, func() {
+		err2 = cmd2.Execute()
+	})
+	require.NoError(t, err2)
+	// Must update, not create again
+	assert.NotContains(t, output2, "created")
+	// GET and Update return the same fixture, so no diff → "no changes"
+	assert.Contains(t, output2, "no changes")
 }
 
 func TestApply_View_Updated(t *testing.T) {
@@ -1082,16 +1220,19 @@ spec:
 	assert.Contains(t, body, "is_one_of")
 }
 
-func TestApply_View_Created_StripsId(t *testing.T) {
+func TestApply_View_Created_PreservesId(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
+	// View has a user-defined ID but the asset doesn't exist yet (404).
+	// When an ID is present, apply always uses PUT (create-or-replace), so the
+	// view is created with the user-defined ID.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "view.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: View
 metadata:
   name: test-view
   labels:
-    dash0.com/id: deleted-view-uuid
+    dash0.com/id: new-view-uuid
 spec:
   display:
     name: Test View
@@ -1104,13 +1245,14 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	// GET returns 404 — the view was deleted
-	server.On(http.MethodGet, "/api/views/deleted-view-uuid", testutil.MockResponse{
+	// GET returns 404 — the view doesn't exist yet
+	server.On(http.MethodGet, "/api/views/new-view-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureViewsNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	server.WithViewsCreate(testutil.FixtureViewsImportSuccess)
+	// PUT (create-or-replace) succeeds
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1124,23 +1266,95 @@ spec:
 	assert.Contains(t, output, "View")
 	assert.Contains(t, output, "created")
 
-	// Verify the create request body has the ID stripped
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathViews)
-	require.NotNil(t, createReq, "expected a create request for view")
-	body := string(createReq.Body)
-	assert.NotContains(t, body, "deleted-view-uuid")
+	// Verify the PUT request body contains the user-defined ID.
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/views/new-view-uuid")
+	require.NotNil(t, putReq, "expected a PUT request for view")
+	body := string(putReq.Body)
+	assert.Contains(t, body, "new-view-uuid")
 }
 
-func TestApply_SyntheticCheck_Created_StripsId(t *testing.T) {
+func TestApply_View_RoundTrip(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
+	const viewID = "test-view-id"
+	const getPath = "/api/views/" + viewID
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "view.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: View
+metadata:
+  name: test-view
+  labels:
+    dash0.com/id: test-view-id
+spec:
+  display:
+    name: Test View
+  type: logs
+  filter: []
+  table:
+    columns: []
+    sort: []
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	// --- First apply: view does not exist yet ---
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+
+	cmd1 := NewApplyCmd()
+	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err1 error
+	output1 := testutil.CaptureStdout(t, func() {
+		err1 = cmd1.Execute()
+	})
+	require.NoError(t, err1)
+	assert.Contains(t, output1, "created")
+
+	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
+	require.NotNil(t, putReq, "expected a PUT request on first apply")
+	assert.Contains(t, string(putReq.Body), viewID)
+
+	// --- Second apply: view now exists under the same ID ---
+	server.Reset()
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureViewsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+
+	cmd2 := NewApplyCmd()
+	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err2 error
+	output2 := testutil.CaptureStdout(t, func() {
+		err2 = cmd2.Execute()
+	})
+	require.NoError(t, err2)
+	assert.NotContains(t, output2, "created")
+	assert.Contains(t, output2, "no changes")
+}
+
+func TestApply_SyntheticCheck_Created_PreservesId(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	// Synthetic check has a user-defined ID but the asset doesn't exist yet (404).
+	// When an ID is present, apply always uses PUT (create-or-replace), so the
+	// check is created with the user-defined ID.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "syntheticcheck.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: SyntheticCheck
 metadata:
   name: test-synthetic-check
   labels:
-    dash0.com/id: deleted-check-uuid
+    dash0.com/id: new-check-uuid
 spec:
   display:
     name: Test Synthetic Check
@@ -1156,13 +1370,14 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	// GET returns 404 — the synthetic check was deleted
-	server.On(http.MethodGet, "/api/synthetic-checks/deleted-check-uuid", testutil.MockResponse{
+	// GET returns 404 — the synthetic check doesn't exist yet
+	server.On(http.MethodGet, "/api/synthetic-checks/new-check-uuid", testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	server.WithSyntheticChecksCreate(testutil.FixtureSyntheticChecksImportSuccess)
+	// PUT (create-or-replace) succeeds
+	server.WithSyntheticChecksUpdate(testutil.FixtureSyntheticChecksImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1176,9 +1391,81 @@ spec:
 	assert.Contains(t, output, "Synthetic check")
 	assert.Contains(t, output, "created")
 
-	// Verify the create request body has the ID stripped
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathSyntheticChecks)
-	require.NotNil(t, createReq, "expected a create request for synthetic check")
-	body := string(createReq.Body)
-	assert.NotContains(t, body, "deleted-check-uuid")
+	// Verify the PUT request body contains the user-defined ID.
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/synthetic-checks/new-check-uuid")
+	require.NotNil(t, putReq, "expected a PUT request for synthetic check")
+	body := string(putReq.Body)
+	assert.Contains(t, body, "new-check-uuid")
+}
+
+func TestApply_SyntheticCheck_RoundTrip(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const checkID = "test-synthetic-check-id"
+	const getPath = "/api/synthetic-checks/" + checkID
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "syntheticcheck.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: SyntheticCheck
+metadata:
+  name: test-synthetic-check
+  labels:
+    dash0.com/id: test-synthetic-check-id
+spec:
+  display:
+    name: Test Synthetic Check
+  http:
+    url: https://example.com/health
+    method: GET
+  scheduling:
+    interval: 1m
+    timeout: 30s
+  locations:
+    - eu-west-1
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	// --- First apply: synthetic check does not exist yet ---
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
+	})
+	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	server.WithSyntheticChecksUpdate(testutil.FixtureSyntheticChecksImportSuccess)
+
+	cmd1 := NewApplyCmd()
+	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err1 error
+	output1 := testutil.CaptureStdout(t, func() {
+		err1 = cmd1.Execute()
+	})
+	require.NoError(t, err1)
+	assert.Contains(t, output1, "created")
+
+	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
+	require.NotNil(t, putReq, "expected a PUT request on first apply")
+	assert.Contains(t, string(putReq.Body), checkID)
+
+	// --- Second apply: synthetic check now exists under the same ID ---
+	server.Reset()
+	server.On(http.MethodGet, getPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureSyntheticChecksImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithSyntheticChecksUpdate(testutil.FixtureSyntheticChecksImportSuccess)
+
+	cmd2 := NewApplyCmd()
+	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err2 error
+	output2 := testutil.CaptureStdout(t, func() {
+		err2 = cmd2.Execute()
+	})
+	require.NoError(t, err2)
+	assert.NotContains(t, output2, "created")
+	assert.Contains(t, output2, "no changes")
 }

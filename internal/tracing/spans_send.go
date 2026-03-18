@@ -254,7 +254,7 @@ func runSend(cmd *cobra.Command, flags *sendFlags) error {
 		return fmt.Errorf("failed to send span: %w", err)
 	}
 
-	fmt.Printf("Span sent successfully (trace-id: %s, span-id: %s)\n", traceIDHex, spanIDHex)
+	fmt.Printf("Span sent (trace-id: %s, span-id: %s)\n", traceIDHex, spanIDHex)
 	return nil
 }
 

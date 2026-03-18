@@ -76,7 +76,7 @@ Example:
 
 ```bash
 $ dash0 config profiles update prod --api-url https://api.us-east-1.aws.dash0.com
-Profile 'prod' updated successfully
+Profile 'prod' updated
 ```
 
 ### `config profiles list`
@@ -265,7 +265,7 @@ Example:
 
 ```bash
 $ dash0 dashboards create -f dashboard.yaml
-Dashboard "My Dashboard" created successfully
+Dashboard "My Dashboard" created
 ```
 
 `dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and `perses.dev/v1alpha2`).
@@ -280,7 +280,7 @@ Each alerting rule in the CRD is created as a separate check rule (recording rul
 
 ```bash
 $ dash0 check-rules create -f prometheus-rules.yaml
-Check rule "High Error Rate Alert" created successfully
+Check rule "High Error Rate Alert" created
 ```
 
 Aliases: `add`
@@ -341,10 +341,10 @@ Examples:
 ```bash
 $ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab
 Are you sure you want to delete dashboard "a1b2c3d4-..."? [y/N]: y
-Dashboard "a1b2c3d4-..." deleted successfully
+Dashboard "a1b2c3d4-..." deleted
 
 $ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
-Dashboard "a1b2c3d4-..." deleted successfully
+Dashboard "a1b2c3d4-..." deleted
 ```
 
 Aliases: `remove`
@@ -408,7 +408,7 @@ Dashboard "Production Overview" (a1b2c3d4-...) created
 
 # Dry-run validation
 $ dash0 apply -f assets.yaml --dry-run
-Dry run: 1 document(s) validated successfully
+Dry run: 1 document validated
   1. Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
 ```
 
@@ -526,14 +526,14 @@ Examples:
 ```bash
 # Simple log message
 $ dash0 logs send "Application started"
-Log record sent successfully
+Log record sent
 
 # Log with severity and attributes
 $ dash0 logs send "Application started" \
     --resource-attribute service.name=my-service \
     --log-attribute user.id=12345 \
     --severity-text INFO --severity-number 9
-Log record sent successfully
+Log record sent
 
 # Deployment event with event name
 $ dash0 logs send "Deployment completed" \
@@ -542,14 +542,14 @@ $ dash0 logs send "Deployment completed" \
     --resource-attribute service.name=my-service \
     --resource-attribute deployment.environment.name=production \
     --log-attribute deployment.status=succeeded
-Log record sent successfully
+Log record sent
 
 # Using environment variables for connection
 $ DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com \
   DASH0_AUTH_TOKEN=auth_xxx \
   dash0 logs send "Health check passed" \
     --severity-number 9 --severity-text INFO
-Log record sent successfully
+Log record sent
 ```
 
 ### `logs query` (experimental)
@@ -731,13 +731,13 @@ Examples:
 ```bash
 # Send a simple span
 $ dash0 -X spans send --name "my-operation"
-Span sent successfully (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
+Span sent (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
 
 # Send a server span with duration
 $ dash0 -X spans send --name "GET /api/users" \
     --kind SERVER --status-code OK --duration 100ms \
     --resource-attribute service.name=my-service
-Span sent successfully (trace-id: ..., span-id: ...)
+Span sent (trace-id: ..., span-id: ...)
 
 # Send a span with a link to another trace
 $ dash0 -X spans send --name "process-message" \

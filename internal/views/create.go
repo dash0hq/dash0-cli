@@ -61,6 +61,6 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		})
 	}
 
-	fmt.Printf("View %q %s successfully\n", result.Name, result.Action)
+	fmt.Printf("View %q %s\n", result.Name, result.Action)
 	return nil
 }

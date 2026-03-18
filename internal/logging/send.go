@@ -214,6 +214,6 @@ func runCreate(cmd *cobra.Command, body string, flags *createFlags) error {
 		return fmt.Errorf("failed to send log record: %w", err)
 	}
 
-	fmt.Println("Log record sent successfully")
+	fmt.Println("Log record sent")
 	return nil
 }

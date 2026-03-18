@@ -65,6 +65,6 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		})
 	}
 
-	fmt.Printf("Synthetic check %q deleted successfully\n", id)
+	fmt.Printf("Synthetic check %q deleted\n", id)
 	return nil
 }
