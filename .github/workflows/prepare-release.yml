@@ -103,7 +103,7 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Release v${{ steps.version.outputs.version }} prepared successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "## Release v${{ steps.version.outputs.version }} prepared!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The release workflow has been triggered automatically." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

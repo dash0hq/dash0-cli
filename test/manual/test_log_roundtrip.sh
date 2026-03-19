@@ -15,7 +15,7 @@ SEND_OUTPUT=$("$DASH0" logs send "Log round-trip test: ${UNIQUE_ID}" \
   --resource-attribute service.name=roundtrip-test \
   --log-attribute test.id="${UNIQUE_ID}")
 echo "$SEND_OUTPUT"
-if ! echo "$SEND_OUTPUT" | grep -q "Log record sent successfully"; then
+if ! echo "$SEND_OUTPUT" | grep -q "Log record sent"; then
   echo "FAIL: logs send did not succeed"
   exit 1
 fi

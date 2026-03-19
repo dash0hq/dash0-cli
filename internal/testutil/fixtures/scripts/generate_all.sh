@@ -126,4 +126,4 @@ if [[ ${#failures[@]} -gt 0 ]]; then
 fi
 
 echo ""
-echo "All fixtures generated successfully!"
+echo "All fixtures generated!"
