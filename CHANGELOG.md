@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.7.3
+
+
+### Bug Fixes
+
+
+- `dashboards`: Clear dashboard ID from the request body before update calls to avoid server-side rejection (#101)
+  When updating a dashboard whose user-defined ID is a UUID, the server rejects the request if the
+  same ID appears in both the URL path parameter and the request body. The CLI now strips the ID from
+  the body before sending the update, since it is already passed as the URL path parameter.
+  
+
+- `dashboards`: Fix PersesDashboard annotations (folder-path, sharing, source) being silently dropped during conversion (#103)
+  User-settable annotations (`dash0.com/folder-path`, `dash0.com/sharing`, `dash0.com/source`) on PersesDashboard CRDs
+  were not carried over when converting to a Dashboard definition, affecting both `apply` and `dashboards create`.
+  
+
 ## 1.7.2
 
 
