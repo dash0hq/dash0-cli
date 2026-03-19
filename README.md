@@ -349,6 +349,7 @@ dash0 -X members delete <member-id> --force
 
 | Flag | Short | Env Variable | Description |
 |------|-------|--------------|-------------|
+| `--agent-mode` | | `DASH0_AGENT_MODE` | Enable agent mode for AI coding agents. Auto-detected when common agent env vars are set. |
 | `--api-url` | | `DASH0_API_URL` | Override API URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http). |
 | `--otlp-url` | | `DASH0_OTLP_URL` | Override OTLP URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Override auth token from profile. Find yours [here](https://app.dash0.com/goto/settings/auth-tokens). |

@@ -26,9 +26,28 @@ These flags are available on every command:
 | `--otlp-url` | | `DASH0_OTLP_URL` | OTLP HTTP endpoint URL |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Authentication token |
 | `--dataset` | | `DASH0_DATASET` | Dataset identifier (not display name) |
+| `--agent-mode` | | `DASH0_AGENT_MODE` | Enable agent mode for AI coding agents (see below) |
 | `--color` | | `DASH0_COLOR` | `semantic` (default) or `none` |
 | `--experimental` | `-X` | | Enable experimental commands |
 | | | `DASH0_CONFIG_DIR` | Override config directory (default: `~/.dash0`) |
+
+### Agent mode
+
+Agent mode optimizes the CLI for consumption by AI coding agents.
+When active, the CLI:
+
+1. Defaults output format to JSON instead of tables.
+2. Returns `--help` as structured JSON with flags, subcommands, and metadata.
+3. Emits errors as JSON objects on stderr.
+4. Skips confirmation prompts automatically (same as `--force`).
+5. Disables colored output.
+
+Agent mode is resolved in this priority order (first match wins):
+
+1. `DASH0_AGENT_MODE=0|false` — explicitly disabled, overrides everything.
+2. `--agent-mode` flag — explicitly enabled.
+3. `DASH0_AGENT_MODE=1|true` — explicitly enabled via environment variable.
+4. Auto-detection via known AI agent environment variables: `CLAUDE_CODE`, `MCP_SESSION_ID`, `CURSOR_SESSION_ID`, `WINDSURF_SESSION_ID`, `CLINE_TASK_ID`, `CODEX`, `GITHUB_COPILOT`, `AIDER`.
 
 ## Configuration
 

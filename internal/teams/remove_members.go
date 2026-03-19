@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/members"
@@ -57,7 +58,7 @@ Any <member-id-or-email> argument not starting with "user_" is treated as an ema
 func runRemoveMembers(cmd *cobra.Command, teamID string, memberIDs []string, flags *removeMembersFlags) error {
 	ctx := cmd.Context()
 
-	if !flags.Force {
+	if !flags.Force && !agentmode.Enabled {
 		noun := "member"
 		if len(memberIDs) > 1 {
 			noun = "members"

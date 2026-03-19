@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
@@ -56,7 +57,7 @@ Any argument not starting with "user_" is treated as an email address and resolv
 func runRemove(cmd *cobra.Command, memberIDs []string, flags *removeFlags) error {
 	ctx := cmd.Context()
 
-	if !flags.Force {
+	if !flags.Force && !agentmode.Enabled {
 		noun := "member"
 		if len(memberIDs) > 1 {
 			noun = "members"

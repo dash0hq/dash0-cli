@@ -8,8 +8,9 @@ import (
 	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
-	"github.com/dash0hq/dash0-cli/internal/client"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,7 @@ func newDeleteCmd() *cobra.Command {
 }
 
 func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
-	if !flags.Force {
+	if !flags.Force && !agentmode.Enabled {
 		fmt.Printf("Are you sure you want to delete synthetic check %q? [y/N]: ", id)
 		reader := bufio.NewReader(os.Stdin)
 		response, err := reader.ReadString('\n')

@@ -2,6 +2,7 @@
 
 - `/cmd/dash0`: Main entrypoint
 - `/docs`: Development guidelines referenced from `CLAUDE.md`
+- `/internal/agentmode`: Agent mode detection, JSON help rendering, and structured error output for AI coding agents
 - `/internal/apply`: The `apply` command — orchestration only, delegates asset-specific logic to `internal/asset`
 - `/internal/asset`: Shared asset logic (types, import functions, display helpers) used by both `apply` and the per-asset CRUD commands
 - `/internal/checkrules`, `/internal/dashboards`, `/internal/syntheticchecks`, `/internal/views`: Per-asset CRUD commands — delegate asset-specific logic to `internal/asset`
