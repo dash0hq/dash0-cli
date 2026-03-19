@@ -107,9 +107,14 @@ expression: up == 0
 	// Verify the update request body
 	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathCheckRules)
 	require.NotNil(t, updateReq, "expected an update request for check rule")
-	body := string(updateReq.Body)
-	assert.NotContains(t, body, "dash0.com/origin")
-	assert.Contains(t, body, "47b6ccbe-82ab-47c6-a613-ce0d7f34353e")
+	var rule dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal(updateReq.Body, &rule))
+	if rule.Labels != nil {
+		_, hasOrigin := (*rule.Labels)["dash0.com/origin"]
+		assert.False(t, hasOrigin, "origin label should be stripped")
+	}
+	require.NotNil(t, rule.Id)
+	assert.Equal(t, "47b6ccbe-82ab-47c6-a613-ce0d7f34353e", *rule.Id)
 }
 
 func TestApply_Dashboard_Created(t *testing.T) {
@@ -207,7 +212,7 @@ spec:
 	assert.Nil(t, dashboard.Metadata.CreatedAt)
 	assert.Nil(t, dashboard.Metadata.UpdatedAt)
 	assert.Nil(t, dashboard.Metadata.Version)
-	assert.Equal(t, "existing-dashboard-id", *dashboard.Metadata.Dash0Extensions.Id)
+	assert.Nil(t, dashboard.Metadata.Dash0Extensions.Id, "ID should be cleared from the body; it is passed as the URL path parameter")
 }
 
 func TestApply_Dashboard_PreservesAnnotations(t *testing.T) {
@@ -618,9 +623,12 @@ spec:
 	// Verify the create request contains the Perses spec fields
 	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
 	require.NotNil(t, createReq, "expected a create request for dashboard")
-	body := string(createReq.Body)
-	assert.Contains(t, body, "Test Perses Dashboard")
-	assert.Contains(t, body, "5m")
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
+	display, ok := dashboard.Spec["display"].(map[string]any)
+	require.True(t, ok, "spec.display should be a map")
+	assert.Equal(t, "Test Perses Dashboard", display["name"])
+	assert.Equal(t, "5m", dashboard.Spec["duration"])
 }
 
 func TestApply_PersesDashboard_V1Alpha2(t *testing.T) {
@@ -662,9 +670,12 @@ spec:
 	// Verify the spec.config wrapper was unwrapped
 	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
 	require.NotNil(t, createReq, "expected a create request for dashboard")
-	body := string(createReq.Body)
-	assert.Contains(t, body, "V1Alpha2 Dashboard")
-	assert.Contains(t, body, "10m")
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
+	display, ok := dashboard.Spec["display"].(map[string]any)
+	require.True(t, ok, "spec.display should be a map")
+	assert.Equal(t, "V1Alpha2 Dashboard", display["name"])
+	assert.Equal(t, "10m", dashboard.Spec["duration"])
 }
 
 func TestApply_Directory_MultipleFiles(t *testing.T) {
@@ -906,11 +917,14 @@ spec:
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created")
 
-	// Verify the PUT request body contains the user-defined ID.
+	// The ID is passed as the URL path parameter; verify it is cleared from the body.
 	putReq := findRequest(server.Requests(), http.MethodPut, "/api/dashboards/new-dashboard-uuid")
 	require.NotNil(t, putReq, "expected a PUT request for dashboard")
-	body := string(putReq.Body)
-	assert.Contains(t, body, "new-dashboard-uuid")
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(putReq.Body, &dashboard))
+	if dashboard.Metadata.Dash0Extensions != nil {
+		assert.Nil(t, dashboard.Metadata.Dash0Extensions.Id, "ID should be cleared from the body; it is passed as the URL path parameter")
+	}
 }
 
 func TestApply_Dashboard_RoundTrip(t *testing.T) {
@@ -959,7 +973,11 @@ spec:
 
 	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
 	require.NotNil(t, putReq, "expected a PUT request on first apply")
-	assert.Contains(t, string(putReq.Body), dashboardID)
+	var dashboardBody dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(putReq.Body, &dashboardBody))
+	if dashboardBody.Metadata.Dash0Extensions != nil {
+		assert.Nil(t, dashboardBody.Metadata.Dash0Extensions.Id, "ID should be cleared from the body; it is passed as the URL path parameter")
+	}
 
 	// --- Second apply: dashboard now exists under the same ID ---
 	server.Reset()
@@ -1022,8 +1040,10 @@ expression: up == 0
 	// Verify the PUT request body contains the user-defined ID.
 	putReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/new-rule-uuid")
 	require.NotNil(t, putReq, "expected a PUT request for check rule")
-	body := string(putReq.Body)
-	assert.Contains(t, body, "new-rule-uuid")
+	var rule dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal(putReq.Body, &rule))
+	require.NotNil(t, rule.Id)
+	assert.Equal(t, "new-rule-uuid", *rule.Id)
 }
 
 func TestApply_CheckRule_RoundTrip(t *testing.T) {
@@ -1066,7 +1086,10 @@ expression: up == 0
 
 	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
 	require.NotNil(t, putReq, "expected a PUT request on first apply")
-	assert.Contains(t, string(putReq.Body), ruleID)
+	var ruleBody dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal(putReq.Body, &ruleBody))
+	require.NotNil(t, ruleBody.Id)
+	assert.Equal(t, ruleID, *ruleBody.Id)
 
 	// --- Second apply: rule now exists under the same user-defined ID ---
 	server.Reset()
@@ -1422,12 +1445,17 @@ spec:
 	// Verify filter values survive the YAML parse → JSON serialize round-trip
 	createReq := findRequest(server.Requests(), http.MethodPost, apiPathViews)
 	require.NotNil(t, createReq, "expected a create request for view")
-	body := string(createReq.Body)
-	assert.Contains(t, body, "ERROR")
-	assert.Contains(t, body, "FATAL")
-	assert.Contains(t, body, "my-service")
-	assert.Contains(t, body, "otel.log.severity.range")
-	assert.Contains(t, body, "is_one_of")
+	var view dash0api.ViewDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &view))
+	require.NotNil(t, view.Spec.Filter)
+	filters := *view.Spec.Filter
+	require.Len(t, filters, 2)
+	assert.Equal(t, "otel.log.severity.range", string(filters[0].Key))
+	assert.Equal(t, dash0api.AttributeFilterOperator("is_one_of"), filters[0].Operator)
+	require.NotNil(t, filters[0].Values)
+	assert.Len(t, *filters[0].Values, 2)
+	assert.Equal(t, "service.name", string(filters[1].Key))
+	assert.Equal(t, dash0api.AttributeFilterOperator("is"), filters[1].Operator)
 }
 
 func TestApply_View_Created_PreservesId(t *testing.T) {
@@ -1479,8 +1507,11 @@ spec:
 	// Verify the PUT request body contains the user-defined ID.
 	putReq := findRequest(server.Requests(), http.MethodPut, "/api/views/new-view-uuid")
 	require.NotNil(t, putReq, "expected a PUT request for view")
-	body := string(putReq.Body)
-	assert.Contains(t, body, "new-view-uuid")
+	var view dash0api.ViewDefinition
+	require.NoError(t, json.Unmarshal(putReq.Body, &view))
+	require.NotNil(t, view.Metadata.Labels)
+	require.NotNil(t, view.Metadata.Labels.Dash0Comid)
+	assert.Equal(t, "new-view-uuid", *view.Metadata.Labels.Dash0Comid)
 }
 
 func TestApply_View_RoundTrip(t *testing.T) {
@@ -1529,7 +1560,11 @@ spec:
 
 	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
 	require.NotNil(t, putReq, "expected a PUT request on first apply")
-	assert.Contains(t, string(putReq.Body), viewID)
+	var viewBody dash0api.ViewDefinition
+	require.NoError(t, json.Unmarshal(putReq.Body, &viewBody))
+	require.NotNil(t, viewBody.Metadata.Labels)
+	require.NotNil(t, viewBody.Metadata.Labels.Dash0Comid)
+	assert.Equal(t, viewID, *viewBody.Metadata.Labels.Dash0Comid)
 
 	// --- Second apply: view now exists under the same ID ---
 	server.Reset()
@@ -1604,8 +1639,11 @@ spec:
 	// Verify the PUT request body contains the user-defined ID.
 	putReq := findRequest(server.Requests(), http.MethodPut, "/api/synthetic-checks/new-check-uuid")
 	require.NotNil(t, putReq, "expected a PUT request for synthetic check")
-	body := string(putReq.Body)
-	assert.Contains(t, body, "new-check-uuid")
+	var check dash0api.SyntheticCheckDefinition
+	require.NoError(t, json.Unmarshal(putReq.Body, &check))
+	require.NotNil(t, check.Metadata.Labels)
+	require.NotNil(t, check.Metadata.Labels.Dash0Comid)
+	assert.Equal(t, "new-check-uuid", *check.Metadata.Labels.Dash0Comid)
 }
 
 func TestApply_SyntheticCheck_RoundTrip(t *testing.T) {
@@ -1657,7 +1695,11 @@ spec:
 
 	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
 	require.NotNil(t, putReq, "expected a PUT request on first apply")
-	assert.Contains(t, string(putReq.Body), checkID)
+	var checkBody dash0api.SyntheticCheckDefinition
+	require.NoError(t, json.Unmarshal(putReq.Body, &checkBody))
+	require.NotNil(t, checkBody.Metadata.Labels)
+	require.NotNil(t, checkBody.Metadata.Labels.Dash0Comid)
+	assert.Equal(t, checkID, *checkBody.Metadata.Labels.Dash0Comid)
 
 	// --- Second apply: synthetic check now exists under the same ID ---
 	server.Reset()

@@ -21,6 +21,16 @@ func StripDashboardServerFields(d *dash0api.DashboardDefinition) {
 	}
 }
 
+// ClearDashboardBodyID removes the ID from the dashboard body before an update
+// request. The ID is already passed as the URL path parameter (originOrId);
+// sending it in both places causes the server to reject the request when the
+// ID happens to be a UUID that matches the dashboard's own server-assigned ID.
+func ClearDashboardBodyID(d *dash0api.DashboardDefinition) {
+	if d.Metadata.Dash0Extensions != nil {
+		d.Metadata.Dash0Extensions.Id = nil
+	}
+}
+
 // ImportDashboard creates or updates a dashboard via the standard CRUD APIs.
 // When the input has a user-defined ID, UPDATE is always used — PUT has
 // create-or-replace semantics, so this is idempotent regardless of whether the
@@ -46,6 +56,7 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	var result *dash0api.DashboardDefinition
 	var err error
 	if id != "" {
+		ClearDashboardBodyID(dashboard)
 		result, err = apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	} else {
 		result, err = apiClient.CreateDashboard(ctx, dashboard, dataset)
