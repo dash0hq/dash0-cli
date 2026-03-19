@@ -10,7 +10,9 @@ import (
 // Used by both Import (to avoid sending rejected fields to the API) and diff
 // rendering (to suppress noise).
 func StripViewServerFields(v *dash0api.ViewDefinition) {
-	v.Metadata.Annotations = nil
+	if v.Metadata.Annotations != nil {
+		v.Metadata.Annotations.Dash0ComdeletedAt = nil
+	}
 	if v.Metadata.Labels == nil {
 		v.Metadata.Labels = &dash0api.ViewLabels{}
 	}
@@ -18,7 +20,6 @@ func StripViewServerFields(v *dash0api.ViewDefinition) {
 	v.Metadata.Labels.Dash0Comsource = nil
 	v.Metadata.Labels.Dash0Comdataset = nil
 	v.Metadata.Labels.Dash0Comorigin = nil
-	v.Spec.Permissions = nil
 }
 
 // ImportView creates or updates a view via the standard CRUD APIs.

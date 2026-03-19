@@ -219,14 +219,23 @@ func TestStripDashboardServerFields(t *testing.T) {
 	ds := dash0api.Dataset("default")
 	id := "keep-id"
 
+	folderPath := "/my/folder"
+	source := dash0api.Ui
+	sharing := "team-123"
+
 	d := &dash0api.DashboardDefinition{
 		Kind: "Dashboard",
 		Metadata: dash0api.DashboardMetadata{
-			Name:        "keep",
-			CreatedAt:   &ts,
-			UpdatedAt:   &ts,
-			Version:     &version,
-			Annotations: &dash0api.DashboardAnnotations{},
+			Name:      "keep",
+			CreatedAt: &ts,
+			UpdatedAt: &ts,
+			Version:   &version,
+			Annotations: &dash0api.DashboardAnnotations{
+				Dash0ComdeletedAt:  &ts,
+				Dash0Comsource:     &source,
+				Dash0ComfolderPath: &folderPath,
+				Dash0Comsharing:    &sharing,
+			},
 			Dash0Extensions: &dash0api.DashboardMetadataExtensions{
 				Id:      &id,
 				Dataset: &ds,
@@ -240,7 +249,11 @@ func TestStripDashboardServerFields(t *testing.T) {
 	assert.Nil(t, d.Metadata.CreatedAt)
 	assert.Nil(t, d.Metadata.UpdatedAt)
 	assert.Nil(t, d.Metadata.Version)
-	assert.Nil(t, d.Metadata.Annotations)
+	assert.NotNil(t, d.Metadata.Annotations)
+	assert.Nil(t, d.Metadata.Annotations.Dash0ComdeletedAt)
+	assert.Equal(t, &source, d.Metadata.Annotations.Dash0Comsource)
+	assert.Equal(t, &folderPath, d.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, &sharing, d.Metadata.Annotations.Dash0Comsharing)
 	assert.Equal(t, &id, d.Metadata.Dash0Extensions.Id)
 	assert.Nil(t, d.Metadata.Dash0Extensions.Dataset)
 }
@@ -272,11 +285,19 @@ func TestStripViewServerFields(t *testing.T) {
 	dataset := "default"
 	origin := "cli"
 
+	viewFolderPath := "/views/folder"
+	viewSharing := "team-456"
+	viewDeletedAt := time.Now()
+
 	v := &dash0api.ViewDefinition{
 		Kind: "View",
 		Metadata: dash0api.ViewMetadata{
-			Name:        "keep",
-			Annotations: &dash0api.ViewAnnotations{},
+			Name: "keep",
+			Annotations: &dash0api.ViewAnnotations{
+				Dash0ComdeletedAt:  &viewDeletedAt,
+				Dash0ComfolderPath: &viewFolderPath,
+				Dash0Comsharing:    &viewSharing,
+			},
 			Labels: &dash0api.ViewLabels{
 				Dash0Comid:      &id,
 				Dash0Comversion: &version,
@@ -292,7 +313,10 @@ func TestStripViewServerFields(t *testing.T) {
 	StripViewServerFields(v)
 
 	assert.Equal(t, "keep", v.Metadata.Name)
-	assert.Nil(t, v.Metadata.Annotations)
+	assert.NotNil(t, v.Metadata.Annotations)
+	assert.Nil(t, v.Metadata.Annotations.Dash0ComdeletedAt)
+	assert.Equal(t, &viewFolderPath, v.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, &viewSharing, v.Metadata.Annotations.Dash0Comsharing)
 	assert.Equal(t, &id, v.Metadata.Labels.Dash0Comid)
 	assert.Nil(t, v.Metadata.Labels.Dash0Comversion)
 	assert.Nil(t, v.Metadata.Labels.Dash0Comdataset)
@@ -307,11 +331,19 @@ func TestStripSyntheticCheckServerFields(t *testing.T) {
 	origin := "cli"
 	custom := map[string]string{"env": "prod"}
 
+	scFolderPath := "/checks/folder"
+	scSharing := "team-789"
+	scDeletedAt := time.Now()
+
 	c := &dash0api.SyntheticCheckDefinition{
 		Kind: "SyntheticCheck",
 		Metadata: dash0api.SyntheticCheckMetadata{
-			Name:        "keep",
-			Annotations: &dash0api.SyntheticCheckAnnotations{},
+			Name: "keep",
+			Annotations: &dash0api.SyntheticCheckAnnotations{
+				Dash0ComdeletedAt:  &scDeletedAt,
+				Dash0ComfolderPath: &scFolderPath,
+				Dash0Comsharing:    &scSharing,
+			},
 			Labels: &dash0api.SyntheticCheckLabels{
 				Dash0Comid:      &id,
 				Dash0Comversion: &version,
@@ -328,7 +360,10 @@ func TestStripSyntheticCheckServerFields(t *testing.T) {
 	StripSyntheticCheckServerFields(c)
 
 	assert.Equal(t, "keep", c.Metadata.Name)
-	assert.Nil(t, c.Metadata.Annotations)
+	assert.NotNil(t, c.Metadata.Annotations)
+	assert.Nil(t, c.Metadata.Annotations.Dash0ComdeletedAt)
+	assert.Equal(t, &scFolderPath, c.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, &scSharing, c.Metadata.Annotations.Dash0Comsharing)
 	assert.Equal(t, &id, c.Metadata.Labels.Dash0Comid)
 	assert.Nil(t, c.Metadata.Labels.Dash0Comversion)
 	assert.Nil(t, c.Metadata.Labels.Dash0Comdataset)
