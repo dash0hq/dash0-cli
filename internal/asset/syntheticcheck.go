@@ -10,7 +10,9 @@ import (
 // synthetic check definition. Used by both Import (to avoid sending rejected
 // fields to the API) and diff rendering (to suppress noise).
 func StripSyntheticCheckServerFields(c *dash0api.SyntheticCheckDefinition) {
-	c.Metadata.Annotations = nil
+	if c.Metadata.Annotations != nil {
+		c.Metadata.Annotations.Dash0ComdeletedAt = nil
+	}
 	if c.Metadata.Labels == nil {
 		c.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
 	}
@@ -18,7 +20,6 @@ func StripSyntheticCheckServerFields(c *dash0api.SyntheticCheckDefinition) {
 	c.Metadata.Labels.Custom = nil
 	c.Metadata.Labels.Dash0Comdataset = nil
 	c.Metadata.Labels.Dash0Comorigin = nil
-	c.Spec.Permissions = nil
 }
 
 // ImportSyntheticCheck creates or updates a synthetic check via the standard CRUD APIs.

@@ -216,6 +216,90 @@ func TestSplitQuotedTokens(t *testing.T) {
 	}
 }
 
+func TestParseFilters_JSONArray(t *testing.T) {
+	filters, err := ParseFilters([]string{
+		`[{"key": "user_agent.name", "operator": "is", "value": "dash0-cli"}, {"key": "service.name", "operator": "is_one_of", "values": ["api", "web"]}]`,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, filters)
+	require.Len(t, *filters, 2)
+
+	assert.Equal(t, "user_agent.name", (*filters)[0].Key)
+	assert.Equal(t, dash0api.AttributeFilterOperatorIs, (*filters)[0].Operator)
+	require.NotNil(t, (*filters)[0].Value)
+
+	assert.Equal(t, "service.name", (*filters)[1].Key)
+	assert.Equal(t, dash0api.AttributeFilterOperatorIsOneOf, (*filters)[1].Operator)
+	require.NotNil(t, (*filters)[1].Values)
+	assert.Len(t, *(*filters)[1].Values, 2)
+}
+
+func TestParseFilters_JSONObject(t *testing.T) {
+	filters, err := ParseFilters([]string{
+		`{"key": "service.name", "operator": "contains", "value": "api"}`,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, filters)
+	require.Len(t, *filters, 1)
+	assert.Equal(t, "service.name", (*filters)[0].Key)
+	assert.Equal(t, dash0api.AttributeFilterOperatorContains, (*filters)[0].Operator)
+	require.NotNil(t, (*filters)[0].Value)
+}
+
+func TestParseFilters_JSONNoValueOperator(t *testing.T) {
+	filters, err := ParseFilters([]string{
+		`{"key": "error.type", "operator": "is_set"}`,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, filters)
+	require.Len(t, *filters, 1)
+	assert.Equal(t, "error.type", (*filters)[0].Key)
+	assert.Equal(t, dash0api.AttributeFilterOperatorIsSet, (*filters)[0].Operator)
+	assert.Nil(t, (*filters)[0].Value)
+}
+
+func TestParseFilters_JSONMixedWithTextFilters(t *testing.T) {
+	filters, err := ParseFilters([]string{
+		`[{"key": "user_agent.name", "operator": "is", "value": "dash0-cli"}]`,
+		"service.name contains api",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, filters)
+	require.Len(t, *filters, 2)
+	assert.Equal(t, "user_agent.name", (*filters)[0].Key)
+	assert.Equal(t, "service.name", (*filters)[1].Key)
+}
+
+func TestParseFilters_JSONEmptyArray(t *testing.T) {
+	filters, err := ParseFilters([]string{`[]`})
+	require.NoError(t, err)
+	require.NotNil(t, filters)
+	assert.Len(t, *filters, 0)
+}
+
+func TestParseFilters_JSONErrorCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"invalid JSON array", `[not json]`, "failed to parse JSON"},
+		{"invalid JSON object", `{not json}`, "failed to parse JSON"},
+		{"missing key", `{"operator": "is", "value": "x"}`, "missing \"key\" field"},
+		{"missing operator", `{"key": "k", "value": "x"}`, "missing \"operator\" field"},
+		{"unknown operator", `{"key": "k", "operator": "nope", "value": "x"}`, "unknown operator"},
+		{"missing value", `{"key": "k", "operator": "is"}`, "requires a \"value\" field"},
+		{"missing values for is_one_of", `{"key": "k", "operator": "is_one_of"}`, "requires \"values\" array"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFilters([]string{tt.input})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
 func TestParseFilters_Empty(t *testing.T) {
 	filters, err := ParseFilters(nil)
 	require.NoError(t, err)

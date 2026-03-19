@@ -594,7 +594,7 @@ dash0 -X logs query [flags]
 | `--from` | `now-15m` | Start of time range |
 | `--to` | `now` | End of time range |
 | `--limit` | 50 | Maximum number of records |
-| `--filter` | | Filter expression (repeatable) |
+| `--filter` | | Filter expression (repeatable); accepts text (`key [operator] value`) or JSON from the Dash0 UI |
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 | `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
@@ -626,6 +626,10 @@ $ dash0 -X logs query \
     --filter "service.name is my-service" \
     --filter "otel.log.severity.range is_one_of ERROR WARN"
 
+# Use JSON filter criteria copied from the Dash0 UI
+$ dash0 -X logs query \
+    --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+
 # Output as JSON (full OTLP payload)
 $ dash0 -X logs query -o json
 
@@ -643,6 +647,20 @@ $ dash0 -X logs query -o csv --skip-header
 
 The `--filter` flag accepts expressions in the form `key [operator] value`.
 When the operator is omitted, `is` (exact match) is assumed.
+
+The flag also accepts JSON filter criteria as produced by the Dash0 UI "copy filter criteria" feature.
+A JSON array of filter objects is expanded into multiple filters; a single JSON object is treated as one filter.
+For example:
+
+```bash
+# Paste a JSON array copied from the Dash0 UI
+$ dash0 -X logs query --filter '[
+  {"key": "service.name", "operator": "is", "value": "api"},
+  {"key": "otel.log.severity.range", "operator": "is_one_of", "values": ["ERROR", "WARN"]}
+]'
+```
+
+JSON filters and text filters can be mixed freely across multiple `--filter` flags.
 
 | Operator | Alias | Description |
 |----------|-------|-------------|
@@ -793,7 +811,7 @@ dash0 -X spans query [flags]
 | `--from` | `now-15m` | Start of time range |
 | `--to` | `now` | End of time range |
 | `--limit` | 50 | Maximum number of spans |
-| `--filter` | | Filter expression (repeatable) |
+| `--filter` | | Filter expression (repeatable); accepts text (`key [operator] value`) or JSON from the Dash0 UI |
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 | `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
@@ -818,6 +836,10 @@ $ dash0 -X spans query --filter "service.name is my-service"
 
 # Filter by span status
 $ dash0 -X spans query --filter "otel.span.status.code is ERROR"
+
+# Use JSON filter criteria copied from the Dash0 UI
+$ dash0 -X spans query \
+    --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 
 # Output as CSV
 $ dash0 -X spans query -o csv

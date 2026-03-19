@@ -16,7 +16,7 @@ SEND_OUTPUT=$("$DASH0" -X spans send \
   --resource-attribute service.name=roundtrip-test \
   --span-attribute test.id="${UNIQUE_ID}")
 echo "$SEND_OUTPUT"
-if ! echo "$SEND_OUTPUT" | grep -q "Span sent successfully"; then
+if ! echo "$SEND_OUTPUT" | grep -q "Span sent"; then
   echo "FAIL: spans send did not succeed"
   exit 1
 fi

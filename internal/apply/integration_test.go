@@ -3,6 +3,7 @@
 package apply
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -198,12 +200,75 @@ spec:
 	// Verify the update request body has server-generated fields stripped
 	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards)
 	require.NotNil(t, updateReq, "expected an update request for dashboard")
-	body := string(updateReq.Body)
-	assert.NotContains(t, body, `"createdAt"`)
-	assert.NotContains(t, body, `"updatedAt"`)
-	assert.NotContains(t, body, `"version"`)
-	assert.NotContains(t, body, `"annotations"`)
-	assert.Contains(t, body, "existing-dashboard-id")
+
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(updateReq.Body, &dashboard))
+
+	assert.Nil(t, dashboard.Metadata.CreatedAt)
+	assert.Nil(t, dashboard.Metadata.UpdatedAt)
+	assert.Nil(t, dashboard.Metadata.Version)
+	assert.Equal(t, "existing-dashboard-id", *dashboard.Metadata.Dash0Extensions.Id)
+}
+
+func TestApply_Dashboard_PreservesAnnotations(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "dashboard.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  annotations:
+    dash0.com/folder-path: /test/foo/bar
+    dash0.com/sharing: team-123
+    dash0.com/source: ui
+  dash0extensions:
+    id: existing-dashboard-id
+  name: Test Dashboard
+spec:
+  display:
+    name: Test Dashboard
+  layouts:
+    - kind: Grid
+      spec:
+        items: []
+  panels: {}
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/existing-dashboard-id", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDashboardsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+
+	// Verify user-settable annotations are preserved in the update request
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards)
+	require.NotNil(t, updateReq, "expected an update request for dashboard")
+
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(updateReq.Body, &dashboard))
+
+	require.NotNil(t, dashboard.Metadata.Annotations)
+	assert.Equal(t, "/test/foo/bar", *dashboard.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, "team-123", *dashboard.Metadata.Annotations.Dash0Comsharing)
+	assert.Equal(t, dash0api.Ui, *dashboard.Metadata.Annotations.Dash0Comsource)
+	// Server-generated fields are stripped
+	assert.Nil(t, dashboard.Metadata.Annotations.Dash0ComdeletedAt)
+	assert.Nil(t, dashboard.Metadata.CreatedAt)
+	assert.Nil(t, dashboard.Metadata.UpdatedAt)
+	assert.Nil(t, dashboard.Metadata.Version)
 }
 
 func TestApply_MultipleDocuments(t *testing.T) {
@@ -1074,13 +1139,84 @@ spec:
 	// Verify the update request body has server-generated fields stripped
 	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathViews)
 	require.NotNil(t, updateReq, "expected an update request for view")
-	body := string(updateReq.Body)
-	assert.NotContains(t, body, `"dash0.com/origin"`)
-	assert.NotContains(t, body, `"dash0.com/version"`)
-	assert.NotContains(t, body, `"dash0.com/source"`)
-	assert.NotContains(t, body, `"dash0.com/dataset"`)
-	assert.NotContains(t, body, `"permissions"`)
-	assert.Contains(t, body, "existing-view-uuid")
+
+	var view dash0api.ViewDefinition
+	require.NoError(t, json.Unmarshal(updateReq.Body, &view))
+
+	assert.Nil(t, view.Metadata.Labels.Dash0Comorigin)
+	assert.Nil(t, view.Metadata.Labels.Dash0Comversion)
+	assert.Nil(t, view.Metadata.Labels.Dash0Comsource)
+	assert.Nil(t, view.Metadata.Labels.Dash0Comdataset)
+	assert.Equal(t, "existing-view-uuid", *view.Metadata.Labels.Dash0Comid)
+}
+
+func TestApply_View_PreservesAnnotationsAndPermissions(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	viewID := "existing-view-uuid"
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "view.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: View
+metadata:
+  name: test-view
+  annotations:
+    dash0.com/folder-path: /views/errors
+    dash0.com/sharing: team-456
+  labels:
+    dash0.com/id: existing-view-uuid
+spec:
+  display:
+    name: Test View
+  type: logs
+  filter: []
+  permissions:
+    - actions:
+        - "views:read"
+        - "views:write"
+      userId: user-abc-123
+  table:
+    columns: []
+    sort: []
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/"+viewID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureViewsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+
+	// Verify user-settable annotations and permissions are preserved
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathViews)
+	require.NotNil(t, updateReq, "expected an update request for view")
+
+	var view dash0api.ViewDefinition
+	require.NoError(t, json.Unmarshal(updateReq.Body, &view))
+
+	require.NotNil(t, view.Metadata.Annotations)
+	assert.Equal(t, "/views/errors", *view.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, "team-456", *view.Metadata.Annotations.Dash0Comsharing)
+	assert.Nil(t, view.Metadata.Annotations.Dash0ComdeletedAt)
+	// Permissions are preserved
+	require.NotNil(t, view.Spec.Permissions)
+	require.Len(t, *view.Spec.Permissions, 1)
+	assert.Equal(t, "user-abc-123", *(*view.Spec.Permissions)[0].UserId)
+	// Server-generated label fields are stripped
+	assert.Nil(t, view.Metadata.Labels.Dash0Comorigin)
+	assert.Nil(t, view.Metadata.Labels.Dash0Comversion)
+	assert.Nil(t, view.Metadata.Labels.Dash0Comdataset)
 }
 
 func TestApply_SyntheticCheck_Updated(t *testing.T) {
@@ -1134,12 +1270,86 @@ spec:
 	// Verify the update request body has server-generated fields stripped
 	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathSyntheticChecks)
 	require.NotNil(t, updateReq, "expected an update request for synthetic check")
-	body := string(updateReq.Body)
-	assert.NotContains(t, body, `"dash0.com/origin"`)
-	assert.NotContains(t, body, `"dash0.com/version"`)
-	assert.NotContains(t, body, `"dash0.com/dataset"`)
-	assert.NotContains(t, body, `"permissions"`)
-	assert.Contains(t, body, "existing-check-uuid")
+
+	var check dash0api.SyntheticCheckDefinition
+	require.NoError(t, json.Unmarshal(updateReq.Body, &check))
+
+	assert.Nil(t, check.Metadata.Labels.Dash0Comorigin)
+	assert.Nil(t, check.Metadata.Labels.Dash0Comversion)
+	assert.Nil(t, check.Metadata.Labels.Dash0Comdataset)
+	assert.Equal(t, "existing-check-uuid", *check.Metadata.Labels.Dash0Comid)
+}
+
+func TestApply_SyntheticCheck_PreservesAnnotationsAndPermissions(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	checkID := "existing-check-uuid"
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "syntheticcheck.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: SyntheticCheck
+metadata:
+  name: test-synthetic-check
+  annotations:
+    dash0.com/folder-path: /checks/health
+    dash0.com/sharing: team-789
+  labels:
+    dash0.com/id: existing-check-uuid
+spec:
+  display:
+    name: Test Synthetic Check
+  permissions:
+    - actions:
+        - "synthetic_check:read"
+        - "synthetic_check:write"
+      role: admin
+  http:
+    url: https://example.com/health
+    method: GET
+  scheduling:
+    interval: 1m
+    timeout: 30s
+  locations:
+    - eu-west-1
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/synthetic-checks/"+checkID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureSyntheticChecksImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithSyntheticChecksUpdate(testutil.FixtureSyntheticChecksImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+
+	// Verify user-settable annotations and permissions are preserved
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathSyntheticChecks)
+	require.NotNil(t, updateReq, "expected an update request for synthetic check")
+
+	var check dash0api.SyntheticCheckDefinition
+	require.NoError(t, json.Unmarshal(updateReq.Body, &check))
+
+	require.NotNil(t, check.Metadata.Annotations)
+	assert.Equal(t, "/checks/health", *check.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, "team-789", *check.Metadata.Annotations.Dash0Comsharing)
+	assert.Nil(t, check.Metadata.Annotations.Dash0ComdeletedAt)
+	// Permissions are preserved
+	require.NotNil(t, check.Spec.Permissions)
+	require.Len(t, *check.Spec.Permissions, 1)
+	assert.Equal(t, "admin", *(*check.Spec.Permissions)[0].Role)
+	// Server-generated label fields are stripped
+	assert.Nil(t, check.Metadata.Labels.Dash0Comorigin)
+	assert.Nil(t, check.Metadata.Labels.Dash0Comversion)
+	assert.Nil(t, check.Metadata.Labels.Dash0Comdataset)
 }
 
 // countOccurrences counts the number of times substr appears in s

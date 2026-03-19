@@ -114,7 +114,7 @@ jobs:
           #!/bin/bash
           if [ "\$1" = "logs" ] && [ "\$2" = "send" ]; then
             echo "CAPTURED_ARGS:" "\$@" > /tmp/dash0-captured-args.txt
-            echo "Log record sent successfully"
+            echo "Log record sent"
             exit 0
           fi
           exec ~/.dash0/bin/dash0-real "\$@"
@@ -195,7 +195,7 @@ jobs:
           echo "$ARGS" | grep -q -- '--scope-name github.com/dash0hq/dash0-cli@send-log-event'
           echo "$ARGS" | grep -q -- '--scope-version'
 
-          echo "All argument mappings verified successfully."
+          echo "All argument mappings verified."
 
   test-send:
     name: 'End-to-end send'
