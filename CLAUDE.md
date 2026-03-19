@@ -45,6 +45,11 @@ Detailed guidelines are split into focused documents:
 
 The `ORIGIN` column in `list -o wide` output shows the `origin` provenance field, not the ID.
 
+For dashboards, the ID must be cleared from the request body before PUT (update) calls.
+The ID is already passed as the URL path parameter (`originOrId`); sending it in both places causes the server to reject the request when the ID is a UUID that matches the dashboard's own server-assigned ID.
+Use `asset.ClearDashboardBodyID()` before calling `UpdateDashboard`.
+This applies to both `ImportDashboard` (used by `apply`) and `dashboards update`.
+
 ### Asset annotations
 
 Assets (dashboards, views, synthetic checks) have typed annotation structs with these fields:

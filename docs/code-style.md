@@ -47,3 +47,5 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 - Never introduce test-specific behavior (env var checks, test flags, etc.) in production code.
   Tests must exercise the real code paths.
   Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables, or CLI flags) to set up the state tests need.
+- When asserting on request bodies in integration tests, parse the body into the appropriate typed struct (e.g., `dash0api.DashboardDefinition`, `dash0api.PrometheusAlertRule`, `dash0api.ViewDefinition`, `dash0api.SyntheticCheckDefinition`) and assert on the struct fields.
+  Do not use `assert.Contains` on the raw JSON string — substring matching is fragile and can match unrelated fields or partial values.
