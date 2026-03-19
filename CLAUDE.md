@@ -45,6 +45,24 @@ Detailed guidelines are split into focused documents:
 
 The `ORIGIN` column in `list -o wide` output shows the `origin` provenance field, not the ID.
 
+### Asset annotations
+
+Assets (dashboards, views, synthetic checks) have typed annotation structs with these fields:
+
+| Annotation | User-settable | Behavior |
+|------------|---------------|----------|
+| `dash0.com/folder-path` | Yes | Fully user-controlled, round-trips through the API unchanged |
+| `dash0.com/source` | Yes (dashboards only) | User-settable, but the server overrides it based on the API path used (e.g., `api`, `ui`) |
+| `dash0.com/sharing` | Write-only | The API parses it into typed `Permissions` objects in `spec.permissions`, then strips the annotation before persisting. It is never returned in GET responses. Format: `"role:basic_member,team:team_123,user:alice@example.com"` |
+| `dash0.com/deleted-at` | No | Server-managed soft-delete timestamp |
+
+**`Strip*ServerFields` functions** (`internal/asset/`) remove server-managed noise before sending assets to the API and for diff rendering.
+They must only strip truly server-managed fields (`deleted-at`, `createdAt`, `updatedAt`, `version`, `dataset`, `origin`).
+User-settable annotations (`folder-path`, `sharing`, `source`) and `spec.permissions` must be preserved.
+
+**`spec.permissions`** on views and synthetic checks holds typed permission objects (role + actions).
+These are user-provided and must not be stripped.
+
 ## GitHub issues
 
 When creating GitHub issues, describe **what** and **why** — not **how**.

@@ -1,0 +1,65 @@
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: test-perses-dashboard
+spec:
+  display:
+    name: Test Perses Dashboard
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        collapse:
+          open: true
+        title: Overview
+      items:
+      - content:
+          $ref: '#/spec/panels/test-panel'
+        height: 4
+        width: 24
+        x: 0
+        "y": 0
+  panels:
+    test-panel:
+      kind: Panel
+      spec:
+        display:
+          dash0Extensions: {}
+          description: ""
+          name: Test Panel
+        links: []
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              mode: list
+              position: top
+              showLegend: true
+            thresholds: {}
+            visual:
+              areaOpacity: 0.2
+              connectNulls: false
+              display: line
+              lineWidth: 1
+              palette:
+                mode: auto
+              pointRadius: 2.5
+              stack: none
+            yAxis:
+              format:
+                decimalPlaces: 2
+                enforceMinimumFractionDigits: false
+                shortValues: false
+                signDisplay: auto
+                unit: decimal
+              min: 0
+              show: true
+              showOnlyMaxScale: false
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: up
+                seriesNameFormat: Up

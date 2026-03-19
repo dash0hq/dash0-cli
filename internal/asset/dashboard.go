@@ -10,7 +10,9 @@ import (
 // dashboard definition. Used by both Import (to avoid sending stale values to
 // the API) and diff rendering (to suppress noise like timestamps and version).
 func StripDashboardServerFields(d *dash0api.DashboardDefinition) {
-	d.Metadata.Annotations = nil
+	if d.Metadata.Annotations != nil {
+		d.Metadata.Annotations.Dash0ComdeletedAt = nil
+	}
 	d.Metadata.CreatedAt = nil
 	d.Metadata.UpdatedAt = nil
 	d.Metadata.Version = nil
