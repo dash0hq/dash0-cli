@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.7.2
+
+
+### Enhancements
+
+
+- `query`: `--filter` now accepts JSON filter criteria copied from the Dash0 UI (#96)
+  The --filter flag on logs query and spans query now accepts JSON arrays and objects
+  as produced by the Dash0 UI "copy filter criteria" feature, in addition to the
+  existing text-based filter syntax. JSON and text filters can be mixed freely.
+  
+
+
+### Bug Fixes
+
+
+- `apply`: Preserve user-settable annotations and permissions on asset round-trips (#99)
+  `dash0.com/folder-path`, `dash0.com/source`, and `dash0.com/sharing` annotations were silently dropped during `apply`, `<asset> create` and `<asset> update`.
+  `spec.permissions` on views and synthetic checks was also stripped.
+  
+
 ## 1.7.1
 
 
