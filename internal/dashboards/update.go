@@ -85,6 +85,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, &dashboard)
 	}
 
+	asset.ClearDashboardBodyID(&dashboard)
 	result, err := apiClient.UpdateDashboard(ctx, id, &dashboard, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

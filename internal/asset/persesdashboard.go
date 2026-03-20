@@ -68,6 +68,13 @@ func ConvertToDashboard(perses *PersesDashboard) *dash0api.DashboardDefinition {
 		Spec: spec,
 	}
 
+	// Copy user-settable annotations (folder-path, sharing, source) from
+	// Perses CRD metadata into the typed Dashboard annotations struct.
+	annotations := convertPersesDashboardAnnotations(perses.Metadata.Annotations)
+	if annotations != nil {
+		dashboard.Metadata.Annotations = annotations
+	}
+
 	// Copy dash0.com/id from labels into dash0Extensions.id
 	if perses.Metadata.Labels != nil {
 		if id := perses.Metadata.Labels["dash0.com/id"]; id != "" {
@@ -78,6 +85,34 @@ func ConvertToDashboard(perses *PersesDashboard) *dash0api.DashboardDefinition {
 	}
 
 	return dashboard
+}
+
+// convertPersesDashboardAnnotations converts the untyped annotation map from a
+// PersesDashboard CRD into the typed DashboardAnnotations struct, copying only
+// user-settable annotations (folder-path, sharing, source).
+func convertPersesDashboardAnnotations(annotations map[string]string) *dash0api.DashboardAnnotations {
+	if len(annotations) == 0 {
+		return nil
+	}
+	var result dash0api.DashboardAnnotations
+	hasAny := false
+	if v, ok := annotations["dash0.com/folder-path"]; ok {
+		result.Dash0ComfolderPath = &v
+		hasAny = true
+	}
+	if v, ok := annotations["dash0.com/sharing"]; ok {
+		result.Dash0Comsharing = &v
+		hasAny = true
+	}
+	if v, ok := annotations["dash0.com/source"]; ok {
+		source := dash0api.DashboardSource(v)
+		result.Dash0Comsource = &source
+		hasAny = true
+	}
+	if !hasAny {
+		return nil
+	}
+	return &result
 }
 
 // extractDisplayName reads spec.display.name from a dashboard spec map.

@@ -125,6 +125,84 @@ func TestConvertToDashboard_WithDash0ID(t *testing.T) {
 	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", *dashboard.Metadata.Dash0Extensions.Id)
 }
 
+func TestConvertToDashboard_WithAnnotations(t *testing.T) {
+	perses := &PersesDashboard{
+		APIVersion: "perses.dev/v1alpha1",
+		Kind:       "PersesDashboard",
+		Metadata: PersesDashboardMetadata{
+			Name: "annotated-dashboard",
+			Annotations: map[string]string{
+				"dash0.com/folder-path": "/test/foo/bar",
+				"dash0.com/sharing":     "role:basic_member",
+				"dash0.com/source":      "terraform",
+			},
+		},
+		Spec: map[string]interface{}{
+			"display": map[string]interface{}{
+				"name": "Annotated Dashboard",
+			},
+		},
+	}
+
+	dashboard := ConvertToDashboard(perses)
+
+	require.NotNil(t, dashboard.Metadata.Annotations)
+	require.NotNil(t, dashboard.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, "/test/foo/bar", *dashboard.Metadata.Annotations.Dash0ComfolderPath)
+	require.NotNil(t, dashboard.Metadata.Annotations.Dash0Comsharing)
+	assert.Equal(t, "role:basic_member", *dashboard.Metadata.Annotations.Dash0Comsharing)
+	require.NotNil(t, dashboard.Metadata.Annotations.Dash0Comsource)
+	assert.Equal(t, dash0api.DashboardSource("terraform"), *dashboard.Metadata.Annotations.Dash0Comsource)
+}
+
+func TestConvertToDashboard_WithFolderPathOnly(t *testing.T) {
+	perses := &PersesDashboard{
+		APIVersion: "perses.dev/v1alpha1",
+		Kind:       "PersesDashboard",
+		Metadata: PersesDashboardMetadata{
+			Name: "folder-path-dashboard",
+			Annotations: map[string]string{
+				"dash0.com/folder-path": "/my/folder",
+			},
+		},
+		Spec: map[string]interface{}{
+			"display": map[string]interface{}{
+				"name": "Folder Path Dashboard",
+			},
+		},
+	}
+
+	dashboard := ConvertToDashboard(perses)
+
+	require.NotNil(t, dashboard.Metadata.Annotations)
+	require.NotNil(t, dashboard.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Equal(t, "/my/folder", *dashboard.Metadata.Annotations.Dash0ComfolderPath)
+	assert.Nil(t, dashboard.Metadata.Annotations.Dash0Comsharing)
+	assert.Nil(t, dashboard.Metadata.Annotations.Dash0Comsource)
+}
+
+func TestConvertToDashboard_WithNoRelevantAnnotations(t *testing.T) {
+	perses := &PersesDashboard{
+		APIVersion: "perses.dev/v1alpha1",
+		Kind:       "PersesDashboard",
+		Metadata: PersesDashboardMetadata{
+			Name: "irrelevant-annotations",
+			Annotations: map[string]string{
+				"some-other-annotation": "value",
+			},
+		},
+		Spec: map[string]interface{}{
+			"display": map[string]interface{}{
+				"name": "No Relevant Annotations",
+			},
+		},
+	}
+
+	dashboard := ConvertToDashboard(perses)
+
+	assert.Nil(t, dashboard.Metadata.Annotations)
+}
+
 func TestConvertToDashboard_NilSpec(t *testing.T) {
 	perses := &PersesDashboard{
 		APIVersion: "perses.dev/v1alpha1",
