@@ -1,0 +1,52 @@
+{
+  "kind": "Dash0RecordingRuleGroup",
+  "metadata": {
+    "name": "http_metrics",
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "aaaa1111-1234-5678-abcd-000000000001",
+      "dash0.com/origin": "tf_aaaa1111-1234-5678-abcd-000000000001",
+      "dash0.com/source": "terraform",
+      "dash0.com/version": "1"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-01-10T10:00:00Z",
+      "dash0.com/updated-at": "2026-01-10T10:00:00Z",
+      "dash0.com/folder-path": "/infrastructure/http",
+      "dash0.com/sharing": "team:team_01abc,user:alice@example.com"
+    }
+  },
+  "spec": {
+    "display": {
+      "name": "HTTP Metrics"
+    },
+    "enabled": true,
+    "interval": "1m",
+    "rules": [
+      {
+        "record": "http_requests_total:rate5m",
+        "expression": "rate(http_requests_total[5m])",
+        "labels": {
+          "env": "production"
+        }
+      },
+      {
+        "record": "http_errors_total:rate5m",
+        "expression": "rate(http_requests_total{status=~\"5..\"}[5m])",
+        "labels": {
+          "env": "production"
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "actions": [
+          "recording_rule_group:read",
+          "recording_rule_group:write",
+          "recording_rule_group:delete"
+        ],
+        "role": "admin"
+      }
+    ]
+  }
+}

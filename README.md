@@ -161,7 +161,7 @@ dash0 config profiles create dev --api-url https://api.us-west-2.aws.dash0.com
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `SyntheticCheck`, and `View`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `SyntheticCheck`, `View`, and `Dash0RecordingRuleGroup`.
 
 ```bash
 dash0 apply -f assets.yaml
@@ -221,6 +221,19 @@ dash0 views create -f view.yaml
 dash0 views update [id] -f view.yaml
 dash0 views delete <id> [--force]
 ```
+
+### Recording rules
+
+```bash
+dash0 recording-rules list
+dash0 recording-rules get <id>
+dash0 recording-rules get <id> -o yaml
+dash0 recording-rules create -f recording-rule.yaml
+dash0 recording-rules update [id] -f recording-rule.yaml
+dash0 recording-rules delete <id> [--force]
+```
+
+Alias: `rr` (e.g. `dash0 rr list`)
 
 ### Logging
 

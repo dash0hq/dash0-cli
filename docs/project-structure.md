@@ -4,7 +4,7 @@
 - `/docs`: Development guidelines referenced from `CLAUDE.md`
 - `/internal/apply`: The `apply` command — orchestration only, delegates asset-specific logic to `internal/asset`
 - `/internal/asset`: Shared asset logic (types, import functions, display helpers) used by both `apply` and the per-asset CRUD commands
-- `/internal/checkrules`, `/internal/dashboards`, `/internal/syntheticchecks`, `/internal/views`: Per-asset CRUD commands — delegate asset-specific logic to `internal/asset`
+- `/internal/checkrules`, `/internal/dashboards`, `/internal/recordingrulegroups`, `/internal/syntheticchecks`, `/internal/views`: Per-asset CRUD commands — delegate asset-specific logic to `internal/asset`
 - `/internal/client`: API client factory and error handling
 - `/internal/color`: Severity-aware color formatting for terminal output
 - `/internal/config`: Configuration management (profiles, resolution)

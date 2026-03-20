@@ -46,6 +46,7 @@ Supported asset types:
   - CheckRule (or PrometheusRule CRD)
   - SyntheticCheck
   - View
+  - Dash0RecordingRuleGroup
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
@@ -166,7 +167,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0RecordingRuleGroup)", doc.location(), doc.kind))
 		}
 	}
 	if len(validationErrors) > 0 {
@@ -322,6 +323,14 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = asset.ExtractSyntheticCheckName(&check)
 		id = asset.ExtractSyntheticCheckID(&check)
+
+	case "recordingrulegroup":
+		var group dash0api.RecordingRuleGroupDefinition
+		if err := sigsyaml.Unmarshal(data, &group); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.ExtractRecordingRuleGroupName(&group)
+		id = asset.ExtractRecordingRuleGroupID(&group)
 
 	case "prometheusrule":
 		var promRule asset.PrometheusRule
@@ -528,7 +537,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 
 func isValidKind(kind string) bool {
 	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard":
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "recordingrulegroup":
 		return true
 	default:
 		return false
@@ -618,6 +627,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "view",
 				AssetName: view.Metadata.Name,
+			})
+		}
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "recordingrulegroup":
+		var group dash0api.RecordingRuleGroupDefinition
+		if err := sigsyaml.Unmarshal(doc.raw, &group); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0RecordingRuleGroup: %w", err)
+		}
+		result, err := asset.ImportRecordingRuleGroup(ctx, apiClient, &group, dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "recording rule",
+				AssetName: group.Metadata.Name,
 			})
 		}
 		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil

@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`
 - Group related functionality: `config profiles` for profile management
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`) use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `recording-rules`) use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -64,14 +64,15 @@ The `members` command manages organization membership:
 ## Asset Kind Display Names
 In user-facing output (success messages, dry-run listings, error messages), use human-readable names for asset kinds — **not** PascalCase identifiers:
 
-| Kind identifier    | Display name    |
-|--------------------|-----------------|
-| `Dashboard`        | Dashboard       |
-| `CheckRule`        | Check rule      |
-| `SyntheticCheck`   | Synthetic check |
-| `View`             | View            |
-| `PrometheusRule`   | PrometheusRule  |
-| `PersesDashboard`  | PersesDashboard |
+| Kind identifier              | Display name         |
+|------------------------------|----------------------|
+| `Dashboard`                  | Dashboard            |
+| `CheckRule`                  | Check rule           |
+| `SyntheticCheck`             | Synthetic check      |
+| `View`                       | View                 |
+| `PrometheusRule`             | PrometheusRule       |
+| `PersesDashboard`            | PersesDashboard      |
+| `Dash0RecordingRuleGroup`    | Recording rule       |
 
 For example: `Check rule "High Error Rate" created`, not `CheckRule "High Error Rate" created`.
 

@@ -5,7 +5,7 @@ The OpenAPI specification of the Dash0 API is available at `https://api-docs.das
 
 ## Fixture Location
 - Fixtures are stored in `internal/testutil/fixtures/`
-- Organized by asset type: `dashboards/`, `checkrules/`, `views/`, `syntheticchecks/`
+- Organized by asset type: `dashboards/`, `checkrules/`, `views/`, `syntheticchecks/`, `recordingrulegroups/`
 - Common fixture patterns: `list_success.json`, `list_empty.json`, `get_success.json`, `error_not_found.json`, `error_unauthorized.json`
 
 ## Generating Fixtures
