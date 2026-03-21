@@ -1,12 +1,10 @@
 package teams
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
@@ -50,19 +48,16 @@ func newDeleteCmd() *cobra.Command {
 func runDelete(cmd *cobra.Command, originOrID string, flags *deleteFlags) error {
 	ctx := cmd.Context()
 
-	if !flags.Force {
-		fmt.Printf("Are you sure you want to delete team %q? [y/N]: ", originOrID)
-		reader := bufio.NewReader(os.Stdin)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
-		}
-
-		response = strings.TrimSpace(strings.ToLower(response))
-		if response != "y" && response != "yes" {
-			fmt.Println("Deletion cancelled")
-			return nil
-		}
+	confirmed, err := confirmation.ConfirmDestructiveOperation(
+		fmt.Sprintf("Are you sure you want to delete team %q? [y/N]: ", originOrID),
+		flags.Force,
+	)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		fmt.Println("Deletion cancelled")
+		return nil
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)

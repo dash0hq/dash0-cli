@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"sigs.k8s.io/yaml"
 )
 
@@ -24,7 +25,12 @@ const (
 // ParseFormat parses a format string into a Format type
 func ParseFormat(s string) (Format, error) {
 	switch strings.ToLower(s) {
-	case "table", "":
+	case "":
+		if agentmode.Enabled {
+			return FormatJSON, nil
+		}
+		return FormatTable, nil
+	case "table":
 		return FormatTable, nil
 	case "json":
 		return FormatJSON, nil

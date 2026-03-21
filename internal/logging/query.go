@@ -10,6 +10,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
@@ -61,7 +62,12 @@ var logKnownColumns = append(logDefaultColumns,
 
 func parseQueryFormat(s string) (queryFormat, error) {
 	switch strings.ToLower(s) {
-	case "table", "":
+	case "":
+		if agentmode.Enabled {
+			return queryFormatJSON, nil
+		}
+		return queryFormatTable, nil
+	case "table":
 		return queryFormatTable, nil
 	case "json":
 		return queryFormatJSON, nil

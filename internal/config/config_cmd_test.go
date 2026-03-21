@@ -2,10 +2,12 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/spf13/cobra"
 )
 
@@ -197,6 +199,162 @@ func TestShowCmdDatasetEnvVar(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("(from DASH0_DATASET environment variable)")) {
 		t.Errorf("Expected output to contain env var annotation, got: %s", output)
+	}
+}
+
+// TestListProfileCmdJSON tests the JSON output format
+func TestListProfileCmdJSON(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "dev",
+			Configuration: Configuration{
+				ApiUrl:    "https://api.dev.example.com",
+				AuthToken: "auth_long_enough_token_dev",
+				OtlpUrl:   "https://otlp.dev.example.com",
+				Dataset:   "my-dataset",
+			},
+		},
+		{
+			Name: "prod",
+			Configuration: Configuration{
+				ApiUrl:    "https://api.prod.example.com",
+				AuthToken: "auth_long_enough_token_prod",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	out, err := executeCommand(rootCmd, "config", "profiles", "list", "-o", "json")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var result []profileJSON
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("Failed to parse JSON output: %v\nOutput: %s", err, out)
+	}
+
+	if len(result) != 2 {
+		t.Fatalf("Expected 2 profiles, got %d", len(result))
+	}
+
+	// First profile: dev (active)
+	if result[0].Name != "dev" {
+		t.Errorf("Expected name 'dev', got %q", result[0].Name)
+	}
+	if !result[0].Active {
+		t.Error("Expected dev profile to be active")
+	}
+	if result[0].ApiUrl != "https://api.dev.example.com" {
+		t.Errorf("Expected apiUrl, got %q", result[0].ApiUrl)
+	}
+	if result[0].OtlpUrl != "https://otlp.dev.example.com" {
+		t.Errorf("Expected otlpUrl, got %q", result[0].OtlpUrl)
+	}
+	if result[0].Dataset != "my-dataset" {
+		t.Errorf("Expected dataset 'my-dataset', got %q", result[0].Dataset)
+	}
+	// Auth token should be masked
+	if result[0].AuthToken == "auth_long_enough_token_dev" {
+		t.Error("Expected auth token to be masked, but got the raw token")
+	}
+	if result[0].AuthToken != maskToken("auth_long_enough_token_dev") {
+		t.Errorf("Expected masked token %q, got %q", maskToken("auth_long_enough_token_dev"), result[0].AuthToken)
+	}
+
+	// Second profile: prod (not active, empty dataset defaults to "default")
+	if result[1].Name != "prod" {
+		t.Errorf("Expected name 'prod', got %q", result[1].Name)
+	}
+	if result[1].Active {
+		t.Error("Expected prod profile to not be active")
+	}
+	if result[1].Dataset != "default" {
+		t.Errorf("Expected dataset 'default', got %q", result[1].Dataset)
+	}
+}
+
+// TestListProfileCmdJSONEmpty tests JSON output when no profiles exist
+func TestListProfileCmdJSONEmpty(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	out, err := executeCommand(rootCmd, "config", "profiles", "list", "-o", "json")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	trimmed := bytes.TrimSpace([]byte(out))
+	if string(trimmed) != "[]" {
+		t.Errorf("Expected empty JSON array, got: %s", out)
+	}
+}
+
+// TestListProfileCmdAgentModeDefaultsToJSON tests that agent mode defaults to JSON output
+func TestListProfileCmdAgentModeDefaultsToJSON(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []Profile{
+		{
+			Name: "dev",
+			Configuration: Configuration{
+				ApiUrl:    "https://api.example.com",
+				AuthToken: "auth_long_enough_token",
+			},
+		},
+	}
+
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	defer func() { agentmode.Enabled = prev }()
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	out, err := executeCommand(rootCmd, "config", "profiles", "list")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var result []profileJSON
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("Expected JSON output in agent mode, got parse error: %v\nOutput: %s", err, out)
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 profile, got %d", len(result))
+	}
+	if result[0].Name != "dev" {
+		t.Errorf("Expected name 'dev', got %q", result[0].Name)
+	}
+}
+
+// TestListProfileCmdSkipHeaderWithJSON tests that --skip-header is rejected with JSON format
+func TestListProfileCmdSkipHeaderWithJSON(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	rootCmd.SetArgs([]string{"config", "profiles", "list", "-o", "json", "--skip-header"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("Expected error for --skip-header with JSON format, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("--skip-header is not supported")) {
+		t.Errorf("Expected skip-header error message, got: %s", err.Error())
 	}
 }
 

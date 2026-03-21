@@ -6,7 +6,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
@@ -75,6 +77,7 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
 	rootCmd.PersistentFlags().String("color", "", `Color mode for output: "semantic" or "none" (env: DASH0_COLOR)`)
+	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
 }
 
 // newVersionCmd creates a new version command
@@ -95,6 +98,11 @@ func newVersionCmd() *cobra.Command {
 // "Error:" is printed in red, "Hint:" is printed in cyan.
 // Colors are only used when stderr is a TTY (not piped).
 func printError(err error) {
+	if agentmode.Enabled {
+		agentmode.PrintJSONError(os.Stderr, err)
+		return
+	}
+
 	errStr := err.Error()
 
 	o := dashcolor.StderrOutput()
@@ -163,6 +171,17 @@ func main() {
 	// return the root command when persistent flags like -X come first).
 	targetCmd, _, _ := rootCmd.Traverse(os.Args[1:])
 
+	// Resolve agent mode before any output.
+	// Flags are not yet parsed at this point, so scan os.Args directly.
+	agentModeFlag := hasFlag(os.Args[1:], "--agent-mode")
+	agentmode.Init(agentModeFlag)
+
+	// In agent mode, force colors off and install a JSON help function.
+	if agentmode.Enabled {
+		dashcolor.NoColor = true
+		installJSONHelp(rootCmd)
+	}
+
 	// Resolve and apply the color mode before any output
 	colorMode, colorErr := resolveColorMode()
 	if colorErr != nil {
@@ -184,10 +203,33 @@ func main() {
 		printError(err)
 		// Show usage only for flag/argument errors, not for runtime errors.
 		// Commands set SilenceUsage = true once past flag validation.
-		if targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
+		if !agentmode.Enabled && targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
 			fmt.Fprintln(os.Stderr)
 			targetCmd.Usage()
 		}
 		os.Exit(1)
 	}
+}
+
+// installJSONHelp replaces the default help function on cmd and all
+// subcommands so that --help produces JSON output.
+func installJSONHelp(cmd *cobra.Command) {
+	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		help.PrintJSONHelp(os.Stdout, cmd)
+	})
+}
+
+// hasFlag checks whether a boolean flag (e.g. "--agent-mode") appears in args.
+// This is used before cobra has parsed flags, so we scan manually.
+func hasFlag(args []string, name string) bool {
+	for _, arg := range args {
+		if arg == name {
+			return true
+		}
+		// Stop scanning after "--" (end of flags).
+		if arg == "--" {
+			return false
+		}
+	}
+	return false
 }

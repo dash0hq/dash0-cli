@@ -1,6 +1,8 @@
 package asset
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+)
 
 // CommonFlags holds common flag values used across all asset commands
 type CommonFlags struct {
@@ -15,7 +17,7 @@ func RegisterCommonFlags(cmd *cobra.Command, flags *CommonFlags) {
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
-	cmd.Flags().StringVarP(&flags.Output, "output", "o", "table", "Output format: table, wide, json, yaml, csv")
+	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, wide, json, yaml, csv (default: table; json in agent mode)")
 }
 
 // ListFlags holds flags specific to list commands
