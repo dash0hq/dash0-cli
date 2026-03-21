@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.8.0
+
+
+### New Components
+
+
+- `agent-mode`: Add agent mode for AI coding agents (#68)
+  When active, agent mode defaults output to JSON, returns errors as JSON on
+  stderr, emits --help as structured JSON, skips confirmation prompts, and
+  disables colored output. Agent mode is activated via --agent-mode, the
+  DASH0_AGENT_MODE environment variable, or auto-detection of known AI agent
+  environment variables (CLAUDE_CODE, MCP_SESSION_ID, CURSOR_SESSION_ID, etc.).
+  
+
 ## 1.7.3
 
 
