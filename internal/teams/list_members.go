@@ -6,6 +6,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/members"
@@ -121,7 +122,12 @@ const (
 
 func parseMemberListFormat(s string) (memberListFormat, error) {
 	switch strings.ToLower(s) {
-	case "table", "":
+	case "":
+		if agentmode.Enabled {
+			return memberListFormatJSON, nil
+		}
+		return memberListFormatTable, nil
+	case "table":
 		return memberListFormatTable, nil
 	case "json":
 		return memberListFormatJSON, nil

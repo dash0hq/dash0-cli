@@ -1,12 +1,10 @@
 package members
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
@@ -56,23 +54,20 @@ Any argument not starting with "user_" is treated as an email address and resolv
 func runRemove(cmd *cobra.Command, memberIDs []string, flags *removeFlags) error {
 	ctx := cmd.Context()
 
-	if !flags.Force {
-		noun := "member"
-		if len(memberIDs) > 1 {
-			noun = "members"
-		}
-		fmt.Printf("Are you sure you want to remove %d %s? [y/N]:", len(memberIDs), noun)
-		reader := bufio.NewReader(os.Stdin)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
-		}
-
-		response = strings.TrimSpace(strings.ToLower(response))
-		if response != "y" && response != "yes" {
-			fmt.Println("Removal cancelled")
-			return nil
-		}
+	noun := "member"
+	if len(memberIDs) > 1 {
+		noun = "members"
+	}
+	confirmed, err := confirmation.ConfirmDestructiveOperation(
+		fmt.Sprintf("Are you sure you want to remove %d %s? [y/N]: ", len(memberIDs), noun),
+		flags.Force,
+	)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		fmt.Println("Removal cancelled")
+		return nil
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)

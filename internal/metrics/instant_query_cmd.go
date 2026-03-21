@@ -6,9 +6,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -48,6 +51,7 @@ func newInstantQueryCmd() *cobra.Command {
 	var queryExpr string
 	var dataset string
 	var queryTime string
+	var outputFmt string
 
 	cmd := &cobra.Command{
 		Use:   "instant",
@@ -144,6 +148,15 @@ func newInstantQueryCmd() *cobra.Command {
 				return fmt.Errorf("query failed: %s", response.Error)
 			}
 
+			useJSON := strings.ToLower(outputFmt) == "json" ||
+				(outputFmt == "" && agentmode.Enabled)
+
+			if useJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(response)
+			}
+
 			// Print the results in a user-friendly format
 			fmt.Println("Query:", queryExpr)
 			fmt.Printf("Time: %s\n\n", time.Unix(timestamp, 0).Format(time.RFC3339))
@@ -179,6 +192,8 @@ func newInstantQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&queryTime, "time", "", "Evaluation timestamp (optional, defaults to now). Supports relative time ranges")
 	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&authToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
+
+	cmd.Flags().StringVarP(&outputFmt, "output", "o", "", "Output format: table, json (default: table; json in agent mode)")
 
 	cmd.MarkFlagRequired("query")
 

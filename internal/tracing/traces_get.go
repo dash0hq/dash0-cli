@@ -11,6 +11,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
@@ -67,7 +68,12 @@ var traceKnownColumns = append(traceDefaultColumns,
 
 func parseGetFormat(s string) (getFormat, error) {
 	switch strings.ToLower(s) {
-	case "table", "":
+	case "":
+		if agentmode.Enabled {
+			return getFormatJSON, nil
+		}
+		return getFormatTable, nil
+	case "table":
 		return getFormatTable, nil
 	case "json":
 		return getFormatJSON, nil
