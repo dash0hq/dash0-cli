@@ -4,11 +4,12 @@ A command-line interface designed for humans, agentic AIs and CI/CD to interact 
 
 ## An ergonomic CLI for agentic AI
 
-The `dash0` CLI's capabilities are discoverable via `--help`, alongside a comprehensive [command reference](docs/commands.md) with detailed flags, expected outputs, and ready-to-use workflow examples.
-Authentication and connection settings can be configured entirely through profiles and environment variables, no need to juggle (and risk leaking) secrets in agentic context.
+The `dash0` CLI is designed to be driven by AI coding agents as naturally as by humans.
+Its capabilities are discoverable via `--help`, alongside a comprehensive [command reference](docs/commands.md) with detailed flags, expected outputs, and ready-to-use workflow examples.
+Authentication and connection settings can be configured entirely through profiles and environment variables, avoiding the need to pass secrets as command-line arguments.
 Commands use consistent naming conventions and flags.
 Structured and parseable output formats (`--output json`, `--output yaml`, `--output csv`).
-Interactive prompts can be skipped with `--force`.
+[Agent mode](#agent-mode) makes all of this automatic: JSON output, structured help, JSON errors, no prompts, and no colors — with zero configuration.
 
 ## Installation
 
@@ -156,6 +157,35 @@ To store configuration elsewhere, set the `DASH0_CONFIG_DIR` environment variabl
 export DASH0_CONFIG_DIR=~/.local/dash0
 dash0 config profiles create dev --api-url https://api.us-west-2.aws.dash0.com
 ```
+
+### Agent mode
+
+Agent mode optimizes every aspect of the CLI for machine consumption.
+Enable it explicitly with `--agent-mode` or `DASH0_AGENT_MODE=true`, or let it auto-activate when a known AI agent environment variable is detected:
+
+| Agent | Environment variables |
+|-------|----------------------|
+| [Aider](https://aider.chat/) | `AIDER` |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `CLAUDE_CODE`, `CLAUDECODE` |
+| [Cline](https://cline.bot/) | `CLINE`, `CLINE_TASK_ID` |
+| [Cursor](https://www.cursor.com/) | `CURSOR_AGENT`, `CURSOR_SESSION_ID` |
+| [GitHub Copilot](https://github.com/features/copilot) | `GITHUB_COPILOT` |
+| [MCP](https://modelcontextprotocol.io/) servers | `MCP_SESSION_ID` |
+| [OpenAI Codex](https://openai.com/index/introducing-codex/) | `CODEX`, `OPENAI_CODEX` |
+| [Windsurf](https://windsurf.com/) | `WINDSURF_AGENT`, `WINDSURF_SESSION_ID` |
+
+When agent mode is active, the CLI:
+
+- **Defaults output to JSON** — all data retrieval commands (`list`, `get`, `query`, `config show`, `metrics instant`) output JSON instead of tables, without needing `-o json`.
+- **Returns `--help` as structured JSON** — flags, subcommands, aliases, and metadata are machine-parseable.
+- **Emits errors as JSON on stderr** — `{"error": "...", "hint": "..."}` instead of colored text.
+- **Skips confirmation prompts** — destructive operations (`delete`, `remove`) proceed without asking, equivalent to `--force`.
+- **Disables colored output** — no ANSI escape codes in any output.
+
+To explicitly disable agent mode (for example, when running inside an agent environment but wanting human-readable output), set `DASH0_AGENT_MODE=0` or `DASH0_AGENT_MODE=false`.
+This overrides all other activation methods.
+
+See the [agent mode specification](docs/commands.md#agent-mode) for the full priority order and details.
 
 ### Applying assets
 
@@ -362,6 +392,7 @@ dash0 -X members delete <member-id> --force
 
 | Flag | Short | Env Variable | Description |
 |------|-------|--------------|-------------|
+| `--agent-mode` | | `DASH0_AGENT_MODE` | Enable agent mode for AI coding agents. Auto-detected when common agent env vars are set. |
 | `--api-url` | | `DASH0_API_URL` | Override API URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http). |
 | `--otlp-url` | | `DASH0_OTLP_URL` | Override OTLP URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Override auth token from profile. Find yours [here](https://app.dash0.com/goto/settings/auth-tokens). |
@@ -389,6 +420,8 @@ The `logs query`, `spans query`, and `traces get` commands support a different s
 - **`table`** (default): Columnar output (`logs query` shows timestamp, severity, and body; `spans query` shows timestamp, duration, name, status, service, and trace ID; `traces get` shows a hierarchical span tree)
 - **`json`**: Full OTLP/JSON payload
 - **`csv`**: Comma-separated values
+
+In [agent mode](#agent-mode), all data retrieval commands default to JSON without needing `-o json`.
 
 ### Shell completions
 

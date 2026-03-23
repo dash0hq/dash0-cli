@@ -44,8 +44,69 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 - Command output: avoid the word "successfully" in confirmation messages.
   Write `Team "Backend Team" created` instead of `Team "Backend Team" created successfully`.
   The absence of an error already implies success; the extra word adds no information.
+  Ensure [agent mode](#agent-mode) is implemented correctly.
 - Never introduce test-specific behavior (env var checks, test flags, etc.) in production code.
   Tests must exercise the real code paths.
   Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables, or CLI flags) to set up the state tests need.
 - When asserting on request bodies in integration tests, parse the body into the appropriate typed struct (e.g., `dash0api.DashboardDefinition`, `dash0api.PrometheusAlertRule`, `dash0api.ViewDefinition`, `dash0api.SyntheticCheckDefinition`) and assert on the struct fields.
   Do not use `assert.Contains` on the raw JSON string — substring matching is fragile and can match unrelated fields or partial values.
+
+## Agent mode
+
+Agent mode (`--agent-mode` / `DASH0_AGENT_MODE`) optimizes the CLI for AI coding agents.
+It affects output format, help rendering, error formatting, confirmation prompts, and color.
+See @docs/commands.md for the user-facing specification.
+
+### Output format default
+
+Every command that produces output must default to JSON when agent mode is active.
+The `-o` / `--output` flag must be registered with an empty-string default (`""`), never a hardcoded `"table"`.
+The format parser is then responsible for mapping `""` to JSON or table depending on `agentmode.Enabled`.
+
+**For asset commands** (`dashboards`, `views`, `check-rules`, `synthetic-checks`), this is handled automatically: `output.ParseFormat("")` checks `agentmode.Enabled`.
+
+**For non-asset commands** with their own format types (e.g., `teams list`, `members list`, `logs query`), each local `parse*Format` function must handle the empty case:
+
+```go
+func parseListFormat(s string) (listFormat, error) {
+    switch strings.ToLower(s) {
+    case "":
+        if agentmode.Enabled {
+            return listFormatJSON, nil
+        }
+        return listFormatTable, nil
+    case "table":
+        return listFormatTable, nil
+    case "json":
+        return listFormatJSON, nil
+    // ...
+    }
+}
+```
+
+**Why the default must be `""`:** flags are registered during `init()`, before `agentmode.Init()` runs in `main()`.
+A hardcoded `"table"` default bakes in the wrong value — `ParseFormat` then sees `"table"` instead of `""` and never checks agent mode.
+
+### Confirmation prompts
+
+Destructive operations (delete, remove) must call `confirmation.ConfirmDestructiveOperation(prompt, force)` instead of inlining the `!force && !agentmode.Enabled` check.
+This helper skips the prompt when `--force` is set or agent mode is active, and handles stdin reading and y/yes/n parsing.
+
+### Errors
+
+In `main()`, errors are routed through `printError`, which calls `agentmode.PrintJSONError` when agent mode is active.
+Command implementations do not need to handle this — just return errors normally.
+
+### Help
+
+In `main()`, `installJSONHelp` replaces the default help function with `help.PrintJSONHelp` when agent mode is active.
+Command implementations do not need to handle this.
+
+### Adding a new command: agent mode checklist
+
+1. Register the `-o` flag with `""` as default (not `"table"`).
+2. If the command has its own format parser, handle `""` → JSON when `agentmode.Enabled`.
+3. If the command is destructive, use `confirmation.ConfirmDestructiveOperation`.
+4. Do not add agent-mode-specific logic for errors or help — these are handled globally.
+
+

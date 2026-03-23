@@ -1,10 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/spf13/cobra"
 )
 
@@ -23,9 +26,25 @@ func NewConfigCmd() *cobra.Command {
 	return cmd
 }
 
+// configShowJSON is the JSON-serializable representation of config show output.
+type configShowJSON struct {
+	Profile   string              `json:"profile"`
+	ApiUrl    *configShowField    `json:"apiUrl"`
+	OtlpUrl   *configShowField    `json:"otlpUrl"`
+	Dataset   *configShowField    `json:"dataset"`
+	AuthToken *configShowField    `json:"authToken"`
+}
+
+type configShowField struct {
+	Value  string `json:"value"`
+	Source string `json:"source,omitempty"`
+}
+
 // newShowCmd creates a new show command
 func newShowCmd() *cobra.Command {
-	return &cobra.Command{
+	var outputFmt string
+
+	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show current configuration",
 		Long: `Display the current active configuration.
@@ -59,12 +78,10 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			envOtlpUrl := os.Getenv("DASH0_OTLP_URL")
 			envDataset := os.Getenv("DASH0_DATASET")
 
+			profileName := ""
 			activeProfile, err := configService.GetActiveProfile()
-			fmt.Printf("Profile:    ")
-			if err != nil {
-				fmt.Printf("(none)\n")
-			} else {
-				fmt.Printf("%s\n", activeProfile.Name)
+			if err == nil && activeProfile != nil {
+				profileName = activeProfile.Name
 			}
 
 			config, _ := configService.GetActiveConfiguration()
@@ -78,6 +95,34 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 				authToken = config.AuthToken
 				otlpUrl = config.OtlpUrl
 				dataset = config.Dataset
+			}
+
+			datasetDisplay := dataset
+			if datasetDisplay == "" {
+				datasetDisplay = "default"
+			}
+
+			useJSON := strings.ToLower(outputFmt) == "json" ||
+				(outputFmt == "" && agentmode.Enabled)
+
+			if useJSON {
+				result := configShowJSON{
+					Profile:   profileName,
+					ApiUrl:    showField(apiUrl, envApiUrl, "DASH0_API_URL"),
+					OtlpUrl:   showField(otlpUrl, envOtlpUrl, "DASH0_OTLP_URL"),
+					Dataset:   showField(datasetDisplay, envDataset, "DASH0_DATASET"),
+					AuthToken: showField(maskToken(authToken), envAuthToken, "DASH0_AUTH_TOKEN"),
+				}
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(result)
+			}
+
+			fmt.Printf("Profile:    ")
+			if profileName == "" {
+				fmt.Printf("(none)\n")
+			} else {
+				fmt.Printf("%s\n", profileName)
 			}
 
 			if apiUrl != "" {
@@ -100,10 +145,6 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			}
 			fmt.Println()
 
-			datasetDisplay := dataset
-			if datasetDisplay == "" {
-				datasetDisplay = "default"
-			}
 			fmt.Printf("Dataset:    %s", datasetDisplay)
 			if envDataset != "" {
 				fmt.Printf("    (from DASH0_DATASET environment variable)")
@@ -123,6 +164,18 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&outputFmt, "output", "o", "", "Output format: table, json (default: table; json in agent mode)")
+
+	return cmd
+}
+
+func showField(value, envVar, envName string) *configShowField {
+	f := &configShowField{Value: value}
+	if envVar != "" {
+		f.Source = envName
+	}
+	return f
 }
 
 // maskToken masks all but the first and last 4 characters of a token
@@ -272,9 +325,47 @@ func newUpdateProfileCmd() *cobra.Command {
 	return cmd
 }
 
+// profileListFormat represents the output format for profile list.
+type profileListFormat string
+
+const (
+	profileListFormatTable profileListFormat = "table"
+	profileListFormatJSON  profileListFormat = "json"
+)
+
+func parseProfileListFormat(s string) (profileListFormat, error) {
+	switch strings.ToLower(s) {
+	case "":
+		if agentmode.Enabled {
+			return profileListFormatJSON, nil
+		}
+		return profileListFormatTable, nil
+	case "table":
+		return profileListFormatTable, nil
+	case "json":
+		return profileListFormatJSON, nil
+	default:
+		return "", fmt.Errorf("unknown output format: %s (valid formats: table, json)", s)
+	}
+}
+
+// profileJSON is the JSON-serializable representation of a profile in list
+// output. Auth tokens are always masked.
+type profileJSON struct {
+	Name      string `json:"name"`
+	Active    bool   `json:"active"`
+	ApiUrl    string `json:"apiUrl,omitempty"`
+	OtlpUrl   string `json:"otlpUrl,omitempty"`
+	Dataset   string `json:"dataset"`
+	AuthToken string `json:"authToken,omitempty"`
+}
+
 // newListProfileCmd creates a new list profile command
 func newListProfileCmd() *cobra.Command {
-	var skipHeader bool
+	var (
+		skipHeader bool
+		outputFmt  string
+	)
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -285,8 +376,20 @@ func newListProfileCmd() *cobra.Command {
   dash0 config profiles list
 
   # List without the header row (pipe-friendly)
-  dash0 config profiles list --skip-header`,
+  dash0 config profiles list --skip-header
+
+  # Output as JSON
+  dash0 config profiles list -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			format, err := parseProfileListFormat(outputFmt)
+			if err != nil {
+				return err
+			}
+
+			if skipHeader && format != profileListFormatTable {
+				return fmt.Errorf("--skip-header is not supported with output format %q", outputFmt)
+			}
+
 			configService, err := NewService()
 			if err != nil {
 				return err
@@ -298,7 +401,11 @@ func newListProfileCmd() *cobra.Command {
 			}
 
 			if len(profiles) == 0 {
-				fmt.Println("No profiles configured")
+				if format == profileListFormatJSON {
+					fmt.Println("[]")
+				} else {
+					fmt.Println("No profiles configured")
+				}
 				return nil
 			}
 
@@ -308,89 +415,120 @@ func newListProfileCmd() *cobra.Command {
 				activeProfileName = activeProfile.Name
 			}
 
-			// Check if any profile has an OTLP URL configured
-			hasOtlpUrl := false
-			for _, profile := range profiles {
-				if profile.Configuration.OtlpUrl != "" {
-					hasOtlpUrl = true
-					break
-				}
+			switch format {
+			case profileListFormatJSON:
+				return renderProfilesJSON(profiles, activeProfileName)
+			default:
+				return renderProfilesTable(profiles, activeProfileName, skipHeader)
 			}
-
-			// Calculate column widths (including 2 chars for active marker "* ")
-			nameWidth := len(internal.HEADER_NAME)
-			apiUrlWidth := len("API URL")
-			otlpUrlWidth := len("OTLP URL")
-			datasetWidth := len("DATASET")
-			authTokenWidth := len("AUTH TOKEN")
-
-			for _, profile := range profiles {
-				if len(profile.Name) > nameWidth {
-					nameWidth = len(profile.Name)
-				}
-				if len(profile.Configuration.ApiUrl) > apiUrlWidth {
-					apiUrlWidth = len(profile.Configuration.ApiUrl)
-				}
-				if len(profile.Configuration.OtlpUrl) > otlpUrlWidth {
-					otlpUrlWidth = len(profile.Configuration.OtlpUrl)
-				}
-				ds := profile.Configuration.Dataset
-				if ds == "" {
-					ds = "default"
-				}
-				if len(ds) > datasetWidth {
-					datasetWidth = len(ds)
-				}
-				maskedToken := maskToken(profile.Configuration.AuthToken)
-				if len(maskedToken) > authTokenWidth {
-					authTokenWidth = len(maskedToken)
-				}
-			}
-
-			// Print header
-			if !skipHeader {
-				if hasOtlpUrl {
-					fmt.Printf("  %-*s  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", otlpUrlWidth, "OTLP URL", datasetWidth, "DATASET", "AUTH TOKEN")
-				} else {
-					fmt.Printf("  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", datasetWidth, "DATASET", "AUTH TOKEN")
-				}
-			}
-
-			// Print rows
-			for _, profile := range profiles {
-				marker := " "
-				if profile.Name == activeProfileName {
-					marker = "*"
-				}
-				dataset := profile.Configuration.Dataset
-				if dataset == "" {
-					dataset = "default"
-				}
-				if hasOtlpUrl {
-					fmt.Printf("%s %-*s  %-*s  %-*s  %-*s  %s\n",
-						marker,
-						nameWidth, profile.Name,
-						apiUrlWidth, profile.Configuration.ApiUrl,
-						otlpUrlWidth, profile.Configuration.OtlpUrl,
-						datasetWidth, dataset,
-						maskToken(profile.Configuration.AuthToken))
-				} else {
-					fmt.Printf("%s %-*s  %-*s  %-*s  %s\n",
-						marker,
-						nameWidth, profile.Name,
-						apiUrlWidth, profile.Configuration.ApiUrl,
-						datasetWidth, dataset,
-						maskToken(profile.Configuration.AuthToken))
-				}
-			}
-
-			return nil
 		},
 	}
 
 	cmd.Flags().BoolVar(&skipHeader, "skip-header", false, "Omit the header row from table output")
+	cmd.Flags().StringVarP(&outputFmt, "output", "o", "", "Output format: table, json (default: table)")
 
 	return cmd
+}
+
+func renderProfilesJSON(profiles []Profile, activeProfileName string) error {
+	items := make([]profileJSON, len(profiles))
+	for i, p := range profiles {
+		dataset := p.Configuration.Dataset
+		if dataset == "" {
+			dataset = "default"
+		}
+		items[i] = profileJSON{
+			Name:      p.Name,
+			Active:    p.Name == activeProfileName,
+			ApiUrl:    p.Configuration.ApiUrl,
+			OtlpUrl:   p.Configuration.OtlpUrl,
+			Dataset:   dataset,
+			AuthToken: maskToken(p.Configuration.AuthToken),
+		}
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(items)
+}
+
+func renderProfilesTable(profiles []Profile, activeProfileName string, skipHeader bool) error {
+	// Check if any profile has an OTLP URL configured
+	hasOtlpUrl := false
+	for _, profile := range profiles {
+		if profile.Configuration.OtlpUrl != "" {
+			hasOtlpUrl = true
+			break
+		}
+	}
+
+	// Calculate column widths (including 2 chars for active marker "* ")
+	nameWidth := len(internal.HEADER_NAME)
+	apiUrlWidth := len("API URL")
+	otlpUrlWidth := len("OTLP URL")
+	datasetWidth := len("DATASET")
+	authTokenWidth := len("AUTH TOKEN")
+
+	for _, profile := range profiles {
+		if len(profile.Name) > nameWidth {
+			nameWidth = len(profile.Name)
+		}
+		if len(profile.Configuration.ApiUrl) > apiUrlWidth {
+			apiUrlWidth = len(profile.Configuration.ApiUrl)
+		}
+		if len(profile.Configuration.OtlpUrl) > otlpUrlWidth {
+			otlpUrlWidth = len(profile.Configuration.OtlpUrl)
+		}
+		ds := profile.Configuration.Dataset
+		if ds == "" {
+			ds = "default"
+		}
+		if len(ds) > datasetWidth {
+			datasetWidth = len(ds)
+		}
+		maskedToken := maskToken(profile.Configuration.AuthToken)
+		if len(maskedToken) > authTokenWidth {
+			authTokenWidth = len(maskedToken)
+		}
+	}
+
+	// Print header
+	if !skipHeader {
+		if hasOtlpUrl {
+			fmt.Printf("  %-*s  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", otlpUrlWidth, "OTLP URL", datasetWidth, "DATASET", "AUTH TOKEN")
+		} else {
+			fmt.Printf("  %-*s  %-*s  %-*s  %s\n", nameWidth, "NAME", apiUrlWidth, "API URL", datasetWidth, "DATASET", "AUTH TOKEN")
+		}
+	}
+
+	// Print rows
+	for _, profile := range profiles {
+		marker := " "
+		if profile.Name == activeProfileName {
+			marker = "*"
+		}
+		dataset := profile.Configuration.Dataset
+		if dataset == "" {
+			dataset = "default"
+		}
+		if hasOtlpUrl {
+			fmt.Printf("%s %-*s  %-*s  %-*s  %-*s  %s\n",
+				marker,
+				nameWidth, profile.Name,
+				apiUrlWidth, profile.Configuration.ApiUrl,
+				otlpUrlWidth, profile.Configuration.OtlpUrl,
+				datasetWidth, dataset,
+				maskToken(profile.Configuration.AuthToken))
+		} else {
+			fmt.Printf("%s %-*s  %-*s  %-*s  %s\n",
+				marker,
+				nameWidth, profile.Name,
+				apiUrlWidth, profile.Configuration.ApiUrl,
+				datasetWidth, dataset,
+				maskToken(profile.Configuration.AuthToken))
+		}
+	}
+
+	return nil
 }
 
 // newDeleteProfileCmd creates a new delete profile command

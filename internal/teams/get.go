@@ -8,6 +8,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/members"
@@ -80,7 +81,14 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		}
 		fmt.Print(string(data))
 		return nil
-	case "table", "":
+	case "":
+		if agentmode.Enabled {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(resp)
+		}
+		return printTeamDetails(resp)
+	case "table":
 		return printTeamDetails(resp)
 	default:
 		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
