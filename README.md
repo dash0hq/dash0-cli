@@ -17,7 +17,7 @@ Structured and parseable output formats (`--output json`, `--output yaml`, `--ou
 
 ```bash
 brew tap dash0hq/dash0-cli https://github.com/dash0hq/dash0-cli
-brew install dash0hq/dash0-cli/dash0
+brew install dash0
 ```
 
 ### GitHub Releases
