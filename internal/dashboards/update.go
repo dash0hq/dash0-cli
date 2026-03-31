@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
+	"sigs.k8s.io/yaml"
 )
 
 func newUpdateCmd() *cobra.Command {
@@ -20,12 +22,17 @@ func newUpdateCmd() *cobra.Command {
 		Short: "Update a dashboard from a file",
 		Long: `Update an existing dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
+Accepts both plain Dashboard definitions and PersesDashboard CRD files. When a PersesDashboard CRD is provided, it is converted to a Dash0 dashboard.
+
 If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
 		Example: `  # Update a dashboard from a file
   dash0 dashboards update <id> -f dashboard.yaml
 
   # Update using the ID from the file
   dash0 dashboards update -f dashboard.yaml
+
+  # Update from a PersesDashboard CRD file
+  dash0 dashboards update -f persesdashboard.yaml
 
   # Export, edit, and update
   dash0 dashboards get <id> -o yaml > dashboard.yaml
@@ -42,25 +49,63 @@ If the ID argument is omitted, the ID is extracted from the file content.` + int
 }
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
-	var dashboard dash0api.DashboardDefinition
-	if err := asset.ReadDefinition(flags.File, &dashboard, os.Stdin); err != nil {
+	data, err := asset.ReadRawInput(flags.File, os.Stdin)
+	if err != nil {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	var id string
-	fileID := asset.ExtractDashboardID(&dashboard)
-	if len(args) == 1 {
-		id = args[0]
-		if fileID != "" && fileID != id {
-			return fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
-		}
-	} else {
-		id = fileID
-		if id == "" {
-			return fmt.Errorf("no dashboard ID provided as argument, and the file does not contain an ID")
-		}
+	kind := strings.ToLower(asset.DetectKind(data))
+	if kind == "persesdashboard" {
+		return updateFromPersesDashboard(ctx, args, flags, data)
+	}
+	return updateFromDashboard(ctx, args, flags, data)
+}
+
+func updateFromDashboard(ctx context.Context, args []string, flags *asset.FileInputFlags, data []byte) error {
+	var dashboard dash0api.DashboardDefinition
+	if err := yaml.Unmarshal(data, &dashboard); err != nil {
+		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
+	id, err := resolveDashboardID(args, asset.ExtractDashboardID(&dashboard))
+	if err != nil {
+		return err
+	}
+
+	return doUpdate(ctx, flags, id, &dashboard)
+}
+
+func updateFromPersesDashboard(ctx context.Context, args []string, flags *asset.FileInputFlags, data []byte) error {
+	var perses asset.PersesDashboard
+	if err := yaml.Unmarshal(data, &perses); err != nil {
+		return fmt.Errorf("failed to read PersesDashboard definition: %w", err)
+	}
+
+	dashboard := asset.ConvertToDashboard(&perses)
+
+	id, err := resolveDashboardID(args, asset.ExtractDashboardID(dashboard))
+	if err != nil {
+		return err
+	}
+
+	return doUpdate(ctx, flags, id, dashboard)
+}
+
+func resolveDashboardID(args []string, fileID string) (string, error) {
+	if len(args) == 1 {
+		id := args[0]
+		if fileID != "" && fileID != id {
+			return "", fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
+		}
+		return id, nil
+	}
+	if fileID == "" {
+		return "", fmt.Errorf("no dashboard ID provided as argument, and the file does not contain an ID")
+	}
+	return fileID, nil
+}
+
+func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashboard *dash0api.DashboardDefinition) error {
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -68,7 +113,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
-	// Fetch the current state before updating so we can show what changed.
 	before, err := apiClient.GetDashboard(ctx, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
@@ -77,27 +121,28 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	if flags.DryRun {
-		displayName := asset.ExtractDashboardDisplayName(&dashboard)
-		if displayName == "" {
-			displayName = dashboard.Metadata.Name
-		}
-		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, &dashboard)
+	displayName := asset.ExtractDashboardDisplayName(dashboard)
+	if displayName == "" {
+		displayName = dashboard.Metadata.Name
 	}
 
-	asset.ClearDashboardBodyID(&dashboard)
-	result, err := apiClient.UpdateDashboard(ctx, id, &dashboard, dataset)
+	if flags.DryRun {
+		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, dashboard)
+	}
+
+	asset.ClearDashboardBodyID(dashboard)
+	result, err := apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",
 			AssetID:   id,
-			AssetName: asset.ExtractDashboardDisplayName(&dashboard),
+			AssetName: displayName,
 		})
 	}
 
-	displayName := asset.ExtractDashboardDisplayName(result)
-	if displayName == "" {
-		displayName = result.Metadata.Name
+	resultDisplayName := asset.ExtractDashboardDisplayName(result)
+	if resultDisplayName == "" {
+		resultDisplayName = result.Metadata.Name
 	}
-	return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, result)
+	return asset.PrintDiff(os.Stdout, "Dashboard", resultDisplayName, before, result)
 }
