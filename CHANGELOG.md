@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.8.1
+
+
+### Bug Fixes
+
+
+- `check-rules`: `check-rules update` now accepts PrometheusRule CRD files (#110)
+  Previously, `check-rules update -f` failed with "no check rule ID provided" when given a PrometheusRule CRD file,
+  because it did not detect the kind and route to the PrometheusRule parser. Both `apply` and `check-rules create`
+  already handled this correctly.
+  
+
+- `dashboards`: `dashboards update` now accepts PersesDashboard CRD files (#111)
+  Previously, `dashboards update -f` did not detect PersesDashboard CRD files, so the CRD-specific conversion
+  (v1alpha1/v1alpha2 normalization, ID extraction from labels, annotation mapping) was skipped.
+  Both `apply` and `dashboards create` already handled this correctly.
+  
+
 ## 1.8.0
 
 
