@@ -1,9 +1,6 @@
 package asset
 
 import (
-	"context"
-	"fmt"
-
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
@@ -42,40 +39,6 @@ type PrometheusAlertingRule struct {
 	For         string            `yaml:"for,omitempty" json:"for,omitempty"`
 	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Annotations map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
-}
-
-// ImportPrometheusRule extracts alerting rules from a PrometheusRule CRD,
-// converts each to a Dash0 CheckRule, and imports them. Returns one result
-// per rule. On partial failure, returns the successfully imported results
-// along with the error.
-func ImportPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRule *PrometheusRule, dataset *string) ([]ImportResult, error) {
-	var results []ImportResult
-
-	var ruleID string
-	if promRule.Metadata.Labels != nil {
-		ruleID = promRule.Metadata.Labels["dash0.com/id"]
-	}
-
-	for _, group := range promRule.Spec.Groups {
-		for _, rule := range group.Rules {
-			if rule.Alert == "" {
-				continue
-			}
-
-			checkRule := ConvertToCheckRule(&rule, group.Interval, ruleID)
-			result, err := ImportCheckRule(ctx, apiClient, checkRule, dataset)
-			if err != nil {
-				return results, err
-			}
-			results = append(results, result)
-		}
-	}
-
-	if len(results) == 0 {
-		return nil, fmt.Errorf("no alerting rules found in PrometheusRule (recording rules are not supported)")
-	}
-
-	return results, nil
 }
 
 // ExtractPrometheusRuleID extracts the ID from a PrometheusRule definition.

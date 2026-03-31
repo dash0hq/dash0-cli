@@ -545,54 +545,44 @@ func normalizeKind(kind string) string {
 
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
 	switch normalizeKind(doc.kind) {
-	case "dashboard":
-		var dashboard dash0api.DashboardDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &dashboard); err != nil {
-			return nil, fmt.Errorf("failed to parse Dashboard: %w", err)
+	case "dashboard", "persesdashboard":
+		dashboard, err := asset.ParseDashboardInput(doc.raw)
+		if err != nil {
+			return nil, err
 		}
-		result, err := asset.ImportDashboard(ctx, apiClient, &dashboard, dataset)
+		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dashboard",
-				AssetName: asset.ExtractDashboardDisplayName(&dashboard),
+				AssetName: asset.ExtractDashboardDisplayName(dashboard),
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
-	case "checkrule":
-		var rule dash0api.PrometheusAlertRule
-		if err := sigsyaml.Unmarshal(doc.raw, &rule); err != nil {
-			return nil, fmt.Errorf("failed to parse CheckRule: %w", err)
-		}
-		result, err := asset.ImportCheckRule(ctx, apiClient, &rule, dataset)
+	case "checkrule", "prometheusrule":
+		rules, err := asset.ParseCheckRuleInputs(doc.raw)
 		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "check rule",
-				AssetName: rule.Name,
+			return nil, err
+		}
+		var results []applyResult
+		for _, rule := range rules {
+			result, importErr := asset.ImportCheckRule(ctx, apiClient, rule, dataset)
+			if importErr != nil {
+				return results, client.HandleAPIError(importErr, client.ErrorContext{
+					AssetType: "check rule",
+					AssetName: rule.Name,
+				})
+			}
+			results = append(results, applyResult{
+				kind:   "CheckRule",
+				name:   result.Name,
+				id:     result.ID,
+				action: applyAction(result.Action),
+				before: result.Before,
+				after:  result.After,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "prometheusrule":
-		var promRule asset.PrometheusRule
-		if err := sigsyaml.Unmarshal(doc.raw, &promRule); err != nil {
-			return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
-		}
-		return applyPrometheusRule(ctx, apiClient, &promRule, dataset)
-
-	case "persesdashboard":
-		var perses asset.PersesDashboard
-		if err := sigsyaml.Unmarshal(doc.raw, &perses); err != nil {
-			return nil, fmt.Errorf("failed to parse PersesDashboard: %w", err)
-		}
-		result, err := asset.ImportPersesDashboard(ctx, apiClient, &perses, dataset)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "dashboard",
-				AssetName: asset.ExtractPersesDashboardName(&perses),
-			})
-		}
-		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
+		return results, nil
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -625,31 +615,4 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
 	}
-}
-
-// applyPrometheusRule extracts rules from a PrometheusRule CRD and applies each as a CheckRule.
-// Returns one applyResult per rule, each with its own action. On partial failure,
-// returns the successfully applied results along with the error.
-func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRule *asset.PrometheusRule, dataset *string) ([]applyResult, error) {
-	importResults, err := asset.ImportPrometheusRule(ctx, apiClient, promRule, dataset)
-
-	var results []applyResult
-	for _, r := range importResults {
-		results = append(results, applyResult{
-			kind:   "CheckRule",
-			name:   r.Name,
-			id:     r.ID,
-			action: applyAction(r.Action),
-			before: r.Before,
-			after:  r.After,
-		})
-	}
-
-	if err != nil {
-		return results, client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "check rule",
-		})
-	}
-
-	return results, nil
 }

@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"strings"
-
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 )
 
 func newUpdateCmd() *cobra.Command {
@@ -55,62 +52,22 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}
 
-	kind := strings.ToLower(asset.DetectKind(data))
-	if kind == "prometheusrule" {
-		return updateFromPrometheusRule(ctx, args, flags, data)
-	}
-	return updateFromCheckRule(ctx, args, flags, data)
-}
-
-func updateFromCheckRule(ctx context.Context, args []string, flags *asset.FileInputFlags, data []byte) error {
-	var rule dash0api.PrometheusAlertRule
-	if err := yaml.Unmarshal(data, &rule); err != nil {
-		return fmt.Errorf("failed to read check rule definition: %w", err)
-	}
-
-	id, err := resolveCheckRuleID(args, asset.ExtractCheckRuleID(&rule))
+	rules, err := asset.ParseCheckRuleInputs(data)
 	if err != nil {
 		return err
 	}
 
-	return doUpdate(ctx, flags, id, &rule)
-}
-
-func updateFromPrometheusRule(ctx context.Context, args []string, flags *asset.FileInputFlags, data []byte) error {
-	var promRule asset.PrometheusRule
-	if err := yaml.Unmarshal(data, &promRule); err != nil {
-		return fmt.Errorf("failed to read PrometheusRule definition: %w", err)
+	if len(rules) > 1 {
+		return fmt.Errorf("input contains %d check rules, but update requires exactly 1", len(rules))
 	}
+	rule := rules[0]
 
-	// Collect all alerting rules from the CRD.
-	var alertingRules []asset.PrometheusAlertingRule
-	var groupInterval string
-	for _, group := range promRule.Spec.Groups {
-		for _, rule := range group.Rules {
-			if rule.Alert == "" {
-				continue
-			}
-			alertingRules = append(alertingRules, rule)
-			groupInterval = group.Interval
-		}
-	}
-
-	if len(alertingRules) == 0 {
-		return fmt.Errorf("no alerting rules found in PrometheusRule (recording rules are not supported)")
-	}
-	if len(alertingRules) > 1 {
-		return fmt.Errorf("PrometheusRule contains %d alerting rules, but update requires exactly 1", len(alertingRules))
-	}
-
-	ruleID := asset.ExtractPrometheusRuleID(&promRule)
-	checkRule := asset.ConvertToCheckRule(&alertingRules[0], groupInterval, ruleID)
-
-	id, err := resolveCheckRuleID(args, asset.ExtractCheckRuleID(checkRule))
+	id, err := resolveCheckRuleID(args, asset.ExtractCheckRuleID(rule))
 	if err != nil {
 		return err
 	}
 
-	return doUpdate(ctx, flags, id, checkRule)
+	return doUpdate(ctx, flags, id, rule)
 }
 
 func resolveCheckRuleID(args []string, fileID string) (string, error) {

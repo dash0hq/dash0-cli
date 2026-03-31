@@ -1,8 +1,6 @@
 package asset
 
 import (
-	"context"
-
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
@@ -126,13 +124,6 @@ func extractDisplayName(spec map[string]interface{}) string {
 		return ""
 	}
 	return name
-}
-
-// ImportPersesDashboard converts a PersesDashboard CRD to a Dash0 dashboard
-// and imports it. It returns the import result (created or updated).
-func ImportPersesDashboard(ctx context.Context, apiClient dash0api.Client, perses *PersesDashboard, dataset *string) (ImportResult, error) {
-	dashboard := ConvertToDashboard(perses)
-	return ImportDashboard(ctx, apiClient, dashboard, dataset)
 }
 
 // ExtractPersesDashboardName returns the display name from the Perses spec,

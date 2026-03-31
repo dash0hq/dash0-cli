@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 )
 
 func newUpdateCmd() *cobra.Command {
@@ -54,34 +52,10 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	kind := strings.ToLower(asset.DetectKind(data))
-	if kind == "persesdashboard" {
-		return updateFromPersesDashboard(ctx, args, flags, data)
-	}
-	return updateFromDashboard(ctx, args, flags, data)
-}
-
-func updateFromDashboard(ctx context.Context, args []string, flags *asset.FileInputFlags, data []byte) error {
-	var dashboard dash0api.DashboardDefinition
-	if err := yaml.Unmarshal(data, &dashboard); err != nil {
-		return fmt.Errorf("failed to read dashboard definition: %w", err)
-	}
-
-	id, err := resolveDashboardID(args, asset.ExtractDashboardID(&dashboard))
+	dashboard, err := asset.ParseDashboardInput(data)
 	if err != nil {
 		return err
 	}
-
-	return doUpdate(ctx, flags, id, &dashboard)
-}
-
-func updateFromPersesDashboard(ctx context.Context, args []string, flags *asset.FileInputFlags, data []byte) error {
-	var perses asset.PersesDashboard
-	if err := yaml.Unmarshal(data, &perses); err != nil {
-		return fmt.Errorf("failed to read PersesDashboard definition: %w", err)
-	}
-
-	dashboard := asset.ConvertToDashboard(&perses)
 
 	id, err := resolveDashboardID(args, asset.ExtractDashboardID(dashboard))
 	if err != nil {

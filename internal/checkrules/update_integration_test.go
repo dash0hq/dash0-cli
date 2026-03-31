@@ -193,7 +193,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "contains 2 alerting rules, but update requires exactly 1")
+	assert.Contains(t, cmdErr.Error(), "contains 2 check rules, but update requires exactly 1")
 }
 
 func TestUpdateCheckRule_PrometheusRuleCRD_IDMismatch(t *testing.T) {
