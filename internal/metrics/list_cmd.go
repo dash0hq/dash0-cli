@@ -374,6 +374,8 @@ func fetchMetadata(apiUrl, authToken, dataset string) (map[string]MetadataEntry,
 	return result, nil
 }
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func doGet(requestURL, authToken string) ([]byte, error) {
 	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
@@ -382,8 +384,7 @@ func doGet(requestURL, authToken string) ([]byte, error) {
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authToken))
 	req.Header.Set("User-Agent", version.UserAgent())
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
