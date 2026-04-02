@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -217,6 +218,40 @@ func TestListTableSkipHeader(t *testing.T) {
 
 	assert.NotContains(t, output, "NAME")
 	assert.Contains(t, output, "http_server_active_requests")
+}
+
+func TestListWideSkipHeader(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+	setupEnv(t, server.URL)
+
+	_, output, err := execListCmd(t, "-o", "wide", "--skip-header")
+	require.NoError(t, err)
+
+	assert.NotContains(t, output, "NAME")
+	assert.NotContains(t, output, "TYPE")
+	assert.NotContains(t, output, "DESCRIPTION")
+	assert.Contains(t, output, "http_server_active_requests")
+	assert.Contains(t, output, "gauge")
+}
+
+func TestListAgentModeDefaultsToJSON(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+	setupEnv(t, server.URL)
+
+	// Enable agent mode and restore after test
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	defer func() { agentmode.Enabled = prev }()
+
+	// No -o flag — should default to JSON in agent mode
+	_, output, err := execListCmd(t)
+	require.NoError(t, err)
+
+	var metrics []MetricInfo
+	require.NoError(t, json.Unmarshal([]byte(output), &metrics), "agent mode should default to JSON output")
+	assert.Len(t, metrics, 5)
 }
 
 func TestListFilterSubstring(t *testing.T) {
