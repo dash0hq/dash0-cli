@@ -116,10 +116,10 @@ func newListCmd() *cobra.Command {
   # Filter by substring
   dash0 -X metrics list --filter http_server
 
-  # Filter by regex
+  # Filter by regex (any valid Go regexp)
   dash0 -X metrics list --filter "^http_server.*total$"
 
-  # Show type, unit, and description
+  # Show type, unit, and description (wide output)
   dash0 -X metrics list --filter http_server -o wide
 
   # Custom time range
@@ -129,14 +129,20 @@ func newListCmd() *cobra.Command {
   # Limit results
   dash0 -X metrics list --limit 20
 
-  # Output as JSON (includes metadata)
+  # Output as JSON (includes type, unit, and description)
   dash0 -X metrics list --filter http_server -o json
 
   # Output as CSV (same columns as wide)
   dash0 -X metrics list --filter http_server -o csv
 
   # CSV without header
-  dash0 -X metrics list -o csv --skip-header`,
+  dash0 -X metrics list -o csv --skip-header
+
+  The --filter flag tries to compile the value as a regular expression.
+  If it is not a valid regexp, it falls back to case-insensitive substring matching.
+
+  The wide, JSON, and CSV formats include metric type, unit, and description
+  from the Prometheus metadata API.`,
 		Aliases: []string{"ls"},
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
