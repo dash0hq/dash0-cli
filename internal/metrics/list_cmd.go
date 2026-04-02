@@ -158,7 +158,7 @@ func newListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset name")
 	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, wide, json, csv (default: table)")
 	cmd.Flags().StringVar(&flags.From, "from", "now-1h", "Start of time range (e.g. now-1h, now-6h, 2024-01-25T10:00:00Z)")
-	cmd.Flags().StringVar(&flags.To, "to", "now", "End of time range (e.g. now, 2024-01-25T11:00:00Z)")
+	cmd.Flags().StringVar(&flags.To, "to", "now", "End of time range (e.g. now, now-1h, 2024-01-25T11:00:00Z)")
 	cmd.Flags().StringVar(&flags.Filter, "filter", "", "Substring or regex filter on metric names")
 	cmd.Flags().IntVarP(&flags.Limit, "limit", "l", 0, "Maximum number of results (0 = no limit)")
 	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table, wide, and CSV output")
