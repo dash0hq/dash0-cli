@@ -410,13 +410,16 @@ func filterNames(names []string, filter string) []string {
 	re, regexErr := regexp.Compile(filter)
 
 	var result []string
-	for _, name := range names {
-		if regexErr != nil {
-			// Regex didn't compile — fall back to case-insensitive substring match
-			if strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
+	if regexErr != nil {
+		// Regex didn't compile — fall back to case-insensitive substring match
+		filterLower := strings.ToLower(filter)
+		for _, name := range names {
+			if strings.Contains(strings.ToLower(name), filterLower) {
 				result = append(result, name)
 			}
-		} else {
+		}
+	} else {
+		for _, name := range names {
 			if re.MatchString(name) {
 				result = append(result, name)
 			}
