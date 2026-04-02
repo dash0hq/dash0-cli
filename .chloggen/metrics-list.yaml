@@ -1,0 +1,14 @@
+change_type: new_component
+
+component: metrics
+
+note: "Add experimental `metrics list` command for metric name discovery"
+
+issues: []
+
+subtext: |
+  Lists available metric names via the Prometheus-compatible label values API.
+  Supports table, wide (with type/unit/description), JSON, and CSV output formats.
+  Includes --filter for substring/regex matching and --from/--to for time range selection.
+
+change_logs: []

@@ -176,7 +176,7 @@ Enable it explicitly with `--agent-mode` or `DASH0_AGENT_MODE=true`, or let it a
 
 When agent mode is active, the CLI:
 
-- **Defaults output to JSON** — all data retrieval commands (`list`, `get`, `query`, `config show`, `metrics instant`) output JSON instead of tables, without needing `-o json`.
+- **Defaults output to JSON** — all data retrieval commands (`list`, `get`, `query`, `config show`, `metrics instant`, `metrics list`) output JSON instead of tables, without needing `-o json`.
 - **Returns `--help` as structured JSON** — flags, subcommands, aliases, and metadata are machine-parseable.
 - **Emits errors as JSON on stderr** — `{"error": "...", "hint": "..."}` instead of colored text.
 - **Skips confirmation prompts** — destructive operations (`delete`, `remove`) proceed without asking, equivalent to `--force`.
@@ -344,6 +344,12 @@ dash0 -X traces get <trace-id> --column otel.span.start_time --column otel.span.
 
 ```bash
 dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
+
+# List available metric names (experimental)
+dash0 -X metrics list --filter http_server
+
+# Show metric type, unit, and description
+dash0 -X metrics list --filter http_server -o wide
 ```
 
 ### Teams (experimental)
