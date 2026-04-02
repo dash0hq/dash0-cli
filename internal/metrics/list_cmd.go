@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -232,17 +231,17 @@ func runListNamesOnly(apiUrl, authToken, dataset, startEpoch, endEpoch string, f
 }
 
 func runListWithMetadata(apiUrl, authToken, dataset, startEpoch, endEpoch string, flags *listFlags, format listFormat) error {
-	metadata, err := fetchMetadata(apiUrl, authToken, dataset)
+	// Use label values API as the authoritative name list (respects time range),
+	// then enrich with metadata. This keeps results consistent across all formats.
+	names, err := fetchLabelValues(apiUrl, authToken, dataset, startEpoch, endEpoch)
 	if err != nil {
 		return err
 	}
 
-	// Extract and sort metric names from metadata
-	names := make([]string, 0, len(metadata))
-	for name := range metadata {
-		names = append(names, name)
+	metadata, err := fetchMetadata(apiUrl, authToken, dataset)
+	if err != nil {
+		return err
 	}
-	sort.Strings(names)
 
 	names = filterNames(names, flags.Filter)
 	names = applyLimit(names, flags.Limit)

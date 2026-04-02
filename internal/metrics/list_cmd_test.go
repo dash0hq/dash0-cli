@@ -400,7 +400,7 @@ func TestListSkipHeaderWithJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "--skip-header is not supported")
 }
 
-func TestListWideMetadataEndpoint(t *testing.T) {
+func TestListWideHitsBothEndpoints(t *testing.T) {
 	var labelValuesHit, metadataHit bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -418,8 +418,8 @@ func TestListWideMetadataEndpoint(t *testing.T) {
 
 	_, _, err := execListCmd(t, "-o", "wide")
 	require.NoError(t, err)
-	assert.False(t, labelValuesHit, "wide format should not hit label values API")
-	assert.True(t, metadataHit, "wide format should hit metadata API")
+	assert.True(t, labelValuesHit, "wide format should hit label values API for time-scoped names")
+	assert.True(t, metadataHit, "wide format should hit metadata API for enrichment")
 }
 
 func TestListTableLabelValuesEndpoint(t *testing.T) {
