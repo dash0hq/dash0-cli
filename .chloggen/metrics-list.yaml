@@ -4,7 +4,7 @@ component: metrics
 
 note: "Add experimental `metrics list` command for metric name discovery"
 
-issues: []
+issues: [112]
 
 subtext: |
   Lists available metric names via the Prometheus-compatible label values API.
