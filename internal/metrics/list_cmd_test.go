@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -509,9 +508,8 @@ func TestListHTTPError(t *testing.T) {
 
 func TestListMissingConfig(t *testing.T) {
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
-	// Don't set DASH0_API_URL or DASH0_AUTH_TOKEN
-	os.Unsetenv("DASH0_API_URL")
-	os.Unsetenv("DASH0_AUTH_TOKEN")
+	t.Setenv("DASH0_API_URL", "")
+	t.Setenv("DASH0_AUTH_TOKEN", "")
 
 	_, _, err := execListCmd(t)
 	require.Error(t, err)
