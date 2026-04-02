@@ -109,15 +109,7 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "[experimental] List available metric names",
-		Long: `List available metric names from the Dash0 API.
-
-Discovers metric names via the Prometheus-compatible label values API.
-The default table output shows only metric names; use -o wide to also
-see type, unit, and description (fetched from the metadata API).
-
-The --filter flag matches metric names by substring or regex. If the
-filter compiles as a regular expression, regex matching is used;
-otherwise it falls back to case-insensitive substring matching.` + internal.CONFIG_HINT,
+		Long: `List available metric names from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
 		Example: `  # List all metric names (last 1 hour)
   dash0 -X metrics list
 
