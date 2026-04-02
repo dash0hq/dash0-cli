@@ -169,12 +169,12 @@ otherwise it falls back to case-insensitive substring matching.` + internal.CONF
 }
 
 func runList(_ *cobra.Command, flags *listFlags) error {
-	if err := output.ValidateSkipHeader(flags.SkipHeader, flags.Output); err != nil {
+	format, err := parseListFormat(flags.Output)
+	if err != nil {
 		return err
 	}
 
-	format, err := parseListFormat(flags.Output)
-	if err != nil {
+	if err := output.ValidateSkipHeader(flags.SkipHeader, flags.Output); err != nil {
 		return err
 	}
 
