@@ -111,32 +111,32 @@ func newListCmd() *cobra.Command {
 		Short: "[experimental] List available metric names",
 		Long: `List available metric names from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
 		Example: `  # List all metric names (last 1 hour)
-  dash0 -X metrics list
+  dash0 --experimental metrics list
 
   # Filter by substring
-  dash0 -X metrics list --filter http_server
+  dash0 --experimental metrics list --filter http_server
 
   # Filter by regex (any valid Go regexp)
-  dash0 -X metrics list --filter "^http_server.*total$"
+  dash0 --experimental metrics list --filter "^http_server.*total$"
 
   # Show type, unit, and description (wide output)
-  dash0 -X metrics list --filter http_server -o wide
+  dash0 --experimental metrics list --filter http_server -o wide
 
   # Custom time range
-  dash0 -X metrics list --from now-6h
-  dash0 -X metrics list --from now-30m --to now
+  dash0 --experimental metrics list --from now-6h
+  dash0 --experimental metrics list --from now-30m --to now
 
   # Limit results
-  dash0 -X metrics list --limit 20
+  dash0 --experimental metrics list --limit 20
 
   # Output as JSON (includes type, unit, and description)
-  dash0 -X metrics list --filter http_server -o json
+  dash0 --experimental metrics list --filter http_server -o json
 
   # Output as CSV (same columns as wide)
-  dash0 -X metrics list --filter http_server -o csv
+  dash0 --experimental metrics list --filter http_server -o csv
 
   # CSV without header
-  dash0 -X metrics list -o csv --skip-header
+  dash0 --experimental metrics list -o csv --skip-header
 
   The --filter flag tries to compile the value as a regular expression.
   If it is not a valid regexp, it falls back to case-insensitive substring matching.

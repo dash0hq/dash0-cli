@@ -346,10 +346,10 @@ dash0 -X traces get <trace-id> --column otel.span.start_time --column otel.span.
 dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
 
 # List available metric names (experimental)
-dash0 -X metrics list --filter http_server
+dash0 --experimental metrics list --filter http_server
 
 # Show metric type, unit, and description
-dash0 -X metrics list --filter http_server -o wide
+dash0 --experimental metrics list --filter http_server -o wide
 ```
 
 ### Teams (experimental)

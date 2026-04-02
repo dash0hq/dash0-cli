@@ -934,7 +934,7 @@ List available metric names from the Dash0 API.
 Discovers metric names via the Prometheus-compatible label values API.
 
 ```bash
-dash0 -X metrics list [flags]
+dash0 --experimental metrics list [flags]
 ```
 
 | Flag | Short | Default | Description |
@@ -961,7 +961,7 @@ Examples:
 
 ```bash
 # List all metric names (last 1 hour)
-$ dash0 -X metrics list
+$ dash0 --experimental metrics list
 NAME
 container_cpu_usage_seconds_total
 http_server_active_requests
@@ -969,26 +969,26 @@ http_server_request_duration_seconds_bucket
 ...
 
 # Filter by substring
-$ dash0 -X metrics list --filter http_server
+$ dash0 --experimental metrics list --filter http_server
 
 # Filter by regex
-$ dash0 -X metrics list --filter "^http_server.*total$"
+$ dash0 --experimental metrics list --filter "^http_server.*total$"
 
 # Show type, unit, and description
-$ dash0 -X metrics list --filter http_server -o wide
+$ dash0 --experimental metrics list --filter http_server -o wide
 NAME                                              TYPE        UNIT        DESCRIPTION
 http_server_active_requests                       gauge       {request}   Number of active HTTP server requests
 http_server_request_duration_seconds_bucket       histogram   s           Duration of HTTP server requests
 ...
 
 # Custom time range
-$ dash0 -X metrics list --from now-6h
+$ dash0 --experimental metrics list --from now-6h
 
 # Limit results
-$ dash0 -X metrics list --limit 20
+$ dash0 --experimental metrics list --limit 20
 
 # Output as JSON (includes metadata)
-$ dash0 -X metrics list --filter http_server -o json
+$ dash0 --experimental metrics list --filter http_server -o json
 [
   {
     "name": "http_server_active_requests",
@@ -1000,7 +1000,7 @@ $ dash0 -X metrics list --filter http_server -o json
 ]
 
 # Output as CSV
-$ dash0 -X metrics list --filter http_server -o csv
+$ dash0 --experimental metrics list --filter http_server -o csv
 ```
 
 Aliases: `ls`
