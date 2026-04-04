@@ -51,18 +51,6 @@ func TestNewClientFromContext_MissingConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "no active profile configured")
 }
 
-func TestDatasetPtr(t *testing.T) {
-	result := DatasetPtr("")
-	assert.Nil(t, result)
-
-	result = DatasetPtr("default")
-	assert.Nil(t, result)
-
-	result = DatasetPtr("my-dataset")
-	assert.NotNil(t, result)
-	assert.Equal(t, "my-dataset", *result)
-}
-
 func TestResolveDataset_FlagTakesPrecedence(t *testing.T) {
 	cfg := &config.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",

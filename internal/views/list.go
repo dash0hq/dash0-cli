@@ -111,21 +111,10 @@ func fetchFullViews(
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch view %q: %w", item.Id, err)
 		}
-		enrichView(view, item.Id)
+		dash0api.SetViewIDIfAbsent(view, item.Id)
 		definitions = append(definitions, view)
 	}
 	return definitions, nil
-}
-
-// enrichView restores the view ID in labels so that exported YAML can be
-// re-applied (the import API uses the ID for upsert).
-func enrichView(view *dash0api.ViewDefinition, id string) {
-	if view.Metadata.Labels == nil {
-		view.Metadata.Labels = &dash0api.ViewLabels{}
-	}
-	if view.Metadata.Labels.Dash0Comid == nil {
-		view.Metadata.Labels.Dash0Comid = &id
-	}
 }
 
 func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format, apiUrl string) error {

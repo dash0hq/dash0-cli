@@ -111,21 +111,10 @@ func fetchFullSyntheticChecks(
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch synthetic check %q: %w", item.Id, err)
 		}
-		enrichSyntheticCheck(check, item.Id)
+		dash0api.SetSyntheticCheckIDIfAbsent(check, item.Id)
 		definitions = append(definitions, check)
 	}
 	return definitions, nil
-}
-
-// enrichSyntheticCheck restores the check ID in labels so that exported YAML
-// can be re-applied (the import API uses the ID for upsert).
-func enrichSyntheticCheck(check *dash0api.SyntheticCheckDefinition, id string) {
-	if check.Metadata.Labels == nil {
-		check.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
-	}
-	if check.Metadata.Labels.Dash0Comid == nil {
-		check.Metadata.Labels.Dash0Comid = &id
-	}
 }
 
 func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticChecksApiListItem, format output.Format, apiUrl string) error {
@@ -158,7 +147,7 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticC
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				c := item.(*dash0api.SyntheticChecksApiListItem)
-				return asset.DeeplinkURL(apiUrl, "synthetic check", c.Id)
+				return asset.DeeplinkURL(apiUrl, "syntheticcheck", c.Id)
 			}},
 		)
 	}

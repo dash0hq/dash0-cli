@@ -48,7 +48,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	var id string
-	fileID := asset.ExtractSyntheticCheckID(&check)
+	fileID := dash0api.GetSyntheticCheckID(&check)
 	if len(args) == 1 {
 		id = args[0]
 		if fileID != "" && fileID != id {
@@ -85,9 +85,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",
 			AssetID:   id,
-			AssetName: asset.ExtractSyntheticCheckName(&check),
+			AssetName: dash0api.GetSyntheticCheckName(&check),
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, "Synthetic check", asset.ExtractSyntheticCheckName(result), before, result)
+	return asset.PrintDiff(os.Stdout, "Synthetic check", dash0api.GetSyntheticCheckName(result), before, result)
 }

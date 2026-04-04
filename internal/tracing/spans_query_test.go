@@ -87,7 +87,7 @@ func TestParseSpansQueryFormat(t *testing.T) {
 	}
 }
 
-func TestExtractServiceName(t *testing.T) {
+func TestGetServiceName(t *testing.T) {
 	tests := []struct {
 		name       string
 		attributes []struct {

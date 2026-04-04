@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -285,7 +286,10 @@ func formatNameAndId(name, id string) string {
 // Extract* functions in internal/asset/ so that apply and the per-asset
 // CRUD commands use the same extraction logic.
 func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
-	kind = asset.DetectKind(data)
+	kind, err = dash0yaml.DetectKind(data)
+	if err != nil {
+		return "", "", "", err
+	}
 
 	switch normalizeKind(kind) {
 	case "dashboard":
@@ -293,51 +297,55 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		if err := sigsyaml.Unmarshal(data, &dashboard); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractDashboardDisplayName(&dashboard)
+		name = dash0api.GetDashboardName(&dashboard)
 		if name == "" {
 			name = dashboard.Metadata.Name
 		}
-		id = asset.ExtractDashboardID(&dashboard)
+		id = dash0api.GetDashboardID(&dashboard)
 
 	case "checkrule":
 		var rule dash0api.PrometheusAlertRule
 		if err := sigsyaml.Unmarshal(data, &rule); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractCheckRuleName(&rule)
-		id = asset.ExtractCheckRuleID(&rule)
+		name = dash0api.GetCheckRuleName(&rule)
+		id = dash0api.GetCheckRuleID(&rule)
 
 	case "view":
 		var view dash0api.ViewDefinition
 		if err := sigsyaml.Unmarshal(data, &view); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractViewName(&view)
-		id = asset.ExtractViewID(&view)
+		name = dash0api.GetViewName(&view)
+		id = dash0api.GetViewID(&view)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
 		if err := sigsyaml.Unmarshal(data, &check); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractSyntheticCheckName(&check)
-		id = asset.ExtractSyntheticCheckID(&check)
+		name = dash0api.GetSyntheticCheckName(&check)
+		id = dash0api.GetSyntheticCheckID(&check)
 
 	case "prometheusrule":
-		var promRule asset.PrometheusRule
-		if err := sigsyaml.Unmarshal(data, &promRule); err != nil {
+		// We only need metadata (name + ID) here; the Metadata struct has no
+		// time.Duration fields, so a partial unmarshal via sigsyaml is safe.
+		var partial struct {
+			Metadata dash0api.PrometheusRulesMetadata `json:"metadata"`
+		}
+		if err := sigsyaml.Unmarshal(data, &partial); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractPrometheusRuleName(&promRule)
-		id = asset.ExtractPrometheusRuleID(&promRule)
+		name = partial.Metadata.Name
+		id = partial.Metadata.Labels[dash0api.LabelID]
 
 	case "persesdashboard":
-		var perses asset.PersesDashboard
+		var perses dash0api.PersesDashboard
 		if err := sigsyaml.Unmarshal(data, &perses); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractPersesDashboardName(&perses)
-		id = asset.ExtractPersesDashboardID(&perses)
+		name = dash0api.GetPersesDashboardName(&perses)
+		id = dash0api.GetPersesDashboardID(&perses)
 
 	default:
 		var raw map[string]any
@@ -546,7 +554,7 @@ func normalizeKind(kind string) string {
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
 	switch normalizeKind(doc.kind) {
 	case "dashboard", "persesdashboard":
-		dashboard, err := asset.ParseDashboardInput(doc.raw)
+		dashboard, err := dash0yaml.ParseAsDashboard(doc.raw)
 		if err != nil {
 			return nil, err
 		}
@@ -554,13 +562,13 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dashboard",
-				AssetName: asset.ExtractDashboardDisplayName(dashboard),
+				AssetName: dash0api.GetDashboardName(dashboard),
 			})
 		}
 		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "checkrule", "prometheusrule":
-		rules, err := asset.ParseCheckRuleInputs(doc.raw)
+		rules, err := dash0yaml.ParseAsPrometheusAlertRules(doc.raw)
 		if err != nil {
 			return nil, err
 		}

@@ -111,18 +111,10 @@ func fetchFullCheckRules(
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch check rule %q: %w", item.Id, err)
 		}
-		enrichCheckRule(rule, item.Id)
+		dash0api.SetCheckRuleIDIfAbsent(rule, item.Id)
 		definitions = append(definitions, rule)
 	}
 	return definitions, nil
-}
-
-// enrichCheckRule restores the rule ID so that exported YAML can be re-applied
-// (the API does not return the rule ID in the response body).
-func enrichCheckRule(rule *dash0api.PrometheusAlertRule, id string) {
-	if rule.Id == nil {
-		rule.Id = &id
-	}
 }
 
 func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertRuleApiListItem, format output.Format, apiUrl string) error {
@@ -155,7 +147,7 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertR
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
-				return asset.DeeplinkURL(apiUrl, "check rule", r.Id)
+				return asset.DeeplinkURL(apiUrl, "checkrule", r.Id)
 			}},
 		)
 	}

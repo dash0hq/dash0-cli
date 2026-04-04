@@ -28,28 +28,28 @@ func marshalForDiff(asset any) (string, error) {
 		if err := sigsyaml.Unmarshal(jsonBytes, &d); err != nil {
 			return "", fmt.Errorf("failed to unmarshal dashboard: %w", err)
 		}
-		StripDashboardServerFields(&d)
+		dash0api.StripDashboardServerFields(&d)
 		stripped = &d
 	case *dash0api.PrometheusAlertRule:
 		var r dash0api.PrometheusAlertRule
 		if err := sigsyaml.Unmarshal(jsonBytes, &r); err != nil {
 			return "", fmt.Errorf("failed to unmarshal check rule: %w", err)
 		}
-		StripCheckRuleServerFields(&r)
+		dash0api.StripCheckRuleServerFields(&r)
 		stripped = &r
 	case *dash0api.ViewDefinition:
 		var v dash0api.ViewDefinition
 		if err := sigsyaml.Unmarshal(jsonBytes, &v); err != nil {
 			return "", fmt.Errorf("failed to unmarshal view: %w", err)
 		}
-		StripViewServerFields(&v)
+		dash0api.StripViewServerFields(&v)
 		stripped = &v
 	case *dash0api.SyntheticCheckDefinition:
 		var c dash0api.SyntheticCheckDefinition
 		if err := sigsyaml.Unmarshal(jsonBytes, &c); err != nil {
 			return "", fmt.Errorf("failed to unmarshal synthetic check: %w", err)
 		}
-		StripSyntheticCheckServerFields(&c)
+		dash0api.StripSyntheticCheckServerFields(&c)
 		stripped = &c
 	default:
 		stripped = asset

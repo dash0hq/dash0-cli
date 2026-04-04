@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -52,7 +53,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}
 
-	rules, err := asset.ParseCheckRuleInputs(data)
+	rules, err := dash0yaml.ParseAsPrometheusAlertRules(data)
 	if err != nil {
 		return err
 	}
@@ -62,7 +63,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 	rule := rules[0]
 
-	id, err := resolveCheckRuleID(args, asset.ExtractCheckRuleID(rule))
+	id, err := resolveCheckRuleID(args, dash0api.GetCheckRuleID(rule))
 	if err != nil {
 		return err
 	}

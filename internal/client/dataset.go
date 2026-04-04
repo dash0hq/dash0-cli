@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/config"
 )
 
@@ -13,20 +14,10 @@ import (
 // since the API uses "default" implicitly when no dataset parameter is sent.
 func ResolveDataset(ctx context.Context, flagDataset string) *string {
 	if flagDataset != "" {
-		return DatasetPtr(flagDataset)
+		return dash0api.DatasetPtr(flagDataset)
 	}
 	if cfg := config.FromContext(ctx); cfg != nil && cfg.Dataset != "" {
-		return DatasetPtr(cfg.Dataset)
+		return dash0api.DatasetPtr(cfg.Dataset)
 	}
 	return nil
-}
-
-// DatasetPtr converts a dataset string to a pointer, returning nil for empty
-// strings and for "default" (the API uses "default" implicitly when no dataset
-// parameter is sent).
-func DatasetPtr(dataset string) *string {
-	if dataset == "" || dataset == "default" {
-		return nil
-	}
-	return &dataset
 }

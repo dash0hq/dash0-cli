@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -52,12 +53,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	dashboard, err := asset.ParseDashboardInput(data)
+	dashboard, err := dash0yaml.ParseAsDashboard(data)
 	if err != nil {
 		return err
 	}
 
-	id, err := resolveDashboardID(args, asset.ExtractDashboardID(dashboard))
+	id, err := resolveDashboardID(args, dash0api.GetDashboardID(dashboard))
 	if err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 		})
 	}
 
-	displayName := asset.ExtractDashboardDisplayName(dashboard)
+	displayName := dash0api.GetDashboardName(dashboard)
 	if displayName == "" {
 		displayName = dashboard.Metadata.Name
 	}
@@ -104,7 +105,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, dashboard)
 	}
 
-	asset.ClearDashboardBodyID(dashboard)
+	dash0api.ClearDashboardID(dashboard)
 	result, err := apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
@@ -114,7 +115,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 		})
 	}
 
-	resultDisplayName := asset.ExtractDashboardDisplayName(result)
+	resultDisplayName := dash0api.GetDashboardName(result)
 	if resultDisplayName == "" {
 		resultDisplayName = result.Metadata.Name
 	}

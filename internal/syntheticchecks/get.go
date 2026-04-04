@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -52,7 +53,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	enrichSyntheticCheck(check, id)
+	dash0api.SetSyntheticCheckIDIfAbsent(check, id)
 
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
@@ -66,7 +67,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return formatter.Print(check)
 	default:
 		fmt.Printf("Kind: %s\n", check.Kind)
-		fmt.Printf("Name: %s\n", asset.ExtractSyntheticCheckName(check))
+		fmt.Printf("Name: %s\n", dash0api.GetSyntheticCheckName(check))
 		dataset := ""
 		origin := ""
 		if check.Metadata.Labels != nil {
@@ -82,7 +83,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		if check.Metadata.Description != nil {
 			fmt.Printf("Description: %s\n", *check.Metadata.Description)
 		}
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "synthetic check", id); deeplinkURL != "" {
+		if deeplinkURL := asset.DeeplinkURL(apiUrl, "syntheticcheck", id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

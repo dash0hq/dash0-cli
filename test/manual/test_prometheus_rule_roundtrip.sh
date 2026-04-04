@@ -50,12 +50,12 @@ if [ -z "$ACTUAL_EXPR" ]; then
 fi
 echo "expression: $ACTUAL_EXPR"
 
-ACTUAL_SUMMARY=$(echo "$GET_JSON" | jq -r '.summary // empty')
+ACTUAL_SUMMARY=$(echo "$GET_JSON" | jq -r '.annotations.summary // empty')
 if [ -z "$ACTUAL_SUMMARY" ]; then
-  echo "FAIL: summary is empty (should be extracted from annotations)"
+  echo "FAIL: annotations.summary is empty (should be preserved from PrometheusRule annotations)"
   exit 1
 fi
-echo "summary: $ACTUAL_SUMMARY"
+echo "annotations.summary: $ACTUAL_SUMMARY"
 
 # Step 4: Export to YAML and re-import via apply (round-trip).
 echo "--- Step 4: Export and re-apply (round-trip) ---"

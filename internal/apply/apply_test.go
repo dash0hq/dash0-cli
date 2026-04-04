@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -187,54 +186,6 @@ labels:
 func TestApplyAction_String(t *testing.T) {
 	assert.Equal(t, "created", string(actionCreated))
 	assert.Equal(t, "updated", string(actionUpdated))
-}
-
-func TestConvertToCheckRule(t *testing.T) {
-	rule := &asset.PrometheusAlertingRule{
-		Alert: "HighErrorRate",
-		Expr:  "sum(rate(errors[5m])) > 0.1",
-		For:   "5m",
-		Labels: map[string]string{
-			"severity": "critical",
-		},
-		Annotations: map[string]string{
-			"summary":     "High error rate detected",
-			"description": "Error rate exceeds threshold",
-		},
-	}
-
-	checkRule := asset.ConvertToCheckRule(rule, "1m", "test-id")
-
-	assert.Equal(t, "HighErrorRate", checkRule.Name)
-	assert.Equal(t, "sum(rate(errors[5m])) > 0.1", checkRule.Expression)
-	assert.NotNil(t, checkRule.For)
-	assert.Equal(t, "5m", string(*checkRule.For))
-	assert.NotNil(t, checkRule.Interval)
-	assert.Equal(t, "1m", string(*checkRule.Interval))
-	assert.NotNil(t, checkRule.Id)
-	assert.Equal(t, "test-id", *checkRule.Id)
-	assert.NotNil(t, checkRule.Summary)
-	assert.Equal(t, "High error rate detected", *checkRule.Summary)
-	assert.NotNil(t, checkRule.Description)
-	assert.Equal(t, "Error rate exceeds threshold", *checkRule.Description)
-	require.NotNil(t, checkRule.Labels)
-	assert.Equal(t, "critical", (*checkRule.Labels)["severity"])
-}
-
-func TestConvertToCheckRule_MinimalInput(t *testing.T) {
-	rule := &asset.PrometheusAlertingRule{
-		Alert: "SimpleAlert",
-		Expr:  "up == 0",
-	}
-
-	checkRule := asset.ConvertToCheckRule(rule, "", "")
-
-	assert.Equal(t, "SimpleAlert", checkRule.Name)
-	assert.Equal(t, "up == 0", checkRule.Expression)
-	assert.Nil(t, checkRule.For)
-	assert.Nil(t, checkRule.Interval)
-	assert.Nil(t, checkRule.Id)
-	assert.Nil(t, checkRule.Labels)
 }
 
 func TestPrometheusRuleParsing(t *testing.T) {
