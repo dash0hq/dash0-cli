@@ -397,7 +397,9 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, sk
 
 	_, err := iterateSpans(iter, totalLimit, func(r flatSpanRecord) {
 		values := query.BuildValues(r.values(), cols, r.rawAttrs)
-		query.WriteCSVRow(w, cols, values)
+		if err := query.WriteCSVRow(w, cols, values); err != nil {
+			return
+		}
 		w.Flush()
 	})
 	if err != nil {

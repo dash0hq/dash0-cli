@@ -374,7 +374,9 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, ski
 
 	_, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
 		values := query.BuildValues(r.values(), cols, r.rawAttrs)
-		query.WriteCSVRow(w, cols, values)
+		if err := query.WriteCSVRow(w, cols, values); err != nil {
+			return
+		}
 		w.Flush()
 	})
 	if err != nil {

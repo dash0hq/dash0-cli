@@ -83,7 +83,7 @@ func newSendCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset name")
 	cmd.Flags().StringVar(&flags.Name, "name", "", "Span name (required)")
-	cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("name")
 	cmd.Flags().StringVar(&flags.Kind, "kind", "INTERNAL", "Span kind: INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER")
 	cmd.Flags().StringVar(&flags.StatusCode, "status-code", "UNSET", "Status code: UNSET, OK, ERROR")
 	cmd.Flags().StringVar(&flags.StatusMessage, "status-message", "", "Status message (typically for ERROR status)")
@@ -320,12 +320,12 @@ func parseSpanLink(s string) (parsedSpanLink, error) {
 
 func generateTraceID() pcommon.TraceID {
 	var tid pcommon.TraceID
-	rand.Read(tid[:])
+	_, _ = rand.Read(tid[:])
 	return tid
 }
 
 func generateSpanID() pcommon.SpanID {
 	var sid pcommon.SpanID
-	rand.Read(sid[:])
+	_, _ = rand.Read(sid[:])
 	return sid
 }

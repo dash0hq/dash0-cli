@@ -4,7 +4,7 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 )
 
 // ResolveDataset returns the dataset to use for API calls, checking (in order):
@@ -16,7 +16,7 @@ func ResolveDataset(ctx context.Context, flagDataset string) *string {
 	if flagDataset != "" {
 		return dash0api.DatasetPtr(flagDataset)
 	}
-	if cfg := config.FromContext(ctx); cfg != nil && cfg.Dataset != "" {
+	if cfg := profiles.FromContext(ctx); cfg != nil && cfg.Dataset != "" {
 		return dash0api.DatasetPtr(cfg.Dataset)
 	}
 	return nil

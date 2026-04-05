@@ -1,4 +1,4 @@
-.PHONY: build clean test test-unit test-integration install chlog-install chlog-new chlog-validate chlog-preview chlog-update
+.PHONY: build clean test test-unit test-integration install lint lint-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
 
 BUILD_DIR=./build
 BINARY_NAME=dash0
@@ -7,6 +7,8 @@ GOARCH?=$(shell go env GOARCH)
 
 # Tools
 TOOLS_BIN_DIR?=$(shell pwd)/.tools
+GOLANGCI_LINT_VERSION=v1.64.8
+GOLANGCI_LINT=$(TOOLS_BIN_DIR)/golangci-lint
 CHLOGGEN_VERSION=v0.23.1
 CHLOGGEN=$(TOOLS_BIN_DIR)/chloggen
 
@@ -23,6 +25,20 @@ test-integration:
 
 install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
+
+lint: lint-go lint-sh
+
+lint-install: $(GOLANGCI_LINT)
+
+$(GOLANGCI_LINT):
+	@mkdir -p $(TOOLS_BIN_DIR)
+	GOBIN=$(TOOLS_BIN_DIR) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+lint-go: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) run ./...
+
+lint-sh:
+	shellcheck -x $(shell find . -name '*.sh' -not -path './.claude/*' -not -path './.git/*')
 
 # Changelog management
 $(CHLOGGEN):

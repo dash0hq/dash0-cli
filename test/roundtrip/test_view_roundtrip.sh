@@ -15,8 +15,7 @@ echo "Asset name: $ASSET_NAME"
 
 # Step 1: Create from fixture
 echo "--- Step 1: Create view from fixture ---"
-CREATE_OUTPUT=$("$DASH0" views create -f "$FIXTURE")
-if [ $? -ne 0 ]; then
+if ! CREATE_OUTPUT=$("$DASH0" views create -f "$FIXTURE"); then
   echo "FAIL: views create failed"
   exit 1
 fi
@@ -28,8 +27,7 @@ fi
 
 # Step 2: List views and find the created asset by name
 echo "--- Step 2: List views and find created asset ---"
-LIST_JSON=$("$DASH0" views list -o json)
-if [ $? -ne 0 ]; then
+if ! LIST_JSON=$("$DASH0" views list -o json); then
   echo "FAIL: views list -o json failed"
   exit 1
 fi
@@ -71,8 +69,7 @@ fi
 
 # Step 7: Verify deletion
 echo "--- Step 7: Verify deletion ---"
-LIST_JSON=$("$DASH0" views list -o json)
-if [ $? -ne 0 ]; then
+if ! LIST_JSON=$("$DASH0" views list -o json); then
   echo "FAIL: views list -o json failed"
   exit 1
 fi
