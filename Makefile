@@ -1,4 +1,4 @@
-.PHONY: build clean test test-unit test-integration install lint lint-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
+.PHONY: build clean test test-unit test-integration install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
 
 BUILD_DIR=./build
 BINARY_NAME=dash0
@@ -28,11 +28,16 @@ install: build
 
 lint: lint-go lint-sh
 
-lint-install: $(GOLANGCI_LINT)
+lint-install: lint-go-install lint-sh-install
+
+lint-go-install: $(GOLANGCI_LINT)
 
 $(GOLANGCI_LINT):
 	@mkdir -p $(TOOLS_BIN_DIR)
 	GOBIN=$(TOOLS_BIN_DIR) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+lint-sh-install:
+	@command -v shellcheck >/dev/null 2>&1 || { echo "Installing shellcheck..."; brew install shellcheck 2>/dev/null || sudo apt-get install -y shellcheck; }
 
 lint-go: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run ./...
