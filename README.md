@@ -133,7 +133,7 @@ dash0 config profiles create dev \
     --auth-token auth_xxx
 
 dash0 config profiles list
-dash0 config profiles select prod
+dash0 config profiles select dev
 dash0 config show
 ```
 
