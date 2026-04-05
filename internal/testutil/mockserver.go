@@ -291,7 +291,7 @@ func (m *MockServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(resp.StatusCode)
 	}
 	if responseBody != nil {
-		w.Write(responseBody)
+		_, _ = w.Write(responseBody)
 	}
 }
 
@@ -496,7 +496,7 @@ func (m *MockServer) WithNotFound(fixture string) *MockServer {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		w.Write(body)
+		_, _ = w.Write(body)
 	})
 }
 
@@ -510,7 +510,7 @@ func (m *MockServer) WithUnauthorized(fixture string) *MockServer {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write(body)
+		_, _ = w.Write(body)
 	})
 }
 
@@ -547,7 +547,7 @@ func CaptureStdout(t *testing.T, fn func()) string {
 
 	// Read the captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	r.Close()
 
 	return buf.String()

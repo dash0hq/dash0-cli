@@ -21,6 +21,12 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 | `gopkg.in/yaml.v3` | YAML marshalling/unmarshalling for asset definitions, needed for YAML stream processing |
 | `sigs.k8s.io/yaml` | YAML handling that respects JSON struct tags and `omitempty` |
 
+## Linting
+
+Run `make lint` after any code or test change.
+This runs both `make lint-go` (`golangci-lint`) and `make lint-sh` (`shellcheck`).
+All lint issues must be resolved before merging.
+
 ## Style Rules
 - Use Go 1.24+ features
 - Format with `gofmt`

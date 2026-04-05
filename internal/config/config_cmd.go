@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/spf13/cobra"
@@ -67,24 +68,24 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
   # Use a different configuration directory
   DASH0_CONFIG_DIR=/tmp/dash0-test dash0 config show`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			configService, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
 				return err
 			}
 
 			// Check if environment variables are being used
-			envApiUrl := os.Getenv("DASH0_API_URL")
-			envAuthToken := os.Getenv("DASH0_AUTH_TOKEN")
-			envOtlpUrl := os.Getenv("DASH0_OTLP_URL")
-			envDataset := os.Getenv("DASH0_DATASET")
+			envApiUrl := os.Getenv(profiles.EnvApiUrl)
+			envAuthToken := os.Getenv(profiles.EnvAuthToken)
+			envOtlpUrl := os.Getenv(profiles.EnvOtlpUrl)
+			envDataset := os.Getenv(profiles.EnvDataset)
 
 			profileName := ""
-			activeProfile, err := configService.GetActiveProfile()
+			activeProfile, err := store.GetActiveProfile()
 			if err == nil && activeProfile != nil {
 				profileName = activeProfile.Name
 			}
 
-			config, _ := configService.GetActiveConfiguration()
+			config, _ := store.GetActiveConfiguration()
 
 			apiUrl := ""
 			authToken := ""
@@ -108,10 +109,10 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			if useJSON {
 				result := configShowJSON{
 					Profile:   profileName,
-					ApiUrl:    showField(apiUrl, envApiUrl, "DASH0_API_URL"),
-					OtlpUrl:   showField(otlpUrl, envOtlpUrl, "DASH0_OTLP_URL"),
-					Dataset:   showField(datasetDisplay, envDataset, "DASH0_DATASET"),
-					AuthToken: showField(maskToken(authToken), envAuthToken, "DASH0_AUTH_TOKEN"),
+					ApiUrl:    showField(apiUrl, envApiUrl, profiles.EnvApiUrl),
+					OtlpUrl:   showField(otlpUrl, envOtlpUrl, profiles.EnvOtlpUrl),
+					Dataset:   showField(datasetDisplay, envDataset, profiles.EnvDataset),
+					AuthToken: showField(maskToken(authToken), envAuthToken, profiles.EnvAuthToken),
 				}
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
@@ -128,7 +129,7 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			if apiUrl != "" {
 				fmt.Printf("API URL:    %s", apiUrl)
 				if envApiUrl != "" {
-					fmt.Printf("    (from DASH0_API_URL environment variable)")
+					fmt.Printf("    (from %s environment variable)", profiles.EnvApiUrl)
 				}
 			} else {
 				fmt.Printf("API URL:    (not set)")
@@ -138,7 +139,7 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			if otlpUrl != "" {
 				fmt.Printf("OTLP URL:   %s", otlpUrl)
 				if envOtlpUrl != "" {
-					fmt.Printf("    (from DASH0_OTLP_URL environment variable)")
+					fmt.Printf("    (from %s environment variable)", profiles.EnvOtlpUrl)
 				}
 			} else {
 				fmt.Printf("OTLP URL:   (not set)")
@@ -147,14 +148,14 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 
 			fmt.Printf("Dataset:    %s", datasetDisplay)
 			if envDataset != "" {
-				fmt.Printf("    (from DASH0_DATASET environment variable)")
+				fmt.Printf("    (from %s environment variable)", profiles.EnvDataset)
 			}
 			fmt.Println()
 
 			if authToken != "" {
 				fmt.Printf("Auth Token: %s", maskToken(authToken))
 				if envAuthToken != "" {
-					fmt.Printf("    (from DASH0_AUTH_TOKEN environment variable)")
+					fmt.Printf("    (from %s environment variable)", profiles.EnvAuthToken)
 				}
 			} else {
 				fmt.Printf("Auth Token: (not set)")
@@ -227,14 +228,14 @@ func newCreateProfileCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			configService, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
 				return err
 			}
 
-			profile := Profile{
+			profile := profiles.Profile{
 				Name: name,
-				Configuration: Configuration{
+				Configuration: profiles.Configuration{
 					ApiUrl:    apiUrl,
 					AuthToken: authToken,
 					OtlpUrl:   otlpUrl,
@@ -242,7 +243,7 @@ func newCreateProfileCmd() *cobra.Command {
 				},
 			}
 
-			if err := configService.AddProfile(profile); err != nil {
+			if err := store.AddProfile(profile); err != nil {
 				return fmt.Errorf("failed to add profile: %w", err)
 			}
 
@@ -289,12 +290,12 @@ func newUpdateProfileCmd() *cobra.Command {
 				return fmt.Errorf("at least one of --api-url, --auth-token, --otlp-url, or --dataset must be specified")
 			}
 
-			configService, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
 				return err
 			}
 
-			if err := configService.UpdateProfile(name, func(cfg *Configuration) {
+			if err := store.UpdateProfile(name, func(cfg *profiles.Configuration) {
 				if apiUrlChanged {
 					cfg.ApiUrl = apiUrl
 				}
@@ -390,17 +391,17 @@ func newListProfileCmd() *cobra.Command {
 				return fmt.Errorf("--skip-header is not supported with output format %q", outputFmt)
 			}
 
-			configService, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
 				return err
 			}
 
-			profiles, err := configService.GetProfiles()
+			allProfiles, err := store.GetProfiles()
 			if err != nil {
 				return fmt.Errorf("failed to get profiles: %w", err)
 			}
 
-			if len(profiles) == 0 {
+			if len(allProfiles) == 0 {
 				if format == profileListFormatJSON {
 					fmt.Println("[]")
 				} else {
@@ -410,16 +411,16 @@ func newListProfileCmd() *cobra.Command {
 			}
 
 			activeProfileName := ""
-			activeProfile, err := configService.GetActiveProfile()
+			activeProfile, err := store.GetActiveProfile()
 			if err == nil && activeProfile != nil {
 				activeProfileName = activeProfile.Name
 			}
 
 			switch format {
 			case profileListFormatJSON:
-				return renderProfilesJSON(profiles, activeProfileName)
+				return renderProfilesJSON(allProfiles, activeProfileName)
 			default:
-				return renderProfilesTable(profiles, activeProfileName, skipHeader)
+				return renderProfilesTable(allProfiles, activeProfileName, skipHeader)
 			}
 		},
 	}
@@ -430,7 +431,7 @@ func newListProfileCmd() *cobra.Command {
 	return cmd
 }
 
-func renderProfilesJSON(profiles []Profile, activeProfileName string) error {
+func renderProfilesJSON(profiles []profiles.Profile, activeProfileName string) error {
 	items := make([]profileJSON, len(profiles))
 	for i, p := range profiles {
 		dataset := p.Configuration.Dataset
@@ -451,7 +452,7 @@ func renderProfilesJSON(profiles []Profile, activeProfileName string) error {
 	return enc.Encode(items)
 }
 
-func renderProfilesTable(profiles []Profile, activeProfileName string, skipHeader bool) error {
+func renderProfilesTable(profiles []profiles.Profile, activeProfileName string, skipHeader bool) error {
 	// Check if any profile has an OTLP URL configured
 	hasOtlpUrl := false
 	for _, profile := range profiles {
@@ -544,12 +545,12 @@ func newDeleteProfileCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			configService, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
 				return err
 			}
 
-			if err := configService.RemoveProfile(name); err != nil {
+			if err := store.RemoveProfile(name); err != nil {
 				return fmt.Errorf("failed to remove profile: %w", err)
 			}
 
@@ -575,12 +576,12 @@ func newSelectProfileCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			configService, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
 				return err
 			}
 
-			if err := configService.SetActiveProfile(name); err != nil {
+			if err := store.SetActiveProfile(name); err != nil {
 				return fmt.Errorf("failed to select profile: %w", err)
 			}
 

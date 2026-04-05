@@ -75,8 +75,8 @@ run_script() {
 # Script names follow pattern: <resource>_<operation>.fixture.sh
 # where <resource> is: dashboards, checkrules, syntheticchecks, views
 discover_resource_types() {
-    find "$SCRIPT_DIR" -maxdepth 1 -name '*.fixture.sh' -type f \
-        | xargs -n1 basename \
+    find "$SCRIPT_DIR" -maxdepth 1 -name '*.fixture.sh' -type f -print0 \
+        | xargs -0 -n1 basename \
         | sed 's/_.*//' \
         | sort -u
 }

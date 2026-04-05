@@ -7,13 +7,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/spf13/cobra"
 )
 
-
 // executeCommand is a helper function that executes a command and returns its output
-func executeCommand(root *cobra.Command, args ...string) (output string, err error) {
+func executeCommand(root *cobra.Command, args ...string) (string, error) {
 	// Redirect stdout
 	stdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -23,7 +23,7 @@ func executeCommand(root *cobra.Command, args ...string) (output string, err err
 	root.SetArgs(args)
 
 	// Execute the command
-	err = root.Execute()
+	execErr := root.Execute()
 
 	// Restore stdout
 	w.Close()
@@ -31,9 +31,9 @@ func executeCommand(root *cobra.Command, args ...string) (output string, err err
 
 	// Read output
 	var buf bytes.Buffer
-	_, err = io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 
-	return buf.String(), err
+	return buf.String(), execErr
 }
 
 // TestShowCmd tests the show command
@@ -42,10 +42,10 @@ func TestShowCmd(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
 	// Create test profiles
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
@@ -106,10 +106,10 @@ func TestShowCmdNoProfile(t *testing.T) {
 func TestShowCmdWithDataset(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 				Dataset:   "my-dataset",
@@ -138,10 +138,10 @@ func TestShowCmdWithDataset(t *testing.T) {
 func TestShowCmdDatasetDefault(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
@@ -169,10 +169,10 @@ func TestShowCmdDatasetDefault(t *testing.T) {
 func TestShowCmdDatasetEnvVar(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
@@ -182,8 +182,8 @@ func TestShowCmdDatasetEnvVar(t *testing.T) {
 	createTestProfilesFile(t, configDir, testProfiles)
 	setActiveProfile(t, configDir, "test1")
 
-	os.Setenv("DASH0_DATASET", "env-dataset")
-	defer os.Unsetenv("DASH0_DATASET")
+	os.Setenv(profiles.EnvDataset, "env-dataset")
+	defer os.Unsetenv(profiles.EnvDataset)
 
 	rootCmd := &cobra.Command{Use: "dash0"}
 	configCmd := NewConfigCmd()
@@ -206,10 +206,10 @@ func TestShowCmdDatasetEnvVar(t *testing.T) {
 func TestListProfileCmdJSON(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "dev",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://api.dev.example.com",
 				AuthToken: "auth_long_enough_token_dev",
 				OtlpUrl:   "https://otlp.dev.example.com",
@@ -218,7 +218,7 @@ func TestListProfileCmdJSON(t *testing.T) {
 		},
 		{
 			Name: "prod",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://api.prod.example.com",
 				AuthToken: "auth_long_enough_token_prod",
 			},
@@ -303,10 +303,10 @@ func TestListProfileCmdJSONEmpty(t *testing.T) {
 func TestListProfileCmdAgentModeDefaultsToJSON(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "dev",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://api.example.com",
 				AuthToken: "auth_long_enough_token",
 			},
@@ -363,40 +363,40 @@ func TestCreateProfileCmdPartialFields(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
-		expected Configuration
+		expected profiles.Configuration
 	}{
 		{
 			name: "auth-token only",
 			args: []string{"--auth-token", "token1"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				AuthToken: "token1",
 			},
 		},
 		{
 			name: "api-url only",
 			args: []string{"--api-url", "https://api.example.com"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				ApiUrl: "https://api.example.com",
 			},
 		},
 		{
 			name: "otlp-url only",
 			args: []string{"--otlp-url", "https://otlp.example.com"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				OtlpUrl: "https://otlp.example.com",
 			},
 		},
 		{
 			name: "dataset only",
 			args: []string{"--dataset", "my-dataset"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				Dataset: "my-dataset",
 			},
 		},
 		{
 			name: "auth-token and api-url",
 			args: []string{"--auth-token", "token1", "--api-url", "https://api.example.com"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				AuthToken: "token1",
 				ApiUrl:    "https://api.example.com",
 			},
@@ -404,7 +404,7 @@ func TestCreateProfileCmdPartialFields(t *testing.T) {
 		{
 			name: "auth-token and otlp-url",
 			args: []string{"--auth-token", "token1", "--otlp-url", "https://otlp.example.com"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				AuthToken: "token1",
 				OtlpUrl:   "https://otlp.example.com",
 			},
@@ -412,7 +412,7 @@ func TestCreateProfileCmdPartialFields(t *testing.T) {
 		{
 			name: "all fields",
 			args: []string{"--auth-token", "token1", "--api-url", "https://api.example.com", "--otlp-url", "https://otlp.example.com", "--dataset", "prod"},
-			expected: Configuration{
+			expected: profiles.Configuration{
 				AuthToken: "token1",
 				ApiUrl:    "https://api.example.com",
 				OtlpUrl:   "https://otlp.example.com",
@@ -439,21 +439,21 @@ func TestCreateProfileCmdPartialFields(t *testing.T) {
 				t.Errorf("Expected success message, got: %s", output)
 			}
 
-			service, err := NewService()
+			store, err := profiles.NewStore()
 			if err != nil {
-				t.Fatalf("Failed to create service: %v", err)
+				t.Fatalf("Failed to create store: %v", err)
 			}
 
-			profiles, err := service.GetProfiles()
+			result, err := store.GetProfiles()
 			if err != nil {
 				t.Fatalf("Failed to get profiles: %v", err)
 			}
 
-			if len(profiles) != 1 {
-				t.Fatalf("Expected 1 profile, got %d", len(profiles))
+			if len(result) != 1 {
+				t.Fatalf("Expected 1 profile, got %d", len(result))
 			}
 
-			cfg := profiles[0].Configuration
+			cfg := result[0].Configuration
 			if cfg.ApiUrl != tc.expected.ApiUrl {
 				t.Errorf("Expected ApiUrl %q, got %q", tc.expected.ApiUrl, cfg.ApiUrl)
 			}
@@ -484,22 +484,22 @@ func TestCreateProfileCmdWithDataset(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	service, err := NewService()
+	store, err := profiles.NewStore()
 	if err != nil {
-		t.Fatalf("Failed to create service: %v", err)
+		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	profiles, err := service.GetProfiles()
+	result, err := store.GetProfiles()
 	if err != nil {
 		t.Fatalf("Failed to get profiles: %v", err)
 	}
 
-	if len(profiles) != 1 {
-		t.Fatalf("Expected 1 profile, got %d", len(profiles))
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 profile, got %d", len(result))
 	}
 
-	if profiles[0].Configuration.Dataset != "my-dataset" {
-		t.Errorf("Expected dataset my-dataset, got %s", profiles[0].Configuration.Dataset)
+	if result[0].Configuration.Dataset != "my-dataset" {
+		t.Errorf("Expected dataset my-dataset, got %s", result[0].Configuration.Dataset)
 	}
 }
 
@@ -507,10 +507,10 @@ func TestCreateProfileCmdWithDataset(t *testing.T) {
 func TestUpdateProfileCmdWithDataset(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
@@ -528,23 +528,23 @@ func TestUpdateProfileCmdWithDataset(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	service, err := NewService()
+	store, err := profiles.NewStore()
 	if err != nil {
-		t.Fatalf("Failed to create service: %v", err)
+		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	profiles, err := service.GetProfiles()
+	result, err := store.GetProfiles()
 	if err != nil {
 		t.Fatalf("Failed to get profiles: %v", err)
 	}
 
-	if profiles[0].Configuration.Dataset != "updated-dataset" {
-		t.Errorf("Expected dataset updated-dataset, got %s", profiles[0].Configuration.Dataset)
+	if result[0].Configuration.Dataset != "updated-dataset" {
+		t.Errorf("Expected dataset updated-dataset, got %s", result[0].Configuration.Dataset)
 	}
 
 	// Verify other fields were not changed
-	if profiles[0].Configuration.ApiUrl != "https://test1.example.com" {
-		t.Errorf("Expected API URL to remain unchanged, got %s", profiles[0].Configuration.ApiUrl)
+	if result[0].Configuration.ApiUrl != "https://test1.example.com" {
+		t.Errorf("Expected API URL to remain unchanged, got %s", result[0].Configuration.ApiUrl)
 	}
 }
 
@@ -554,17 +554,17 @@ func TestListProfileCmd(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
 	// Create test profiles
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
@@ -599,10 +599,10 @@ func TestListProfileCmd(t *testing.T) {
 func TestListProfileCmdSkipHeader(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "dev",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://api.example.com",
 				AuthToken: "token_abc",
 			},
@@ -653,27 +653,27 @@ func TestCreateProfileCmd(t *testing.T) {
 	}
 
 	// Verify profile was added
-	service, err := NewService()
+	store, err := profiles.NewStore()
 	if err != nil {
-		t.Fatalf("Failed to create service: %v", err)
+		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	profiles, err := service.GetProfiles()
+	result, err := store.GetProfiles()
 	if err != nil {
 		t.Fatalf("Failed to get profiles: %v", err)
 	}
 
-	if len(profiles) != 1 {
-		t.Errorf("Expected 1 profile, got %d", len(profiles))
+	if len(result) != 1 {
+		t.Errorf("Expected 1 profile, got %d", len(result))
 		return // Avoid index out of range error
 	}
 
-	if profiles[0].Name != "new-profile" {
-		t.Errorf("Expected profile name new-profile, got %s", profiles[0].Name)
+	if result[0].Name != "new-profile" {
+		t.Errorf("Expected profile name new-profile, got %s", result[0].Name)
 	}
 
-	if profiles[0].Configuration.ApiUrl != "https://new.example.com" {
-		t.Errorf("Expected API URL https://new.example.com, got %s", profiles[0].Configuration.ApiUrl)
+	if result[0].Configuration.ApiUrl != "https://new.example.com" {
+		t.Errorf("Expected API URL https://new.example.com, got %s", result[0].Configuration.ApiUrl)
 	}
 }
 
@@ -683,17 +683,17 @@ func TestDeleteProfileCmd(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
 	// Create test profiles
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
@@ -720,22 +720,22 @@ func TestDeleteProfileCmd(t *testing.T) {
 	}
 
 	// Verify profile was removed
-	service, err := NewService()
+	store, err := profiles.NewStore()
 	if err != nil {
-		t.Fatalf("Failed to create service: %v", err)
+		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	profiles, err := service.GetProfiles()
+	result, err := store.GetProfiles()
 	if err != nil {
 		t.Fatalf("Failed to get profiles: %v", err)
 	}
 
-	if len(profiles) != 1 {
-		t.Errorf("Expected 1 profile, got %d", len(profiles))
+	if len(result) != 1 {
+		t.Errorf("Expected 1 profile, got %d", len(result))
 	}
 
-	if profiles[0].Name != "test1" {
-		t.Errorf("Expected profile name test1, got %s", profiles[0].Name)
+	if result[0].Name != "test1" {
+		t.Errorf("Expected profile name test1, got %s", result[0].Name)
 	}
 }
 
@@ -745,17 +745,17 @@ func TestSelectProfileCmd(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
 	// Create test profiles
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
@@ -782,12 +782,12 @@ func TestSelectProfileCmd(t *testing.T) {
 	}
 
 	// Verify active profile was updated
-	service, err := NewService()
+	store, err := profiles.NewStore()
 	if err != nil {
-		t.Fatalf("Failed to create service: %v", err)
+		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	activeProfile, err := service.GetActiveProfile()
+	activeProfile, err := store.GetActiveProfile()
 	if err != nil {
 		t.Fatalf("Failed to get active profile: %v", err)
 	}
@@ -801,17 +801,17 @@ func TestSelectProfileCmd(t *testing.T) {
 func TestActivateProfileAlias(t *testing.T) {
 	configDir := setupTestConfigDir(t)
 
-	testProfiles := []Profile{
+	testProfiles := []profiles.Profile{
 		{
 			Name: "test1",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test1.example.com",
 				AuthToken: "token1",
 			},
 		},
 		{
 			Name: "test2",
-			Configuration: Configuration{
+			Configuration: profiles.Configuration{
 				ApiUrl:    "https://test2.example.com",
 				AuthToken: "token2",
 			},
@@ -834,12 +834,12 @@ func TestActivateProfileAlias(t *testing.T) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
 
-	service, err := NewService()
+	store, err := profiles.NewStore()
 	if err != nil {
-		t.Fatalf("Failed to create service: %v", err)
+		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	activeProfile, err := service.GetActiveProfile()
+	activeProfile, err := store.GetActiveProfile()
 	if err != nil {
 		t.Fatalf("Failed to get active profile: %v", err)
 	}

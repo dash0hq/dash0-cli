@@ -7,17 +7,17 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/version"
 )
 
 // NewClientFromContext creates a new Dash0 API client using configuration from context.
 // Flag overrides (apiUrl, authToken) are applied on top of the context configuration.
 func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0api.Client, error) {
-	cfg := config.FromContext(ctx)
+	cfg := profiles.FromContext(ctx)
 	if cfg == nil {
 		// Fallback to ResolveConfiguration if not in context
-		resolved, err := config.ResolveConfiguration(apiUrl, authToken)
+		resolved, err := profiles.ResolveConfiguration(apiUrl, authToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve configuration: %w", err)
 		}
@@ -48,7 +48,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 // NewOtlpClientFromContext creates a new Dash0 API client configured for OTLP using configuration from context.
 // Flag overrides (otlpUrl, authToken) are applied on top of the context configuration.
 func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (dash0api.Client, error) {
-	cfg := config.FromContext(ctx)
+	cfg := profiles.FromContext(ctx)
 
 	var finalOtlpUrl, finalAuthToken string
 	if cfg != nil {
@@ -90,7 +90,7 @@ func ResolveApiUrl(ctx context.Context, flagApiUrl string) string {
 	if flagApiUrl != "" {
 		return flagApiUrl
 	}
-	if cfg := config.FromContext(ctx); cfg != nil && cfg.ApiUrl != "" {
+	if cfg := profiles.FromContext(ctx); cfg != nil && cfg.ApiUrl != "" {
 		return cfg.ApiUrl
 	}
 	return ""

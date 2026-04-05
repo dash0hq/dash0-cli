@@ -32,7 +32,7 @@ validate_env() {
 get_fixtures_dir() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
-    echo "$(dirname "$script_dir")"
+    dirname "$script_dir"
 }
 
 # Make a GET request to the Dash0 API

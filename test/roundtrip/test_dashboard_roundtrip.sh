@@ -15,8 +15,7 @@ echo "Asset name: $ASSET_NAME"
 
 # Step 1: Create from fixture
 echo "--- Step 1: Create dashboard from fixture ---"
-CREATE_OUTPUT=$("$DASH0" dashboards create -f "$FIXTURE")
-if [ $? -ne 0 ]; then
+if ! CREATE_OUTPUT=$("$DASH0" dashboards create -f "$FIXTURE"); then
   echo "FAIL: dashboards create failed"
   exit 1
 fi
@@ -28,8 +27,7 @@ fi
 
 # Step 2: List dashboards and find the created asset by name
 echo "--- Step 2: List dashboards and find created asset ---"
-LIST_JSON=$("$DASH0" dashboards list -o json)
-if [ $? -ne 0 ]; then
+if ! LIST_JSON=$("$DASH0" dashboards list -o json); then
   echo "FAIL: dashboards list -o json failed"
   exit 1
 fi
@@ -71,8 +69,7 @@ fi
 
 # Step 7: Verify deletion
 echo "--- Step 7: Verify deletion ---"
-LIST_JSON=$("$DASH0" dashboards list -o json)
-if [ $? -ne 0 ]; then
+if ! LIST_JSON=$("$DASH0" dashboards list -o json); then
   echo "FAIL: dashboards list -o json failed"
   exit 1
 fi
