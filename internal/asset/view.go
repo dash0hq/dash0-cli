@@ -17,7 +17,7 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 	action := ActionCreated
 	var before any
 	id := ""
-	if view.Metadata.Labels.Dash0Comid != nil && *view.Metadata.Labels.Dash0Comid != "" {
+	if view.Metadata.Labels != nil && view.Metadata.Labels.Dash0Comid != nil && *view.Metadata.Labels.Dash0Comid != "" {
 		id = *view.Metadata.Labels.Dash0Comid
 		existing, err := apiClient.GetView(ctx, id, dataset)
 		if err == nil {

@@ -17,7 +17,7 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 	action := ActionCreated
 	var before any
 	id := ""
-	if check.Metadata.Labels.Dash0Comid != nil && *check.Metadata.Labels.Dash0Comid != "" {
+	if check.Metadata.Labels != nil && check.Metadata.Labels.Dash0Comid != nil && *check.Metadata.Labels.Dash0Comid != "" {
 		id = *check.Metadata.Labels.Dash0Comid
 		existing, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
 		if err == nil {
