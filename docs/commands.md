@@ -928,6 +928,83 @@ Example:
 $ dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
 ```
 
+### `metrics list` (experimental)
+
+List available metric names from the Dash0 API.
+Discovers metric names via the Prometheus-compatible label values API.
+
+```bash
+dash0 --experimental metrics list [flags]
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--output` | `-o` | `table` | Output format: `table`, `wide`, `json`, `csv` |
+| `--from` | | `now-1h` | Start of time range |
+| `--to` | | `now` | End of time range |
+| `--filter` | | | Substring or regex filter on metric names |
+| `--limit` | `-l` | 0 (no limit) | Maximum number of results |
+| `--skip-header` | | `false` | Omit the header row from `table`, `wide`, and `csv` output |
+| `--dataset` | | | Dataset override |
+
+The default `table` output shows a single NAME column.
+The `wide` format adds TYPE, UNIT, and DESCRIPTION columns (fetched from the Prometheus metadata API).
+The `json` format outputs an array of objects with name, type, unit, and help fields.
+The `csv` format uses the same columns as `wide`.
+
+Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
+
+The `--filter` flag matches metric names client-side.
+If the value compiles as a regular expression, regex matching is used; otherwise it falls back to case-insensitive substring matching.
+
+Examples:
+
+```bash
+# List all metric names (last 1 hour)
+$ dash0 --experimental metrics list
+NAME
+container_cpu_usage_seconds_total
+http_server_active_requests
+http_server_request_duration_seconds_bucket
+...
+
+# Filter by substring
+$ dash0 --experimental metrics list --filter http_server
+
+# Filter by regex
+$ dash0 --experimental metrics list --filter "^http_server.*total$"
+
+# Show type, unit, and description
+$ dash0 --experimental metrics list --filter http_server -o wide
+NAME                                              TYPE        UNIT        DESCRIPTION
+http_server_active_requests                       gauge       {request}   Number of active HTTP server requests
+http_server_request_duration_seconds_bucket       histogram   s           Duration of HTTP server requests
+...
+
+# Custom time range
+$ dash0 --experimental metrics list --from now-6h
+
+# Limit results
+$ dash0 --experimental metrics list --limit 20
+
+# Output as JSON (includes metadata)
+$ dash0 --experimental metrics list --filter http_server -o json
+[
+  {
+    "name": "http_server_active_requests",
+    "type": "gauge",
+    "unit": "{request}",
+    "help": "Number of active HTTP server requests"
+  },
+  ...
+]
+
+# Output as CSV
+$ dash0 --experimental metrics list --filter http_server -o csv
+```
+
+Aliases: `ls`
+
 ## Team management
 
 Teams and members are organizational entities (not "assets").

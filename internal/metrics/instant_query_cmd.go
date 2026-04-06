@@ -40,6 +40,7 @@ func NewMetricsCmd() *cobra.Command {
 
 	// Add subcommands
 	cmd.AddCommand(newInstantQueryCmd())
+	cmd.AddCommand(newListCmd())
 
 	return cmd
 }
