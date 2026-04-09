@@ -1,0 +1,13 @@
+kind: Dash0RecordingRuleGroup
+metadata:
+  name: roundtrip_test_recording_rule
+spec:
+  display:
+    name: Roundtrip Test Recording Rule
+  enabled: true
+  interval: 1m
+  rules:
+    - record: http_requests_total:rate5m
+      expression: rate(http_requests_total[5m])
+      labels:
+        env: test
