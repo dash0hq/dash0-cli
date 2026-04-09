@@ -2,6 +2,8 @@ package asset
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -120,4 +122,24 @@ func TestYAMLRoundTrip_RecordingRuleGroup(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal(yamlData, &roundTripped))
 
 	assertJSONEqual(t, &original, &roundTripped)
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), name))
+	require.NoError(t, err)
+	return data
+}
+
+func assertJSONEqual(t *testing.T, expected, actual any) {
+	t.Helper()
+	expectedJSON, err := json.Marshal(expected)
+	require.NoError(t, err)
+	actualJSON, err := json.Marshal(actual)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(expectedJSON), string(actualJSON))
 }
