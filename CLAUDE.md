@@ -20,7 +20,7 @@ Detailed guidelines are split into focused documents:
 - @docs/code-style.md — Go style, dependencies, error handling
 - @docs/project-structure.md — directory layout, package responsibilities
 - @docs/documentation.md — prose rules, attribute keys in examples, validation
-- @docs/testing.md — test strategies, integration tests, fixtures, mock server
+- @docs/testing.md — test strategies, integration tests, fixtures, mock server, roundtrip tests
 - @docs/github-actions.md — how to create GitHub actions based on the `dash0` CLI, existing actions and their maintenance
 - @docs/changelog-maintenance.md — when and how to create changelog entries
 
@@ -47,7 +47,7 @@ The `ORIGIN` column in `list -o wide` output shows the `origin` provenance field
 
 For dashboards, the ID must be cleared from the request body before PUT (update) calls.
 The ID is already passed as the URL path parameter (`originOrId`); sending it in both places causes the server to reject the request when the ID is a UUID that matches the dashboard's own server-assigned ID.
-Use `asset.ClearDashboardBodyID()` before calling `UpdateDashboard`.
+Use `dash0api.ClearDashboardID()` before calling `UpdateDashboard`.
 This applies to both `ImportDashboard` (used by `apply`) and `dashboards update`.
 
 ### Asset annotations
@@ -61,7 +61,7 @@ Assets (dashboards, views, synthetic checks) have typed annotation structs with 
 | `dash0.com/sharing` | Write-only | The API parses it into typed `Permissions` objects in `spec.permissions`, then strips the annotation before persisting. It is never returned in GET responses. Format: `"role:basic_member,team:team_123,user:alice@example.com"` |
 | `dash0.com/deleted-at` | No | Server-managed soft-delete timestamp |
 
-**`Strip*ServerFields` functions** (`internal/asset/`) remove server-managed noise before sending assets to the API and for diff rendering.
+**`Strip*ServerFields` functions** (`dash0-api-client-go`) remove server-managed noise before sending assets to the API and for diff rendering.
 They must only strip truly server-managed fields (`deleted-at`, `createdAt`, `updatedAt`, `version`, `dataset`, `origin`).
 User-settable annotations (`folder-path`, `sharing`, `source`) and `spec.permissions` must be preserved.
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/help"
@@ -136,8 +137,8 @@ func printError(err error) {
 // This approach avoids the need to predict which command will run — something
 // that cobra's Traverse cannot reliably do when persistent flags like -X
 // precede the subcommand name.
-func loadConfig() *config.Configuration {
-	cfg, err := config.ResolveConfiguration("", "")
+func loadConfig() *profiles.Configuration {
+	cfg, err := profiles.ResolveConfiguration("", "")
 	if err != nil {
 		return nil
 	}
@@ -198,7 +199,7 @@ func main() {
 	// (help, version, config) simply ignore it. Commands that do need it
 	// will fail with a clear error if the required values are missing.
 	if cfg := loadConfig(); cfg != nil {
-		ctx = config.WithConfiguration(ctx, cfg)
+		ctx = profiles.WithConfiguration(ctx, cfg)
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
@@ -207,7 +208,7 @@ func main() {
 		// Commands set SilenceUsage = true once past flag validation.
 		if !agentmode.Enabled && targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
 			fmt.Fprintln(os.Stderr)
-			targetCmd.Usage()
+			_ = targetCmd.Usage()
 		}
 		os.Exit(1)
 	}
@@ -217,7 +218,7 @@ func main() {
 // subcommands so that --help produces JSON output.
 func installJSONHelp(cmd *cobra.Command) {
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		help.PrintJSONHelp(os.Stdout, cmd)
+		_ = help.PrintJSONHelp(os.Stdout, cmd)
 	})
 }
 

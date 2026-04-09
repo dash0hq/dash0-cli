@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
-	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -67,7 +67,7 @@ func newInstantQueryCmd() *cobra.Command {
   dash0 metrics instant --query 'process_cpu_seconds_total' --time 2024-01-25T10:00:00Z`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Resolve configuration with overrides
-			cfg, err := config.ResolveConfiguration(apiUrl, authToken)
+			cfg, err := profiles.ResolveConfiguration(apiUrl, authToken)
 			if err != nil {
 				return err
 			}
@@ -195,7 +195,7 @@ func newInstantQueryCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&outputFmt, "output", "o", "", "Output format: table, json (default: table; json in agent mode)")
 
-	cmd.MarkFlagRequired("query")
+	_ = cmd.MarkFlagRequired("query")
 
 	return cmd
 }

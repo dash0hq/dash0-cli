@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 )
 
 func newCreateCmd() *cobra.Command {
@@ -50,17 +49,9 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	kind := strings.ToLower(asset.DetectKind(data))
-	if kind == "persesdashboard" {
-		return createFromPersesDashboard(ctx, flags, data)
-	}
-	return createFromDashboard(ctx, flags, data)
-}
-
-func createFromDashboard(ctx context.Context, flags *asset.FileInputFlags, data []byte) error {
-	var dashboard dash0api.DashboardDefinition
-	if err := yaml.Unmarshal(data, &dashboard); err != nil {
-		return fmt.Errorf("failed to read dashboard definition: %w", err)
+	dashboard, err := dash0yaml.ParseAsDashboard(data)
+	if err != nil {
+		return err
 	}
 
 	if flags.DryRun {
@@ -73,39 +64,11 @@ func createFromDashboard(ctx context.Context, flags *asset.FileInputFlags, data 
 		return err
 	}
 
-	result, importErr := asset.ImportDashboard(ctx, apiClient, &dashboard, client.ResolveDataset(ctx, flags.Dataset))
+	result, importErr := asset.ImportDashboard(ctx, apiClient, dashboard, client.ResolveDataset(ctx, flags.Dataset))
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "dashboard",
-			AssetName: asset.ExtractDashboardDisplayName(&dashboard),
-		})
-	}
-
-	fmt.Printf("Dashboard %q %s\n", result.Name, result.Action)
-	return nil
-}
-
-func createFromPersesDashboard(ctx context.Context, flags *asset.FileInputFlags, data []byte) error {
-	var perses asset.PersesDashboard
-	if err := yaml.Unmarshal(data, &perses); err != nil {
-		return fmt.Errorf("failed to read PersesDashboard definition: %w", err)
-	}
-
-	if flags.DryRun {
-		fmt.Println("Dry run: PersesDashboard definition is valid")
-		return nil
-	}
-
-	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
-	if err != nil {
-		return err
-	}
-
-	result, importErr := asset.ImportPersesDashboard(ctx, apiClient, &perses, client.ResolveDataset(ctx, flags.Dataset))
-	if importErr != nil {
-		return client.HandleAPIError(importErr, client.ErrorContext{
-			AssetType: "dashboard",
-			AssetName: asset.ExtractPersesDashboardName(&perses),
+			AssetName: dash0api.GetDashboardName(dashboard),
 		})
 	}
 

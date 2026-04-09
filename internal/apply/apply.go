@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -286,7 +287,10 @@ func formatNameAndId(name, id string) string {
 // Extract* functions in internal/asset/ so that apply and the per-asset
 // CRUD commands use the same extraction logic.
 func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
-	kind = asset.DetectKind(data)
+	kind, err = dash0yaml.DetectKind(data)
+	if err != nil {
+		return "", "", "", err
+	}
 
 	switch normalizeKind(kind) {
 	case "dashboard":
@@ -294,35 +298,35 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		if err := sigsyaml.Unmarshal(data, &dashboard); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractDashboardDisplayName(&dashboard)
+		name = dash0api.GetDashboardName(&dashboard)
 		if name == "" {
 			name = dashboard.Metadata.Name
 		}
-		id = asset.ExtractDashboardID(&dashboard)
+		id = dash0api.GetDashboardID(&dashboard)
 
 	case "checkrule":
 		var rule dash0api.PrometheusAlertRule
 		if err := sigsyaml.Unmarshal(data, &rule); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractCheckRuleName(&rule)
-		id = asset.ExtractCheckRuleID(&rule)
+		name = dash0api.GetCheckRuleName(&rule)
+		id = dash0api.GetCheckRuleID(&rule)
 
 	case "view":
 		var view dash0api.ViewDefinition
 		if err := sigsyaml.Unmarshal(data, &view); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractViewName(&view)
-		id = asset.ExtractViewID(&view)
+		name = dash0api.GetViewName(&view)
+		id = dash0api.GetViewID(&view)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
 		if err := sigsyaml.Unmarshal(data, &check); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractSyntheticCheckName(&check)
-		id = asset.ExtractSyntheticCheckID(&check)
+		name = dash0api.GetSyntheticCheckName(&check)
+		id = dash0api.GetSyntheticCheckID(&check)
 
 	case "recordingrulegroup":
 		var group dash0api.RecordingRuleGroupDefinition
@@ -333,20 +337,24 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		id = asset.ExtractRecordingRuleGroupID(&group)
 
 	case "prometheusrule":
-		var promRule asset.PrometheusRule
-		if err := sigsyaml.Unmarshal(data, &promRule); err != nil {
+		// We only need metadata (name + ID) here; the Metadata struct has no
+		// time.Duration fields, so a partial unmarshal via sigsyaml is safe.
+		var partial struct {
+			Metadata dash0api.PrometheusRulesMetadata `json:"metadata"`
+		}
+		if err := sigsyaml.Unmarshal(data, &partial); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractPrometheusRuleName(&promRule)
-		id = asset.ExtractPrometheusRuleID(&promRule)
+		name = partial.Metadata.Name
+		id = partial.Metadata.Labels[dash0api.LabelID]
 
 	case "persesdashboard":
-		var perses asset.PersesDashboard
+		var perses dash0api.PersesDashboard
 		if err := sigsyaml.Unmarshal(data, &perses); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
-		name = asset.ExtractPersesDashboardName(&perses)
-		id = asset.ExtractPersesDashboardID(&perses)
+		name = dash0api.GetPersesDashboardName(&perses)
+		id = dash0api.GetPersesDashboardID(&perses)
 
 	default:
 		var raw map[string]any
@@ -554,54 +562,44 @@ func normalizeKind(kind string) string {
 
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
 	switch normalizeKind(doc.kind) {
-	case "dashboard":
-		var dashboard dash0api.DashboardDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &dashboard); err != nil {
-			return nil, fmt.Errorf("failed to parse Dashboard: %w", err)
+	case "dashboard", "persesdashboard":
+		dashboard, err := dash0yaml.ParseAsDashboard(doc.raw)
+		if err != nil {
+			return nil, err
 		}
-		result, err := asset.ImportDashboard(ctx, apiClient, &dashboard, dataset)
+		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dashboard",
-				AssetName: asset.ExtractDashboardDisplayName(&dashboard),
+				AssetName: dash0api.GetDashboardName(dashboard),
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
-	case "checkrule":
-		var rule dash0api.PrometheusAlertRule
-		if err := sigsyaml.Unmarshal(doc.raw, &rule); err != nil {
-			return nil, fmt.Errorf("failed to parse CheckRule: %w", err)
-		}
-		result, err := asset.ImportCheckRule(ctx, apiClient, &rule, dataset)
+	case "checkrule", "prometheusrule":
+		rules, err := dash0yaml.ParseAsPrometheusAlertRules(doc.raw)
 		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "check rule",
-				AssetName: rule.Name,
+			return nil, err
+		}
+		var results []applyResult
+		for _, rule := range rules {
+			result, importErr := asset.ImportCheckRule(ctx, apiClient, rule, dataset)
+			if importErr != nil {
+				return results, client.HandleAPIError(importErr, client.ErrorContext{
+					AssetType: "check rule",
+					AssetName: rule.Name,
+				})
+			}
+			results = append(results, applyResult{
+				kind:   "CheckRule",
+				name:   result.Name,
+				id:     result.ID,
+				action: applyAction(result.Action),
+				before: result.Before,
+				after:  result.After,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "prometheusrule":
-		var promRule asset.PrometheusRule
-		if err := sigsyaml.Unmarshal(doc.raw, &promRule); err != nil {
-			return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
-		}
-		return applyPrometheusRule(ctx, apiClient, &promRule, dataset)
-
-	case "persesdashboard":
-		var perses asset.PersesDashboard
-		if err := sigsyaml.Unmarshal(doc.raw, &perses); err != nil {
-			return nil, fmt.Errorf("failed to parse PersesDashboard: %w", err)
-		}
-		result, err := asset.ImportPersesDashboard(ctx, apiClient, &perses, dataset)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "dashboard",
-				AssetName: asset.ExtractPersesDashboardName(&perses),
-			})
-		}
-		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action)}}, nil
+		return results, nil
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -648,31 +646,4 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
 	}
-}
-
-// applyPrometheusRule extracts rules from a PrometheusRule CRD and applies each as a CheckRule.
-// Returns one applyResult per rule, each with its own action. On partial failure,
-// returns the successfully applied results along with the error.
-func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, promRule *asset.PrometheusRule, dataset *string) ([]applyResult, error) {
-	importResults, err := asset.ImportPrometheusRule(ctx, apiClient, promRule, dataset)
-
-	var results []applyResult
-	for _, r := range importResults {
-		results = append(results, applyResult{
-			kind:   "CheckRule",
-			name:   r.Name,
-			id:     r.ID,
-			action: applyAction(r.Action),
-			before: r.Before,
-			after:  r.After,
-		})
-	}
-
-	if err != nil {
-		return results, client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "check rule",
-		})
-	}
-
-	return results, nil
 }

@@ -26,7 +26,7 @@ func TestRootCommandExecution(t *testing.T) {
 
 	// Read the output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 
 	// Verify the command executed without error
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -52,7 +53,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	enrichDashboard(dashboard, id)
+	dash0api.SetDashboardIDIfAbsent(dashboard, id)
 
 	// Format output
 	format, err := output.ParseFormat(flags.Output)
@@ -68,7 +69,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	default:
 		// For table format, print key details
 		fmt.Printf("Kind: %s\n", dashboard.Kind)
-		displayName := asset.ExtractDashboardDisplayName(dashboard)
+		displayName := dash0api.GetDashboardName(dashboard)
 		if displayName != "" {
 			fmt.Printf("Name: %s\n", displayName)
 		}

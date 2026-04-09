@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -189,54 +188,6 @@ func TestApplyAction_String(t *testing.T) {
 	assert.Equal(t, "updated", string(actionUpdated))
 }
 
-func TestConvertToCheckRule(t *testing.T) {
-	rule := &asset.PrometheusAlertingRule{
-		Alert: "HighErrorRate",
-		Expr:  "sum(rate(errors[5m])) > 0.1",
-		For:   "5m",
-		Labels: map[string]string{
-			"severity": "critical",
-		},
-		Annotations: map[string]string{
-			"summary":     "High error rate detected",
-			"description": "Error rate exceeds threshold",
-		},
-	}
-
-	checkRule := asset.ConvertToCheckRule(rule, "1m", "test-id")
-
-	assert.Equal(t, "HighErrorRate", checkRule.Name)
-	assert.Equal(t, "sum(rate(errors[5m])) > 0.1", checkRule.Expression)
-	assert.NotNil(t, checkRule.For)
-	assert.Equal(t, "5m", string(*checkRule.For))
-	assert.NotNil(t, checkRule.Interval)
-	assert.Equal(t, "1m", string(*checkRule.Interval))
-	assert.NotNil(t, checkRule.Id)
-	assert.Equal(t, "test-id", *checkRule.Id)
-	assert.NotNil(t, checkRule.Summary)
-	assert.Equal(t, "High error rate detected", *checkRule.Summary)
-	assert.NotNil(t, checkRule.Description)
-	assert.Equal(t, "Error rate exceeds threshold", *checkRule.Description)
-	require.NotNil(t, checkRule.Labels)
-	assert.Equal(t, "critical", (*checkRule.Labels)["severity"])
-}
-
-func TestConvertToCheckRule_MinimalInput(t *testing.T) {
-	rule := &asset.PrometheusAlertingRule{
-		Alert: "SimpleAlert",
-		Expr:  "up == 0",
-	}
-
-	checkRule := asset.ConvertToCheckRule(rule, "", "")
-
-	assert.Equal(t, "SimpleAlert", checkRule.Name)
-	assert.Equal(t, "up == 0", checkRule.Expression)
-	assert.Nil(t, checkRule.For)
-	assert.Nil(t, checkRule.Interval)
-	assert.Nil(t, checkRule.Id)
-	assert.Nil(t, checkRule.Labels)
-}
-
 func TestPrometheusRuleParsing(t *testing.T) {
 	yaml := `apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -361,9 +312,9 @@ func TestLocation_DirectorySingleDoc(t *testing.T) {
 func TestDiscoverFiles_Basic(t *testing.T) {
 	dir := t.TempDir()
 	// Create files
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: Dashboard"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.yml"), []byte("kind: View"), 0644)
-	os.WriteFile(filepath.Join(dir, "c.txt"), []byte("not yaml"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: Dashboard"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.yml"), []byte("kind: View"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "c.txt"), []byte("not yaml"), 0644))
 
 	files, err := discoverFiles(dir)
 	require.NoError(t, err)
@@ -372,10 +323,10 @@ func TestDiscoverFiles_Basic(t *testing.T) {
 
 func TestDiscoverFiles_NestedDirs(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "sub", "deep"), 0755)
-	os.WriteFile(filepath.Join(dir, "root.yaml"), []byte("kind: Dashboard"), 0644)
-	os.WriteFile(filepath.Join(dir, "sub", "mid.yml"), []byte("kind: View"), 0644)
-	os.WriteFile(filepath.Join(dir, "sub", "deep", "leaf.yaml"), []byte("kind: CheckRule"), 0644)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub", "deep"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "root.yaml"), []byte("kind: Dashboard"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "mid.yml"), []byte("kind: View"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "deep", "leaf.yaml"), []byte("kind: CheckRule"), 0644))
 
 	files, err := discoverFiles(dir)
 	require.NoError(t, err)
@@ -388,10 +339,10 @@ func TestDiscoverFiles_NestedDirs(t *testing.T) {
 
 func TestDiscoverFiles_SkipsHidden(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".hidden"), 0755)
-	os.WriteFile(filepath.Join(dir, ".hidden", "secret.yaml"), []byte("kind: Dashboard"), 0644)
-	os.WriteFile(filepath.Join(dir, ".dotfile.yaml"), []byte("kind: View"), 0644)
-	os.WriteFile(filepath.Join(dir, "visible.yaml"), []byte("kind: CheckRule"), 0644)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".hidden"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".hidden", "secret.yaml"), []byte("kind: Dashboard"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".dotfile.yaml"), []byte("kind: View"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "visible.yaml"), []byte("kind: CheckRule"), 0644))
 
 	files, err := discoverFiles(dir)
 	require.NoError(t, err)
@@ -400,9 +351,9 @@ func TestDiscoverFiles_SkipsHidden(t *testing.T) {
 
 func TestDiscoverFiles_Sorted(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "z.yaml"), []byte("kind: Dashboard"), 0644)
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: View"), 0644)
-	os.WriteFile(filepath.Join(dir, "m.yaml"), []byte("kind: CheckRule"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "z.yaml"), []byte("kind: Dashboard"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: View"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "m.yaml"), []byte("kind: CheckRule"), 0644))
 
 	files, err := discoverFiles(dir)
 	require.NoError(t, err)
@@ -419,8 +370,8 @@ func TestDiscoverFiles_EmptyDir(t *testing.T) {
 
 func TestDiscoverFiles_CaseInsensitiveExtensions(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "upper.YAML"), []byte("kind: Dashboard"), 0644)
-	os.WriteFile(filepath.Join(dir, "mixed.Yml"), []byte("kind: View"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "upper.YAML"), []byte("kind: Dashboard"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "mixed.Yml"), []byte("kind: View"), 0644))
 
 	files, err := discoverFiles(dir)
 	require.NoError(t, err)
@@ -429,8 +380,8 @@ func TestDiscoverFiles_CaseInsensitiveExtensions(t *testing.T) {
 
 func TestReadDirectory_SetsFilePath(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "dashboard.yaml"), []byte("kind: Dashboard\nmetadata:\n  name: test\n"), 0644)
-	os.WriteFile(filepath.Join(dir, "view.yaml"), []byte("kind: View\nmetadata:\n  name: test\n"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dashboard.yaml"), []byte("kind: Dashboard\nmetadata:\n  name: test\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "view.yaml"), []byte("kind: View\nmetadata:\n  name: test\n"), 0644))
 
 	docs, err := readDirectory(dir)
 	require.NoError(t, err)
@@ -443,7 +394,7 @@ func TestReadDirectory_SetsFilePath(t *testing.T) {
 
 func TestReadDirectory_MultiDocFile(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "multi.yaml"), []byte("kind: Dashboard\nmetadata:\n  name: d1\n---\nkind: View\nmetadata:\n  name: v1\n"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "multi.yaml"), []byte("kind: Dashboard\nmetadata:\n  name: d1\n---\nkind: View\nmetadata:\n  name: v1\n"), 0644))
 
 	docs, err := readDirectory(dir)
 	require.NoError(t, err)

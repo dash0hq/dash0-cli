@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
@@ -52,7 +53,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	enrichCheckRule(rule, id)
+	dash0api.SetCheckRuleIDIfAbsent(rule, id)
 
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
@@ -65,20 +66,16 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(rule)
 	default:
-		fmt.Printf("Name: %s\n", rule.Name)
-		dataset := ""
-		if rule.Dataset != nil {
-			dataset = *rule.Dataset
-		}
-		fmt.Printf("Dataset: %s\n", dataset)
+		fmt.Printf("Name: %s\n", dash0api.GetCheckRuleName(rule))
+		fmt.Printf("Dataset: %s\n", dash0api.GetCheckRuleDataset(rule))
 		fmt.Printf("Expression: %s\n", rule.Expression)
 		if rule.Enabled != nil {
 			fmt.Printf("Enabled: %t\n", *rule.Enabled)
 		}
-		if rule.Description != nil {
-			fmt.Printf("Description: %s\n", *rule.Description)
+		if rule.Annotations != nil && rule.Annotations.Description != nil {
+			fmt.Printf("Description: %s\n", *rule.Annotations.Description)
 		}
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "check rule", id); deeplinkURL != "" {
+		if deeplinkURL := asset.DeeplinkURL(apiUrl, "checkrule", id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

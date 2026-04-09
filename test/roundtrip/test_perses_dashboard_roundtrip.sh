@@ -56,8 +56,36 @@ echo "--- Step 4: Export and re-apply (round-trip) ---"
 REAPPLY_OUTPUT=$("$DASH0" apply -f "${TMPDIR}/exported.yaml")
 echo "$REAPPLY_OUTPUT"
 
-# Step 5: Also test dashboards create with the CRD file (parity check).
-echo "--- Step 5: Create via dashboards create (parity check) ---"
+# Step 5: Update via dashboards update with the CRD file (ID from argument).
+echo "--- Step 5: Update via dashboards update with CRD file (ID from arg) ---"
+UPDATE_OUTPUT=$("$DASH0" dashboards update "$ID" -f "$FIXTURE")
+echo "$UPDATE_OUTPUT"
+
+# Verify the CRD conversion was applied correctly (not silently corrupted).
+echo "--- Step 5a: Verify dashboard content after update ---"
+POST_UPDATE_NAME=$("$DASH0" dashboards get "$ID" -o yaml | yq '.spec.display.name')
+if [ "$POST_UPDATE_NAME" != "$ASSET_NAME" ]; then
+  echo "FAIL: after update, expected display name '$ASSET_NAME', got '$POST_UPDATE_NAME'"
+  echo "      (this indicates the PersesDashboard CRD was not converted before sending to the API)"
+  exit 1
+fi
+echo "Display name after update: $POST_UPDATE_NAME"
+
+# Step 5b: Update using a CRD file with dash0.com/id (ID from file, no CLI argument).
+echo "--- Step 5b: Update via dashboards update with CRD file (ID from file) ---"
+yq ".metadata.labels.\"dash0.com/id\" = \"$ID\"" "$FIXTURE" > "${TMPDIR}/perses-with-id.yaml"
+UPDATE_OUTPUT2=$("$DASH0" dashboards update -f "${TMPDIR}/perses-with-id.yaml")
+echo "$UPDATE_OUTPUT2"
+
+POST_UPDATE_NAME2=$("$DASH0" dashboards get "$ID" -o yaml | yq '.spec.display.name')
+if [ "$POST_UPDATE_NAME2" != "$ASSET_NAME" ]; then
+  echo "FAIL: after update (ID from file), expected display name '$ASSET_NAME', got '$POST_UPDATE_NAME2'"
+  exit 1
+fi
+echo "Display name after update (ID from file): $POST_UPDATE_NAME2"
+
+# Step 6: Also test dashboards create with the CRD file (parity check).
+echo "--- Step 6: Create via dashboards create (parity check) ---"
 CREATE_OUTPUT=$("$DASH0" dashboards create -f "$FIXTURE")
 echo "$CREATE_OUTPUT"
 if ! echo "$CREATE_OUTPUT" | grep -q "$ASSET_NAME"; then

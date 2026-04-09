@@ -58,7 +58,7 @@ func RegisterFileInputFlags(cmd *cobra.Command, flags *FileInputFlags) {
 	RegisterCommonFlags(cmd, &flags.CommonFlags)
 	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to YAML or JSON definition file (use '-' for stdin)")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate without creating/updating")
-	cmd.MarkFlagRequired("file")
+	_ = cmd.MarkFlagRequired("file")
 }
 
 // DeleteFlags holds flags specific to delete commands

@@ -99,7 +99,7 @@ func TestParseQueryFormat(t *testing.T) {
 	}
 }
 
-func TestExtractBodyString(t *testing.T) {
+func TestGetBodyString(t *testing.T) {
 	strVal := "hello"
 	intVal := "42"
 	doubleVal := 3.14

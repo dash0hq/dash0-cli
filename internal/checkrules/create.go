@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
-	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 )
 
 func newCreateCmd() *cobra.Command {
@@ -50,17 +48,9 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}
 
-	kind := strings.ToLower(asset.DetectKind(data))
-	if kind == "prometheusrule" {
-		return createFromPrometheusRule(ctx, flags, data)
-	}
-	return createFromCheckRule(ctx, flags, data)
-}
-
-func createFromCheckRule(ctx context.Context, flags *asset.FileInputFlags, data []byte) error {
-	var rule dash0api.PrometheusAlertRule
-	if err := yaml.Unmarshal(data, &rule); err != nil {
-		return fmt.Errorf("failed to read check rule definition: %w", err)
+	rules, err := dash0yaml.ParseAsPrometheusAlertRules(data)
+	if err != nil {
+		return err
 	}
 
 	if flags.DryRun {
@@ -73,43 +63,16 @@ func createFromCheckRule(ctx context.Context, flags *asset.FileInputFlags, data 
 		return err
 	}
 
-	result, importErr := asset.ImportCheckRule(ctx, apiClient, &rule, client.ResolveDataset(ctx, flags.Dataset))
-	if importErr != nil {
-		return client.HandleAPIError(importErr, client.ErrorContext{
-			AssetType: "check rule",
-			AssetName: rule.Name,
-		})
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	for _, rule := range rules {
+		result, importErr := asset.ImportCheckRule(ctx, apiClient, rule, dataset)
+		if importErr != nil {
+			return client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "check rule",
+				AssetName: rule.Name,
+			})
+		}
+		fmt.Printf("Check rule %q %s\n", result.Name, result.Action)
 	}
-
-	fmt.Printf("Check rule %q %s\n", result.Name, result.Action)
-	return nil
-}
-
-func createFromPrometheusRule(ctx context.Context, flags *asset.FileInputFlags, data []byte) error {
-	var promRule asset.PrometheusRule
-	if err := yaml.Unmarshal(data, &promRule); err != nil {
-		return fmt.Errorf("failed to read PrometheusRule definition: %w", err)
-	}
-
-	if flags.DryRun {
-		fmt.Println("Dry run: PrometheusRule definition is valid")
-		return nil
-	}
-
-	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
-	if err != nil {
-		return err
-	}
-
-	results, importErr := asset.ImportPrometheusRule(ctx, apiClient, &promRule, client.ResolveDataset(ctx, flags.Dataset))
-	for _, r := range results {
-		fmt.Printf("Check rule %q %s\n", r.Name, r.Action)
-	}
-	if importErr != nil {
-		return client.HandleAPIError(importErr, client.ErrorContext{
-			AssetType: "check rule",
-		})
-	}
-
 	return nil
 }

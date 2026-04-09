@@ -473,7 +473,9 @@ func renderCSV(results []traceGroup, skipHeader bool, cols []query.ColumnDef) er
 		ordered := buildTree(spans)
 		for _, s := range ordered {
 			values := query.BuildValues(s.values(tr.traceID), cols, s.rawAttrs)
-			query.WriteCSVRow(w, cols, values)
+			if err := query.WriteCSVRow(w, cols, values); err != nil {
+				return err
+			}
 			w.Flush()
 		}
 	}

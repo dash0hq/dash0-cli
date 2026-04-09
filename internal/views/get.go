@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -52,7 +53,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	enrichView(view, id)
+	dash0api.SetViewIDIfAbsent(view, id)
 
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
@@ -66,7 +67,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		return formatter.Print(view)
 	default:
 		fmt.Printf("Kind: %s\n", view.Kind)
-		fmt.Printf("Name: %s\n", asset.ExtractViewName(view))
+		fmt.Printf("Name: %s\n", dash0api.GetViewName(view))
 		dataset := ""
 		origin := ""
 		if view.Metadata.Labels != nil {

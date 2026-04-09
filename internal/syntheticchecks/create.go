@@ -57,7 +57,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "synthetic check",
-			AssetName: asset.ExtractSyntheticCheckName(&check),
+			AssetName: dash0api.GetSyntheticCheckName(&check),
 		})
 	}
 

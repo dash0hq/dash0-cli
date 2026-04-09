@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/config"
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -51,25 +51,13 @@ func TestNewClientFromContext_MissingConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "no active profile configured")
 }
 
-func TestDatasetPtr(t *testing.T) {
-	result := DatasetPtr("")
-	assert.Nil(t, result)
-
-	result = DatasetPtr("default")
-	assert.Nil(t, result)
-
-	result = DatasetPtr("my-dataset")
-	assert.NotNil(t, result)
-	assert.Equal(t, "my-dataset", *result)
-}
-
 func TestResolveDataset_FlagTakesPrecedence(t *testing.T) {
-	cfg := &config.Configuration{
+	cfg := &profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "config-dataset",
 	}
-	ctx := config.WithConfiguration(context.Background(), cfg)
+	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "flag-dataset")
 	assert.NotNil(t, result)
@@ -77,12 +65,12 @@ func TestResolveDataset_FlagTakesPrecedence(t *testing.T) {
 }
 
 func TestResolveDataset_FallsBackToConfig(t *testing.T) {
-	cfg := &config.Configuration{
+	cfg := &profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "config-dataset",
 	}
-	ctx := config.WithConfiguration(context.Background(), cfg)
+	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "")
 	assert.NotNil(t, result)
@@ -90,23 +78,23 @@ func TestResolveDataset_FallsBackToConfig(t *testing.T) {
 }
 
 func TestResolveDataset_NilWhenEmpty(t *testing.T) {
-	cfg := &config.Configuration{
+	cfg := &profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 	}
-	ctx := config.WithConfiguration(context.Background(), cfg)
+	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "")
 	assert.Nil(t, result)
 }
 
 func TestResolveDataset_NilForDefaultInConfig(t *testing.T) {
-	cfg := &config.Configuration{
+	cfg := &profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "default",
 	}
-	ctx := config.WithConfiguration(context.Background(), cfg)
+	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "")
 	assert.Nil(t, result)
@@ -118,12 +106,12 @@ func TestResolveDataset_NilForDefaultFlag(t *testing.T) {
 }
 
 func TestResolveDataset_DefaultFlagOverridesConfig(t *testing.T) {
-	cfg := &config.Configuration{
+	cfg := &profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "config-dataset",
 	}
-	ctx := config.WithConfiguration(context.Background(), cfg)
+	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "default")
 	assert.Nil(t, result)

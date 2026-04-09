@@ -57,7 +57,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "view",
-			AssetName: asset.ExtractViewName(&view),
+			AssetName: dash0api.GetViewName(&view),
 		})
 	}
 

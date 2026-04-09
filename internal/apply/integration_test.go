@@ -268,7 +268,7 @@ spec:
 	require.NotNil(t, dashboard.Metadata.Annotations)
 	assert.Equal(t, "/test/foo/bar", *dashboard.Metadata.Annotations.Dash0ComfolderPath)
 	assert.Equal(t, "team-123", *dashboard.Metadata.Annotations.Dash0Comsharing)
-	assert.Equal(t, dash0api.Ui, *dashboard.Metadata.Annotations.Dash0Comsource)
+	assert.Equal(t, dash0api.DashboardSourceUi, *dashboard.Metadata.Annotations.Dash0Comsource)
 	// Server-generated fields are stripped
 	assert.Nil(t, dashboard.Metadata.Annotations.Dash0ComdeletedAt)
 	assert.Nil(t, dashboard.Metadata.CreatedAt)

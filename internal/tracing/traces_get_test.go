@@ -105,7 +105,7 @@ func TestBuildTreeOrphanedSpans(t *testing.T) {
 	assert.Equal(t, "orphan", ordered[0].name)
 }
 
-func TestExtractLinkedTraceIDs(t *testing.T) {
+func TestGetLinkedTraceIDs(t *testing.T) {
 	svc := "test-service"
 	linkTraceID := []byte{0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd}
 	linkSpanID := []byte{0xaa, 0xbb, 0x11, 0x22, 0x33, 0x44, 0x00, 0x11}
@@ -140,7 +140,7 @@ func TestExtractLinkedTraceIDs(t *testing.T) {
 	assert.Equal(t, "eeff00112233445566778899aabbccdd", newIDs[0])
 }
 
-func TestExtractLinkedTraceIDsSkipsSeen(t *testing.T) {
+func TestGetLinkedTraceIDsSkipsSeen(t *testing.T) {
 	linkTraceID := []byte{0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd}
 
 	resourceSpans := []dash0api.ResourceSpans{

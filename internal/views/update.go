@@ -48,7 +48,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	var id string
-	fileID := asset.ExtractViewID(&view)
+	fileID := dash0api.GetViewID(&view)
 	if len(args) == 1 {
 		id = args[0]
 		if fileID != "" && fileID != id {
@@ -85,9 +85,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "view",
 			AssetID:   id,
-			AssetName: asset.ExtractViewName(&view),
+			AssetName: dash0api.GetViewName(&view),
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, "View", asset.ExtractViewName(result), before, result)
+	return asset.PrintDiff(os.Stdout, "View", dash0api.GetViewName(result), before, result)
 }

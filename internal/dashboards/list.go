@@ -7,9 +7,9 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/output"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/spf13/cobra"
 )
 
@@ -136,22 +136,12 @@ func fetchFullDashboards(
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch dashboard %q: %w", item.Id, err)
 		}
-		enrichDashboard(dashboard, item.Id)
+		dash0api.SetDashboardIDIfAbsent(dashboard, item.Id)
 		definitions = append(definitions, dashboard)
 	}
 	return definitions, nil
 }
 
-// enrichDashboard restores the dashboard ID in dash0Extensions so that exported
-// YAML can be re-applied (the API does not persist dash0Extensions.id).
-func enrichDashboard(dashboard *dash0api.DashboardDefinition, id string) {
-	if dashboard.Metadata.Dash0Extensions == nil {
-		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
-	}
-	if dashboard.Metadata.Dash0Extensions.Id == nil {
-		dashboard.Metadata.Dash0Extensions.Id = &id
-	}
-}
 
 // getDisplayName fetches the full dashboard and extracts spec.display.name
 func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, dataset *string) string {
@@ -159,7 +149,7 @@ func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, d
 	if err != nil {
 		return "" // Fall back to empty if we can't fetch
 	}
-	return asset.ExtractDashboardDisplayName(dashboard)
+	return dash0api.GetDashboardName(dashboard)
 }
 
 func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format, apiUrl string) error {
