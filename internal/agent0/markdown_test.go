@@ -87,3 +87,48 @@ func TestEscapeAngleBracketsNoTags(t *testing.T) {
 	input := "plain text with no tags"
 	assert.Equal(t, input, escapeAngleBrackets(input))
 }
+
+func TestRenderMarkdownHeadings(t *testing.T) {
+	renderer := newMarkdownRenderer(80)
+	if renderer == nil {
+		t.Skip("glamour renderer not available")
+	}
+
+	input := "## Error Summary\n\n**Last Hour**\n- 0 errors found"
+	result := renderMarkdown(renderer, input)
+	t.Logf("Rendered output:\n%s", result)
+	// Glamour may insert ANSI codes between words; check each word separately
+	assert.Contains(t, result, "Error")
+	assert.Contains(t, result, "Summary")
+	assert.Contains(t, result, "Last Hour")
+}
+
+func TestRenderMarkdownWithTagsThenHeadings(t *testing.T) {
+	renderer := newMarkdownRenderer(80)
+	if renderer == nil {
+		t.Skip("glamour renderer not available")
+	}
+
+	// Real agent0 response: tags + markdown headings
+	input := "Errors in <Service name='api' namespace='dash0'></Service>:\n\n## Error Summary\n\n- **0 errors found**"
+	result := renderMarkdown(renderer, input)
+	t.Logf("Rendered output:\n%s", result)
+	assert.Contains(t, result, "api")
+	// Glamour may insert ANSI codes between words; check each word separately
+	assert.Contains(t, result, "Error")
+	assert.Contains(t, result, "Summary")
+}
+
+func TestEscapeAngleBracketsPreservesBlockquotes(t *testing.T) {
+	input := "> This is a blockquote\n> with two lines"
+	result := escapeAngleBrackets(input)
+	assert.Contains(t, result, "> This is a blockquote")
+	assert.Contains(t, result, "> with two lines")
+}
+
+func TestEscapeAngleBracketsEscapesMidLineAngleBrackets(t *testing.T) {
+	input := "value > 100 and < 200"
+	result := escapeAngleBrackets(input)
+	assert.Contains(t, result, "&gt;")
+	assert.Contains(t, result, "&lt;")
+}

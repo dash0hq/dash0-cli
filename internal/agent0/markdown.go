@@ -40,20 +40,17 @@ func renderMarkdown(renderer *glamour.TermRenderer, content string) string {
 	return strings.TrimSpace(out)
 }
 
-// formatRawContent applies tag formatting to raw text (used during streaming
-// when we skip markdown rendering to avoid partial-markdown artifacts).
-func formatRawContent(content string) string {
-	return formatTags(content)
-}
 
 // escapeAngleBrackets replaces < and > with HTML entities outside of markdown
 // code spans and code blocks, so glamour doesn't strip them as HTML tags.
+// Preserves > at the start of a line (markdown blockquote syntax).
 func escapeAngleBrackets(s string) string {
 	var result strings.Builder
 	result.Grow(len(s))
 
 	inCodeBlock := false
 	inCodeSpan := false
+	startOfLine := true
 	i := 0
 
 	for i < len(s) {
@@ -62,6 +59,7 @@ func escapeAngleBrackets(s string) string {
 			inCodeBlock = !inCodeBlock
 			result.WriteString("```")
 			i += 3
+			startOfLine = false
 			continue
 		}
 
@@ -70,6 +68,14 @@ func escapeAngleBrackets(s string) string {
 			inCodeSpan = !inCodeSpan
 			result.WriteByte('`')
 			i++
+			startOfLine = false
+			continue
+		}
+
+		if s[i] == '\n' {
+			result.WriteByte('\n')
+			i++
+			startOfLine = true
 			continue
 		}
 
@@ -78,13 +84,19 @@ func escapeAngleBrackets(s string) string {
 			if s[i] == '<' {
 				result.WriteString("&lt;")
 				i++
+				startOfLine = false
 				continue
 			}
-			if s[i] == '>' {
+			// Preserve > at start of line (blockquote) or after > (nested blockquote)
+			if s[i] == '>' && !startOfLine {
 				result.WriteString("&gt;")
 				i++
 				continue
 			}
+		}
+
+		if s[i] != ' ' && s[i] != '>' {
+			startOfLine = false
 		}
 
 		result.WriteByte(s[i])
