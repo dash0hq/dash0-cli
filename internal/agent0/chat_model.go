@@ -67,6 +67,7 @@ type chatModel struct {
 	client     Agent0Client
 	mdRenderer *glamour.TermRenderer
 	cfg        chatConfig
+	debugLog   *debugLogger
 
 	// State
 	quitting   bool
@@ -154,10 +155,12 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.readNextSSEEvent()
 
 	case sseStatusMsg:
+		m.debugLog.Log("status: %s", msg.status)
 		m.statusText = formatStatus(msg.status)
 		return m, m.readNextSSEEvent()
 
 	case sseSnapshotMsg:
+		m.debugLog.LogSnapshot(msg.resp)
 		if m.threadID == "" && msg.resp.Thread.ID != "" {
 			m.threadID = msg.resp.Thread.ID
 		}
@@ -168,6 +171,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.readNextSSEEvent()
 
 	case sseDoneMsg:
+		m.debugLog.Log("stream done")
 		m.streaming = false
 		m.activeStream = nil
 		if m.threadID != "" {
@@ -181,6 +185,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case sseErrorMsg:
+		m.debugLog.Log("stream error: %v", msg.err)
 		m.streaming = false
 		if m.activeStream != nil {
 			m.activeStream.Close()

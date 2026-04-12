@@ -20,6 +20,7 @@ type chatFlags struct {
 	dataset   string
 	threadID  string
 	verbose   bool
+	debugLog  string
 }
 
 func newChatCmd() *cobra.Command {
@@ -57,6 +58,7 @@ func newChatCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.dataset, "dataset", "", "Dataset identifier")
 	cmd.Flags().StringVar(&flags.threadID, "thread", "", "Resume an existing thread")
 	cmd.Flags().BoolVar(&flags.verbose, "verbose", false, "Show tool calls and thinking")
+	cmd.Flags().StringVar(&flags.debugLog, "debug-log", "", "Write raw API events to this file for debugging")
 
 	return cmd
 }
@@ -67,12 +69,19 @@ func runChat(ctx context.Context, flags *chatFlags) error {
 		return err
 	}
 
+	logger, err := newDebugLogger(flags.debugLog)
+	if err != nil {
+		return err
+	}
+	defer logger.Close()
+
 	client := &httpAgent0Client{
 		apiURL:    cfg.apiURL,
 		authToken: cfg.authToken,
 	}
 
 	model := newChatModel(client, cfg)
+	model.debugLog = logger
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	_, err = p.Run()
 	return err

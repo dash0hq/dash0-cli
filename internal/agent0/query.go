@@ -23,6 +23,7 @@ type queryFlags struct {
 	noStream     bool
 	networkLevel string
 	verbose      bool
+	debugLog     string
 }
 
 func newQueryCmd() *cobra.Command {
@@ -61,6 +62,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&flags.noStream, "no-stream", false, "Wait for complete response before printing")
 	cmd.Flags().StringVar(&flags.networkLevel, "network-level", "trusted_only", "Network isolation: no_network, trusted_only, full")
 	cmd.Flags().BoolVar(&flags.verbose, "verbose", false, "Show tool calls and thinking")
+	cmd.Flags().StringVar(&flags.debugLog, "debug-log", "", "Write raw API events to this file for debugging")
 
 	return cmd
 }
@@ -82,6 +84,12 @@ func runQuery(ctx context.Context, prompt string, flags *queryFlags) error {
 	if err != nil {
 		return err
 	}
+
+	logger, err := newDebugLogger(flags.debugLog)
+	if err != nil {
+		return err
+	}
+	defer logger.Close()
 
 	format := resolveQueryFormat(flags.output)
 
@@ -132,6 +140,7 @@ func runQuery(ctx context.Context, prompt string, flags *queryFlags) error {
 		if err := json.Unmarshal([]byte(event.Data), &snapshot); err != nil {
 			return fmt.Errorf("failed to parse SSE event: %w", err)
 		}
+		logger.LogSnapshot(&snapshot)
 
 		if threadID == "" && snapshot.Thread.ID != "" {
 			threadID = snapshot.Thread.ID
