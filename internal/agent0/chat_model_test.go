@@ -440,40 +440,42 @@ func TestChatModelE2EWithMockServer(t *testing.T) {
 	assert.Contains(t, m.statusText, "t-e2e")
 }
 
-func TestExtractToolActivityInProgress(t *testing.T) {
+func TestExtractToolStepsAccumulates(t *testing.T) {
+	now := time.Now()
 	messages := []Message{
 		{Role: RoleHuman, ID: "h1", Content: "test"},
-		{Role: RoleTool, ID: "t1", Why: "Find error logs in api service", StartedAt: timePtr(time.Now())},
+		{Role: RoleTool, ID: "t1", Why: "Resolve time range", StartedAt: &now, EndedAt: &now},
+		{Role: RoleTool, ID: "t2", Why: "Find error logs", StartedAt: &now, EndedAt: &now},
+		{Role: RoleTool, ID: "t3", Why: "Analyze spans", StartedAt: &now},
 	}
-	assert.Equal(t, "Find error logs in api service", extractToolActivity(messages))
+	steps := extractToolSteps(messages)
+	require.Len(t, steps, 3)
+	assert.Equal(t, "Resolve time range", steps[0].why)
+	assert.True(t, steps[0].done)
+	assert.Equal(t, "Find error logs", steps[1].why)
+	assert.True(t, steps[1].done)
+	assert.Equal(t, "Analyze spans", steps[2].why)
+	assert.False(t, steps[2].done)
 }
 
-func TestExtractToolActivityCompleted(t *testing.T) {
+func TestExtractToolStepsSkipsNoWhy(t *testing.T) {
 	now := time.Now()
 	messages := []Message{
-		{Role: RoleTool, ID: "t1", Why: "Resolve time range", StartedAt: &now, EndedAt: &now},
+		{Role: RoleTool, ID: "t1", Why: "", StartedAt: &now},
+		{Role: RoleTool, ID: "t2", Why: "Find logs", StartedAt: &now},
 	}
-	assert.Equal(t, "Resolve time range ✓", extractToolActivity(messages))
+	steps := extractToolSteps(messages)
+	require.Len(t, steps, 1)
+	assert.Equal(t, "Find logs", steps[0].why)
 }
 
-func TestExtractToolActivityPrefersInProgress(t *testing.T) {
-	now := time.Now()
-	messages := []Message{
-		{Role: RoleTool, ID: "t1", Why: "Resolve time range", StartedAt: &now, EndedAt: &now},
-		{Role: RoleTool, ID: "t2", Why: "Find error logs", StartedAt: &now},
-	}
-	assert.Equal(t, "Find error logs", extractToolActivity(messages))
-}
-
-func TestExtractToolActivityNoTools(t *testing.T) {
+func TestExtractToolStepsEmpty(t *testing.T) {
 	messages := []Message{
 		{Role: RoleHuman, ID: "h1", Content: "test"},
 		{Role: RoleAssistant, ID: "a1", Content: "response"},
 	}
-	assert.Equal(t, "", extractToolActivity(messages))
+	assert.Empty(t, extractToolSteps(messages))
 }
-
-func timePtr(t time.Time) *time.Time { return &t }
 
 // executeCmd runs a tea.Cmd synchronously and returns the result message.
 func executeCmd(t *testing.T, cmd tea.Cmd) tea.Msg {

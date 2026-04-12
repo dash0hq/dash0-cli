@@ -109,8 +109,16 @@ func styleError(content string) string {
 	return errorStyle.Render(prefixError + content)
 }
 
-func styleToolActivity(activity string) string {
-	return statusMsgStyle.Render("  ⚙ " + activity)
+func styleToolStep(step toolStep) string {
+	icon := "⚙"
+	if step.done {
+		icon = "✓"
+	}
+	line := statusMsgStyle.Render(fmt.Sprintf("  %s %s", icon, step.why))
+	if step.content != "" {
+		line += "\n" + statusMsgStyle.Render(fmt.Sprintf("    → %s", step.content))
+	}
+	return line
 }
 
 func truncateID(id string) string {

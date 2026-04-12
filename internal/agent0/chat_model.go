@@ -50,12 +50,12 @@ type displayMessage struct {
 // chatModel is the bubbletea model for the interactive chat TUI.
 type chatModel struct {
 	// Conversation state
-	messages      []displayMessage
-	threadID      string
-	streaming     bool
-	activeStream  *SSEStream
-	streamCancel  context.CancelFunc
-	toolActivity  string // Transient tool status (e.g. "Find error logs in api service"), cleared on done
+	messages     []displayMessage
+	threadID     string
+	streaming    bool
+	activeStream *SSEStream
+	streamCancel context.CancelFunc
+	toolSteps    []toolStep // Accumulated tool steps shown between messages during streaming
 
 	// UI components
 	viewport viewport.Model
@@ -175,7 +175,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.debugLog.Log("stream done")
 		m.streaming = false
 		m.activeStream = nil
-		m.toolActivity = ""
+		m.toolSteps = nil
 		if m.threadID != "" {
 			m.statusText = fmt.Sprintf("Thread: %s", m.threadID)
 		} else {
@@ -188,7 +188,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sseErrorMsg:
 		m.debugLog.Log("stream error: %v", msg.err)
 		m.streaming = false
-		m.toolActivity = ""
+		m.toolSteps = nil
 		if m.activeStream != nil {
 			m.activeStream.Close()
 			m.activeStream = nil
@@ -339,8 +339,8 @@ func (m *chatModel) renderContent(role, content string) string {
 // already displaying using the stable message ID (not the hash, which changes
 // as content grows during streaming).
 func (m *chatModel) processSnapshot(resp *InvokeResponse) {
-	// Extract the latest in-progress tool activity for the status line.
-	m.toolActivity = extractToolActivity(resp.Messages)
+	// Accumulate tool steps for display between messages.
+	m.toolSteps = extractToolSteps(resp.Messages)
 
 	for _, msg := range resp.Messages {
 		if !m.shouldShowMessage(msg.Role) {
@@ -376,26 +376,33 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 	}
 }
 
-// extractToolActivity finds the latest in-progress tool message (has `why` but
-// no `endedAt`) to display as a transient status line, like Claude Code's
-// "Searching...", "Reading file..." indicators.
-func extractToolActivity(messages []Message) string {
-	var latest string
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
+// toolStep represents a single tool invocation shown between messages.
+type toolStep struct {
+	id       string
+	why      string
+	content  string // truncated input/output if available
+	done     bool
+}
+
+// extractToolSteps builds the full list of tool steps from the snapshot.
+// Each tool with a `why` field becomes a visible step.
+func extractToolSteps(messages []Message) []toolStep {
+	var steps []toolStep
+	for _, msg := range messages {
 		if msg.Role != RoleTool || msg.Why == "" {
 			continue
 		}
-		if msg.EndedAt == nil {
-			// In-progress tool — show it
-			return msg.Why
+		step := toolStep{
+			id:   msg.ID,
+			why:  msg.Why,
+			done: msg.EndedAt != nil,
 		}
-		// Most recently completed tool — use as fallback if nothing is in-progress
-		if latest == "" {
-			latest = msg.Why + " ✓"
+		if msg.Content != "" {
+			step.content = truncateStr(msg.Content, 80)
 		}
+		steps = append(steps, step)
 	}
-	return latest
+	return steps
 }
 
 // findMessageByAPIID returns the index of the message with the given API ID,
@@ -477,10 +484,15 @@ func (m *chatModel) updateViewportContent() {
 		}
 		sb.WriteString(msg.rendered)
 	}
-	// Show transient tool activity during streaming (replaces itself on each update)
-	if m.streaming && m.toolActivity != "" {
+	// Show accumulated tool steps during streaming
+	if m.streaming && len(m.toolSteps) > 0 {
 		sb.WriteString("\n\n")
-		sb.WriteString(styleToolActivity(m.toolActivity))
+		for i, step := range m.toolSteps {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(styleToolStep(step))
+		}
 	}
 	m.viewport.SetContent(sb.String())
 	m.viewport.GotoBottom()
