@@ -60,7 +60,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.threadID, "thread", "", "Continue an existing thread")
 	cmd.Flags().StringVarP(&flags.output, "output", "o", "", "Output format: text, json (default: text; json in agent mode)")
 	cmd.Flags().BoolVar(&flags.noStream, "no-stream", false, "Wait for complete response before printing")
-	cmd.Flags().StringVar(&flags.networkLevel, "network-level", "trusted_only", "Network isolation: no_network, trusted_only, full")
+	cmd.Flags().StringVar(&flags.networkLevel, "network-level", "no_network", "Network access: no_network, full")
 	cmd.Flags().BoolVar(&flags.verbose, "verbose", false, "Show tool calls and thinking")
 	cmd.Flags().StringVar(&flags.debugLog, "debug-log", "", "Write raw API events to this file for debugging")
 

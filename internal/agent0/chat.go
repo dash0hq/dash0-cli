@@ -15,12 +15,13 @@ import (
 )
 
 type chatFlags struct {
-	apiURL    string
-	authToken string
-	dataset   string
-	threadID  string
-	verbose   bool
-	debugLog  string
+	apiURL       string
+	authToken    string
+	dataset      string
+	threadID     string
+	networkLevel string
+	verbose      bool
+	debugLog     string
 }
 
 func newChatCmd() *cobra.Command {
@@ -57,6 +58,7 @@ func newChatCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.authToken, "auth-token", "", "Auth token")
 	cmd.Flags().StringVar(&flags.dataset, "dataset", "", "Dataset identifier")
 	cmd.Flags().StringVar(&flags.threadID, "thread", "", "Resume an existing thread")
+	cmd.Flags().StringVar(&flags.networkLevel, "network-level", "", "Network access level: no_network, full (prompts if not set)")
 	cmd.Flags().BoolVar(&flags.verbose, "verbose", false, "Show tool calls and thinking")
 	cmd.Flags().StringVar(&flags.debugLog, "debug-log", "", "Write raw API events to this file for debugging")
 
@@ -67,6 +69,19 @@ func runChat(ctx context.Context, flags *chatFlags) error {
 	cfg, err := resolveChatCfg(ctx, flags)
 	if err != nil {
 		return err
+	}
+
+	// Prompt for network level if not set via flag and starting a new thread.
+	// Existing threads already have a network level set.
+	if cfg.networkLevel == "" && cfg.threadID == "" {
+		level, err := runNetworkSelector()
+		if err != nil {
+			return err
+		}
+		if level == "" {
+			return nil // User cancelled
+		}
+		cfg.networkLevel = level
 	}
 
 	logger, err := newDebugLogger(flags.debugLog)
@@ -93,7 +108,7 @@ func resolveChatCfg(ctx context.Context, flags *chatFlags) (chatConfig, error) {
 		authToken:    flags.authToken,
 		dataset:      flags.dataset,
 		threadID:     flags.threadID,
-		networkLevel: "trusted_only",
+		networkLevel: flags.networkLevel,
 		verbose:      flags.verbose,
 	}
 
