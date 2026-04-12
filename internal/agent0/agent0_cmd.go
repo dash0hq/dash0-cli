@@ -13,6 +13,8 @@ func NewAgent0Cmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(newChatCmd())
+	cmd.AddCommand(newQueryCmd())
+	cmd.AddCommand(newThreadsCmd())
 
 	return cmd
 }

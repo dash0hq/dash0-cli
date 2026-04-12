@@ -1,6 +1,9 @@
 package agent0
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Thread represents an agent0 conversation thread.
 type Thread struct {
@@ -29,7 +32,7 @@ type Message struct {
 	StatusCode string `json:"statusCode,omitempty"`
 
 	// Metadata-specific fields
-	Suggestions []string `json:"suggestions,omitempty"`
+	Suggestions json.RawMessage `json:"suggestions,omitempty"`
 
 	// Sub-agent thread fields
 	MainAgent string    `json:"mainAgent,omitempty"`
@@ -84,7 +87,7 @@ func (m Message) IsDisplayable() bool {
 	case RoleHuman, RoleAssistant, RoleError, RoleCancel:
 		return true
 	case RoleMetadata:
-		return len(m.Suggestions) > 0
+		return len(m.Suggestions) > 0 && string(m.Suggestions) != "null"
 	default:
 		return false
 	}
