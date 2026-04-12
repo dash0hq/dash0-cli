@@ -440,6 +440,41 @@ func TestChatModelE2EWithMockServer(t *testing.T) {
 	assert.Contains(t, m.statusText, "t-e2e")
 }
 
+func TestExtractToolActivityInProgress(t *testing.T) {
+	messages := []Message{
+		{Role: RoleHuman, ID: "h1", Content: "test"},
+		{Role: RoleTool, ID: "t1", Why: "Find error logs in api service", StartedAt: timePtr(time.Now())},
+	}
+	assert.Equal(t, "Find error logs in api service", extractToolActivity(messages))
+}
+
+func TestExtractToolActivityCompleted(t *testing.T) {
+	now := time.Now()
+	messages := []Message{
+		{Role: RoleTool, ID: "t1", Why: "Resolve time range", StartedAt: &now, EndedAt: &now},
+	}
+	assert.Equal(t, "Resolve time range ✓", extractToolActivity(messages))
+}
+
+func TestExtractToolActivityPrefersInProgress(t *testing.T) {
+	now := time.Now()
+	messages := []Message{
+		{Role: RoleTool, ID: "t1", Why: "Resolve time range", StartedAt: &now, EndedAt: &now},
+		{Role: RoleTool, ID: "t2", Why: "Find error logs", StartedAt: &now},
+	}
+	assert.Equal(t, "Find error logs", extractToolActivity(messages))
+}
+
+func TestExtractToolActivityNoTools(t *testing.T) {
+	messages := []Message{
+		{Role: RoleHuman, ID: "h1", Content: "test"},
+		{Role: RoleAssistant, ID: "a1", Content: "response"},
+	}
+	assert.Equal(t, "", extractToolActivity(messages))
+}
+
+func timePtr(t time.Time) *time.Time { return &t }
+
 // executeCmd runs a tea.Cmd synchronously and returns the result message.
 func executeCmd(t *testing.T, cmd tea.Cmd) tea.Msg {
 	t.Helper()

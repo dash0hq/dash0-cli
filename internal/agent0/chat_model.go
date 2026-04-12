@@ -50,11 +50,12 @@ type displayMessage struct {
 // chatModel is the bubbletea model for the interactive chat TUI.
 type chatModel struct {
 	// Conversation state
-	messages     []displayMessage
-	threadID     string
-	streaming    bool
-	activeStream *SSEStream
-	streamCancel context.CancelFunc
+	messages      []displayMessage
+	threadID      string
+	streaming     bool
+	activeStream  *SSEStream
+	streamCancel  context.CancelFunc
+	toolActivity  string // Transient tool status (e.g. "Find error logs in api service"), cleared on done
 
 	// UI components
 	viewport viewport.Model
@@ -174,6 +175,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.debugLog.Log("stream done")
 		m.streaming = false
 		m.activeStream = nil
+		m.toolActivity = ""
 		if m.threadID != "" {
 			m.statusText = fmt.Sprintf("Thread: %s", m.threadID)
 		} else {
@@ -186,6 +188,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sseErrorMsg:
 		m.debugLog.Log("stream error: %v", msg.err)
 		m.streaming = false
+		m.toolActivity = ""
 		if m.activeStream != nil {
 			m.activeStream.Close()
 			m.activeStream = nil
@@ -336,6 +339,9 @@ func (m *chatModel) renderContent(role, content string) string {
 // already displaying using the stable message ID (not the hash, which changes
 // as content grows during streaming).
 func (m *chatModel) processSnapshot(resp *InvokeResponse) {
+	// Extract the latest in-progress tool activity for the status line.
+	m.toolActivity = extractToolActivity(resp.Messages)
+
 	for _, msg := range resp.Messages {
 		if !m.shouldShowMessage(msg.Role) {
 			continue
@@ -368,6 +374,28 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 			})
 		}
 	}
+}
+
+// extractToolActivity finds the latest in-progress tool message (has `why` but
+// no `endedAt`) to display as a transient status line, like Claude Code's
+// "Searching...", "Reading file..." indicators.
+func extractToolActivity(messages []Message) string {
+	var latest string
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Role != RoleTool || msg.Why == "" {
+			continue
+		}
+		if msg.EndedAt == nil {
+			// In-progress tool — show it
+			return msg.Why
+		}
+		// Most recently completed tool — use as fallback if nothing is in-progress
+		if latest == "" {
+			latest = msg.Why + " ✓"
+		}
+	}
+	return latest
 }
 
 // findMessageByAPIID returns the index of the message with the given API ID,
@@ -448,6 +476,11 @@ func (m *chatModel) updateViewportContent() {
 			sb.WriteString("\n\n")
 		}
 		sb.WriteString(msg.rendered)
+	}
+	// Show transient tool activity during streaming (replaces itself on each update)
+	if m.streaming && m.toolActivity != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString(styleToolActivity(m.toolActivity))
 	}
 	m.viewport.SetContent(sb.String())
 	m.viewport.GotoBottom()

@@ -109,6 +109,10 @@ func styleError(content string) string {
 	return errorStyle.Render(prefixError + content)
 }
 
+func styleToolActivity(activity string) string {
+	return statusMsgStyle.Render("  ⚙ " + activity)
+}
+
 func truncateID(id string) string {
 	if len(id) > 12 {
 		return id[:12] + "..."
