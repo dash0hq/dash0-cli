@@ -73,7 +73,7 @@ func runChat(ctx context.Context, flags *chatFlags) error {
 	}
 
 	model := newChatModel(client, cfg)
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err = p.Run()
 	return err
 }

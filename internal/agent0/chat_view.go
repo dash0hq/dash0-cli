@@ -72,7 +72,7 @@ func (m chatModel) renderInputArea() string {
 
 func (m chatModel) renderStatusBar() string {
 	left := statusBarStyle.Render(m.statusText)
-	right := statusBarStyle.Render("↑↓/pgup/pgdn: scroll  ctrl+c: cancel  ctrl+d: quit")
+	right := statusBarStyle.Render("scroll: mouse/↑↓  select: shift+drag  ctrl+c: cancel  ctrl+d: quit")
 	padding := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if padding < 1 {
 		padding = 1
