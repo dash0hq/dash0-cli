@@ -412,12 +412,27 @@ type toolStep struct {
 	done     bool
 }
 
-// extractToolSteps builds the full list of tool steps from the snapshot.
-// Each tool with a `why` field becomes a visible step.
+// extractToolSteps builds the list of tool steps that appear AFTER the last
+// assistant message in the snapshot. Tools before the last assistant message
+// have already been "consumed" (frozen into display messages) and should not
+// be shown again as live steps.
 func extractToolSteps(messages []Message) []toolStep {
+	// Find the index of the last assistant message.
+	lastAssistantIdx := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == RoleAssistant {
+			lastAssistantIdx = i
+			break
+		}
+	}
+
 	var steps []toolStep
-	for _, msg := range messages {
+	for i, msg := range messages {
 		if msg.Role != RoleTool || msg.Why == "" {
+			continue
+		}
+		// Only include tools that come after the last assistant message.
+		if i <= lastAssistantIdx {
 			continue
 		}
 		step := toolStep{
