@@ -131,6 +131,13 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
+	case tea.MouseMsg:
+		// Route all mouse events to the viewport (handles scroll wheel).
+		// This prevents raw mouse escape sequences from leaking into the textarea.
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+
 	case spinner.TickMsg:
 		if m.streaming {
 			var cmd tea.Cmd
