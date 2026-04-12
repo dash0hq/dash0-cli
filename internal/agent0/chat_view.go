@@ -25,8 +25,6 @@ var (
 	statusMsgStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243")).
 			Italic(true)
-
-	spinnerChars = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
 
 func (m chatModel) View() string {
@@ -67,7 +65,7 @@ func (m chatModel) renderHeader() string {
 
 func (m chatModel) renderInputArea() string {
 	if m.streaming {
-		return statusMsgStyle.Render(fmt.Sprintf("  %s %s", spinnerChars[0], m.statusText))
+		return statusMsgStyle.Render(fmt.Sprintf("  %s %s", m.spinner.View(), m.statusText))
 	}
 	return m.textarea.View()
 }

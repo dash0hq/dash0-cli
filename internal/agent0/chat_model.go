@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,16 +49,17 @@ type displayMessage struct {
 type chatModel struct {
 	// Conversation state
 	messages     []displayMessage
+	seenHashes   map[string]bool // Tracks message hashes we've already displayed
 	threadID     string
 	streaming    bool
 	lastSnapshot *InvokeResponse
 	activeStream *SSEStream
-	streamCtx    context.Context
 	streamCancel context.CancelFunc
 
 	// UI components
 	viewport viewport.Model
 	textarea textarea.Model
+	spinner  spinner.Model
 	width    int
 	height   int
 
@@ -81,8 +83,13 @@ func newChatModel(client Agent0Client, cfg chatConfig) chatModel {
 	ta.Focus()
 	ta.ShowLineNumbers = false
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+
 	return chatModel{
 		textarea:   ta,
+		spinner:    sp,
+		seenHashes: make(map[string]bool),
 		client:     client,
 		cfg:        cfg,
 		statusText: "Ready",
@@ -98,6 +105,14 @@ type sseErrorMsg struct{ err error }
 type threadLoadedMsg struct{ resp *ThreadResponse }
 type threadLoadErrMsg struct{ err error }
 
+// sseStreamOpenedMsg is sent when the SSE HTTP connection is established.
+// It carries the stream and cancel func so they can be stored in the model
+// inside the Update handler (not in a cmd closure, which would be lost).
+type sseStreamOpenedMsg struct {
+	stream *SSEStream
+	cancel context.CancelFunc
+}
+
 // -- tea.Model interface --
 
 func (m chatModel) Init() tea.Cmd {
@@ -112,77 +127,25 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-
-		headerH := 1
-		textareaH := 3
-		statusH := 1
-		vpH := m.height - headerH - textareaH - statusH
-		if vpH < 1 {
-			vpH = 1
-		}
-
-		if !m.ready {
-			m.viewport = viewport.New(m.width, vpH)
-			m.viewport.SetContent("")
-			m.ready = true
-		} else {
-			m.viewport.Width = m.width
-			m.viewport.Height = vpH
-		}
-
-		m.textarea.SetWidth(m.width)
-
-		rendererWidth := m.width - 4
-		if rendererWidth < 20 {
-			rendererWidth = 20
-		}
-		m.mdRenderer = newMarkdownRenderer(rendererWidth)
-
-		m.reRenderAllMessages()
-		return m, nil
+		return m.handleResize(msg)
 
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, chatKeys.Quit):
-			m.quitting = true
-			return m, tea.Quit
+		return m.handleKey(msg)
 
-		case key.Matches(msg, chatKeys.Cancel):
-			if m.streaming {
-				m.cancelStream()
-				m.streaming = false
-				m.statusText = "Cancelled"
-				m.textarea.Focus()
-				return m, nil
-			}
-			m.quitting = true
-			return m, tea.Quit
-
-		case key.Matches(msg, chatKeys.Submit):
-			if m.streaming {
-				return m, nil
-			}
-			query := strings.TrimSpace(m.textarea.Value())
-			if query == "" {
-				return m, nil
-			}
-			m.appendMessage(RoleHuman, query, time.Now())
-			m.textarea.Reset()
-			m.textarea.Blur()
-			m.streaming = true
-			m.statusText = "Sending..."
-			m.updateViewportContent()
-			return m, m.startSSEStream(query)
-
-		default:
-			if !m.streaming {
-				var cmd tea.Cmd
-				m.textarea, cmd = m.textarea.Update(msg)
-				return m, cmd
-			}
+	case spinner.TickMsg:
+		if m.streaming {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
 		}
+		return m, nil
+
+	case sseStreamOpenedMsg:
+		// Store the stream and cancel func in the model (this is the canonical
+		// place to mutate state — inside Update, not inside a tea.Cmd closure).
+		m.activeStream = msg.stream
+		m.streamCancel = msg.cancel
+		return m, m.readNextSSEEvent()
 
 	case sseStatusMsg:
 		m.statusText = formatStatus(msg.status)
@@ -217,7 +180,10 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sseErrorMsg:
 		m.streaming = false
-		m.activeStream = nil
+		if m.activeStream != nil {
+			m.activeStream.Close()
+			m.activeStream = nil
+		}
 		m.appendMessage(RoleError, msg.err.Error(), time.Now())
 		m.statusText = "Error"
 		m.textarea.Focus()
@@ -243,6 +209,83 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+func (m chatModel) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	m.width = msg.Width
+	m.height = msg.Height
+
+	headerH := 1
+	textareaH := 3
+	statusH := 1
+	vpH := m.height - headerH - textareaH - statusH
+	if vpH < 1 {
+		vpH = 1
+	}
+
+	if !m.ready {
+		m.viewport = viewport.New(m.width, vpH)
+		m.viewport.SetContent("")
+		m.ready = true
+	} else {
+		m.viewport.Width = m.width
+		m.viewport.Height = vpH
+	}
+
+	m.textarea.SetWidth(m.width)
+
+	rendererWidth := m.width - 4
+	if rendererWidth < 20 {
+		rendererWidth = 20
+	}
+	m.mdRenderer = newMarkdownRenderer(rendererWidth)
+
+	m.reRenderAllMessages()
+	return m, nil
+}
+
+func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, chatKeys.Quit):
+		m.quitting = true
+		return m, tea.Quit
+
+	case key.Matches(msg, chatKeys.Cancel):
+		if m.streaming {
+			m.cancelStream()
+			m.streaming = false
+			m.statusText = "Cancelled"
+			m.textarea.Focus()
+			return m, nil
+		}
+		m.quitting = true
+		return m, tea.Quit
+
+	case key.Matches(msg, chatKeys.Submit):
+		if m.streaming {
+			return m, nil
+		}
+		query := strings.TrimSpace(m.textarea.Value())
+		if query == "" {
+			return m, nil
+		}
+		m.appendMessage(RoleHuman, query, time.Now())
+		m.textarea.Reset()
+		m.textarea.Blur()
+		m.streaming = true
+		m.statusText = "Sending..."
+		m.updateViewportContent()
+		// Start spinner animation alongside SSE stream
+		return m, tea.Batch(m.startSSEStream(query), m.spinner.Tick)
+
+	default:
+		if !m.streaming {
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+	}
 }
 
 // -- Helpers --
@@ -272,6 +315,11 @@ func (m *chatModel) renderContent(role, content string) string {
 
 func (m *chatModel) processDelta(d ContentDelta) {
 	if !m.shouldShowMessage(d.Role) {
+		return
+	}
+
+	// Skip human messages from SSE — we already display them when the user presses Enter.
+	if d.Role == RoleHuman {
 		return
 	}
 
@@ -342,30 +390,37 @@ func (m *chatModel) updateViewportContent() {
 
 // -- SSE stream management --
 
-func (m *chatModel) startSSEStream(query string) tea.Cmd {
+// startSSEStream opens the SSE connection and returns an sseStreamOpenedMsg.
+// The stream and cancel func are NOT stored in the model here (cmd closures
+// cannot mutate the canonical model). Instead, they're passed via the message
+// and stored in Update's sseStreamOpenedMsg handler.
+func (m chatModel) startSSEStream(query string) tea.Cmd {
+	client := m.client
+	cfg := m.cfg
+	threadID := m.threadID
 	return func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
-		m.streamCtx = ctx
-		m.streamCancel = cancel
 
 		req := &InvokeRequest{
 			Message:      query,
-			Dataset:      m.cfg.dataset,
-			ThreadID:     m.threadID,
-			NetworkLevel: m.cfg.networkLevel,
+			Dataset:      cfg.dataset,
+			ThreadID:     threadID,
+			NetworkLevel: cfg.networkLevel,
 		}
 
-		resp, err := m.client.InvokeAgent0(ctx, req)
+		resp, err := client.InvokeAgent0(ctx, req)
 		if err != nil {
+			cancel()
 			return sseErrorMsg{err: err}
 		}
 
-		m.activeStream = NewSSEStream(resp.Body)
-		return readNextEvent(m.activeStream)
+		stream := NewSSEStream(resp.Body)
+		return sseStreamOpenedMsg{stream: stream, cancel: cancel}
 	}
 }
 
-func (m *chatModel) readNextSSEEvent() tea.Cmd {
+// readNextSSEEvent returns a tea.Cmd that reads the next event from the active stream.
+func (m chatModel) readNextSSEEvent() tea.Cmd {
 	stream := m.activeStream
 	if stream == nil {
 		return nil
@@ -419,9 +474,10 @@ func (m *chatModel) cancelStream() {
 }
 
 func (m chatModel) loadExistingThread() tea.Cmd {
+	client := m.client
 	threadID := m.cfg.threadID
 	return func() tea.Msg {
-		resp, err := m.client.GetAgent0Thread(context.Background(), threadID)
+		resp, err := client.GetAgent0Thread(context.Background(), threadID)
 		if err != nil {
 			return threadLoadErrMsg{err: err}
 		}
