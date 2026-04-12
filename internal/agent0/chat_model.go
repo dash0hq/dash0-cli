@@ -453,7 +453,7 @@ func (m *chatModel) updateViewportContent() {
 	var sb strings.Builder
 	for i, msg := range m.messages {
 		if i > 0 {
-			sb.WriteString("\n")
+			sb.WriteString("\n\n")
 		}
 		sb.WriteString(msg.rendered)
 	}
