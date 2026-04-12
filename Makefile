@@ -13,7 +13,7 @@ CHLOGGEN_VERSION=v0.23.1
 CHLOGGEN=$(TOOLS_BIN_DIR)/chloggen
 
 build:
-	(mkdir -p $(BUILD_DIR) || true) && go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
+	(mkdir -p $(BUILD_DIR) || true) && go build -ldflags="-s -w" -trimpath -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
 
 test: test-unit test-integration
 
