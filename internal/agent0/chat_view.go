@@ -52,7 +52,7 @@ func (m chatModel) renderHeader() string {
 	title := headerStyle.Render("Agent0 Chat")
 
 	if m.threadID != "" {
-		threadInfo := statusBarStyle.Render(fmt.Sprintf("Thread: %s", truncateID(m.threadID)))
+		threadInfo := statusBarStyle.Render(fmt.Sprintf("Thread: %s", m.threadID))
 		padding := m.width - lipgloss.Width(title) - lipgloss.Width(threadInfo)
 		if padding < 1 {
 			padding = 1
@@ -71,13 +71,33 @@ func (m chatModel) renderInputArea() string {
 }
 
 func (m chatModel) renderStatusBar() string {
-	left := statusBarStyle.Render(m.statusText)
+	// Left side: network mode + profile
+	var infoParts []string
+	if m.cfg.networkLevel != "" {
+		infoParts = append(infoParts, networkLevelLabel(m.cfg.networkLevel))
+	}
+	if m.cfg.profileName != "" {
+		infoParts = append(infoParts, "profile: "+m.cfg.profileName)
+	}
+	left := statusBarStyle.Render(strings.Join(infoParts, "  │  "))
+
 	right := statusBarStyle.Render("↑↓/pgup/pgdn: scroll  ctrl+c: cancel  ctrl+d: quit")
 	padding := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if padding < 1 {
 		padding = 1
 	}
 	return left + strings.Repeat(" ", padding) + right
+}
+
+func networkLevelLabel(level string) string {
+	switch level {
+	case "no_network":
+		return "🔒 no network"
+	case "full":
+		return "🌐 full network"
+	default:
+		return level
+	}
 }
 
 // Message prefixes
@@ -121,9 +141,3 @@ func styleToolStep(step toolStep) string {
 	return line
 }
 
-func truncateID(id string) string {
-	if len(id) > 12 {
-		return id[:12] + "..."
-	}
-	return id
-}

@@ -34,6 +34,7 @@ type chatConfig struct {
 	dataset      string
 	threadID     string
 	networkLevel string
+	profileName  string
 	verbose      bool
 }
 

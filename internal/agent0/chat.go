@@ -125,6 +125,13 @@ func resolveChatCfg(ctx context.Context, flags *chatFlags) (chatConfig, error) {
 		}
 	}
 
+	// Get active profile name for display
+	if store, err := profiles.NewStore(); err == nil {
+		if profile, err := store.GetActiveProfile(); err == nil {
+			cfg.profileName = profile.Name
+		}
+	}
+
 	if cfg.apiURL == "" {
 		return cfg, fmt.Errorf("API URL is required\nHint: set it via --api-url, DASH0_API_URL, or a profile")
 	}
