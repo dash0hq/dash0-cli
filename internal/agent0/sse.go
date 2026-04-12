@@ -26,8 +26,14 @@ type SSEStream struct {
 
 // NewSSEStream creates a new SSE stream reader from the given body.
 func NewSSEStream(body io.ReadCloser) *SSEStream {
+	scanner := bufio.NewScanner(body)
+	// Agent0 sends the full conversation as a single JSON line per SSE event
+	// (not deltas). The default 64KB buffer is too small for multi-turn
+	// conversations. 16MB is a stopgap — the proper fix is server-side delta
+	// streaming so payload size doesn't grow with conversation length.
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	return &SSEStream{
-		scanner: bufio.NewScanner(body),
+		scanner: scanner,
 		body:    body,
 	}
 }
