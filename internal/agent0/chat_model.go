@@ -175,7 +175,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.debugLog.Log("stream done")
 		m.streaming = false
 		m.activeStream = nil
-		m.toolSteps = nil
+		m.freezeToolSteps()
 		if m.threadID != "" {
 			m.statusText = fmt.Sprintf("Thread: %s", m.threadID)
 		} else {
@@ -354,13 +354,18 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 		idx := m.findMessageByAPIID(msg.ID)
 		if idx >= 0 {
 			// Already displayed — update content if it changed.
-			// Use raw text during streaming to avoid garbled partial markdown.
 			if m.messages[idx].content != msg.Content {
 				m.messages[idx].content = msg.Content
 				m.messages[idx].rendered = m.renderContent(msg.Role, msg.Content)
 			}
 		} else {
-			// New message (still streaming — render as raw text).
+			// New message. If there are accumulated tool steps and this is an
+			// assistant message, freeze the steps into the message list first
+			// so they appear between the previous and new assistant messages.
+			if msg.Role == RoleAssistant && len(m.toolSteps) > 0 {
+				m.freezeToolSteps()
+			}
+
 			ts := time.Now()
 			if msg.StartedAt != nil {
 				ts = *msg.StartedAt
@@ -374,6 +379,29 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 			})
 		}
 	}
+}
+
+const roleToolSteps = "_tool_steps" // Internal role for frozen tool step blocks
+
+// freezeToolSteps converts the accumulated tool steps into a permanent
+// display message so they maintain their position in the conversation
+// when new assistant messages are added after them.
+func (m *chatModel) freezeToolSteps() {
+	if len(m.toolSteps) == 0 {
+		return
+	}
+	var sb strings.Builder
+	for i, step := range m.toolSteps {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(styleToolStep(step))
+	}
+	m.messages = append(m.messages, displayMessage{
+		role:     roleToolSteps,
+		rendered: sb.String(),
+	})
+	m.toolSteps = nil
 }
 
 // toolStep represents a single tool invocation shown between messages.
