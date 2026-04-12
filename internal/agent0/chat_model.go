@@ -339,9 +339,6 @@ func (m *chatModel) renderContent(role, content string) string {
 // already displaying using the stable message ID (not the hash, which changes
 // as content grows during streaming).
 func (m *chatModel) processSnapshot(resp *InvokeResponse) {
-	// Accumulate tool steps for display between messages.
-	m.toolSteps = extractToolSteps(resp.Messages)
-
 	for _, msg := range resp.Messages {
 		if !m.shouldShowMessage(msg.Role) {
 			continue
@@ -379,6 +376,11 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 			})
 		}
 	}
+
+	// Extract any remaining tool steps (those after the last assistant message).
+	// Runs after the loop so freezeToolSteps has already saved steps that
+	// appeared before a new assistant message.
+	m.toolSteps = extractToolSteps(resp.Messages)
 }
 
 const roleToolSteps = "_tool_steps" // Internal role for frozen tool step blocks
