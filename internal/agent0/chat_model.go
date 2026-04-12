@@ -539,7 +539,22 @@ func (m *chatModel) updateViewportContent() {
 			sb.WriteString(styleToolStep(step))
 		}
 	}
-	m.viewport.SetContent(sb.String())
+
+	content := sb.String()
+
+	// Anchor content to the bottom of the viewport (like Claude Code).
+	// When the conversation is shorter than the viewport, prepend blank
+	// lines so messages appear just above the input area.
+	contentLines := strings.Count(content, "\n") + 1
+	if content == "" {
+		contentLines = 0
+	}
+	if contentLines < m.viewport.Height {
+		padding := strings.Repeat("\n", m.viewport.Height-contentLines)
+		content = padding + content
+	}
+
+	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
 
