@@ -289,15 +289,30 @@ func TestChatModelScrollKeysRouteToViewport(t *testing.T) {
 	}
 	m.updateViewportContent()
 
-	// Scroll up should not crash and should be handled
+	// PgUp/PgDown should work
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
 	m = updated.(chatModel)
-	// Model should still be valid
 	assert.True(t, m.ready)
 
-	// Scroll down
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	m = updated.(chatModel)
+	assert.True(t, m.ready)
+
+	// Up/Down should scroll when textarea is empty
+	assert.Empty(t, m.textarea.Value())
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(chatModel)
+	assert.True(t, m.ready)
+}
+
+func TestChatModelArrowKeysGoToTextareaWhenTyping(t *testing.T) {
+	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
+	m.textarea.SetValue("some text")
+
+	// Up/Down should go to textarea (not viewport) when textarea has content
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(chatModel)
+	// The key was NOT consumed by scroll (it went to textarea)
 	assert.True(t, m.ready)
 }
 
@@ -305,10 +320,14 @@ func TestChatModelScrollKeysDuringStreaming(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 	m.streaming = true
 
-	// Scroll keys should still work during streaming
+	// All scroll keys should work during streaming
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
 	m = updated.(chatModel)
 	assert.True(t, m.streaming, "scrolling should not affect streaming state")
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(chatModel)
+	assert.True(t, m.streaming, "arrow scroll should work during streaming")
 }
 
 func TestChatModelThreadLoaded(t *testing.T) {

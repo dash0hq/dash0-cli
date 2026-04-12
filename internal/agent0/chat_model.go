@@ -273,11 +273,8 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.startSSEStream(query), m.spinner.Tick)
 
 	default:
-		// Route scroll keys to viewport (always, even while streaming).
-		if isScrollKey(msg) {
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
+		if m.tryScroll(msg) {
+			return m, nil
 		}
 		// Route other keys to textarea when not streaming.
 		if !m.streaming {
@@ -374,10 +371,28 @@ func (m *chatModel) findMessageByAPIID(id string) int {
 	return -1
 }
 
-func isScrollKey(msg tea.KeyMsg) bool {
+// tryScroll handles scroll-related keys, routing them to the viewport.
+// PgUp/PgDn always scroll. Up/Down scroll when the textarea is empty or during streaming;
+// otherwise they pass through to the textarea for cursor movement.
+// Returns true if the key was consumed by scrolling.
+func (m *chatModel) tryScroll(msg tea.KeyMsg) bool {
 	switch msg.Type {
-	case tea.KeyPgUp, tea.KeyPgDown, tea.KeyUp, tea.KeyDown:
+	case tea.KeyPgUp:
+		m.viewport.HalfPageUp()
 		return true
+	case tea.KeyPgDown:
+		m.viewport.HalfPageDown()
+		return true
+	case tea.KeyUp:
+		if m.streaming || strings.TrimSpace(m.textarea.Value()) == "" {
+			m.viewport.ScrollUp(1)
+			return true
+		}
+	case tea.KeyDown:
+		if m.streaming || strings.TrimSpace(m.textarea.Value()) == "" {
+			m.viewport.ScrollDown(1)
+			return true
+		}
 	}
 	return false
 }
