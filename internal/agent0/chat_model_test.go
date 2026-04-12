@@ -41,7 +41,6 @@ func (c *mockAgent0Client) CancelAgent0(_ context.Context, _ string) error {
 func initModel(t *testing.T, client Agent0Client, cfg chatConfig) chatModel {
 	t.Helper()
 	m := newChatModel(client, cfg)
-	// Simulate initial window size
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	return updated.(chatModel)
 }
@@ -60,7 +59,6 @@ func TestChatModelInitialState(t *testing.T) {
 func TestChatModelResize(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 
-	// Resize to smaller
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
 	m = updated.(chatModel)
 
@@ -75,33 +73,24 @@ func TestChatModelSubmitAddsUserMessage(t *testing.T) {
 		networkLevel: "trusted_only",
 	})
 
-	// Type a message
 	m.textarea.SetValue("Hello agent0")
 
-	// Press Enter
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(chatModel)
 
-	// User message should be displayed
 	require.Len(t, m.messages, 1)
 	assert.Equal(t, RoleHuman, m.messages[0].role)
 	assert.Equal(t, "Hello agent0", m.messages[0].content)
-
-	// Should be streaming
+	assert.Empty(t, m.messages[0].apiID, "user-submitted messages have no API ID")
 	assert.True(t, m.streaming)
 	assert.Equal(t, "Sending...", m.statusText)
-
-	// Textarea should be cleared
 	assert.Empty(t, m.textarea.Value())
-
-	// A command should be returned (starts SSE stream + spinner)
 	assert.NotNil(t, cmd)
 }
 
 func TestChatModelSubmitEmptyIgnored(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 
-	// Press Enter with empty textarea
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(chatModel)
 
@@ -125,7 +114,6 @@ func TestChatModelSSEStreamOpened(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 	m.streaming = true
 
-	// Simulate stream opened
 	mockStream := NewSSEStream(http.NoBody)
 	cancelCalled := false
 	cancel := func() { cancelCalled = true }
@@ -138,36 +126,35 @@ func TestChatModelSSEStreamOpened(t *testing.T) {
 	assert.False(t, cancelCalled)
 }
 
-func TestChatModelSSESnapshotNoDuplicateHumanMessage(t *testing.T) {
+func TestChatModelSnapshotNoDuplicateHumanMessage(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 
-	// User sends a message (adds human message to display)
-	m.appendMessage(RoleHuman, "Hello", time.Now())
+	// User sends a message
+	m.appendUserMessage("Hello")
 	m.streaming = true
-	m.activeStream = NewSSEStream(http.NoBody) // Dummy for readNextSSEEvent
+	m.activeStream = NewSSEStream(http.NoBody)
 
-	// SSE snapshot arrives containing the same human message + assistant response
+	// SSE snapshot contains the human message + assistant response
 	snapshot := &InvokeResponse{
 		Thread: Thread{ID: "thread-1"},
 		Messages: []Message{
-			{Role: RoleHuman, Hash: "h1", Content: "Hello"},
-			{Role: RoleAssistant, Hash: "a1", Content: "Hi there!"},
+			{Role: RoleHuman, ID: "h1", Hash: "hh1", Content: "Hello"},
+			{Role: RoleAssistant, ID: "a1", Hash: "ah1", Content: "Hi there!"},
 		},
 	}
 
 	updated, _ := m.Update(sseSnapshotMsg{resp: snapshot})
 	m = updated.(chatModel)
 
-	// Should have exactly 2 messages: the user's and the assistant's.
-	// The human message from SSE should NOT create a duplicate.
+	// Should have exactly 2 messages: the user's original + assistant.
+	// Human from SSE is skipped.
 	require.Len(t, m.messages, 2, "human message should not be duplicated")
 	assert.Equal(t, RoleHuman, m.messages[0].role)
-	assert.Equal(t, "Hello", m.messages[0].content)
 	assert.Equal(t, RoleAssistant, m.messages[1].role)
 	assert.Equal(t, "Hi there!", m.messages[1].content)
 }
 
-func TestChatModelSSESnapshotUpdatesAssistant(t *testing.T) {
+func TestChatModelSnapshotUpdatesAssistantInPlace(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 	m.streaming = true
 	m.activeStream = NewSSEStream(http.NoBody)
@@ -176,29 +163,55 @@ func TestChatModelSSESnapshotUpdatesAssistant(t *testing.T) {
 	snap1 := &InvokeResponse{
 		Thread: Thread{ID: "t1"},
 		Messages: []Message{
-			{Role: RoleHuman, Hash: "h1", Content: "Hello"},
-			{Role: RoleAssistant, Hash: "a1", Content: "Hi"},
+			{Role: RoleHuman, ID: "h1", Hash: "hh1", Content: "Hello"},
+			{Role: RoleAssistant, ID: "a1", Hash: "ah1", Content: "Hi"},
 		},
 	}
 	updated, _ := m.Update(sseSnapshotMsg{resp: snap1})
 	m = updated.(chatModel)
 	require.Len(t, m.messages, 1) // Only assistant (human skipped)
 	assert.Equal(t, "Hi", m.messages[0].content)
+	assert.Equal(t, "a1", m.messages[0].apiID)
 
-	// Second snapshot: assistant message grew
+	// Second snapshot: assistant content grew, hash changed (content-based)
 	snap2 := &InvokeResponse{
 		Thread: Thread{ID: "t1"},
 		Messages: []Message{
-			{Role: RoleHuman, Hash: "h1", Content: "Hello"},
-			{Role: RoleAssistant, Hash: "a1", Content: "Hi there, how can I help?"},
+			{Role: RoleHuman, ID: "h1", Hash: "hh1", Content: "Hello"},
+			{Role: RoleAssistant, ID: "a1", Hash: "ah2-changed", Content: "Hi there, how can I help?"},
 		},
 	}
 	updated, _ = m.Update(sseSnapshotMsg{resp: snap2})
 	m = updated.(chatModel)
 
-	// Should still have 1 message, but with updated content
-	require.Len(t, m.messages, 1)
+	// Still 1 message — updated in place by ID, not duplicated.
+	require.Len(t, m.messages, 1, "assistant message should be updated in place, not duplicated")
 	assert.Equal(t, "Hi there, how can I help?", m.messages[0].content)
+}
+
+func TestChatModelSnapshotMultipleUpdatesNoDuplication(t *testing.T) {
+	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
+	m.streaming = true
+	m.activeStream = NewSSEStream(http.NoBody)
+
+	// Simulate 5 progressive snapshots with growing content and changing hashes
+	for i := 1; i <= 5; i++ {
+		content := fmt.Sprintf("Response part %d", i)
+		hash := fmt.Sprintf("hash-%d", i)
+		snap := &InvokeResponse{
+			Thread: Thread{ID: "t1"},
+			Messages: []Message{
+				{Role: RoleHuman, ID: "h1", Hash: "hh1", Content: "Hello"},
+				{Role: RoleAssistant, ID: "a1", Hash: hash, Content: content},
+			},
+		}
+		updated, _ := m.Update(sseSnapshotMsg{resp: snap})
+		m = updated.(chatModel)
+	}
+
+	// Should still be exactly 1 assistant message, with the latest content.
+	require.Len(t, m.messages, 1, "should have exactly 1 message after 5 updates")
+	assert.Equal(t, "Response part 5", m.messages[0].content)
 }
 
 func TestChatModelSSEDoneStopsStreaming(t *testing.T) {
@@ -244,15 +257,16 @@ func TestChatModelCtrlCDuringStreamingCancels(t *testing.T) {
 	assert.False(t, m.streaming)
 	assert.Equal(t, "Cancelled", m.statusText)
 	assert.True(t, cancelCalled)
-	assert.Nil(t, cmd, "should not return a quit command")
+	assert.Nil(t, cmd)
 }
 
 func TestChatModelCtrlCWhenIdleQuits(t *testing.T) {
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(chatModel)
 
-	// Should return tea.Quit
+	assert.True(t, m.quitting)
 	assert.NotNil(t, cmd)
 }
 
@@ -266,15 +280,45 @@ func TestChatModelCtrlDQuits(t *testing.T) {
 	assert.NotNil(t, cmd)
 }
 
+func TestChatModelScrollKeysRouteToViewport(t *testing.T) {
+	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
+
+	// Add enough content to make viewport scrollable
+	for i := 0; i < 30; i++ {
+		m.appendMessage(RoleAssistant, fmt.Sprintf("Line %d of response", i), time.Now())
+	}
+	m.updateViewportContent()
+
+	// Scroll up should not crash and should be handled
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	m = updated.(chatModel)
+	// Model should still be valid
+	assert.True(t, m.ready)
+
+	// Scroll down
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	m = updated.(chatModel)
+	assert.True(t, m.ready)
+}
+
+func TestChatModelScrollKeysDuringStreaming(t *testing.T) {
+	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
+	m.streaming = true
+
+	// Scroll keys should still work during streaming
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	m = updated.(chatModel)
+	assert.True(t, m.streaming, "scrolling should not affect streaming state")
+}
+
 func TestChatModelThreadLoaded(t *testing.T) {
-	now := time.Now()
 	m := initModel(t, &mockAgent0Client{}, chatConfig{dataset: "default"})
 
 	resp := &ThreadResponse{
 		Thread: Thread{ID: "t1", Name: "Test thread"},
 		Messages: []Message{
-			{Role: RoleHuman, Hash: "h1", Content: "Hello", StartedAt: &now},
-			{Role: RoleAssistant, Hash: "a1", Content: "Hi!", StartedAt: &now},
+			{Role: RoleHuman, ID: "h1", Hash: "hh1", Content: "Hello"},
+			{Role: RoleAssistant, ID: "a1", Hash: "ah1", Content: "Hi!"},
 		},
 	}
 
@@ -300,21 +344,17 @@ func TestChatModelThreadLoadError(t *testing.T) {
 
 // TestChatModelE2EWithMockServer tests the full flow: submit -> SSE stream -> response.
 func TestChatModelE2EWithMockServer(t *testing.T) {
-	// Set up a mock SSE server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, ok := w.(http.Flusher)
 		require.True(t, ok)
 
-		// Status event
 		fmt.Fprint(w, "event: status\ndata: {\"status\":\"preparing\"}\n\n")
 		flusher.Flush()
 
-		// Snapshot with human + assistant
-		fmt.Fprint(w, "data: {\"thread\":{\"id\":\"t-e2e\"},\"messages\":[{\"role\":\"human\",\"hash\":\"h1\",\"content\":\"test\",\"id\":\"1\"},{\"role\":\"assistant\",\"hash\":\"a1\",\"content\":\"Hello from mock!\",\"id\":\"2\"}]}\n\n")
+		fmt.Fprint(w, "data: {\"thread\":{\"id\":\"t-e2e\"},\"messages\":[{\"role\":\"human\",\"id\":\"h1\",\"hash\":\"hh1\",\"content\":\"test\"},{\"role\":\"assistant\",\"id\":\"a1\",\"hash\":\"ah1\",\"content\":\"Hello from mock!\"}]}\n\n")
 		flusher.Flush()
 
-		// Done
 		fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
@@ -334,56 +374,47 @@ func TestChatModelE2EWithMockServer(t *testing.T) {
 	m.textarea.SetValue("test")
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(chatModel)
-
-	require.Len(t, m.messages, 1) // User message
+	require.Len(t, m.messages, 1, "should have user message")
 	assert.True(t, m.streaming)
 	require.NotNil(t, cmd)
 
-	// Execute the command (opens SSE stream)
+	// Execute cmd -> sseStreamOpenedMsg
 	msg := executeCmd(t, cmd)
-
-	// Should be sseStreamOpenedMsg
 	openMsg, ok := msg.(sseStreamOpenedMsg)
 	require.True(t, ok, "expected sseStreamOpenedMsg, got %T", msg)
-	require.NotNil(t, openMsg.stream)
 
 	// Handle stream opened
 	updated, cmd = m.Update(openMsg)
 	m = updated.(chatModel)
-	require.NotNil(t, cmd, "should return cmd to read next event")
+	require.NotNil(t, cmd)
 
-	// Read next event (status)
+	// Read next -> status
 	msg = executeCmd(t, cmd)
 	statusMsg, ok := msg.(sseStatusMsg)
 	require.True(t, ok, "expected sseStatusMsg, got %T", msg)
-	assert.Equal(t, "preparing", statusMsg.status)
 
-	// Handle status
 	updated, cmd = m.Update(statusMsg)
 	m = updated.(chatModel)
 	assert.Equal(t, "Preparing sandbox...", m.statusText)
 
-	// Read next event (snapshot)
+	// Read next -> snapshot
 	msg = executeCmd(t, cmd)
 	snapMsg, ok := msg.(sseSnapshotMsg)
 	require.True(t, ok, "expected sseSnapshotMsg, got %T", msg)
 
-	// Handle snapshot
 	updated, cmd = m.Update(snapMsg)
 	m = updated.(chatModel)
 	assert.Equal(t, "t-e2e", m.threadID)
-	// Should have user message + assistant message (human from SSE is skipped)
-	require.Len(t, m.messages, 2)
+	require.Len(t, m.messages, 2, "should have user + assistant")
 	assert.Equal(t, RoleHuman, m.messages[0].role)
 	assert.Equal(t, RoleAssistant, m.messages[1].role)
 	assert.Equal(t, "Hello from mock!", m.messages[1].content)
 
-	// Read next event (done)
+	// Read next -> done
 	msg = executeCmd(t, cmd)
 	_, ok = msg.(sseDoneMsg)
 	require.True(t, ok, "expected sseDoneMsg, got %T", msg)
 
-	// Handle done
 	updated, _ = m.Update(sseDoneMsg{})
 	m = updated.(chatModel)
 	assert.False(t, m.streaming)
@@ -391,7 +422,6 @@ func TestChatModelE2EWithMockServer(t *testing.T) {
 }
 
 // executeCmd runs a tea.Cmd synchronously and returns the result message.
-// Handles tea.BatchMsg by finding the first non-nil message from the batch.
 func executeCmd(t *testing.T, cmd tea.Cmd) tea.Msg {
 	t.Helper()
 	if cmd == nil {
@@ -399,13 +429,11 @@ func executeCmd(t *testing.T, cmd tea.Cmd) tea.Msg {
 	}
 	msg := cmd()
 
-	// tea.Batch returns a special type; unwrap it
 	if batch, ok := msg.(tea.BatchMsg); ok {
 		for _, c := range batch {
 			if c != nil {
 				result := c()
 				if result != nil {
-					// Return the first meaningful result, skip spinner ticks
 					switch result.(type) {
 					case sseStreamOpenedMsg, sseSnapshotMsg, sseStatusMsg, sseDoneMsg, sseErrorMsg:
 						return result

@@ -38,7 +38,9 @@ type chatConfig struct {
 }
 
 // displayMessage holds a rendered message for the viewport.
+// apiID is the stable message ID from the agent0 API (does not change as content grows).
 type displayMessage struct {
+	apiID     string
 	role      string
 	content   string
 	rendered  string
@@ -49,10 +51,8 @@ type displayMessage struct {
 type chatModel struct {
 	// Conversation state
 	messages     []displayMessage
-	seenHashes   map[string]bool // Tracks message hashes we've already displayed
 	threadID     string
 	streaming    bool
-	lastSnapshot *InvokeResponse
 	activeStream *SSEStream
 	streamCancel context.CancelFunc
 
@@ -89,7 +89,6 @@ func newChatModel(client Agent0Client, cfg chatConfig) chatModel {
 	return chatModel{
 		textarea:   ta,
 		spinner:    sp,
-		seenHashes: make(map[string]bool),
 		client:     client,
 		cfg:        cfg,
 		statusText: "Ready",
@@ -152,16 +151,11 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.readNextSSEEvent()
 
 	case sseSnapshotMsg:
-		deltas := DiffSnapshots(m.lastSnapshot, msg.resp)
-		m.lastSnapshot = msg.resp
-
 		if m.threadID == "" && msg.resp.Thread.ID != "" {
 			m.threadID = msg.resp.Thread.ID
 		}
 
-		for _, d := range deltas {
-			m.processDelta(d)
-		}
+		m.processSnapshot(msg.resp)
 		m.updateViewportContent()
 		m.statusText = "Thinking..."
 		return m, m.readNextSSEEvent()
@@ -269,7 +263,7 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if query == "" {
 			return m, nil
 		}
-		m.appendMessage(RoleHuman, query, time.Now())
+		m.appendUserMessage(query)
 		m.textarea.Reset()
 		m.textarea.Blur()
 		m.streaming = true
@@ -279,6 +273,13 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.startSSEStream(query), m.spinner.Tick)
 
 	default:
+		// Route scroll keys to viewport (always, even while streaming).
+		if isScrollKey(msg) {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+		// Route other keys to textarea when not streaming.
 		if !m.streaming {
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)
@@ -290,12 +291,21 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // -- Helpers --
 
+func (m *chatModel) appendUserMessage(content string) {
+	rendered := styleUserMessage(content)
+	m.messages = append(m.messages, displayMessage{
+		apiID:    "", // User-submitted messages have no API ID yet
+		role:     RoleHuman,
+		content:  content,
+		rendered: rendered,
+	})
+}
+
 func (m *chatModel) appendMessage(role, content string, ts time.Time) {
-	rendered := m.renderContent(role, content)
 	m.messages = append(m.messages, displayMessage{
 		role:      role,
 		content:   content,
-		rendered:  rendered,
+		rendered:  m.renderContent(role, content),
 		timestamp: ts,
 	})
 }
@@ -313,36 +323,63 @@ func (m *chatModel) renderContent(role, content string) string {
 	}
 }
 
-func (m *chatModel) processDelta(d ContentDelta) {
-	if !m.shouldShowMessage(d.Role) {
-		return
-	}
+// processSnapshot compares the SSE snapshot's messages against what we're
+// already displaying using the stable message ID (not the hash, which changes
+// as content grows during streaming).
+func (m *chatModel) processSnapshot(resp *InvokeResponse) {
+	for _, msg := range resp.Messages {
+		if !m.shouldShowMessage(msg.Role) {
+			continue
+		}
+		// Skip human messages — we already show them when the user presses Enter.
+		if msg.Role == RoleHuman {
+			continue
+		}
 
-	// Skip human messages from SSE — we already display them when the user presses Enter.
-	if d.Role == RoleHuman {
-		return
-	}
-
-	if d.IsNew {
-		ts := time.Now()
-		rendered := m.renderContent(d.Role, d.Content)
-		m.messages = append(m.messages, displayMessage{
-			role:      d.Role,
-			content:   d.Content,
-			rendered:  rendered,
-			timestamp: ts,
-		})
-		return
-	}
-
-	// Updated existing message: find last message with same role and update it.
-	for i := len(m.messages) - 1; i >= 0; i-- {
-		if m.messages[i].role == d.Role {
-			m.messages[i].content = d.Content
-			m.messages[i].rendered = m.renderContent(d.Role, d.Content)
-			return
+		idx := m.findMessageByAPIID(msg.ID)
+		if idx >= 0 {
+			// Already displayed — update content if it changed.
+			if m.messages[idx].content != msg.Content {
+				m.messages[idx].content = msg.Content
+				m.messages[idx].rendered = m.renderContent(msg.Role, msg.Content)
+			}
+		} else {
+			// New message.
+			ts := time.Now()
+			if msg.StartedAt != nil {
+				ts = *msg.StartedAt
+			}
+			m.messages = append(m.messages, displayMessage{
+				apiID:     msg.ID,
+				role:      msg.Role,
+				content:   msg.Content,
+				rendered:  m.renderContent(msg.Role, msg.Content),
+				timestamp: ts,
+			})
 		}
 	}
+}
+
+// findMessageByAPIID returns the index of the message with the given API ID,
+// or -1 if not found.
+func (m *chatModel) findMessageByAPIID(id string) int {
+	if id == "" {
+		return -1
+	}
+	for i := range m.messages {
+		if m.messages[i].apiID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func isScrollKey(msg tea.KeyMsg) bool {
+	switch msg.Type {
+	case tea.KeyPgUp, tea.KeyPgDown, tea.KeyUp, tea.KeyDown:
+		return true
+	}
+	return false
 }
 
 func (m *chatModel) shouldShowMessage(role string) bool {
