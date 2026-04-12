@@ -176,7 +176,8 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusText = "Ready"
 		}
 		m.textarea.Focus()
-		m.updateViewportContent()
+		// Re-render with markdown now that streaming is complete.
+		m.reRenderAllMessages()
 		return m, nil
 
 	case sseErrorMsg:
@@ -309,14 +310,21 @@ func (m *chatModel) appendMessage(role, content string, ts time.Time) {
 	m.messages = append(m.messages, displayMessage{
 		role:      role,
 		content:   content,
-		rendered:  m.renderContent(role, content),
+		rendered:  m.renderContent(role, content, false),
 		timestamp: ts,
 	})
 }
 
-func (m *chatModel) renderContent(role, content string) string {
+// renderContent renders a message for display. When streaming is true,
+// assistant messages are shown as raw text to avoid garbled partial markdown
+// (e.g. lone `*` rendered as empty bullet points). Markdown is rendered once
+// the response is complete.
+func (m *chatModel) renderContent(role, content string, streaming bool) string {
 	switch role {
 	case RoleAssistant:
+		if streaming {
+			return content
+		}
 		return renderMarkdown(m.mdRenderer, content)
 	case RoleHuman:
 		return styleUserMessage(content)
@@ -343,12 +351,13 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 		idx := m.findMessageByAPIID(msg.ID)
 		if idx >= 0 {
 			// Already displayed — update content if it changed.
+			// Use raw text during streaming to avoid garbled partial markdown.
 			if m.messages[idx].content != msg.Content {
 				m.messages[idx].content = msg.Content
-				m.messages[idx].rendered = m.renderContent(msg.Role, msg.Content)
+				m.messages[idx].rendered = m.renderContent(msg.Role, msg.Content, true)
 			}
 		} else {
-			// New message.
+			// New message (still streaming — render as raw text).
 			ts := time.Now()
 			if msg.StartedAt != nil {
 				ts = *msg.StartedAt
@@ -357,7 +366,7 @@ func (m *chatModel) processSnapshot(resp *InvokeResponse) {
 				apiID:     msg.ID,
 				role:      msg.Role,
 				content:   msg.Content,
-				rendered:  m.renderContent(msg.Role, msg.Content),
+				rendered:  m.renderContent(msg.Role, msg.Content, true),
 				timestamp: ts,
 			})
 		}
@@ -430,7 +439,7 @@ func (m *chatModel) renderAPIMessage(msg Message) {
 
 func (m *chatModel) reRenderAllMessages() {
 	for i := range m.messages {
-		m.messages[i].rendered = m.renderContent(m.messages[i].role, m.messages[i].content)
+		m.messages[i].rendered = m.renderContent(m.messages[i].role, m.messages[i].content, false)
 	}
 	m.updateViewportContent()
 }
