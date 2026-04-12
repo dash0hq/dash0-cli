@@ -28,15 +28,22 @@ func renderMarkdown(renderer *glamour.TermRenderer, content string) string {
 	if renderer == nil || content == "" {
 		return content
 	}
-	// Agent0 responses may contain custom XML-like tags (e.g. <Service>, <metric>)
-	// that are not HTML. Glamour's HTML sanitizer (bluemonday) strips unknown tags.
-	// Escape angle brackets so they render as literal text.
+	// Replace agent0 custom tags (e.g. <Service>, <TimeRange>) with formatted text
+	// before markdown rendering. Must run before escapeAngleBrackets.
+	content = formatTags(content)
+	// Escape remaining angle brackets that glamour would strip as HTML.
 	content = escapeAngleBrackets(content)
 	out, err := renderer.Render(content)
 	if err != nil {
 		return content
 	}
 	return strings.TrimSpace(out)
+}
+
+// formatRawContent applies tag formatting to raw text (used during streaming
+// when we skip markdown rendering to avoid partial-markdown artifacts).
+func formatRawContent(content string) string {
+	return formatTags(content)
 }
 
 // escapeAngleBrackets replaces < and > with HTML entities outside of markdown
