@@ -4,16 +4,39 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/ansi"
+	"github.com/charmbracelet/glamour/styles"
 )
 
-// newMarkdownRenderer creates a glamour terminal markdown renderer.
-// Returns nil if renderer creation fails; callers should fall back to raw text.
+func boolPtr(b bool) *bool       { return &b }
+func stringPtr(s string) *string { return &s }
+
+// newMarkdownRenderer creates a glamour terminal markdown renderer with a
+// custom style. The default styles keep `##` prefixes on headings; our style
+// removes them and uses bold + color instead.
 func newMarkdownRenderer(width int) *glamour.TermRenderer {
 	if width <= 0 {
 		width = 80
 	}
+
+	style := styles.DraculaStyleConfig
+	// Remove ## prefixes from headings, use bold + color
+	clearHeadingPrefix := func(sb *ansi.StyleBlock, color string) {
+		sb.Prefix = ""
+		sb.Bold = boolPtr(true)
+		sb.Color = stringPtr(color)
+		sb.Upper = boolPtr(false)
+		sb.BlockSuffix = ""
+	}
+	clearHeadingPrefix(&style.H1, "39") // Cyan
+	clearHeadingPrefix(&style.H2, "39")
+	clearHeadingPrefix(&style.H3, "39")
+	clearHeadingPrefix(&style.H4, "39")
+	clearHeadingPrefix(&style.H5, "39")
+	clearHeadingPrefix(&style.H6, "39")
+
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStylePath("dark"),
+		glamour.WithStyles(style),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {
