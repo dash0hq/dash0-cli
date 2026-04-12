@@ -80,21 +80,33 @@ func (m chatModel) renderStatusBar() string {
 	return left + strings.Repeat(" ", padding) + right
 }
 
+// Message prefixes
+const (
+	prefixUser      = "👤 "
+	prefixAssistant = "🤖 "
+	prefixError     = "❌ "
+)
+
 func styleUserMessage(content string) string {
 	var sb strings.Builder
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
-		if i > 0 {
-			sb.WriteString("\n")
+		if i == 0 {
+			sb.WriteString(userPrefixStyle.Render(prefixUser))
+		} else {
+			sb.WriteString("\n   ") // Indent continuation lines to align with prefix
 		}
-		sb.WriteString(userPrefixStyle.Render("> "))
 		sb.WriteString(line)
 	}
 	return sb.String()
 }
 
+func styleAssistantMessage(content string) string {
+	return prefixAssistant + content
+}
+
 func styleError(content string) string {
-	return errorStyle.Render("Error: " + content)
+	return errorStyle.Render(prefixError + content)
 }
 
 func truncateID(id string) string {

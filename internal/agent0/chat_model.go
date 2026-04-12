@@ -328,9 +328,9 @@ func (m *chatModel) renderContent(role, content string, streaming bool) string {
 	switch role {
 	case RoleAssistant:
 		if streaming {
-			return formatRawContent(content)
+			return styleAssistantMessage(formatRawContent(content))
 		}
-		return renderMarkdown(m.mdRenderer, content)
+		return styleAssistantMessage(renderMarkdown(m.mdRenderer, content))
 	case RoleHuman:
 		return styleUserMessage(content)
 	case RoleError:
