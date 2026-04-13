@@ -737,22 +737,79 @@ The command follows links recursively up to a maximum of 20 traces.
 
 ### `metrics instant`
 
-Run an instant PromQL query against the Dash0 API.
+Run an instant PromQL query against the Dash0 API, returning a single datapoint per time series.
 
 ```bash
-dash0 metrics instant --query <promql> [--time <timestamp>] [--dataset <dataset>]
+dash0 metrics instant --promql <promql> [--from <timestamp>] [--dataset <dataset>] [-o <format>]
+dash0 metrics instant --filter <filter> [--from <timestamp>] [--dataset <dataset>] [-o <format>]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--query` | PromQL query expression (required) |
-| `--time` | Evaluation timestamp (default: now); supports relative expressions |
-| `--dataset` | Dataset to query |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--promql` | | PromQL query expression; mutually exclusive with `--filter` |
+| `--filter` | | Filter as `key [operator] value`, translated to PromQL label matchers (repeatable); mutually exclusive with `--promql` |
+| `--from` | `now` | Evaluation timestamp; supports relative expressions like `now-1h` or absolute ISO 8601 timestamps |
+| `--dataset` | | Dataset to query |
+| `-o` | `table` | Output format: `table`, `json`, or `csv` (default: `json` in agent mode) |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only); see below |
 
-Example:
+At least one of `--promql` or `--filter` must be specified.
+
+The `--query` flag (alias for `--promql`) and `--time` flag (alias for `--from`) are deprecated but still accepted for backwards compatibility.
+
+#### Output formats
+
+The default `table` output uses a verbose label-per-line format showing all labels for each metric result.
+Use `--column` to switch to a columnar table format with specific columns.
+
+The `csv` output defaults to columns: `timestamp`, `__name__`, `value`.
+Use `--column` to override the default columns.
+
+When no `--column` is specified, a hint listing the available label keys is printed to stderr.
+
+The `--column` flag accepts any Prometheus label key from the result (e.g., `__name__`, `service_name`, `job`, `instance`).
+Built-in columns `timestamp` and `value` are always available.
+The `--column` flag is not supported with `-o json`.
+
+> [!NOTE]
+> The column `otel_metric_name` is not available in Prometheus query results.
+> Use `__name__` for the Prometheus-normalized metric name.
+
+#### Filter syntax
+
+The `--filter` flag uses the same [filter syntax](#filter-syntax) as `logs query`.
+Filters are translated to PromQL label matchers.
+For example, `--filter "service.name is my-service"` becomes `{service_name="my-service"}`.
+
+OTel attribute keys are normalized to Prometheus label names (dots replaced with underscores).
+
+#### Examples
 
 ```bash
-$ dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
+# Query the current request rate per service
+$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
+
+# Query with a specific dataset
+$ dash0 metrics instant --promql 'sum(rate(http_server_request_duration_seconds_count[5m]))' --dataset production
+
+# Query at a specific time
+$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --from 2024-01-25T10:00:00Z
+
+# Query with filters instead of PromQL
+$ dash0 metrics instant --filter 'service.name is my-service'
+
+# Output as CSV
+$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv
+
+# Output as CSV without header
+$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --skip-header
+
+# Select specific columns
+$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --column value --column service_name
+
+# Output as JSON
+$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o json
 ```
 
 ### Filter syntax
