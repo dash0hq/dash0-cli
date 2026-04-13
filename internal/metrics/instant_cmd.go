@@ -1,201 +1,172 @@
 package metrics
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal"
-	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/query"
 	"github.com/spf13/cobra"
 )
 
-// QueryInstantResponse represents the response from the Prometheus instant query API
-type QueryInstantResponse struct {
-	Status string `json:"status"`
-	Data   struct {
-		ResultType string `json:"resultType"`
-		Result     []struct {
-			Metric map[string]string `json:"metric"`
-			Value  []interface{}     `json:"value"`
-		} `json:"result"`
-	} `json:"data"`
-	Error     string `json:"error,omitempty"`
-	ErrorType string `json:"errorType,omitempty"`
+type instantFlags struct {
+	apiURL     string
+	authToken  string
+	dataset    string
+	output     string
+	promql     string
+	queryAlias string // deprecated --query alias
+	filter     []string
+	from       string
+	timeAlias  string // deprecated --time alias
+	skipHeader bool
+	column     []string
 }
 
-// NewMetricsCmd creates a new query command
-func NewMetricsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "metrics",
-		Short: "Query Dash0 metrics",
-		Long:  `Query metrics from the Dash0 API`,
-	}
-
-	// Add subcommands
-	cmd.AddCommand(newInstantQueryCmd())
-
-	return cmd
-}
-
-// newInstantQueryCmd creates a new instant query command
-func newInstantQueryCmd() *cobra.Command {
-	var apiUrl string
-	var authToken string
-	var queryExpr string
-	var dataset string
-	var queryTime string
-	var outputFmt string
+func newInstantCmd() *cobra.Command {
+	flags := &instantFlags{}
 
 	cmd := &cobra.Command{
 		Use:   "instant",
-		Short: "Run an instant query",
-		Long: `Query the instant value of a metric from the Dash0 API.` + internal.CONFIG_HINT,
-		Example: `  # Query a PromQL expression
-  dash0 metrics instant --query 'up'
+		Short: "Run an instant PromQL query",
+		Long: `Run an instant PromQL query against the Dash0 API, returning a single` +
+			` datapoint per time series.` + internal.CONFIG_HINT,
+		Example: `  # Query the current request rate
+  dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
 
   # Query with a specific dataset
-  dash0 metrics instant --query 'rate(http_requests_total[5m])' --dataset production
+  dash0 metrics instant --promql 'sum(rate(http_server_request_duration_seconds_count[5m]))' --dataset production
 
   # Query at a specific time
-  dash0 metrics instant --query 'process_cpu_seconds_total' --time 2024-01-25T10:00:00Z`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Resolve configuration with overrides
-			cfg, err := profiles.ResolveConfiguration(apiUrl, authToken)
-			if err != nil {
-				return err
-			}
+  dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --from 2024-01-25T10:00:00Z
 
-			// Use resolved configuration values
-			apiUrl = cfg.ApiUrl
-			authToken = cfg.AuthToken
+  # Query with filters instead of PromQL
+  dash0 metrics instant --filter 'service.name is my-service'
 
-			// Resolve dataset from config if not provided via flag
-			if dataset == "" {
-				dataset = cfg.Dataset
-			}
+  # Output as CSV without header
+  dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --skip-header
 
-			// Validate required parameters
-			if queryExpr == "" {
-				return fmt.Errorf("query expression is required")
-			}
-
-			// Create and execute the request
-			timestamp := time.Now().Unix()
-
-			// Build the query URL
-			apiURL, err := url.Parse(apiUrl)
-			if err != nil {
-				return fmt.Errorf("invalid API URL: %w", err)
-			}
-			apiURL.Path = "/api/prometheus/api/v1/query"
-
-			if len(queryTime) == 0 {
-				queryTime = "now"
-			}
-
-			// Add query parameters
-			query := url.Values{}
-			query.Set("query", queryExpr)
-			query.Set("time", queryTime)
-			if dataset != "" && dataset != "default" {
-				query.Set("dataset", dataset)
-			}
-			apiURL.RawQuery = query.Encode()
-
-			// Create the HTTP request
-			req, err := http.NewRequest("GET", apiURL.String(), nil)
-			if err != nil {
-				return fmt.Errorf("failed to create HTTP request: %w", err)
-			}
-
-			// Add authorization header
-			req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", authToken))
-
-			// Execute the request
-			client := &http.Client{Timeout: 30 * time.Second}
-			resp, err := client.Do(req)
-			if err != nil {
-				return fmt.Errorf("failed to execute HTTP request: %w", err)
-			}
-			defer resp.Body.Close()
-
-			// Read the response body
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return fmt.Errorf("failed to read response body: %w", err)
-			}
-
-			// Check the response status
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-			}
-
-			// Parse the response
-			var response QueryInstantResponse
-			if err := json.Unmarshal(body, &response); err != nil {
-				return fmt.Errorf("failed to parse response: %w", err)
-			}
-
-			// Check for API-reported errors
-			if response.Status != "success" {
-				return fmt.Errorf("query failed: %s", response.Error)
-			}
-
-			useJSON := strings.ToLower(outputFmt) == "json" ||
-				(outputFmt == "" && agentmode.Enabled)
-
-			if useJSON {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(response)
-			}
-
-			// Print the results in a user-friendly format
-			fmt.Println("Query:", queryExpr)
-			fmt.Printf("Time: %s\n\n", time.Unix(timestamp, 0).Format(time.RFC3339))
-
-			if len(response.Data.Result) == 0 {
-				fmt.Println("No results found.")
-				return nil
-			}
-
-			for _, result := range response.Data.Result {
-				// Print the metric labels
-				fmt.Println("Metric:")
-				for k, v := range result.Metric {
-					fmt.Printf("  %s: %s\n", k, v)
-				}
-
-				// Print the value (typically an array where first element is timestamp and second is value)
-				if len(result.Value) >= 2 {
-					fmt.Printf("Value: %v\n", result.Value[1])
-				} else {
-					fmt.Printf("Value: %v\n", result.Value)
-				}
-				fmt.Println()
-			}
-
-			return nil
+  # Select specific columns
+  dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --column value --column service_name`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runInstant(cmd, flags)
 		},
 	}
 
-	// Register flags
-	cmd.Flags().StringVar(&queryExpr, "query", "", "PromQL query expression (required)")
-	cmd.Flags().StringVar(&dataset, "dataset", "", "Dataset to query (optional)")
-	cmd.Flags().StringVar(&queryTime, "time", "", "Evaluation timestamp (optional, defaults to now). Supports relative time ranges")
-	cmd.Flags().StringVar(&apiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
-	cmd.Flags().StringVar(&authToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
+	// Primary flags
+	cmd.Flags().StringVar(&flags.promql, "promql", "", "PromQL query expression")
+	cmd.Flags().StringArrayVar(&flags.filter, "filter", nil, "Filter as 'key [operator] value', translated to PromQL label matchers (repeatable)")
+	cmd.Flags().StringVar(&flags.from, "from", "", "Evaluation timestamp (default: now)")
+	cmd.Flags().StringVar(&flags.dataset, "dataset", "", "Dataset to query")
+	cmd.Flags().StringVar(&flags.apiURL, "api-url", "", "API endpoint URL (overrides active profile)")
+	cmd.Flags().StringVar(&flags.authToken, "auth-token", "", "Auth token (overrides active profile)")
+	cmd.Flags().StringVarP(&flags.output, "output", "o", "", "Output format: table, json, csv (default: table; json in agent mode)")
+	cmd.Flags().BoolVar(&flags.skipHeader, "skip-header", false, "Omit the header row from table and CSV output")
+	cmd.Flags().StringArrayVar(&flags.column, "column", nil, "Column to display (repeatable; table and CSV only)")
 
-	cmd.Flags().StringVarP(&outputFmt, "output", "o", "", "Output format: table, json (default: table; json in agent mode)")
-
-	_ = cmd.MarkFlagRequired("query")
+	// Deprecated aliases
+	cmd.Flags().StringVar(&flags.queryAlias, "query", "", "PromQL query expression")
+	cmd.Flags().StringVar(&flags.timeAlias, "time", "", "Evaluation timestamp")
+	_ = cmd.Flags().MarkDeprecated("query", "use --promql instead")
+	_ = cmd.Flags().MarkDeprecated("time", "use --from instead")
 
 	return cmd
+}
+
+func runInstant(_ *cobra.Command, flags *instantFlags) error {
+	// Resolve deprecated aliases.
+	if flags.promql == "" && flags.queryAlias != "" {
+		flags.promql = flags.queryAlias
+	}
+	if flags.from == "" && flags.timeAlias != "" {
+		flags.from = flags.timeAlias
+	}
+
+	// Validate mutually exclusive --promql and --filter.
+	if flags.promql != "" && len(flags.filter) > 0 {
+		return fmt.Errorf("--promql and --filter are mutually exclusive; use one or the other")
+	}
+	if flags.promql == "" && len(flags.filter) == 0 {
+		return fmt.Errorf("either --promql or --filter must be specified")
+	}
+
+	// Parse and validate output format.
+	format, err := parseQueryFormat(flags.output)
+	if err != nil {
+		return err
+	}
+
+	// Validate --column with JSON output.
+	if err := query.ValidateColumnFormat(flags.column, string(format)); err != nil {
+		return err
+	}
+
+	// Resolve columns.
+	cols, err := resolveMetricColumns(flags.column, format)
+	if err != nil {
+		return err
+	}
+
+	// Resolve configuration.
+	cfg, err := profiles.ResolveConfiguration(flags.apiURL, flags.authToken)
+	if err != nil {
+		return err
+	}
+	apiURL := cfg.ApiUrl
+	authToken := cfg.AuthToken
+
+	dataset := flags.dataset
+	if dataset == "" {
+		dataset = cfg.Dataset
+	}
+
+	// Build PromQL from filters if needed.
+	promql := flags.promql
+	if len(flags.filter) > 0 {
+		filters, err := query.ParseFilters(flags.filter)
+		if err != nil {
+			return fmt.Errorf("failed to parse filter: %w", err)
+		}
+		promql, err = filtersToPromQL(filters)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Normalize the evaluation timestamp.
+	evalTime := query.NormalizeTimestamp(flags.from)
+
+	// Execute the query.
+	var datasetPtr *string
+	if dataset != "" {
+		datasetPtr = &dataset
+	}
+	response, err := runInstantQuery(apiURL, authToken, promql, evalTime, datasetPtr)
+	if err != nil {
+		return err
+	}
+
+	// Render output.
+	customColumns := len(flags.column) > 0
+
+	if !customColumns && format != queryFormatJSON {
+		printAvailableColumnsHint(response)
+	}
+
+	switch format {
+	case queryFormatJSON:
+		return renderInstantJSON(response)
+	case queryFormatCSV:
+		renderInstantCSV(response, cols, flags.skipHeader)
+	case queryFormatTable:
+		if !customColumns {
+			fmt.Println("Query:", promql)
+			fmt.Printf("Time: %s\n\n", time.Now().Format(time.RFC3339))
+		}
+		renderInstantTable(response, cols, flags.skipHeader, customColumns)
+	}
+
+	return nil
 }

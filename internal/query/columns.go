@@ -11,6 +11,13 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/output"
 )
 
+// Common column alias constants shared across query commands.
+const (
+	AliasTimestamp = "timestamp"
+	AliasTime      = "time"
+	AliasValue     = "value"
+)
+
 // ColumnSpec represents a user-provided column specification from --column.
 type ColumnSpec struct {
 	Key string // user-provided key (alias or attribute key)

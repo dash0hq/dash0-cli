@@ -10,9 +10,12 @@ When modifying `dash0` in ways that affect the output displayed to users, always
 
 ## Attribute keys in examples
 When writing filter or query examples in documentation, use real Dash0 attribute keys — not invented ones.
+Prefer [OpenTelemetry Semantic Convention](https://opentelemetry.io/docs/specs/semconv/) attribute keys and metric names where they exist (e.g., `service.name`, `http.server.request.duration`, `deployment.environment.name`).
 Check the Dash0 API (via the `getAttributeKeys` and `getAttributeValues` MCP tools) to verify that the attribute keys and values used in examples actually exist.
 Common log attribute keys include `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, and `otel.log.body`.
 The valid values for `otel.log.severity.range` are: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, and UNKNOWN.
+
+For metrics commands, note that PromQL examples use Prometheus-style names (underscores, e.g., `service_name`, `http_server_request_duration_seconds`), while `--filter` examples use OTel-style names (dots, e.g., `service.name`) which are normalized to Prometheus labels automatically.
 
 ## Environment Variables Reference Table
 The README contains an "Environment Variables" table listing all supported env vars.
