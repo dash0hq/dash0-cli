@@ -49,7 +49,7 @@ const (
 
 // traceDefaultColumns defines the default columns for traces get output.
 var traceDefaultColumns = []query.ColumnDef{
-	{Key: "otel.span.start_time", Aliases: []string{"timestamp", "start time", "time"}, Header: "TIMESTAMP", Width: 28},
+	{Key: "otel.span.start_time", Aliases: []string{query.AliasTimestamp, "start time", query.AliasTime}, Header: "TIMESTAMP", Width: 28},
 	{Key: "otel.span.duration", Aliases: []string{"duration"}, Header: "DURATION", Width: 10},
 	{Key: "otel.trace.id", Aliases: []string{"trace id"}, Header: "TRACE ID", Width: 32},
 	{Key: "otel.span.id", Aliases: []string{"span id"}, Header: "SPAN ID", Width: 16},

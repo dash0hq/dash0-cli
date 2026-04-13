@@ -47,7 +47,7 @@ const (
 
 // spanQueryDefaultColumns defines the default columns for span query output.
 var spanQueryDefaultColumns = []query.ColumnDef{
-	{Key: "otel.span.start_time", Aliases: []string{"timestamp", "start time", "time"}, Header: "TIMESTAMP", Width: 28},
+	{Key: "otel.span.start_time", Aliases: []string{query.AliasTimestamp, "start time", query.AliasTime}, Header: "TIMESTAMP", Width: 28},
 	{Key: "otel.span.duration", Aliases: []string{"duration"}, Header: "DURATION", Width: 10},
 	{Key: "otel.span.name", Aliases: []string{"span name", "name"}, Header: "SPAN NAME", Width: 30},
 	{Key: "otel.span.status.code", Aliases: []string{"status", "status code"}, Header: "STATUS", Width: 8, ColorFn: colorpkg.SprintSpanStatus},
