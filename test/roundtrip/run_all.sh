@@ -38,6 +38,8 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh"
   "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh"
+  "${SCRIPT_DIR}/test_metrics_instant_roundtrip.sh"
+  "${SCRIPT_DIR}/test_team_roundtrip.sh"
 )
 
 # OTLP-based round-trip tests additionally need DASH0_OTLP_URL.
