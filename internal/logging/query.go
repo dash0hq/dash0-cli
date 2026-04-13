@@ -47,7 +47,7 @@ const (
 
 // logDefaultColumns defines the default columns for log query output.
 var logDefaultColumns = []query.ColumnDef{
-	{Key: "otel.log.time", Aliases: []string{"timestamp", "time"}, Header: "TIMESTAMP", Width: 28},
+	{Key: "otel.log.time", Aliases: []string{query.AliasTimestamp, query.AliasTime}, Header: "TIMESTAMP", Width: 28},
 	{Key: "otel.log.severity.range", Aliases: []string{"severity"}, Header: "SEVERITY", Width: 10, ColorFn: colorpkg.SprintSeverity},
 	{Key: "otel.log.body", Aliases: []string{"body"}, Header: "BODY", Width: 0},
 }

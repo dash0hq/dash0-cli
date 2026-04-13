@@ -343,7 +343,14 @@ dash0 -X traces get <trace-id> --column otel.span.start_time --column otel.span.
 ### Metrics
 
 ```bash
-dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
+# Instant query — current request rate per service
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
+
+# Instant query with filters
+dash0 metrics instant --filter 'service.name is my-service'
+
+# Output as CSV with specific columns
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --column value --column service_name
 ```
 
 ### Teams (experimental)

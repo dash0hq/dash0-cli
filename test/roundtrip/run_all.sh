@@ -36,7 +36,8 @@ for script in \
   "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh" \
   "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh" \
   "${SCRIPT_DIR}/test_log_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_span_roundtrip.sh"; do
+  "${SCRIPT_DIR}/test_span_roundtrip.sh" \
+  "${SCRIPT_DIR}/test_metrics_instant_roundtrip.sh"; do
 
   name="$(basename "$script" .sh)"
   echo "========================================"
