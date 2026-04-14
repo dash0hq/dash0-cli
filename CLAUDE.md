@@ -15,6 +15,7 @@ AI agents and CI/CD workflows to perform tasks like creating, updating and delet
 
 Detailed guidelines are split into focused documents:
 
+- @docs/command-patterns.md — command architecture, shared infrastructure, standard patterns, anti-patterns, adding new commands
 - @docs/commands.md — full command reference with flags, outputs, and examples
 - @docs/cli-naming-conventions.md — command naming, aliases, asset kind display names
 - @docs/code-style.md — Go style, dependencies, error handling

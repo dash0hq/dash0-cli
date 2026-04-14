@@ -39,5 +39,8 @@ completions/
 *.swp
 *.swo
 
+# Task workflow plans
+.plans/
+
 # macOS
 .DS_Store
