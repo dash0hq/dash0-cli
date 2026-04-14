@@ -21,7 +21,7 @@ jobs:
         run: |
           go mod download
           make build
-          make test
+          make test-unit test-integration
 
   lint-go:
     runs-on: ubuntu-latest

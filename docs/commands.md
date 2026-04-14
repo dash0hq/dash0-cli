@@ -4,6 +4,34 @@ This document is a comprehensive reference for the `dash0` CLI, aimed at enablin
 
 For every command, this reference lists the exact syntax, all flags, expected outputs, and concrete examples.
 
+## Command taxonomy
+
+Every command falls into one of five categories.
+Each category has distinct patterns for flags, output, and behavior.
+
+| Category | Commands | Characteristics |
+|----------|----------|-----------------|
+| [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters, experimental |
+| [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
+| [Organizational](#organizational-commands) | `teams`, `members` | Flag-based input, no dataset, experimental |
+
+**Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks).
+They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
+The `apply` command provides create-or-update semantics across all asset types.
+
+**Query commands** search and retrieve telemetry signals.
+They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
+Output formats are `table`, `json`, and `csv`.
+All are experimental except `metrics instant`.
+
+**Send commands** transmit telemetry data to Dash0 via OTLP.
+They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
+
+**Organizational commands** manage entities (teams, members) scoped to the organization, not to a dataset.
+They use flag-based input (no `-f`, no `--dry-run`, no `apply` integration) and are all experimental.
+
 ## Prerequisites
 
 Every command that talks to the Dash0 API or OTLP endpoint needs credentials.
@@ -190,8 +218,9 @@ Dataset:    default
 Auth Token: ...ULSzVkM
 ```
 
-## Asset commands
+## Asset CRUD commands
 
+Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
 All four asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`) share the same CRUD subcommands.
@@ -384,7 +413,7 @@ Aliases: `remove`
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | Views | `dash0 views <subcommand>` | |
 
-## `apply`
+### `apply`
 
 Apply asset definitions from a file, directory, or stdin.
 If an asset already exists (matched by ID), it is updated; otherwise it is created.
@@ -515,68 +544,16 @@ name: Second Document Rule
 expression: up == 0
 ```
 
-## Logging
+## Query commands
 
-### `logs send`
-
-Send a log record to Dash0 via OTLP.
-Requires `otlp-url` and `auth-token`.
-
-```bash
-dash0 logs send <body> [flags]
-```
-
-Key flags:
-
-| Flag | Description |
-|------|-------------|
-| `--severity-number <1-24>` | OpenTelemetry severity number; determines the severity range in Dash0 |
-| `--severity-text <text>` | Severity text (e.g., `INFO`, `WARN`, `ERROR`); separate from severity-number |
-| `--event-name <name>` | Event name (e.g., `dash0.deployment`) |
-| `--resource-attribute <key=value>` | Resource attribute (repeatable) |
-| `--log-attribute <key=value>` | Log record attribute (repeatable) |
-| `--scope-attribute <key=value>` | Instrumentation scope attribute (repeatable) |
-| `--scope-name <name>` | Instrumentation scope name (default: `dash0-cli`) |
-| `--scope-version <version>` | Instrumentation scope version (default: CLI version) |
-| `--time <RFC3339>` | Log record timestamp (default: now) |
-| `--observed-time <RFC3339>` | Observed timestamp (default: now) |
-| `--trace-id <32 hex chars>` | Trace ID to correlate with |
-| `--span-id <16 hex chars>` | Span ID to correlate with |
-| `--flags <uint32>` | Log record flags |
-| `--resource-dropped-attributes-count <n>` | Number of dropped resource attributes |
-| `--log-dropped-attributes-count <n>` | Number of dropped log record attributes |
-| `--scope-dropped-attributes-count <n>` | Number of dropped scope attributes |
-
-Examples:
-
-```bash
-# Simple log message
-$ dash0 logs send "Application started"
-Log record sent
-
-# Log with severity and attributes
-$ dash0 logs send "Application started" \
-    --resource-attribute service.name=my-service \
-    --log-attribute user.id=12345 \
-    --severity-text INFO --severity-number 9
-Log record sent
-
-# Deployment event with event name
-$ dash0 logs send "Deployment completed" \
-    --event-name dash0.deployment \
-    --severity-number 9 \
-    --resource-attribute service.name=my-service \
-    --resource-attribute deployment.environment.name=production \
-    --log-attribute deployment.status=succeeded
-Log record sent
-
-# Using environment variables for connection
-$ DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com \
-  DASH0_AUTH_TOKEN=auth_xxx \
-  dash0 logs send "Health check passed" \
-    --severity-number 9 --severity-text INFO
-Log record sent
-```
+Query commands search and retrieve telemetry signals from Dash0.
+They share a common set of characteristics:
+- Time range flags: `--from` and `--to` (relative expressions like `now-1h` or absolute ISO 8601 timestamps).
+- Filter flag: `--filter` with the standard `key [operator] value` syntax (see [filter syntax](#filter-syntax)).
+- Column flag: `--column` for customizing table/CSV output (see [custom columns](#custom-columns)).
+- Pagination: `--limit`.
+- Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
+- Gated behind `--experimental` (`-X`), except `metrics instant`.
 
 ### `logs query` (experimental)
 
@@ -639,160 +616,6 @@ otel.log.time,otel.log.severity.range,otel.log.body
 
 # CSV without header
 $ dash0 -X logs query -o csv --skip-header
-```
-
-### Filter syntax
-
-The `--filter` flag accepts expressions in the form `key [operator] value`.
-When the operator is omitted, `is` (exact match) is assumed.
-
-The flag also accepts JSON filter criteria as produced by the Dash0 UI "copy filter criteria" feature.
-A JSON array of filter objects is expanded into multiple filters; a single JSON object is treated as one filter.
-For example:
-
-```bash
-# Paste a JSON array copied from the Dash0 UI
-$ dash0 -X logs query --filter '[
-  {"key": "service.name", "operator": "is", "value": "api"},
-  {"key": "otel.log.severity.range", "operator": "is_one_of", "values": ["ERROR", "WARN"]}
-]'
-```
-
-JSON filters and text filters can be mixed freely across multiple `--filter` flags.
-
-| Operator | Alias | Description |
-|----------|-------|-------------|
-| `is` | `=` | Exact match (default when operator is omitted) |
-| `is_not` | `!=` | Not equal |
-| `contains` | | Value contains substring |
-| `does_not_contain` | | Value does not contain substring |
-| `starts_with` | | Value starts with prefix |
-| `does_not_start_with` | | Value does not start with prefix |
-| `ends_with` | | Value ends with suffix |
-| `does_not_end_with` | | Value does not end with suffix |
-| `matches` | `~` | Regular expression match |
-| `does_not_match` | `!~` | Negated regular expression match |
-| `gt` | `>` | Greater than |
-| `gte` | `>=` | Greater than or equal |
-| `lt` | `<` | Less than |
-| `lte` | `<=` | Less than or equal |
-| `is_set` | | Attribute is present |
-| `is_not_set` | | Attribute is absent |
-| `is_one_of` | | Matches any of the given values (space-separated) |
-| `is_not_one_of` | | Matches none of the given values (space-separated) |
-| `is_any` | | Matches any value |
-
-Keys containing spaces can be single-quoted: `'my key' is value`.
-Values containing spaces can be single-quoted: `deployment.environment.name is_one_of 'us east' 'eu west' staging`.
-
-Common log attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, `otel.log.body`.
-Valid values for `otel.log.severity.range`: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `UNKNOWN`.
-
-### Custom columns
-
-The `--column` flag lets you choose which columns appear in `table` and `csv` output.
-It is repeatable: pass one `--column` per column.
-When used, the flag replaces the default column set entirely.
-
-```bash
-# Show only timestamp and body
-dash0 -X logs query --column time --column body
-
-# Include an arbitrary attribute column
-dash0 -X spans query \
-    --column timestamp --column duration \
-    --column "span name" --column http.request.method
-
-# Include an arbitrary attribute column by key
-dash0 -X logs query --column time --column service.name --column body
-```
-
-Each command has predefined columns with short aliases.
-Aliases are matched case-insensitively.
-Any OTLP attribute key (resource, scope, or record/span level) can also be used as a column; its header defaults to the attribute key as-is.
-
-**Log query aliases:**
-
-| Alias | Attribute key |
-|-------|---------------|
-| `time`, `timestamp` | `otel.log.time` |
-| `severity` | `otel.log.severity.range` |
-| `body` | `otel.log.body` |
-
-**Span query aliases:**
-
-| Alias | Attribute key |
-|-------|---------------|
-| `timestamp`, `start time`, `time` | `otel.span.start_time` |
-| `duration` | `otel.span.duration` |
-| `span name`, `name` | `otel.span.name` |
-| `status`, `status code` | `otel.span.status.code` |
-| `service name`, `service` | `service.name` |
-| `parent id` | `otel.parent.id` |
-| `trace id` | `otel.trace.id` |
-| `span id` | `otel.span.id` |
-| `span links`, `links` | `otel.span.links` |
-
-**Trace get aliases** share the span query aliases.
-
-Aliases that contain spaces must be quoted: `--column "start time"`.
-
-The `--column` flag is not supported with JSON output.
-Using `--column` with `-o json` returns an error.
-
-## Tracing
-
-### `spans send` (experimental)
-
-Send a span to Dash0 via OTLP.
-Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
-
-```bash
-dash0 -X spans send --name <name> [flags]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--name` | | Span name (required) |
-| `--kind` | `INTERNAL` | Span kind: `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
-| `--status-code` | `UNSET` | Status code: `UNSET`, `OK`, `ERROR` |
-| `--status-message` | | Status message (typically for ERROR status) |
-| `--start-time` | now | Start timestamp in RFC3339 format |
-| `--end-time` | | End timestamp in RFC3339 format; mutually exclusive with `--duration` |
-| `--duration` | | Span duration (e.g., `100ms`, `1.5s`); mutually exclusive with `--end-time` |
-| `--trace-id` | auto | Trace ID (32 hex characters); auto-generated if omitted |
-| `--span-id` | auto | Span ID (16 hex characters); auto-generated if omitted |
-| `--parent-span-id` | | Parent span ID (16 hex characters) |
-| `--resource-attribute` | | Resource attribute as `key=value` (repeatable) |
-| `--span-attribute` | | Span attribute as `key=value` (repeatable) |
-| `--span-link` | | Span link as `trace-id:span-id[,key=value,...]` (repeatable) |
-| `--scope-name` | `dash0-cli` | Instrumentation scope name |
-| `--scope-version` | CLI version | Instrumentation scope version |
-| `--scope-attribute` | | Instrumentation scope attribute as `key=value` (repeatable) |
-
-Examples:
-
-```bash
-# Send a simple span
-$ dash0 -X spans send --name "my-operation"
-Span sent (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
-
-# Send a server span with duration
-$ dash0 -X spans send --name "GET /api/users" \
-    --kind SERVER --status-code OK --duration 100ms \
-    --resource-attribute service.name=my-service
-Span sent (trace-id: ..., span-id: ...)
-
-# Send a span with a link to another trace
-$ dash0 -X spans send --name "process-message" \
-    --kind CONSUMER \
-    --span-link 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331
-
-# Send a child span with explicit parent
-$ dash0 -X spans send --name "db-query" \
-    --kind CLIENT \
-    --trace-id 0af7651916cd43dd8448eb211c80319c \
-    --parent-span-id b7ad6b7169203331
 ```
 
 ### `spans query` (experimental)
@@ -906,8 +729,6 @@ otel.trace.id,otel.span.start_time,otel.span.duration,otel.span.id,otel.parent.i
 When `--follow-span-links` is used, linked traces are displayed after the primary trace, separated by a header line showing the linked trace ID.
 The command follows links recursively up to a maximum of 20 traces.
 
-## Metrics
-
 ### `metrics instant`
 
 Run an instant PromQL query against the Dash0 API.
@@ -928,11 +749,235 @@ Example:
 $ dash0 metrics instant --query 'sum(rate(http_requests_total[5m]))'
 ```
 
-## Team management
+### Filter syntax
 
-Teams and members are organizational entities (not "assets").
-All team and member commands are experimental and require the `-X` flag.
-They use `api-url` and `auth-token` but do not accept `--dataset`.
+The `--filter` flag accepts expressions in the form `key [operator] value`.
+When the operator is omitted, `is` (exact match) is assumed.
+
+The flag also accepts JSON filter criteria as produced by the Dash0 UI "copy filter criteria" feature.
+A JSON array of filter objects is expanded into multiple filters; a single JSON object is treated as one filter.
+For example:
+
+```bash
+# Paste a JSON array copied from the Dash0 UI
+$ dash0 -X logs query --filter '[
+  {"key": "service.name", "operator": "is", "value": "api"},
+  {"key": "otel.log.severity.range", "operator": "is_one_of", "values": ["ERROR", "WARN"]}
+]'
+```
+
+JSON filters and text filters can be mixed freely across multiple `--filter` flags.
+
+| Operator | Alias | Description |
+|----------|-------|-------------|
+| `is` | `=` | Exact match (default when operator is omitted) |
+| `is_not` | `!=` | Not equal |
+| `contains` | | Value contains substring |
+| `does_not_contain` | | Value does not contain substring |
+| `starts_with` | | Value starts with prefix |
+| `does_not_start_with` | | Value does not start with prefix |
+| `ends_with` | | Value ends with suffix |
+| `does_not_end_with` | | Value does not end with suffix |
+| `matches` | `~` | Regular expression match |
+| `does_not_match` | `!~` | Negated regular expression match |
+| `gt` | `>` | Greater than |
+| `gte` | `>=` | Greater than or equal |
+| `lt` | `<` | Less than |
+| `lte` | `<=` | Less than or equal |
+| `is_set` | | Attribute is present |
+| `is_not_set` | | Attribute is absent |
+| `is_one_of` | | Matches any of the given values (space-separated) |
+| `is_not_one_of` | | Matches none of the given values (space-separated) |
+| `is_any` | | Matches any value |
+
+Keys containing spaces can be single-quoted: `'my key' is value`.
+Values containing spaces can be single-quoted: `deployment.environment.name is_one_of 'us east' 'eu west' staging`.
+
+Common log attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, `otel.log.body`.
+Valid values for `otel.log.severity.range`: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `UNKNOWN`.
+
+### Custom columns
+
+The `--column` flag lets you choose which columns appear in `table` and `csv` output.
+It is repeatable: pass one `--column` per column.
+When used, the flag replaces the default column set entirely.
+
+```bash
+# Show only timestamp and body
+dash0 -X logs query --column time --column body
+
+# Include an arbitrary attribute column
+dash0 -X spans query \
+    --column timestamp --column duration \
+    --column "span name" --column http.request.method
+
+# Include an arbitrary attribute column by key
+dash0 -X logs query --column time --column service.name --column body
+```
+
+Each command has predefined columns with short aliases.
+Aliases are matched case-insensitively.
+Any OTLP attribute key (resource, scope, or record/span level) can also be used as a column; its header defaults to the attribute key as-is.
+
+**Log query aliases:**
+
+| Alias | Attribute key |
+|-------|---------------|
+| `time`, `timestamp` | `otel.log.time` |
+| `severity` | `otel.log.severity.range` |
+| `body` | `otel.log.body` |
+
+**Span query aliases:**
+
+| Alias | Attribute key |
+|-------|---------------|
+| `timestamp`, `start time`, `time` | `otel.span.start_time` |
+| `duration` | `otel.span.duration` |
+| `span name`, `name` | `otel.span.name` |
+| `status`, `status code` | `otel.span.status.code` |
+| `service name`, `service` | `service.name` |
+| `parent id` | `otel.parent.id` |
+| `trace id` | `otel.trace.id` |
+| `span id` | `otel.span.id` |
+| `span links`, `links` | `otel.span.links` |
+
+**Trace get aliases** share the span query aliases.
+
+Aliases that contain spaces must be quoted: `--column "start time"`.
+
+The `--column` flag is not supported with JSON output.
+Using `--column` with `-o json` returns an error.
+
+## Send commands
+
+Send commands transmit telemetry data to Dash0 via OTLP.
+They share a common set of characteristics:
+- Require `otlp-url` and `auth-token` (not `api-url`).
+- Repeatable attribute flags: `--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag.
+- OTLP scope flags: `--scope-name` (default: `dash0-cli`), `--scope-version` (default: CLI version).
+
+### `logs send`
+
+Send a log record to Dash0 via OTLP.
+Requires `otlp-url` and `auth-token`.
+
+```bash
+dash0 logs send <body> [flags]
+```
+
+Key flags:
+
+| Flag | Description |
+|------|-------------|
+| `--severity-number <1-24>` | OpenTelemetry severity number; determines the severity range in Dash0 |
+| `--severity-text <text>` | Severity text (e.g., `INFO`, `WARN`, `ERROR`); separate from severity-number |
+| `--event-name <name>` | Event name (e.g., `dash0.deployment`) |
+| `--resource-attribute <key=value>` | Resource attribute (repeatable) |
+| `--log-attribute <key=value>` | Log record attribute (repeatable) |
+| `--scope-attribute <key=value>` | Instrumentation scope attribute (repeatable) |
+| `--scope-name <name>` | Instrumentation scope name (default: `dash0-cli`) |
+| `--scope-version <version>` | Instrumentation scope version (default: CLI version) |
+| `--time <RFC3339>` | Log record timestamp (default: now) |
+| `--observed-time <RFC3339>` | Observed timestamp (default: now) |
+| `--trace-id <32 hex chars>` | Trace ID to correlate with |
+| `--span-id <16 hex chars>` | Span ID to correlate with |
+| `--flags <uint32>` | Log record flags |
+| `--resource-dropped-attributes-count <n>` | Number of dropped resource attributes |
+| `--log-dropped-attributes-count <n>` | Number of dropped log record attributes |
+| `--scope-dropped-attributes-count <n>` | Number of dropped scope attributes |
+
+Examples:
+
+```bash
+# Simple log message
+$ dash0 logs send "Application started"
+Log record sent
+
+# Log with severity and attributes
+$ dash0 logs send "Application started" \
+    --resource-attribute service.name=my-service \
+    --log-attribute user.id=12345 \
+    --severity-text INFO --severity-number 9
+Log record sent
+
+# Deployment event with event name
+$ dash0 logs send "Deployment completed" \
+    --event-name dash0.deployment \
+    --severity-number 9 \
+    --resource-attribute service.name=my-service \
+    --resource-attribute deployment.environment.name=production \
+    --log-attribute deployment.status=succeeded
+Log record sent
+
+# Using environment variables for connection
+$ DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com \
+  DASH0_AUTH_TOKEN=auth_xxx \
+  dash0 logs send "Health check passed" \
+    --severity-number 9 --severity-text INFO
+Log record sent
+```
+
+### `spans send` (experimental)
+
+Send a span to Dash0 via OTLP.
+Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
+
+```bash
+dash0 -X spans send --name <name> [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Span name (required) |
+| `--kind` | `INTERNAL` | Span kind: `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
+| `--status-code` | `UNSET` | Status code: `UNSET`, `OK`, `ERROR` |
+| `--status-message` | | Status message (typically for ERROR status) |
+| `--start-time` | now | Start timestamp in RFC3339 format |
+| `--end-time` | | End timestamp in RFC3339 format; mutually exclusive with `--duration` |
+| `--duration` | | Span duration (e.g., `100ms`, `1.5s`); mutually exclusive with `--end-time` |
+| `--trace-id` | auto | Trace ID (32 hex characters); auto-generated if omitted |
+| `--span-id` | auto | Span ID (16 hex characters); auto-generated if omitted |
+| `--parent-span-id` | | Parent span ID (16 hex characters) |
+| `--resource-attribute` | | Resource attribute as `key=value` (repeatable) |
+| `--span-attribute` | | Span attribute as `key=value` (repeatable) |
+| `--span-link` | | Span link as `trace-id:span-id[,key=value,...]` (repeatable) |
+| `--scope-name` | `dash0-cli` | Instrumentation scope name |
+| `--scope-version` | CLI version | Instrumentation scope version |
+| `--scope-attribute` | | Instrumentation scope attribute as `key=value` (repeatable) |
+
+Examples:
+
+```bash
+# Send a simple span
+$ dash0 -X spans send --name "my-operation"
+Span sent (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
+
+# Send a server span with duration
+$ dash0 -X spans send --name "GET /api/users" \
+    --kind SERVER --status-code OK --duration 100ms \
+    --resource-attribute service.name=my-service
+Span sent (trace-id: ..., span-id: ...)
+
+# Send a span with a link to another trace
+$ dash0 -X spans send --name "process-message" \
+    --kind CONSUMER \
+    --span-link 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331
+
+# Send a child span with explicit parent
+$ dash0 -X spans send --name "db-query" \
+    --kind CLIENT \
+    --trace-id 0af7651916cd43dd8448eb211c80319c \
+    --parent-span-id b7ad6b7169203331
+```
+
+## Organizational commands
+
+Organizational commands manage entities (teams, members) that are scoped to the organization, not to a dataset.
+They share a common set of characteristics:
+- Flag-based input (not file-based) — no `-f`, no `--dry-run`, no `apply` integration.
+- No `--dataset` flag.
+- All are experimental and require the `-X` flag.
+- Use `api-url` and `auth-token`.
 
 ### `teams list` (experimental)
 
@@ -1112,8 +1157,6 @@ $ dash0 -X teams remove-members <team-id> <member-id> --force
 $ dash0 -X teams remove-members <team-id> <email-address> --force
 1 member removed from team "<team-id>"
 ```
-
-## Member management
 
 ### `members list` (experimental)
 

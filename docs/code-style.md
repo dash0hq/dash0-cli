@@ -57,6 +57,19 @@ All lint issues must be resolved before merging.
 - When asserting on request bodies in integration tests, parse the body into the appropriate typed struct (e.g., `dash0api.DashboardDefinition`, `dash0api.PrometheusAlertRule`, `dash0api.ViewDefinition`, `dash0api.SyntheticCheckDefinition`) and assert on the struct fields.
   Do not use `assert.Contains` on the raw JSON string — substring matching is fragile and can match unrelated fields or partial values.
 
+## Reference implementations
+
+When implementing a new command, use the following packages as templates for each command type:
+
+| Command type | Reference package | What it demonstrates |
+|--------------|-------------------|---------------------|
+| Asset CRUD | `internal/dashboards/` | Standard five-subcommand structure, shared flag structs, import logic, all output formats |
+| Query | `internal/logging/query.go` | Time range flags, filter syntax, custom columns, CSV/JSON/table output |
+| Send | `internal/logging/send.go` | OTLP client usage, repeatable attribute flags, scope defaults |
+| Organizational | `internal/teams/` | Flag-based input, no dataset, custom subcommands beyond CRUD |
+
+See the [command taxonomy](commands.md#command-taxonomy) in @docs/commands.md for the user-facing specification of each category.
+
 ## Agent mode
 
 Agent mode (`--agent-mode` / `DASH0_AGENT_MODE`) optimizes the CLI for AI coding agents.
@@ -114,5 +127,3 @@ Command implementations do not need to handle this.
 2. If the command has its own format parser, handle `""` → JSON when `agentmode.Enabled`.
 3. If the command is destructive, use `confirmation.ConfirmDestructiveOperation`.
 4. Do not add agent-mode-specific logic for errors or help — these are handled globally.
-
-
