@@ -494,7 +494,7 @@ All `--filter` flags must use the standard `key [operator] value` syntax from `i
 This syntax also accepts JSON filter criteria copied from the Dash0 UI.
 
 Do not create a command-specific filter mechanism (e.g., substring matching, regex-only, custom operators).
-If the existing syntax does not fit, discuss the extension in `#community-cli` before implementing.
+If the existing syntax does not fit, discuss the extension with the team before implementing.
 
 ### Using the wrong verb
 
@@ -543,7 +543,7 @@ Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables
 4. **Does it manage organizational entities (not dataset-scoped)?** → Organizational command.
    Follow `internal/teams/` as the reference.
 
-5. **None of the above?** → Discuss the pattern in `#community-cli` before implementing.
+5. **None of the above?** → Discuss the pattern with the team before implementing.
    Gate it behind `--experimental` so the interface can evolve without breaking changes.
 
 ### Step-by-step checklist
@@ -631,7 +631,7 @@ New command types may need different patterns — that is fine, as long as the d
 
 **Before deviating:**
 1. Gate the new command behind `--experimental` (`-X`) so the interface can evolve.
-2. Discuss the proposed pattern in `#community-cli`.
+2. Discuss the proposed pattern with the team.
 3. Document the new pattern in this file once it stabilizes.
 
 **Common reasons to deviate:**
