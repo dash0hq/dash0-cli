@@ -1,4 +1,4 @@
-.PHONY: build clean test test-unit test-integration install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
+.PHONY: build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
 
 BUILD_DIR=./build
 BINARY_NAME=dash0
@@ -15,13 +15,16 @@ CHLOGGEN=$(TOOLS_BIN_DIR)/chloggen
 build:
 	(mkdir -p $(BUILD_DIR) || true) && go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
 
-test: test-unit test-integration
+test: test-unit test-integration test-roundtrip
 
 test-unit:
 	go test -v ./...
 
 test-integration:
 	go test -v -tags=integration ./...
+
+test-roundtrip: build
+	bash test/roundtrip/run_all.sh
 
 install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/

@@ -8,6 +8,7 @@ AI agents and CI/CD workflows to perform tasks like creating, updating and delet
 - Test all: `make test`
 - Test unit only: `make test-unit`
 - Test integration only: `make test-integration`
+- Roundtrip tests only: `make test-roundtrip`
 - Test specific: `go test -v ./internal/config -run TestServiceAddContext`
 - Run locally: `./dash0 [command]`
 
@@ -15,6 +16,7 @@ AI agents and CI/CD workflows to perform tasks like creating, updating and delet
 
 Detailed guidelines are split into focused documents:
 
+- @docs/adding-commands.md — step-by-step guide for adding a new command
 - @docs/commands.md — full command reference with flags, outputs, and examples
 - @docs/cli-naming-conventions.md — command naming, aliases, asset kind display names
 - @docs/code-style.md — Go style, dependencies, error handling
