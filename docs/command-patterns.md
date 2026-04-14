@@ -20,6 +20,7 @@ Each category has distinct patterns for flags, output, testing, and shared infra
 **Characteristics:**
 - Five standard subcommands: `list` (`ls`), `get`, `create` (`add`), `update`, `delete` (`remove`).
 - File-based input for `create` and `update` (`-f <file>`), with `--dry-run` support.
+- List flags: `--limit` / `-l`, `--all` / `-a` (fetch all pages), `--skip-header`.
 - Output formats: `table`, `wide`, `json`, `yaml`, `csv`.
 - Shared flag structs from `internal/asset/flags.go` (`ListFlags`, `GetFlags`, `FileInputFlags`, `DeleteFlags`).
 - Shared import logic from `internal/asset/` for create-or-update semantics.
@@ -37,7 +38,7 @@ Each category has distinct patterns for flags, output, testing, and shared infra
 - Time range flags: `--from`, `--to` (relative expressions like `now-1h` or absolute ISO 8601).
 - Filter flag: `--filter` with the standard `key [operator] value` syntax from `internal/query/filter.go`.
 - Column flag: `--column` for customizing table/CSV output, resolved via `internal/query/columns.go`.
-- Pagination: `--limit` (no `--all` flag like asset commands).
+- Pagination: `--limit` (no `--all` flag, unlike asset commands).
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
 - Gated behind `--experimental` (`-X`).
 
@@ -152,7 +153,7 @@ Used by asset CRUD commands and `apply`.
 |--------|---------|
 | `CommonFlags`, `ListFlags`, `GetFlags`, `FileInputFlags`, `DeleteFlags` | Reusable flag structs with `Register*Flags()` helpers |
 | `ImportDashboard()`, `ImportCheckRule()`, `ImportView()`, `ImportSyntheticCheck()` | Create-or-update logic (check if ID exists; update if so, create otherwise) |
-| `ReadRawInput()`, `ReadDirectory()` | YAML/JSON file I/O |
+| `ReadRawInput()`, `ReadDefinition()`, `ReadDefinitionFile()` | YAML/JSON file I/O (reading from stdin, files, and with unmarshalling) |
 | `KindDisplayName()` | Human-readable names for asset kinds (e.g., `"CheckRule"` → `"Check rule"`) |
 | `ImportResult`, `ImportAction` | Result types for import operations |
 
@@ -180,7 +181,8 @@ Used by send commands (`logs send`, `spans send`).
 | `ParseKeyValuePairs()` | Parses `key=value` attribute flags |
 | `ParseTraceID()`, `ParseSpanID()` | Validates and parses hex ID strings |
 | `ResolveScopeDefaults()` | Sets scope name/version to defaults if not explicitly provided |
-| `PopulateAttributes()` | Converts a key-value map to `pcommon.Map` with type inference |
+| `FindAttribute()`, `MergeAttributes()` | Attribute lookup and merging utilities for `dash0api.KeyValue` slices |
+| `SeverityNumberToRange()` | Maps OpenTelemetry severity numbers to range labels (INFO, WARN, ERROR, etc.) |
 
 ### `internal/output/` — output formatting
 
@@ -227,12 +229,12 @@ All destructive commands must use this helper instead of implementing their own 
 Used by commands gated behind `--experimental` (`-X`).
 
 ```go
-func (cmd *cobra.Command) RunE(cmd *cobra.Command, args []string) error {
+RunE: func(cmd *cobra.Command, args []string) error {
     if err := experimental.RequireExperimental(cmd); err != nil {
         return err
     }
     // ...
-}
+},
 ```
 
 Call `experimental.RequireExperimental(cmd)` at the start of `RunE` for experimental commands.
