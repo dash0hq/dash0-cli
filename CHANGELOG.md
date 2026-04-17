@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.9.0
+
+
+### New Components
+
+
+- `notification-channels`: Add notification-channels command for managing notification channels (list, get, create, update, delete) (#119)
+  Notification channels are organization-level resources (no --dataset flag).
+  The command uses CRD-enveloped NotificationChannelDefinition types with file-based input.
+  All subcommands are experimental and require the -X flag.
+  
+
 ## 1.8.1
 
 
