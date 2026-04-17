@@ -35,6 +35,7 @@ for script in \
   "${SCRIPT_DIR}/test_synthetic_check_annotations.sh" \
   "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh" \
   "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh" \
+  "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh" \
   "${SCRIPT_DIR}/test_log_roundtrip.sh" \
   "${SCRIPT_DIR}/test_span_roundtrip.sh"; do
 

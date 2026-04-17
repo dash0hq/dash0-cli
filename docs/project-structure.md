@@ -14,6 +14,7 @@
 - `/internal/help`: JSON help rendering for agent mode
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)
 - `/internal/members`: The `members` command group — `members list`, `members invite`, `members remove` (experimental, org-wide, no dataset)
+- `/internal/notificationchannels`: The `notification-channels` command group — `notification-channels list`, `notification-channels get`, `notification-channels create`, `notification-channels update`, `notification-channels delete` (experimental, org-wide, no dataset)
 - `/internal/metrics`: Commands and utilities to retrieve metrics from Dash0
 - `/internal/otlp`: Shared OTLP utilities (key-value pairs, trace/span ID parsing, scope defaults, log severity range constants and number-to-range mapping) used by send and query commands across signal types
 - `/internal/output`: Output format parsing and formatting (table, wide, JSON, YAML)

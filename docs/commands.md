@@ -15,7 +15,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters, experimental |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
-| [Organizational](#organizational-commands) | `teams`, `members` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
 
 **Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
@@ -29,8 +29,9 @@ All are experimental except `metrics instant`.
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
-**Organizational commands** manage entities (teams, members) scoped to the organization, not to a dataset.
+**Organizational commands** manage entities (teams, members, notification channels) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`, no `apply` integration) and are all experimental.
+Notification channels are an exception: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
 
 ## Prerequisites
 
@@ -972,12 +973,147 @@ $ dash0 -X spans send --name "db-query" \
 
 ## Organizational commands
 
-Organizational commands manage entities (teams, members) that are scoped to the organization, not to a dataset.
+Organizational commands manage entities (teams, members, notification channels) that are scoped to the organization, not to a dataset.
 They share a common set of characteristics:
-- Flag-based input (not file-based) — no `-f`, no `--dry-run`, no `apply` integration.
 - No `--dataset` flag.
 - All are experimental and require the `-X` flag.
 - Use `api-url` and `auth-token`.
+
+Most organizational commands use flag-based input.
+Notification channels are an exception: they use file-based input (`-f`) and support `--dry-run`.
+
+### `notification-channels list` (experimental)
+
+List all notification channels in the organization.
+
+```bash
+dash0 -X notification-channels list [-o <format>] [--skip-header] [--column <col>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, `yaml`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only) |
+
+Example:
+
+```bash
+$ dash0 -X notification-channels list
+NAME                  TYPE         ID                  ORIGIN
+Slack Alerts          slack        abc-123-def-456     my-origin
+PagerDuty On-Call     pagerduty    def-456-ghi-789     -
+Email Digest          email_v2     ghi-789-jkl-012     -
+```
+
+Column aliases: `name` / `channel name`, `type` / `channel type`, `id` / `channel id`, `origin`.
+
+Aliases: `ls`
+
+### `notification-channels get` (experimental)
+
+Get a notification channel definition by ID or origin.
+
+```bash
+dash0 -X notification-channels get <id> [-o <format>]
+```
+
+The `<id>` argument can be a notification channel ID or origin.
+
+Example:
+
+```bash
+$ dash0 -X notification-channels get <id>
+Kind:  Dash0NotificationChannel
+Name:  Slack Alerts
+Type:  slack
+ID:    abc-123-def-456
+Origin: my-origin
+```
+
+Use `-o yaml` to get the full CRD definition:
+
+```bash
+$ dash0 -X notification-channels get <id> -o yaml
+kind: Dash0NotificationChannel
+metadata:
+  name: Slack Alerts
+  labels:
+    dash0.com/id: abc-123-def-456
+    dash0.com/origin: my-origin
+spec:
+  type: slack
+  config: ...
+```
+
+### `notification-channels create` (experimental)
+
+Create a notification channel from a YAML or JSON definition file.
+If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
+Otherwise, a new channel is created (POST) and the server assigns an ID.
+
+```bash
+dash0 -X notification-channels create -f <file> [--dry-run]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--dry-run` | Validate without creating |
+
+Examples:
+
+```bash
+# Create from a YAML file
+$ dash0 -X notification-channels create -f channel.yaml
+Notification channel "Slack Alerts" created (id: abc-123).
+
+# Create from stdin
+$ cat channel.yaml | dash0 -X notification-channels create -f -
+
+# Validate without creating
+$ dash0 -X notification-channels create -f channel.yaml --dry-run
+Dry run: notification channel definition is valid
+```
+
+Aliases: `add`
+
+### `notification-channels update` (experimental)
+
+Update an existing notification channel from a YAML or JSON definition file.
+If the ID argument is omitted, the ID is extracted from the file content.
+
+```bash
+dash0 -X notification-channels update [id] -f <file> [--dry-run]
+```
+
+Examples:
+
+```bash
+# Update a notification channel from a file
+$ dash0 -X notification-channels update <id> -f channel.yaml
+
+# Update using the ID from the file
+$ dash0 -X notification-channels update -f channel.yaml
+```
+
+### `notification-channels delete` (experimental)
+
+Delete a notification channel by ID or origin.
+Prompts for confirmation unless `--force` is passed.
+
+```bash
+dash0 -X notification-channels delete <id> [--force]
+```
+
+Example:
+
+```bash
+$ dash0 -X notification-channels delete <id> --force
+Notification channel deleted (id: <id>).
+```
+
+Aliases: `remove`
 
 ### `teams list` (experimental)
 

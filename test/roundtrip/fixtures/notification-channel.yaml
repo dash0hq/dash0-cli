@@ -1,0 +1,13 @@
+kind: Dash0NotificationChannel
+metadata:
+  name: CLI Roundtrip Test Channel
+spec:
+  type: webhook
+  config:
+    url: https://httpbin.org/post
+    method: POST
+  routing:
+    filters:
+      - - key: webhook
+          operator: is
+          value: "true"

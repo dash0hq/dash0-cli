@@ -65,6 +65,14 @@ const (
 	FixtureSyntheticChecksImportSuccess = "syntheticchecks/import_success.json"
 	FixtureSyntheticChecksNotFound      = "syntheticchecks/error_not_found.json"
 
+	// Notification channels fixtures
+	FixtureNotificationChannelsListSuccess   = "notificationchannels/list_success.json"
+	FixtureNotificationChannelsListEmpty     = "notificationchannels/list_empty.json"
+	FixtureNotificationChannelsGetSuccess    = "notificationchannels/get_success.json"
+	FixtureNotificationChannelsCreateSuccess = "notificationchannels/create_success.json"
+	FixtureNotificationChannelsNotFound      = "notificationchannels/error_not_found.json"
+	FixtureNotificationChannelsUnauthorized  = "notificationchannels/error_unauthorized.json"
+
 	// Teams fixtures
 	FixtureTeamsListSuccess   = "teams/list_success.json"
 	FixtureTeamsListEmpty     = "teams/list_empty.json"

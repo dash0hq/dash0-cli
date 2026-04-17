@@ -1,0 +1,19 @@
+{
+  "kind": "Dash0NotificationChannel",
+  "metadata": {
+    "name": "Slack Alerts",
+    "labels": {
+      "dash0.com/id": "new-channel-id-123"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-04-17T10:00:00Z",
+      "dash0.com/updated-at": "2026-04-17T10:00:00Z"
+    }
+  },
+  "spec": {
+    "type": "slack",
+    "config": {
+      "url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+    }
+  }
+}
