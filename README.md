@@ -375,6 +375,22 @@ dash0 -X members invite user@example.com
 dash0 -X members delete <member-id> --force
 ```
 
+### Raw HTTP passthrough (experimental)
+
+The `api` command calls any Dash0 API endpoint directly, reusing the active profile's connection settings.
+It is useful for endpoints that do not yet have a dedicated subcommand.
+
+```bash
+# GET — dataset auto-injected from the active profile
+dash0 -X api /api/signal-to-metrics/configs
+
+# POST with a payload from a file
+dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+
+# Skip dataset injection for organization-level endpoints
+dash0 -X api /api/organization/settings --dataset ""
+```
+
 ### Common settings
 
 | Flag | Short | Env Variable | Description |

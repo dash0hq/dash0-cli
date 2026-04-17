@@ -19,6 +19,7 @@
 - `/internal/otlp`: Shared OTLP utilities (key-value pairs, trace/span ID parsing, scope defaults, log severity range constants and number-to-range mapping) used by send and query commands across signal types
 - `/internal/output`: Output format parsing and formatting (table, wide, JSON, YAML)
 - `/internal/query`: Shared query utilities (filter parsing, timestamp normalization, timestamp formatting) used by query commands across signal types (e.g., `logs query`, `spans query`)
+- `/internal/rawapi`: The experimental `api` command — a raw HTTP passthrough that reuses the active profile's connection settings to call any Dash0 API endpoint
 - `/internal/teams`: The `teams` command group — `teams list`, `teams get`, `teams create`, `teams update`, `teams delete`, `teams add-members`, `teams remove-members` (experimental, org-wide, no dataset)
 - `/internal/testutil`: Test helpers — mock HTTP server, fixture constants
 - `/internal/tracing`: The `spans` and `traces` command groups — `spans send`, `spans query`, `traces get` — plus shared span helpers (kind/status conversions, duration formatting/parsing)

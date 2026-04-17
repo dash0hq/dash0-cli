@@ -122,6 +122,43 @@ func TestResolveDataset_NilWithoutContext(t *testing.T) {
 	assert.Nil(t, result)
 }
 
+func TestNewRawHTTPConfig_DatasetFromEnvWithoutContext(t *testing.T) {
+	t.Setenv("DASH0_API_URL", "https://api.test.dash0.com")
+	t.Setenv("DASH0_AUTH_TOKEN", "auth_test-token-12345")
+	t.Setenv("DASH0_DATASET", "env-dataset")
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
+	cfg, err := NewRawHTTPConfig(context.Background(), "", "")
+	assert.NoError(t, err)
+	assert.Equal(t, "https://api.test.dash0.com", cfg.ApiUrl)
+	assert.Equal(t, "auth_test-token-12345", cfg.AuthToken)
+	assert.Equal(t, "env-dataset", cfg.Dataset)
+}
+
+func TestNewRawHTTPConfig_DatasetFromContext(t *testing.T) {
+	profileCfg := &profiles.Configuration{
+		ApiUrl:    "https://api.test.dash0.com",
+		AuthToken: "auth_test-token-12345",
+		Dataset:   "profile-dataset",
+	}
+	ctx := profiles.WithConfiguration(context.Background(), profileCfg)
+
+	cfg, err := NewRawHTTPConfig(ctx, "", "")
+	assert.NoError(t, err)
+	assert.Equal(t, "profile-dataset", cfg.Dataset)
+}
+
+func TestNewRawHTTPConfig_NoDatasetWhenUnset(t *testing.T) {
+	t.Setenv("DASH0_API_URL", "https://api.test.dash0.com")
+	t.Setenv("DASH0_AUTH_TOKEN", "auth_test-token-12345")
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+	os.Unsetenv("DASH0_DATASET")
+
+	cfg, err := NewRawHTTPConfig(context.Background(), "", "")
+	assert.NoError(t, err)
+	assert.Empty(t, cfg.Dataset)
+}
+
 func TestFormatAPIError_BodyOnSecondLine(t *testing.T) {
 	apiErr := &dash0api.APIError{
 		StatusCode: 400,

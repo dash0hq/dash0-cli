@@ -9,15 +9,16 @@ import (
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
-	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
+	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/members"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
+	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/tracing"
@@ -61,6 +62,7 @@ func init() {
 
 	// Register subcommands
 	rootCmd.AddCommand(apply.NewApplyCmd())
+	rootCmd.AddCommand(rawapi.NewAPICmd())
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
