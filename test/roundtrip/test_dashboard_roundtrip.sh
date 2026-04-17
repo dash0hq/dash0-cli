@@ -27,7 +27,7 @@ fi
 
 # Step 2: List dashboards and find the created asset by name
 echo "--- Step 2: List dashboards and find created asset ---"
-if ! LIST_JSON=$("$DASH0" dashboards list -o json); then
+if ! LIST_JSON=$("$DASH0" dashboards list --all -o json); then
   echo "FAIL: dashboards list -o json failed"
   exit 1
 fi
@@ -69,7 +69,7 @@ fi
 
 # Step 7: Verify deletion
 echo "--- Step 7: Verify deletion ---"
-if ! LIST_JSON=$("$DASH0" dashboards list -o json); then
+if ! LIST_JSON=$("$DASH0" dashboards list --all -o json); then
   echo "FAIL: dashboards list -o json failed"
   exit 1
 fi

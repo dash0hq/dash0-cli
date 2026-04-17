@@ -67,7 +67,7 @@ if ! "$DASH0" synthetic-checks get "$ID" > /dev/null; then
   echo "FAIL: synthetic-checks get '$ID' failed after re-apply"
   exit 1
 fi
-if ! "$DASH0" synthetic-checks list 2>/dev/null | grep -q "$ID"; then
+if ! "$DASH0" synthetic-checks list --all 2>/dev/null | grep -q "$ID"; then
   echo "FAIL: synthetic-checks list does not contain '$ID' after re-apply"
   exit 1
 fi

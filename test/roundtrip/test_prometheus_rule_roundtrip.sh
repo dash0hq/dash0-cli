@@ -24,7 +24,7 @@ fi
 
 # Step 2: List check rules and find the created rule by name.
 echo "--- Step 2: List check rules and find created rule ---"
-LIST_JSON=$("$DASH0" check-rules list -o json)
+LIST_JSON=$("$DASH0" check-rules list --all -o json)
 ID=$(echo "$LIST_JSON" | jq -r --arg name "$ALERT_NAME" '[.[] | select(.name == $name)][0].id // empty')
 if [ -z "$ID" ]; then
   echo "FAIL: Could not find created check rule '$ALERT_NAME' in list"
@@ -108,7 +108,7 @@ if ! echo "$CREATE_OUTPUT" | grep -q "$ALERT_NAME"; then
 fi
 
 # Find the second copy and clean it up.
-LIST_JSON2=$("$DASH0" check-rules list -o json)
+LIST_JSON2=$("$DASH0" check-rules list --all -o json)
 ID2=$(echo "$LIST_JSON2" | jq -r --arg name "$ALERT_NAME" --arg id "$ID" '[.[] | select(.name == $name and .id != $id)][0].id // empty')
 
 # Cleanup.
