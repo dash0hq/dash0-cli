@@ -1,4 +1,6 @@
-.PHONY: build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
+.PHONY: all build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
+
+all: lint test
 
 BUILD_DIR=./build
 BINARY_NAME=dash0

@@ -315,7 +315,7 @@ func TestFiltersToDeeplinkFilters(t *testing.T) {
 		var val dash0api.AttributeFilter_Value
 		require.NoError(t, val.FromAttributeFilterStringValue("my-service"))
 		filters := dash0api.FilterCriteria{
-			{Key: "service.name", Operator: dash0api.AttributeFilterOperatorIs, Value: &val},
+			dash0api.AttributeFilter{Key: "service.name", Operator: dash0api.AttributeFilterOperatorIs, Value: &val},
 		}
 		result := FiltersToDeeplinkFilters(&filters)
 		require.Len(t, result, 1)
@@ -330,7 +330,7 @@ func TestFiltersToDeeplinkFilters(t *testing.T) {
 		require.NoError(t, item2.FromAttributeFilterStringValue("WARN"))
 		items := []dash0api.AttributeFilter_Values_Item{item1, item2}
 		filters := dash0api.FilterCriteria{
-			{Key: "otel.log.severity.range", Operator: dash0api.AttributeFilterOperatorIsOneOf, Values: &items},
+			dash0api.AttributeFilter{Key: "otel.log.severity.range", Operator: dash0api.AttributeFilterOperatorIsOneOf, Values: &items},
 		}
 		result := FiltersToDeeplinkFilters(&filters)
 		require.Len(t, result, 1)
@@ -341,7 +341,7 @@ func TestFiltersToDeeplinkFilters(t *testing.T) {
 
 	t.Run("no-value filter", func(t *testing.T) {
 		filters := dash0api.FilterCriteria{
-			{Key: "error.message", Operator: dash0api.AttributeFilterOperatorIsSet},
+			dash0api.AttributeFilter{Key: "error.message", Operator: dash0api.AttributeFilterOperatorIsSet},
 		}
 		result := FiltersToDeeplinkFilters(&filters)
 		require.Len(t, result, 1)

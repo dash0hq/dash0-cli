@@ -1,0 +1,14 @@
+change_type: new_component
+
+component: notification-channels
+
+note: Add notification-channels command for managing notification channels (list, get, create, update, delete)
+
+issues: [119]
+
+subtext: |
+  Notification channels are organization-level resources (no --dataset flag).
+  The command uses CRD-enveloped NotificationChannelDefinition types with file-based input.
+  All subcommands are experimental and require the -X flag.
+
+change_logs: []

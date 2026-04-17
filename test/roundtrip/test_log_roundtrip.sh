@@ -20,18 +20,29 @@ if ! echo "$SEND_OUTPUT" | grep -q "Log record sent"; then
   exit 1
 fi
 
-# Step 2: Wait for ingestion
-echo "--- Step 2: Waiting 30s for ingestion ---"
-sleep 30
+# Step 2: Wait for ingestion with retry and backoff
+echo "--- Step 2: Waiting for ingestion ---"
+MAX_ATTEMPTS=6
+DELAY=5
+for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+  TABLE_OUTPUT=$("$DASH0" -X logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" 2>/dev/null) || true
+  if echo "$TABLE_OUTPUT" | grep -q "Log round-trip test"; then
+    echo "Log record found after attempt $attempt"
+    break
+  fi
+  if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
+    echo "FAIL: log record not found after $MAX_ATTEMPTS attempts"
+    echo "$TABLE_OUTPUT"
+    exit 1
+  fi
+  echo "Attempt $attempt/$MAX_ATTEMPTS: not yet ingested, retrying in ${DELAY}s..."
+  sleep "$DELAY"
+  DELAY=$((DELAY * 2))
+done
 
-# Step 3: Query in table format and verify the log appears
-echo "--- Step 3: Query logs (table) ---"
-TABLE_OUTPUT=$("$DASH0" -X logs query --from now-5m --filter "test.id is ${UNIQUE_ID}")
+# Step 3: Verify table output
+echo "--- Step 3: Verify logs (table) ---"
 echo "$TABLE_OUTPUT"
-if ! echo "$TABLE_OUTPUT" | grep -q "Log round-trip test"; then
-  echo "FAIL: log record not found in table output"
-  exit 1
-fi
 if ! echo "$TABLE_OUTPUT" | grep -q "INFO"; then
   echo "FAIL: severity INFO not found in table output"
   exit 1
