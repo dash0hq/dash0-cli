@@ -67,7 +67,7 @@ if ! "$DASH0" check-rules get "$ID" > /dev/null; then
   echo "FAIL: check-rules get '$ID' failed after re-apply"
   exit 1
 fi
-if ! "$DASH0" check-rules list 2>/dev/null | grep -q "$ID"; then
+if ! "$DASH0" check-rules list --all 2>/dev/null | grep -q "$ID"; then
   echo "FAIL: check-rules list does not contain '$ID' after re-apply"
   exit 1
 fi

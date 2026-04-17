@@ -24,7 +24,7 @@ fi
 
 # Step 2: List dashboards and find the created asset by name.
 echo "--- Step 2: List dashboards and find created asset ---"
-LIST_JSON=$("$DASH0" dashboards list -o json)
+LIST_JSON=$("$DASH0" dashboards list --all -o json)
 ID=$(echo "$LIST_JSON" | jq -r --arg name "$ASSET_NAME" '[.[] | select(.spec.display.name == $name)][0].metadata.dash0Extensions.id // empty')
 if [ -z "$ID" ]; then
   echo "FAIL: Could not find created dashboard '$ASSET_NAME' in list"
@@ -94,7 +94,7 @@ if ! echo "$CREATE_OUTPUT" | grep -q "$ASSET_NAME"; then
 fi
 
 # Find the second copy and clean it up.
-LIST_JSON2=$("$DASH0" dashboards list -o json)
+LIST_JSON2=$("$DASH0" dashboards list --all -o json)
 ID2=$(echo "$LIST_JSON2" | jq -r --arg name "$ASSET_NAME" --arg id "$ID" '[.[] | select(.spec.display.name == $name and .metadata.dash0Extensions.id != $id)][0].metadata.dash0Extensions.id // empty')
 
 # Cleanup.

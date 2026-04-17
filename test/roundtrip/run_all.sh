@@ -19,25 +19,44 @@ echo
 
 PASSED=0
 FAILED=0
+SKIPPED=0
 FAILURES=()
 
-for script in \
-  "${SCRIPT_DIR}/test_dashboard_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_check_rule_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_synthetic_check_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_view_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_apply_dashboard_idempotency.sh" \
-  "${SCRIPT_DIR}/test_apply_check_rule_idempotency.sh" \
-  "${SCRIPT_DIR}/test_apply_view_idempotency.sh" \
-  "${SCRIPT_DIR}/test_apply_synthetic_check_idempotency.sh" \
-  "${SCRIPT_DIR}/test_dashboard_annotations.sh" \
-  "${SCRIPT_DIR}/test_view_annotations.sh" \
-  "${SCRIPT_DIR}/test_synthetic_check_annotations.sh" \
-  "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_log_roundtrip.sh" \
-  "${SCRIPT_DIR}/test_span_roundtrip.sh"; do
+# API-side round-trip tests only need DASH0_API_URL + DASH0_AUTH_TOKEN.
+API_TESTS=(
+  "${SCRIPT_DIR}/test_dashboard_roundtrip.sh"
+  "${SCRIPT_DIR}/test_check_rule_roundtrip.sh"
+  "${SCRIPT_DIR}/test_synthetic_check_roundtrip.sh"
+  "${SCRIPT_DIR}/test_view_roundtrip.sh"
+  "${SCRIPT_DIR}/test_apply_dashboard_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_check_rule_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_view_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_synthetic_check_idempotency.sh"
+  "${SCRIPT_DIR}/test_dashboard_annotations.sh"
+  "${SCRIPT_DIR}/test_view_annotations.sh"
+  "${SCRIPT_DIR}/test_synthetic_check_annotations.sh"
+  "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh"
+  "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh"
+  "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh"
+)
+
+# OTLP-based round-trip tests additionally need DASH0_OTLP_URL.
+OTLP_TESTS=(
+  "${SCRIPT_DIR}/test_log_roundtrip.sh"
+  "${SCRIPT_DIR}/test_span_roundtrip.sh"
+)
+
+TESTS=("${API_TESTS[@]}")
+OTLP_URL_FROM_PROFILE=$("$DASH0" config show -o json 2>/dev/null | sed -n 's/.*"otlpUrl":[[:space:]]*{[[:space:]]*"value":[[:space:]]*"\([^"]*\)".*/\1/p')
+if [ -n "${DASH0_OTLP_URL:-}" ] || [ -n "$OTLP_URL_FROM_PROFILE" ]; then
+  TESTS+=("${OTLP_TESTS[@]}")
+else
+  echo "Note: DASH0_OTLP_URL is not configured; skipping OTLP round-trip tests."
+  echo
+  SKIPPED=${#OTLP_TESTS[@]}
+fi
+
+for script in "${TESTS[@]}"; do
 
   name="$(basename "$script" .sh)"
   echo "========================================"
@@ -53,7 +72,11 @@ for script in \
 done
 
 echo "========================================"
-echo "Results: $PASSED passed, $FAILED failed"
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "Results: $PASSED passed, $FAILED failed, $SKIPPED skipped"
+else
+  echo "Results: $PASSED passed, $FAILED failed"
+fi
 if [ "$FAILED" -gt 0 ]; then
   echo "Failures:"
   for f in "${FAILURES[@]}"; do

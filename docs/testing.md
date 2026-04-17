@@ -58,4 +58,5 @@ They create assets, read them back, verify the output, and clean up.
 - When adding a new `apply` code path (e.g., a new CRD format), add an idempotency test.
 - When adding annotation support to an asset type, add an annotations test.
 - When adding a new signal command (e.g., `metrics send`), add a send-and-query roundtrip.
-- Register every new test script in the `for` loop in `run_all.sh`.
+- Register every new test script in `run_all.sh` (in `API_TESTS` or `OTLP_TESTS`).
+  CI discovers test scripts automatically by scanning `test/roundtrip/test_*.sh`.

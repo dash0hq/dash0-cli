@@ -27,7 +27,7 @@ fi
 
 # Step 2: List views and find the created asset by name
 echo "--- Step 2: List views and find created asset ---"
-if ! LIST_JSON=$("$DASH0" views list -o json); then
+if ! LIST_JSON=$("$DASH0" views list --all -o json); then
   echo "FAIL: views list -o json failed"
   exit 1
 fi
@@ -69,7 +69,7 @@ fi
 
 # Step 7: Verify deletion
 echo "--- Step 7: Verify deletion ---"
-if ! LIST_JSON=$("$DASH0" views list -o json); then
+if ! LIST_JSON=$("$DASH0" views list --all -o json); then
   echo "FAIL: views list -o json failed"
   exit 1
 fi

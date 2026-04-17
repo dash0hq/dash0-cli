@@ -67,7 +67,7 @@ if ! "$DASH0" views get "$ID" > /dev/null; then
   echo "FAIL: views get '$ID' failed after re-apply"
   exit 1
 fi
-if ! "$DASH0" views list 2>/dev/null | grep -q "$ID"; then
+if ! "$DASH0" views list --all 2>/dev/null | grep -q "$ID"; then
   echo "FAIL: views list does not contain '$ID' after re-apply"
   exit 1
 fi
