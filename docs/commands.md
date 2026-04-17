@@ -6,7 +6,7 @@ For every command, this reference lists the exact syntax, all flags, expected ou
 
 ## Command taxonomy
 
-Every command falls into one of five categories.
+Every command falls into one of six categories.
 Each category has distinct patterns for flags, output, and behavior.
 
 | Category | Commands | Characteristics |
@@ -16,6 +16,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters, experimental |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
+| [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 
 **Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
@@ -32,6 +33,10 @@ They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--r
 **Organizational commands** manage entities (teams, members, notification channels) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`, no `apply` integration) and are all experimental.
 Notification channels are an exception: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+
+**Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
+It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
+It is experimental.
 
 ## Prerequisites
 
@@ -1369,6 +1374,105 @@ Member "<member-id>" removed
 ```
 
 Aliases: `delete`
+
+## Raw HTTP command
+
+### `api` (experimental)
+
+Call any Dash0 API endpoint directly, reusing the active profile's API URL, authentication token, and (by default) dataset.
+Useful for endpoints that do not yet have a dedicated subcommand.
+Requires the `-X` (or `--experimental`) flag.
+
+```bash
+dash0 -X api [METHOD] <path> [flags]
+```
+
+The command is deliberately flag-driven — no positional grammar for headers, query parameters, or body fields.
+Request bodies always come from a file (or stdin) via `-f`.
+Headers are set with `-H`.
+Query parameters are baked into the path.
+
+#### Path
+
+Relative paths must start with `/api/` and are resolved against the profile's `api-url`:
+
+- `dash0 -X api /api/signal-to-metrics/configs` → `<api-url>/api/signal-to-metrics/configs`
+
+Absolute URLs (`http://` or `https://`) are passed through verbatim.
+Query parameters are part of the path:
+
+- `dash0 -X api "/api/signal-to-metrics/configs?limit=50"`
+
+#### Method
+
+The method is a positional argument before the path.
+It is optional, case-insensitive, and defaults to `GET`.
+
+- `dash0 -X api /api/foo` uses `GET`.
+- `dash0 -X api POST /api/foo -f body.json` uses `POST`.
+- `dash0 -X api delete /api/foo/<id>` uses `DELETE`.
+
+Combining `GET` with `-f` is a usage error — use an explicit body-bearing method (`POST`, `PUT`, `PATCH`) when sending a payload.
+
+#### Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Request body from a file, or `-` for stdin. Mutually exclusive with `GET`. |
+| `--header` | `-H` | Request header as `Key: Value` (repeatable). |
+| `--verbose` | `-v` | Print request and response details to stderr (with the `Authorization` header redacted). |
+| `--dataset` | | Dataset to inject as a query parameter. Pass `""` to skip injection. |
+
+#### Authentication
+
+Authentication is managed by the active profile.
+Setting `Authorization` via `-H` is a hard error — remove the header and let the CLI handle it.
+
+#### Dataset injection
+
+The dataset is auto-injected as a `dataset=<value>` query parameter, resolved from the standard precedence chain (flag → environment variable → active profile).
+Pass `--dataset ""` to opt out for endpoints that do not accept a dataset, such as organization-level APIs.
+
+If the path already contains a `dataset=` query parameter and `--dataset` resolves to a non-empty value, the command errors out — remove the value from the path or pass `--dataset ""`.
+
+#### Content-Type
+
+The `Content-Type` header defaults to `application/json` when a body is present.
+Override it via `-H 'Content-Type: <value>'`.
+
+#### Output and errors
+
+The response body is streamed to stdout unchanged.
+Non-2xx responses return a non-zero exit code.
+The response body is still printed so the caller can inspect the error payload.
+
+Use `-v` to see the full request line, outbound headers, request body, response status, and response headers on stderr.
+
+#### Examples
+
+```bash
+# GET — dataset auto-injected from the active profile
+$ dash0 -X api /api/signal-to-metrics/configs
+
+# GET against an organization-level endpoint that does not take a dataset
+$ dash0 -X api /api/organization/settings --dataset ""
+
+# GET with query parameters baked into the path
+$ dash0 -X api "/api/signal-to-metrics/configs?limit=50&enabled=true"
+
+# POST with a payload from a file
+$ dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+
+# POST with a payload from stdin and a custom header
+$ echo '{"name":"my-config","enabled":true}' \
+  | dash0 -X api POST /api/signal-to-metrics/configs -f - -H 'X-Request-Id: abc123'
+
+# DELETE with an explicit dataset override
+$ dash0 -X api delete /api/signal-to-metrics/configs/<id> --dataset production
+
+# Debug a failing request
+$ dash0 -X api POST /api/signal-to-metrics/configs -f config.json -v
+```
 
 ## Common workflows for AI agents
 

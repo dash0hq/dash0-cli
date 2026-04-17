@@ -529,6 +529,32 @@ func SetupTestEnv(t *testing.T) {
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
 }
 
+// CaptureStderr captures stderr during the execution of the given function.
+// It returns the captured output as a string.
+func CaptureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStderr := os.Stderr
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+
+	os.Stderr = w
+
+	fn()
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+
+	return buf.String()
+}
+
 // CaptureStdout captures stdout during the execution of the given function.
 // It returns the captured output as a string.
 func CaptureStdout(t *testing.T, fn func()) string {
