@@ -5,6 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 UNIQUE_ID="roundtrip-test-$(date +%s)-$$"
 TEAM_NAME="Manual Test Team ${UNIQUE_ID}"
+TEAM_ID=""
+
+cleanup() {
+  if [ -n "$TEAM_ID" ]; then
+    echo "--- Cleanup: deleting team $TEAM_ID ---"
+    "$DASH0" -X teams delete "$TEAM_ID" --force 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
 
 echo "=== Team round-trip test ==="
 echo "Team name: $TEAM_NAME"
@@ -73,7 +82,7 @@ echo "Member $MEMBER_EMAIL found in team"
 echo "--- Step 6: Remove member by ID ---"
 REMOVE_OUTPUT=$("$DASH0" -X teams remove-members "$TEAM_ID" "$MEMBER_ID" --force)
 echo "$REMOVE_OUTPUT"
-if ! echo "$REMOVE_OUTPUT" | grep -q "1 member removed"; then
+if ! echo "$REMOVE_OUTPUT" | grep -q "removed from team"; then
   echo "FAIL: remove-members by ID did not succeed"
   exit 1
 fi
@@ -100,12 +109,12 @@ echo "Member $MEMBER_EMAIL found in team"
 echo "--- Step 9: Remove member by email ---"
 REMOVE_EMAIL_OUTPUT=$("$DASH0" -X teams remove-members "$TEAM_ID" "$MEMBER_EMAIL" --force)
 echo "$REMOVE_EMAIL_OUTPUT"
-if ! echo "$REMOVE_EMAIL_OUTPUT" | grep -q "1 member removed"; then
+if ! echo "$REMOVE_EMAIL_OUTPUT" | grep -q "removed from team"; then
   echo "FAIL: remove-members by email did not succeed"
   exit 1
 fi
 
-# Step 10: Delete the team
+# Step 10: Delete the team (also handled by the cleanup trap on failure)
 echo "--- Step 10: Delete team ---"
 if ! "$DASH0" -X teams delete "$TEAM_ID" --force; then
   echo "FAIL: teams delete failed"
@@ -119,5 +128,8 @@ if echo "$LIST_JSON" | jq -e --arg id "$TEAM_ID" '.[] | select(.id == $id)' > /d
   echo "FAIL: team '$TEAM_ID' still exists after deletion"
   exit 1
 fi
+
+# Prevent the trap from trying to delete again.
+TEAM_ID=""
 
 echo "=== Team round-trip test PASSED ==="
