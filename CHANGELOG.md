@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.10.0
+
+
+### New Components
+
+
+- `api`: Add experimental `api` command for raw HTTP calls to the Dash0 API. (#122)
+  The `dash0 -X api` command performs a raw HTTP request against any Dash0 API endpoint,
+  reusing the active profile's API URL, auth token, and (by default) dataset.
+  It is useful for endpoints that do not yet have a dedicated subcommand.
+  
+
+
+### Enhancements
+
+
+- `metrics`: Rework `metrics instant` with new flags and output formats (#45)
+  Add `--promql` flag (replacing the deprecated `--query`), `--filter` for PromQL label matcher generation,
+  `--from` (replacing the deprecated `--time`), `-o csv` output format, `--skip-header`, and `--column` for
+  columnar table and CSV output. The `timestamp` and `value` columns are always included automatically.
+  Deprecated flags (`--query`, `--time`) remain functional for backwards compatibility.
+  
+
+- `logs, spans, traces`: Promote `logs query`, `spans query`, `spans send`, and `traces get` commands to stable (#124)
+  These commands no longer require the `--experimental` (`-X`) flag.
+  
+
 ## 1.9.0
 
 
