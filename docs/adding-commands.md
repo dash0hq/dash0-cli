@@ -16,6 +16,7 @@ See the [command taxonomy](commands.md#command-taxonomy) in @docs/commands.md fo
 | Organizational | Manages organization-level entities (not dataset-scoped) | `internal/teams/` |
 
 If the command does not fit any type, gate it behind `--experimental` (`-X`) so the interface can evolve, and discuss the pattern with the team before implementing.
+When a command is ready for general use, follow the [promoting commands to stable](promoting-commands-to-stable.md) guide to remove the experimental gate.
 
 ## 2. Create the package
 

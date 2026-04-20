@@ -15,7 +15,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/query"
@@ -89,25 +88,25 @@ func newGetCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "get <trace-id>",
-		Short: "[experimental] Get all spans in a trace",
+		Short: "Get all spans in a trace",
 		Long:  `Retrieve all spans belonging to a trace from Dash0.` + internal.CONFIG_HINT,
 		Example: `  # Get all spans in a trace
-  dash0 --experimental traces get <trace-id>
+  dash0 traces get <trace-id>
 
   # Get a trace with a specific time range
-  dash0 --experimental traces get <trace-id> --from now-2h
+  dash0 traces get <trace-id> --from now-2h
 
   # Follow span links to related traces
-  dash0 --experimental traces get <trace-id> --follow-span-links
+  dash0 traces get <trace-id> --follow-span-links
 
   # Follow span links with a custom lookback period
-  dash0 --experimental traces get <trace-id> --follow-span-links 2h
+  dash0 traces get <trace-id> --follow-span-links 2h
 
   # Output as JSON (OTLP/JSON format)
-  dash0 --experimental traces get <trace-id> -o json
+  dash0 traces get <trace-id> -o json
 
   # Show only specific columns
-  dash0 --experimental traces get <trace-id> \
+  dash0 traces get <trace-id> \
       --column timestamp --column duration \
       --column "span name" --column status
 
@@ -144,9 +143,6 @@ func newGetCmd() *cobra.Command {
   NOTE: span events are currently not supported.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runGet(cmd, args[0], flags)
 		},
 	}

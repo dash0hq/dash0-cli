@@ -14,7 +14,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/query"
@@ -83,44 +82,44 @@ func newQueryCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "query",
-		Short: "[experimental] Query log records from Dash0",
+		Short: "Query log records from Dash0",
 		Long:  `Query log records from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
 		Example: `  # Query recent logs (last 15 minutes, up to 50 records)
-  dash0 --experimental logs query
+  dash0 logs query
 
   # Query logs from the last hour
-  dash0 --experimental logs query --from now-1h
+  dash0 logs query --from now-1h
 
   # Filter by service name
-  dash0 --experimental logs query --filter "service.name is my-service"
+  dash0 logs query --filter "service.name is my-service"
 
   # Filter by severity
-  dash0 --experimental logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
+  dash0 logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
 
   # Combine multiple filters
-  dash0 --experimental logs query \
+  dash0 logs query \
       --filter "service.name is my-service" \
       --filter "otel.log.severity.number gte 13" \
       --from now-1h --limit 100
 
   # Use JSON filter criteria copied from the Dash0 UI
-  dash0 --experimental logs query \
+  dash0 logs query \
       --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 
   # Output as CSV for further processing
-  dash0 --experimental logs query -o csv
+  dash0 logs query -o csv
 
   # Output as JSON (OTLP/JSON format)
-  dash0 --experimental logs query -o json --limit 10
+  dash0 logs query -o json --limit 10
 
   # Output as CSV without the header row
-  dash0 --experimental logs query -o csv --skip-header
+  dash0 logs query -o csv --skip-header
 
   # Show only timestamp and body
-  dash0 --experimental logs query --column time --column body
+  dash0 logs query --column time --column body
 
   # Include an arbitrary attribute column
-  dash0 --experimental logs query \
+  dash0 logs query \
       --column time --column severity \
       --column service.name --column body
 
@@ -148,9 +147,6 @@ func newQueryCmd() *cobra.Command {
   Any OTLP attribute key can also be used as a column.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runQuery(cmd, flags)
 		},
 	}

@@ -9,7 +9,6 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -44,37 +43,34 @@ func newSendCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "send",
-		Short: "[experimental] Send a span to Dash0",
+		Short: "Send a span to Dash0",
 		Long:  `Send a span to Dash0 via OTLP.` + internal.CONFIG_HINT,
 		Example: `  # Send a simple span
-  dash0 --experimental spans send --name "my-operation"
+  dash0 spans send --name "my-operation"
 
   # Send a server span with duration
-  dash0 --experimental spans send --name "GET /api/users" \
+  dash0 spans send --name "GET /api/users" \
       --kind SERVER --status-code OK --duration 100ms \
       --resource-attribute service.name=my-service
 
   # Send a span with explicit start and end times
-  dash0 --experimental spans send --name "batch-job" \
+  dash0 spans send --name "batch-job" \
       --kind INTERNAL \
       --start-time 2024-03-15T10:30:00Z \
       --end-time 2024-03-15T10:30:01.500Z
 
   # Send a span with a link to another trace
-  dash0 --experimental spans send --name "process-message" \
+  dash0 spans send --name "process-message" \
       --kind CONSUMER \
       --span-link 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331
 
   # Send a span with parent
-  dash0 --experimental spans send --name "db-query" \
+  dash0 spans send --name "db-query" \
       --kind CLIENT \
       --trace-id 0af7651916cd43dd8448eb211c80319c \
       --parent-span-id b7ad6b7169203331`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runSend(cmd, flags)
 		},
 	}

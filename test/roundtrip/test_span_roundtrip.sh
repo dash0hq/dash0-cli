@@ -12,7 +12,7 @@ echo "Unique ID: $UNIQUE_ID"
 
 # Step 1: Send a span with a unique attribute
 echo "--- Step 1: Send span ---"
-SEND_OUTPUT=$("$DASH0" -X spans send \
+SEND_OUTPUT=$("$DASH0" spans send \
   --name "roundtrip-test-span" \
   --kind SERVER --status-code OK --duration 100ms \
   --resource-attribute service.name=roundtrip-test \
@@ -38,7 +38,7 @@ echo "--- Step 2: Waiting for ingestion ---"
 MAX_ATTEMPTS=6
 DELAY=5
 for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-  TABLE_OUTPUT=$("$DASH0" -X spans query --from now-5m --filter "test.id is ${UNIQUE_ID}" 2>/dev/null) || true
+  TABLE_OUTPUT=$("$DASH0" spans query --from now-5m --filter "test.id is ${UNIQUE_ID}" 2>/dev/null) || true
   if echo "$TABLE_OUTPUT" | grep -q "roundtrip-test-span"; then
     echo "Span found after attempt $attempt"
     break
@@ -63,7 +63,7 @@ fi
 
 # Step 4: Query in CSV format
 echo "--- Step 4: Query spans (csv) ---"
-CSV_OUTPUT=$("$DASH0" -X spans query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o csv)
+CSV_OUTPUT=$("$DASH0" spans query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o csv)
 echo "$CSV_OUTPUT"
 if ! echo "$CSV_OUTPUT" | grep -q "otel.span.start_time"; then
   echo "FAIL: CSV header not found"
@@ -76,7 +76,7 @@ fi
 
 # Step 5: Query in JSON format
 echo "--- Step 5: Query spans (json) ---"
-JSON_OUTPUT=$("$DASH0" -X spans query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o json)
+JSON_OUTPUT=$("$DASH0" spans query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o json)
 if ! echo "$JSON_OUTPUT" | jq -e '.resourceSpans' > /dev/null 2>&1; then
   echo "FAIL: JSON output is not valid OTLP/JSON"
   exit 1
@@ -85,7 +85,7 @@ echo "Valid OTLP/JSON output received"
 
 # Step 6: Retrieve via traces get
 echo "--- Step 6: Retrieve trace ---"
-TRACE_OUTPUT=$("$DASH0" -X traces get "$TRACE_ID" --from now-5m)
+TRACE_OUTPUT=$("$DASH0" traces get "$TRACE_ID" --from now-5m)
 echo "$TRACE_OUTPUT"
 if ! echo "$TRACE_OUTPUT" | grep -q "roundtrip-test-span"; then
   echo "FAIL: span not found in traces get output"

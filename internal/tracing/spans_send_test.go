@@ -24,17 +24,9 @@ func newSpansSendCmd() (*cobra.Command, *cobra.Command) {
 	return root, sendCmd
 }
 
-func TestSendRequiresExperimentalFlag(t *testing.T) {
-	root, _ := newSpansSendCmd()
-	root.SetArgs([]string{"spans", "send", "--name", "test"})
-	err := root.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "experimental command")
-}
-
 func TestSendRequiresName(t *testing.T) {
 	root, _ := newSpansSendCmd()
-	root.SetArgs([]string{"-X", "spans", "send"})
+	root.SetArgs([]string{"spans", "send"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "required flag")
@@ -44,7 +36,7 @@ func TestSendRequiresName(t *testing.T) {
 func TestSendEndTimeAndDurationMutuallyExclusive(t *testing.T) {
 	root, _ := newSpansSendCmd()
 	root.SetArgs([]string{
-		"-X", "spans", "send",
+		"spans", "send",
 		"--name", "test",
 		"--end-time", "2024-03-15T10:30:00Z",
 		"--duration", "100ms",
@@ -56,7 +48,7 @@ func TestSendEndTimeAndDurationMutuallyExclusive(t *testing.T) {
 
 func TestSendInvalidKind(t *testing.T) {
 	root, _ := newSpansSendCmd()
-	root.SetArgs([]string{"-X", "spans", "send", "--name", "test", "--kind", "INVALID"})
+	root.SetArgs([]string{"spans", "send", "--name", "test", "--kind", "INVALID"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown span kind")
@@ -64,7 +56,7 @@ func TestSendInvalidKind(t *testing.T) {
 
 func TestSendInvalidStatusCode(t *testing.T) {
 	root, _ := newSpansSendCmd()
-	root.SetArgs([]string{"-X", "spans", "send", "--name", "test", "--status-code", "BAD"})
+	root.SetArgs([]string{"spans", "send", "--name", "test", "--status-code", "BAD"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown status code")

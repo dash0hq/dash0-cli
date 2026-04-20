@@ -24,24 +24,16 @@ func newTracesGetCmd() (*cobra.Command, *cobra.Command) {
 	return root, getCmd
 }
 
-func TestGetRequiresExperimentalFlag(t *testing.T) {
-	root, _ := newTracesGetCmd()
-	root.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c"})
-	err := root.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "experimental command")
-}
-
 func TestGetRequiresTraceID(t *testing.T) {
 	root, _ := newTracesGetCmd()
-	root.SetArgs([]string{"-X", "traces", "get"})
+	root.SetArgs([]string{"traces", "get"})
 	err := root.Execute()
 	require.Error(t, err)
 }
 
 func TestGetValidatesTraceIDLength(t *testing.T) {
 	root, _ := newTracesGetCmd()
-	root.SetArgs([]string{"-X", "traces", "get", "too-short"})
+	root.SetArgs([]string{"traces", "get", "too-short"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "32 hex characters")
@@ -49,7 +41,7 @@ func TestGetValidatesTraceIDLength(t *testing.T) {
 
 func TestGetValidatesTraceIDHex(t *testing.T) {
 	root, _ := newTracesGetCmd()
-	root.SetArgs([]string{"-X", "traces", "get", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"})
+	root.SetArgs([]string{"traces", "get", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"})
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "valid hex")

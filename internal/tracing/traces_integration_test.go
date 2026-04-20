@@ -39,7 +39,7 @@ func TestGetTrace_Success(t *testing.T) {
 	})
 
 	cmd := newExperimentalTracesCmd()
-	cmd.SetArgs([]string{"-X", "traces", "get", "0af7651916cd43dd8448eb211c80319c",
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
 		"--api-url", server.URL, "--auth-token", testTracesAuthToken})
 
 	var err error
@@ -69,7 +69,7 @@ func TestGetTrace_CsvFormat(t *testing.T) {
 	})
 
 	cmd := newExperimentalTracesCmd()
-	cmd.SetArgs([]string{"-X", "traces", "get", "0af7651916cd43dd8448eb211c80319c",
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
 		"--api-url", server.URL, "--auth-token", testTracesAuthToken, "-o", "csv"})
 
 	var err error
@@ -94,7 +94,7 @@ func TestGetTrace_OtlpJsonFormat(t *testing.T) {
 	})
 
 	cmd := newExperimentalTracesCmd()
-	cmd.SetArgs([]string{"-X", "traces", "get", "0af7651916cd43dd8448eb211c80319c",
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
 		"--api-url", server.URL, "--auth-token", testTracesAuthToken, "-o", "json"})
 
 	var err error
@@ -119,7 +119,7 @@ func TestGetTrace_Unauthorized(t *testing.T) {
 	})
 
 	cmd := newExperimentalTracesCmd()
-	cmd.SetArgs([]string{"-X", "traces", "get", "0af7651916cd43dd8448eb211c80319c",
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
 		"--api-url", server.URL, "--auth-token", "auth_invalid_token"})
 
 	err := cmd.Execute()
@@ -138,7 +138,7 @@ func TestGetTrace_EmptyResult(t *testing.T) {
 	})
 
 	cmd := newExperimentalTracesCmd()
-	cmd.SetArgs([]string{"-X", "traces", "get", "0af7651916cd43dd8448eb211c80319c",
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
 		"--api-url", server.URL, "--auth-token", testTracesAuthToken})
 
 	var err error
@@ -148,4 +148,27 @@ func TestGetTrace_EmptyResult(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "No spans found for this trace.")
+}
+
+func TestGetTrace_BackwardCompatWithExperimentalFlag(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTracesCmd()
+	cmd.SetArgs([]string{"-X", "traces", "get", "0af7651916cd43dd8448eb211c80319c",
+		"--api-url", server.URL, "--auth-token", testTracesAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "GET /api/users")
 }

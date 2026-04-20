@@ -23,26 +23,6 @@ func newSpansQueryCmd() (*cobra.Command, *cobra.Command) {
 	return root, queryCmd
 }
 
-func TestQueryRequiresExperimentalFlag(t *testing.T) {
-	t.Run("without --experimental flag", func(t *testing.T) {
-		root, _ := newSpansQueryCmd()
-		root.SetArgs([]string{"spans", "query"})
-		err := root.Execute()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "experimental command")
-		assert.Contains(t, err.Error(), "--experimental")
-	})
-
-	t.Run("with --experimental flag", func(t *testing.T) {
-		root, _ := newSpansQueryCmd()
-		root.SetArgs([]string{"--experimental", "spans", "query"})
-		err := root.Execute()
-		if err != nil {
-			assert.NotContains(t, err.Error(), "experimental command")
-		}
-	})
-}
-
 func TestSpansQuerySkipHeaderFlag(t *testing.T) {
 	_, queryCmd := newSpansQueryCmd()
 	flag := queryCmd.Flags().Lookup("skip-header")
