@@ -27,7 +27,7 @@ echo "--- Step 2: Waiting for ingestion ---"
 MAX_ATTEMPTS=6
 DELAY=5
 for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-  TABLE_OUTPUT=$("$DASH0" -X logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" 2>/dev/null) || true
+  TABLE_OUTPUT=$("$DASH0" logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" 2>/dev/null) || true
   if echo "$TABLE_OUTPUT" | grep -q "Log round-trip test"; then
     echo "Log record found after attempt $attempt"
     break
@@ -52,7 +52,7 @@ fi
 
 # Step 4: Query in CSV format
 echo "--- Step 4: Query logs (csv) ---"
-CSV_OUTPUT=$("$DASH0" -X logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o csv)
+CSV_OUTPUT=$("$DASH0" logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o csv)
 echo "$CSV_OUTPUT"
 if ! echo "$CSV_OUTPUT" | grep -q "otel.log.time"; then
   echo "FAIL: CSV header not found"
@@ -65,7 +65,7 @@ fi
 
 # Step 5: Query in JSON format
 echo "--- Step 5: Query logs (json) ---"
-JSON_OUTPUT=$("$DASH0" -X logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o json)
+JSON_OUTPUT=$("$DASH0" logs query --from now-5m --filter "test.id is ${UNIQUE_ID}" -o json)
 if ! echo "$JSON_OUTPUT" | jq -e '.resourceLogs' > /dev/null 2>&1; then
   echo "FAIL: JSON output is not valid OTLP/JSON"
   exit 1

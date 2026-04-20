@@ -268,21 +268,17 @@ dash0 logs send "Application started" \
 
 #### Querying logs from Dash0
 
-> [!WARNING]
-> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
-> The command syntax — especially the `--filter` format — may change in future releases.
-
 > [!NOTE]
 > The `dash0 logs query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
 ```bash
-dash0 -X logs query
-dash0 -X logs query --from now-1h --to now --limit 100
-dash0 -X logs query --filter "service.name is my-service"
-dash0 -X logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
-dash0 -X logs query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
-dash0 -X logs query -o csv
-dash0 -X logs query --column time --column service.name --column body
+dash0 logs query
+dash0 logs query --from now-1h --to now --limit 100
+dash0 logs query --filter "service.name is my-service"
+dash0 logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
+dash0 logs query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+dash0 logs query -o csv
+dash0 logs query --column time --column service.name --column body
 ```
 
 The `--filter` flag also accepts JSON filter criteria copied from the Dash0 UI.
@@ -292,52 +288,43 @@ See the [filter syntax reference](docs/commands.md#filter-syntax) for the full l
 
 #### Sending spans to Dash0
 
-> [!WARNING]
-> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
-
 > [!NOTE]
 > The `dash0 spans send` command requires an OTLP URL configured in the active profile, or via the `--otlp-url` flag or the `DASH0_OTLP_URL` environment variable.
 
 ```bash
-dash0 -X spans send --name "GET /api/users" \
+dash0 spans send --name "GET /api/users" \
     --kind SERVER --status-code OK --duration 100ms \
     --resource-attribute service.name=my-service
 ```
 
 #### Querying spans from Dash0
 
-> [!WARNING]
-> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
-
 > [!NOTE]
 > The `dash0 spans query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
 ```bash
-dash0 -X spans query
-dash0 -X spans query --from now-1h --to now --limit 100
-dash0 -X spans query --filter "service.name is my-service"
-dash0 -X spans query --filter "otel.span.status.code is ERROR"
-dash0 -X spans query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
-dash0 -X spans query -o csv
-dash0 -X spans query --column otel.span.start_time --column otel.span.duration --column "span name" --column http.request.method
+dash0 spans query
+dash0 spans query --from now-1h --to now --limit 100
+dash0 spans query --filter "service.name is my-service"
+dash0 spans query --filter "otel.span.status.code is ERROR"
+dash0 spans query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+dash0 spans query -o csv
+dash0 spans query --column otel.span.start_time --column otel.span.duration --column "span name" --column http.request.method
 ```
 
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
 
 #### Getting a trace from Dash0
 
-> [!WARNING]
-> This command is **experimental** and requires the `--experimental` (or `-X`) flag.
-
 > [!NOTE]
 > The `dash0 traces get` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
 ```bash
-dash0 -X traces get <trace-id>
-dash0 -X traces get <trace-id> --from now-2h
-dash0 -X traces get <trace-id> --follow-span-links
-dash0 -X traces get <trace-id> -o json
-dash0 -X traces get <trace-id> --column otel.span.start_time --column otel.span.duration --column "span name" --column otel.span.status.code
+dash0 traces get <trace-id>
+dash0 traces get <trace-id> --from now-2h
+dash0 traces get <trace-id> --follow-span-links
+dash0 traces get <trace-id> -o json
+dash0 traces get <trace-id> --column otel.span.start_time --column otel.span.duration --column "span name" --column otel.span.status.code
 ```
 
 ### Metrics

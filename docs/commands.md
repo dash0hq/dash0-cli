@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `apply` | File-based input, `--dry-run`, five standard subcommands |
-| [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters, experimental |
+| [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
@@ -25,7 +25,6 @@ The `apply` command provides create-or-update semantics across all asset types.
 **Query commands** search and retrieve telemetry signals.
 They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
 Output formats are `table`, `json`, and `csv`.
-All are experimental except `metrics instant`.
 
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
@@ -559,15 +558,13 @@ They share a common set of characteristics:
 - Column flag: `--column` for customizing table/CSV output (see [custom columns](#custom-columns)).
 - Pagination: `--limit`.
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
-- Gated behind `--experimental` (`-X`), except `metrics instant`.
-
-### `logs query` (experimental)
+### `logs query`
 
 Query log records from Dash0.
-Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+Requires `api-url` and `auth-token`.
 
 ```bash
-dash0 -X logs query [flags]
+dash0 logs query [flags]
 ```
 
 | Flag | Default | Description |
@@ -587,50 +584,50 @@ Examples:
 
 ```bash
 # Query recent logs (last 15 minutes, up to 50 records)
-$ dash0 -X logs query
+$ dash0 logs query
 TIMESTAMP                     SEVERITY    BODY
 2026-02-16T09:12:03.456Z      INFO        Application started successfully
 2026-02-16T09:12:04.789Z      ERROR       Connection timeout
 ...
 
 # Query with time range
-$ dash0 -X logs query --from now-1h --to now --limit 100
+$ dash0 logs query --from now-1h --to now --limit 100
 
 # Filter by service
-$ dash0 -X logs query --filter "service.name is my-service"
+$ dash0 logs query --filter "service.name is my-service"
 
 # Filter by severity (errors and above)
-$ dash0 -X logs query --filter "otel.log.severity.number gte 17"
+$ dash0 logs query --filter "otel.log.severity.number gte 17"
 
 # Multiple filters (AND logic)
-$ dash0 -X logs query \
+$ dash0 logs query \
     --filter "service.name is my-service" \
     --filter "otel.log.severity.range is_one_of ERROR WARN"
 
 # Use JSON filter criteria copied from the Dash0 UI
-$ dash0 -X logs query \
+$ dash0 logs query \
     --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 
 # Output as JSON (full OTLP payload)
-$ dash0 -X logs query -o json
+$ dash0 logs query -o json
 
 # Output as CSV (pipe-friendly)
-$ dash0 -X logs query -o csv
+$ dash0 logs query -o csv
 otel.log.time,otel.log.severity.range,otel.log.body
 2026-02-16T09:12:03.456Z,INFO,Application started successfully
 ...
 
 # CSV without header
-$ dash0 -X logs query -o csv --skip-header
+$ dash0 logs query -o csv --skip-header
 ```
 
-### `spans query` (experimental)
+### `spans query`
 
 Query spans from Dash0.
-Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+Requires `api-url` and `auth-token`.
 
 ```bash
-dash0 -X spans query [flags]
+dash0 spans query [flags]
 ```
 
 | Flag | Default | Description |
@@ -649,45 +646,45 @@ Examples:
 
 ```bash
 # Query recent spans (last 15 minutes, up to 50 spans)
-$ dash0 -X spans query
+$ dash0 spans query
 TIMESTAMP                     DURATION    SPAN NAME                                 STATUS    SERVICE NAME                    PARENT ID         TRACE ID                          SPAN LINKS
 2026-02-16T09:12:03.456Z      150ms       GET /api/users                            OK        my-service                                        0af76519...
 2026-02-16T09:12:04.789Z      500ms       POST /api/orders                          ERROR     api-gateway                     b7ad6b7169203331  3d3d3d3d...
 ...
 
 # Query with time range
-$ dash0 -X spans query --from now-1h --to now --limit 100
+$ dash0 spans query --from now-1h --to now --limit 100
 
 # Filter by service
-$ dash0 -X spans query --filter "service.name is my-service"
+$ dash0 spans query --filter "service.name is my-service"
 
 # Filter by span status
-$ dash0 -X spans query --filter "otel.span.status.code is ERROR"
+$ dash0 spans query --filter "otel.span.status.code is ERROR"
 
 # Use JSON filter criteria copied from the Dash0 UI
-$ dash0 -X spans query \
+$ dash0 spans query \
     --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 
 # Output as CSV
-$ dash0 -X spans query -o csv
+$ dash0 spans query -o csv
 otel.span.start_time,otel.span.duration,otel.span.name,otel.span.status.code,service.name,otel.parent.id,otel.trace.id,otel.span.links
 2026-02-16T09:12:03.456Z,150ms,GET /api/users,OK,my-service,,0af76519...,
 ...
 
 # Output as OTLP JSON
-$ dash0 -X spans query -o json --limit 10
+$ dash0 spans query -o json --limit 10
 ```
 
 The `--filter` flag uses the same [filter syntax](#filter-syntax) as `logs query`.
 Common span attribute keys: `service.name`, `otel.span.status.code`, `otel.trace.id`, `otel.span.name`.
 
-### `traces get` (experimental)
+### `traces get`
 
 Retrieve all spans belonging to a trace from Dash0.
-Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+Requires `api-url` and `auth-token`.
 
 ```bash
-dash0 -X traces get <trace-id> [flags]
+dash0 traces get <trace-id> [flags]
 ```
 
 | Flag | Default | Description |
@@ -707,26 +704,26 @@ Examples:
 
 ```bash
 # Get all spans in a trace
-$ dash0 -X traces get <trace-id>
+$ dash0 traces get <trace-id>
 TIMESTAMP                     DURATION    TRACE ID                          SPAN ID           PARENT ID         SPAN NAME                                   STATUS    SERVICE NAME                    SPAN LINKS
 2026-02-16T09:12:03.456Z      200ms       0af7651916cd43dd8448eb211c80319c  b7ad6b7169203331                    GET /api/users                              OK        frontend
 2026-02-16T09:12:03.486Z      150ms       0af7651916cd43dd8448eb211c80319c  00f067aa0ba902b7  b7ad6b7169203331  SELECT * FROM users                         UNSET     frontend
 2026-02-16T09:12:03.641Z      10ms        0af7651916cd43dd8448eb211c80319c  123456789abcdef0  b7ad6b7169203331  serialize response                          UNSET     frontend
 
 # Get a trace with a specific time range
-$ dash0 -X traces get <trace-id> --from now-2h
+$ dash0 traces get <trace-id> --from now-2h
 
 # Follow span links to related traces
-$ dash0 -X traces get <trace-id> --follow-span-links
+$ dash0 traces get <trace-id> --follow-span-links
 
 # Follow span links with a custom lookback period
-$ dash0 -X traces get <trace-id> --follow-span-links 2h
+$ dash0 traces get <trace-id> --follow-span-links 2h
 
 # Output as OTLP JSON
-$ dash0 -X traces get <trace-id> -o json
+$ dash0 traces get <trace-id> -o json
 
 # Output as CSV
-$ dash0 -X traces get <trace-id> -o csv
+$ dash0 traces get <trace-id> -o csv
 otel.trace.id,otel.span.start_time,otel.span.duration,otel.span.id,otel.parent.id,otel.span.name,otel.span.status.code,service.name,otel.span.links
 0af7651916cd43dd8448eb211c80319c,2026-02-16T09:12:03.456Z,200ms,b7ad6b7169203331,,GET /api/users,OK,frontend,
 ...
@@ -823,7 +820,7 @@ For example:
 
 ```bash
 # Paste a JSON array copied from the Dash0 UI
-$ dash0 -X logs query --filter '[
+$ dash0 logs query --filter '[
   {"key": "service.name", "operator": "is", "value": "api"},
   {"key": "otel.log.severity.range", "operator": "is_one_of", "values": ["ERROR", "WARN"]}
 ]'
@@ -867,15 +864,15 @@ When used, the flag replaces the default column set entirely.
 
 ```bash
 # Show only timestamp and body
-dash0 -X logs query --column time --column body
+dash0 logs query --column time --column body
 
 # Include an arbitrary attribute column
-dash0 -X spans query \
+dash0 spans query \
     --column timestamp --column duration \
     --column "span name" --column http.request.method
 
 # Include an arbitrary attribute column by key
-dash0 -X logs query --column time --column service.name --column body
+dash0 logs query --column time --column service.name --column body
 ```
 
 Each command has predefined columns with short aliases.
@@ -980,13 +977,13 @@ $ DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com \
 Log record sent
 ```
 
-### `spans send` (experimental)
+### `spans send`
 
 Send a span to Dash0 via OTLP.
-Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
+Requires `otlp-url` and `auth-token`.
 
 ```bash
-dash0 -X spans send --name <name> [flags]
+dash0 spans send --name <name> [flags]
 ```
 
 | Flag | Default | Description |
@@ -1012,22 +1009,22 @@ Examples:
 
 ```bash
 # Send a simple span
-$ dash0 -X spans send --name "my-operation"
+$ dash0 spans send --name "my-operation"
 Span sent (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
 
 # Send a server span with duration
-$ dash0 -X spans send --name "GET /api/users" \
+$ dash0 spans send --name "GET /api/users" \
     --kind SERVER --status-code OK --duration 100ms \
     --resource-attribute service.name=my-service
 Span sent (trace-id: ..., span-id: ...)
 
 # Send a span with a link to another trace
-$ dash0 -X spans send --name "process-message" \
+$ dash0 spans send --name "process-message" \
     --kind CONSUMER \
     --span-link 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331
 
 # Send a child span with explicit parent
-$ dash0 -X spans send --name "db-query" \
+$ dash0 spans send --name "db-query" \
     --kind CLIENT \
     --trace-id 0af7651916cd43dd8448eb211c80319c \
     --parent-span-id b7ad6b7169203331
@@ -1545,7 +1542,7 @@ export DASH0_DATASET=default
 
 # All commands now work without --api-url/--auth-token flags
 dash0 dashboards list
-dash0 -X logs query --from now-1h
+dash0 logs query --from now-1h
 ```
 
 ### Export an asset, modify it, and re-apply
@@ -1587,7 +1584,7 @@ dash0 logs send "Deployment v2.3.0 completed" \
 ### Query errors in the last hour
 
 ```bash
-dash0 -X logs query \
+dash0 logs query \
     --from now-1h \
     --filter "otel.log.severity.range is_one_of ERROR WARN" \
     --limit 200

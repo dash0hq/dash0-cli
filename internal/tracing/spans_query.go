@@ -14,7 +14,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/query"
@@ -87,43 +86,43 @@ func newQueryCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "query",
-		Short: "[experimental] Query spans from Dash0",
+		Short: "Query spans from Dash0",
 		Long:  `Query spans from Dash0 and display them in various formats.` + internal.CONFIG_HINT,
 		Example: `  # Query recent spans (last 15 minutes, up to 50 records)
-  dash0 --experimental spans query
+  dash0 spans query
 
   # Query spans from the last hour
-  dash0 --experimental spans query --from now-1h
+  dash0 spans query --from now-1h
 
   # Filter by service name
-  dash0 --experimental spans query --filter "service.name is my-service"
+  dash0 spans query --filter "service.name is my-service"
 
   # Filter by span status
-  dash0 --experimental spans query --filter "otel.span.status.code is ERROR"
+  dash0 spans query --filter "otel.span.status.code is ERROR"
 
   # Combine multiple filters
-  dash0 --experimental spans query \
+  dash0 spans query \
       --filter "service.name is my-service" \
       --filter "otel.span.status.code is ERROR" \
       --from now-1h --limit 100
 
   # Use JSON filter criteria copied from the Dash0 UI
-  dash0 --experimental spans query \
+  dash0 spans query \
       --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 
   # Output as CSV for further processing
-  dash0 --experimental spans query -o csv
+  dash0 spans query -o csv
 
   # Output as JSON (OTLP/JSON format)
-  dash0 --experimental spans query -o json --limit 10
+  dash0 spans query -o json --limit 10
 
   # Show only specific columns
-  dash0 --experimental spans query \
+  dash0 spans query \
       --column timestamp --column duration \
       --column "span name" --column status
 
   # Include an arbitrary attribute column
-  dash0 --experimental spans query \
+  dash0 spans query \
       --column timestamp --column duration \
       --column "span name" --column http.request.method
 
@@ -160,9 +159,6 @@ func newQueryCmd() *cobra.Command {
   NOTE: span events are currently not supported.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runQuery(cmd, flags)
 		},
 	}

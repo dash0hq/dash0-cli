@@ -42,7 +42,7 @@ func TestQueryLogs_Success(t *testing.T) {
 	})
 
 	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -70,7 +70,7 @@ func TestQueryLogs_Empty(t *testing.T) {
 	})
 
 	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -92,7 +92,7 @@ func TestQueryLogs_OtlpJsonFormat(t *testing.T) {
 	})
 
 	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "json"})
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "json"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -118,7 +118,7 @@ func TestQueryLogs_CsvFormat(t *testing.T) {
 	})
 
 	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "csv"})
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken, "-o", "csv"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -145,7 +145,7 @@ func TestQueryLogs_WithFilter(t *testing.T) {
 
 	cmd := newExperimentalLogsCmd()
 	cmd.SetArgs([]string{
-		"-X", "logs", "query",
+		"logs", "query",
 		"--api-url", server.URL,
 		"--auth-token", testLogsAuthToken,
 		"--filter", "service.name is my-service",
@@ -183,7 +183,7 @@ func TestQueryLogs_Unauthorized(t *testing.T) {
 	})
 
 	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
 
 	err := cmd.Execute()
 
@@ -195,7 +195,7 @@ func TestQueryLogs_OtlpJsonLimitExceeded(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	cmd := newExperimentalLogsCmd()
-	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", "http://unused", "--auth-token", testLogsAuthToken, "-o", "json", "--limit", "200"})
+	cmd.SetArgs([]string{"logs", "query", "--api-url", "http://unused", "--auth-token", testLogsAuthToken, "-o", "json", "--limit", "200"})
 
 	err := cmd.Execute()
 
@@ -215,7 +215,7 @@ func TestQueryLogs_RequestParams(t *testing.T) {
 
 	cmd := newExperimentalLogsCmd()
 	cmd.SetArgs([]string{
-		"-X", "logs", "query",
+		"logs", "query",
 		"--api-url", server.URL,
 		"--auth-token", testLogsAuthToken,
 		"--from", "now-2h",
@@ -249,4 +249,26 @@ func TestQueryLogs_RequestParams(t *testing.T) {
 	pagination, ok := body["pagination"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, float64(10), pagination["limit"])
+}
+
+func TestQueryLogs_BackwardCompatWithExperimentalFlag(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"-X", "logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Application started successfully")
 }

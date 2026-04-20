@@ -17,6 +17,7 @@ AI agents and CI/CD workflows to perform tasks like creating, updating and delet
 Detailed guidelines are split into focused documents:
 
 - @docs/adding-commands.md — step-by-step guide for adding a new command
+- @docs/promoting-commands-to-stable.md — how to remove the experimental gate from a command
 - @docs/commands.md — full command reference with flags, outputs, and examples
 - @docs/cli-naming-conventions.md — command naming, aliases, asset kind display names
 - @docs/code-style.md — Go style, dependencies, error handling

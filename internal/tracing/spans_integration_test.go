@@ -42,7 +42,7 @@ func TestQuerySpans_Success(t *testing.T) {
 	})
 
 	cmd := newExperimentalSpansCmd()
-	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
+	cmd.SetArgs([]string{"spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -73,7 +73,7 @@ func TestQuerySpans_Empty(t *testing.T) {
 	})
 
 	cmd := newExperimentalSpansCmd()
-	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
+	cmd.SetArgs([]string{"spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -95,7 +95,7 @@ func TestQuerySpans_OtlpJsonFormat(t *testing.T) {
 	})
 
 	cmd := newExperimentalSpansCmd()
-	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken, "-o", "json"})
+	cmd.SetArgs([]string{"spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken, "-o", "json"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -120,7 +120,7 @@ func TestQuerySpans_CsvFormat(t *testing.T) {
 	})
 
 	cmd := newExperimentalSpansCmd()
-	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken, "-o", "csv"})
+	cmd.SetArgs([]string{"spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken, "-o", "csv"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -146,7 +146,7 @@ func TestQuerySpans_WithFilter(t *testing.T) {
 
 	cmd := newExperimentalSpansCmd()
 	cmd.SetArgs([]string{
-		"-X", "spans", "query",
+		"spans", "query",
 		"--api-url", server.URL,
 		"--auth-token", testSpansAuthToken,
 		"--filter", "service.name is my-service",
@@ -183,7 +183,7 @@ func TestQuerySpans_Unauthorized(t *testing.T) {
 	})
 
 	cmd := newExperimentalSpansCmd()
-	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
+	cmd.SetArgs([]string{"spans", "query", "--api-url", server.URL, "--auth-token", "auth_invalid_token"})
 
 	err := cmd.Execute()
 
@@ -195,7 +195,7 @@ func TestQuerySpans_OtlpJsonLimitExceeded(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	cmd := newExperimentalSpansCmd()
-	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", "http://unused", "--auth-token", testSpansAuthToken, "-o", "json", "--limit", "200"})
+	cmd.SetArgs([]string{"spans", "query", "--api-url", "http://unused", "--auth-token", testSpansAuthToken, "-o", "json", "--limit", "200"})
 
 	err := cmd.Execute()
 
@@ -215,7 +215,7 @@ func TestQuerySpans_RequestParams(t *testing.T) {
 
 	cmd := newExperimentalSpansCmd()
 	cmd.SetArgs([]string{
-		"-X", "spans", "query",
+		"spans", "query",
 		"--api-url", server.URL,
 		"--auth-token", testSpansAuthToken,
 		"--from", "now-2h",
@@ -245,4 +245,26 @@ func TestQuerySpans_RequestParams(t *testing.T) {
 	pagination, ok := body["pagination"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, float64(10), pagination["limit"])
+}
+
+func TestQuerySpans_BackwardCompatWithExperimentalFlag(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"-X", "spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "GET /api/users")
 }
