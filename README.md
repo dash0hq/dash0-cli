@@ -396,6 +396,7 @@ dash0 -X api /api/organization/settings --dataset ""
 | `--color` | | `DASH0_COLOR` | Color mode for output: `semantic` (default) or `none`. Ignored when piping output. |
 | `--dataset` | | `DASH0_DATASET` | Override dataset from profile. Use the `identifier`, not `Name`. |
 | `--experimental` | `-X` | | Enable experimental features (required for commands marked `[experimental]`) |
+| `--profile` | | `DASH0_PROFILE` | Use a named profile for this invocation without changing the active profile. |
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
 | | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |

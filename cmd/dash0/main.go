@@ -83,6 +83,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
 	rootCmd.PersistentFlags().String("color", "", `Color mode for output: "semantic" or "none" (env: DASH0_COLOR)`)
 	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
+	rootCmd.PersistentFlags().String("profile", "", "Profile to use for this invocation; overrides the active profile on disk (env: DASH0_PROFILE)")
 }
 
 // newVersionCmd creates a new version command
@@ -147,6 +148,30 @@ func loadConfig() *profiles.Configuration {
 	return cfg
 }
 
+// flagValue returns the value of the named long-form flag in args, or empty
+// string if it is not present. It supports both `--name value` and
+// `--name=value` forms. It stops scanning after "--" (end of flags).
+// This is used before cobra has parsed flags, so we scan manually.
+func flagValue(args []string, name string) string {
+	prefix := "--" + name
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return ""
+		}
+		if arg == prefix {
+			if i+1 < len(args) {
+				return args[i+1]
+			}
+			return ""
+		}
+		if strings.HasPrefix(arg, prefix+"=") {
+			return strings.TrimPrefix(arg, prefix+"=")
+		}
+	}
+	return ""
+}
+
 func resolveColorMode() (colorMode, error) {
 	flagVal, _ := rootCmd.PersistentFlags().GetString("color")
 	raw := flagVal
@@ -197,12 +222,25 @@ func main() {
 		dashcolor.NoColor = true
 	}
 
-	// Always attempt to load configuration. Commands that don't need it
-	// (help, version, config) simply ignore it. Commands that do need it
-	// will fail with a clear error if the required values are missing.
-	if cfg := loadConfig(); cfg != nil {
+	// Resolve the per-invocation profile selector (--profile flag or
+	// DASH0_PROFILE env var) before loading config so the selection flows
+	// into both the loaded configuration and the context consumed by
+	// `config show`.
+	selector := config.ResolveProfileSelector(flagValue(os.Args[1:], "profile"))
+	if selector.IsSet() {
+		cfg, err := config.ResolveConfigurationForProfile(selector.Name)
+		if err != nil {
+			printError(err)
+			os.Exit(1)
+		}
+		ctx = profiles.WithConfiguration(ctx, cfg)
+	} else if cfg := loadConfig(); cfg != nil {
+		// Always attempt to load configuration. Commands that don't need it
+		// (help, version, config) simply ignore it. Commands that do need it
+		// will fail with a clear error if the required values are missing.
 		ctx = profiles.WithConfiguration(ctx, cfg)
 	}
+	ctx = config.WithProfileSelector(ctx, selector)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		printError(err)

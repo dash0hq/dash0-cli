@@ -40,11 +40,21 @@ It is experimental.
 ## Prerequisites
 
 Every command that talks to the Dash0 API or OTLP endpoint needs credentials.
-The CLI resolves configuration in this order (first match wins):
+The CLI resolves each individual setting (`api-url`, `otlp-url`, `auth-token`, `dataset`) in this order (first match wins):
 
 1. Environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`)
 2. CLI flags (`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`)
-3. The active profile (stored in `~/.dash0/`)
+3. The selected profile (see below)
+
+The profile itself is selected in this order (first match wins):
+
+1. `--profile <name>` flag
+2. `DASH0_PROFILE` environment variable
+3. The active profile recorded on disk (set via `config profiles select`, stored in `~/.dash0/`)
+
+Using `--profile` or `DASH0_PROFILE` does not modify the active profile on disk — it only changes which profile is read for the current invocation.
+Passing `--profile ""` or `DASH0_PROFILE=""` is treated as "not set" and falls through to the next step.
+If the selected profile does not exist, the command fails before making any API call with a message listing the available profile names.
 
 Commands that read from the API (asset CRUD, `logs query`, `spans query`, `traces get`, `metrics instant`) require `api-url` and `auth-token`.
 Commands that write via OTLP (`logs send`, `spans send`) require `otlp-url` and `auth-token`.
@@ -59,6 +69,7 @@ These flags are available on every command:
 | `--otlp-url` | | `DASH0_OTLP_URL` | OTLP HTTP endpoint URL |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Authentication token |
 | `--dataset` | | `DASH0_DATASET` | Dataset identifier (not display name) |
+| `--profile` | | `DASH0_PROFILE` | Profile to use for this invocation; overrides the active profile on disk |
 | `--agent-mode` | | `DASH0_AGENT_MODE` | Enable agent mode for AI coding agents (see below) |
 | `--color` | | `DASH0_COLOR` | `semantic` (default) or `none` |
 | `--experimental` | `-X` | | Enable experimental commands |
@@ -196,7 +207,7 @@ Aliases: `remove`
 
 ### `config show`
 
-Display the resolved configuration (active profile + environment variable overrides).
+Display the resolved configuration (selected profile + environment variable overrides).
 
 ```bash
 dash0 config show
@@ -221,6 +232,18 @@ API URL:    http://test    (from DASH0_API_URL environment variable)
 OTLP URL:   https://ingress.us-west-2.aws.dash0.com
 Dataset:    default
 Auth Token: ...ULSzVkM
+```
+
+When a profile is selected via `--profile` or `DASH0_PROFILE`, the `Profile:` line is annotated with the source:
+
+```bash
+$ dash0 --profile prod config show
+Profile:    prod    (from --profile flag)
+...
+
+$ DASH0_PROFILE=prod dash0 config show
+Profile:    prod    (from DASH0_PROFILE environment variable)
+...
 ```
 
 ## Asset CRUD commands

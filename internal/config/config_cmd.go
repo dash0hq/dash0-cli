@@ -29,11 +29,11 @@ func NewConfigCmd() *cobra.Command {
 
 // configShowJSON is the JSON-serializable representation of config show output.
 type configShowJSON struct {
-	Profile   string              `json:"profile"`
-	ApiUrl    *configShowField    `json:"apiUrl"`
-	OtlpUrl   *configShowField    `json:"otlpUrl"`
-	Dataset   *configShowField    `json:"dataset"`
-	AuthToken *configShowField    `json:"authToken"`
+	Profile   *configShowField `json:"profile"`
+	ApiUrl    *configShowField `json:"apiUrl"`
+	OtlpUrl   *configShowField `json:"otlpUrl"`
+	Dataset   *configShowField `json:"dataset"`
+	AuthToken *configShowField `json:"authToken"`
 }
 
 type configShowField struct {
@@ -68,10 +68,7 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
   # Use a different configuration directory
   DASH0_CONFIG_DIR=/tmp/dash0-test dash0 config show`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := profiles.NewStore()
-			if err != nil {
-				return err
-			}
+			profileSelector := ProfileSelectorFromContext(cmd.Context())
 
 			// Check if environment variables are being used
 			envApiUrl := os.Getenv(profiles.EnvApiUrl)
@@ -80,12 +77,26 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 			envDataset := os.Getenv(profiles.EnvDataset)
 
 			profileName := ""
-			activeProfile, err := store.GetActiveProfile()
-			if err == nil && activeProfile != nil {
-				profileName = activeProfile.Name
-			}
+			var config *profiles.Configuration
 
-			config, _ := store.GetActiveConfiguration()
+			if profileSelector.IsSet() {
+				profileName = profileSelector.Name
+				resolved, err := ResolveConfigurationForProfile(profileSelector.Name)
+				if err != nil {
+					return err
+				}
+				config = resolved
+			} else {
+				store, err := profiles.NewStore()
+				if err != nil {
+					return err
+				}
+				activeProfile, err := store.GetActiveProfile()
+				if err == nil && activeProfile != nil {
+					profileName = activeProfile.Name
+				}
+				config, _ = store.GetActiveConfiguration()
+			}
 
 			apiUrl := ""
 			authToken := ""
@@ -108,7 +119,7 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 
 			if useJSON {
 				result := configShowJSON{
-					Profile:   profileName,
+					Profile:   profileField(profileName, profileSelector),
 					ApiUrl:    showField(apiUrl, envApiUrl, profiles.EnvApiUrl),
 					OtlpUrl:   showField(otlpUrl, envOtlpUrl, profiles.EnvOtlpUrl),
 					Dataset:   showField(datasetDisplay, envDataset, profiles.EnvDataset),
@@ -121,10 +132,14 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 
 			fmt.Printf("Profile:    ")
 			if profileName == "" {
-				fmt.Printf("(none)\n")
+				fmt.Printf("(none)")
 			} else {
-				fmt.Printf("%s\n", profileName)
+				fmt.Printf("%s", profileName)
 			}
+			if desc := profileSelector.Source.Description(); desc != "" {
+				fmt.Printf("    (%s)", desc)
+			}
+			fmt.Println()
 
 			if apiUrl != "" {
 				fmt.Printf("API URL:    %s", apiUrl)
@@ -175,6 +190,17 @@ func showField(value, envVar, envName string) *configShowField {
 	f := &configShowField{Value: value}
 	if envVar != "" {
 		f.Source = envName
+	}
+	return f
+}
+
+func profileField(name string, selector ProfileSelector) *configShowField {
+	f := &configShowField{Value: name}
+	switch selector.Source {
+	case ProfileSourceFlag:
+		f.Source = "flag:--profile"
+	case ProfileSourceEnv:
+		f.Source = EnvProfile
 	}
 	return f
 }
