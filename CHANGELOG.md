@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.11.0
+
+
+### New Components
+
+
+- `recording-rules`: Add recording rules commands (create, list, get, update, delete) for managing Prometheus recording rules via the PrometheusRule CRD format. (#126)
+
+
+### Enhancements
+
+
+- `config`: Add `--profile` global flag and `DASH0_PROFILE` environment variable to select a profile per invocation. (#127)
+  The selector overrides the active profile on disk for the current invocation
+  without modifying `~/.dash0/`. Precedence is `--profile` flag → `DASH0_PROFILE`
+  → the active profile. A non-existent profile fails before any API call with a
+  message listing the available profiles. Passing an empty value falls through
+  to the next step. `config show` annotates the `Profile:` line with the source
+  when a selector is in effect.
+  
+
 ## 1.10.0
 
 
