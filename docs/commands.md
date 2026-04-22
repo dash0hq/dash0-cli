@@ -12,13 +12,13 @@ Each category has distinct patterns for flags, output, and behavior.
 | Category | Commands | Characteristics |
 |----------|----------|-----------------|
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 
-**Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks).
+**Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks, recording rules).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
 The `apply` command provides create-or-update semantics across all asset types.
 
@@ -251,7 +251,7 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All four asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`) share the same CRUD subcommands.
+All five asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`) share the same CRUD subcommands.
 The examples below use `dashboards`, but the same patterns apply to every asset type.
 
 ### `list`
@@ -440,6 +440,7 @@ Aliases: `remove`
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | Views | `dash0 views <subcommand>` | |
+| Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 
 ### `apply`
 
@@ -554,6 +555,24 @@ metadata:
 spec:
   url: https://api.example.com/health
   interval: 60s
+```
+
+Recording rule (PrometheusRule CRD format):
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: My Recording Rules
+  labels:
+    dash0.com/id: e5f6a7b8-9012-34ef-0123-567890abcdef
+spec:
+  groups:
+    - name: cpu-averages
+      interval: 1m
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
 ```
 
 Multi-document file (separated by `---`):

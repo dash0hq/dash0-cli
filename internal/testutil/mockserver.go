@@ -73,6 +73,13 @@ const (
 	FixtureNotificationChannelsNotFound      = "notificationchannels/error_not_found.json"
 	FixtureNotificationChannelsUnauthorized  = "notificationchannels/error_unauthorized.json"
 
+	// Recording rules fixtures
+	FixtureRecordingRulesListSuccess   = "recordingrules/list_success.json"
+	FixtureRecordingRulesListEmpty     = "recordingrules/list_empty.json"
+	FixtureRecordingRulesGetSuccess    = "recordingrules/get_success.json"
+	FixtureRecordingRulesCreateSuccess = "recordingrules/create_success.json"
+	FixtureRecordingRulesNotFound      = "recordingrules/error_not_found.json"
+
 	// Teams fixtures
 	FixtureTeamsListSuccess   = "teams/list_success.json"
 	FixtureTeamsListEmpty     = "teams/list_empty.json"
@@ -490,6 +497,47 @@ func (m *MockServer) WithSyntheticChecksUpdate(fixture string) *MockServer {
 // WithSyntheticChecksDelete sets up the mock server to accept synthetic check deletion.
 func (m *MockServer) WithSyntheticChecksDelete() *MockServer {
 	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`), MockResponse{
+		StatusCode: http.StatusNoContent,
+	})
+}
+
+// WithRecordingRulesList sets up the mock server to return a list of recording rules.
+func (m *MockServer) WithRecordingRulesList(fixture string) *MockServer {
+	return m.On(http.MethodGet, "/api/recording-rules", MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+	})
+}
+
+// WithRecordingRulesGet sets up the mock server to return a recording rule by ID.
+func (m *MockServer) WithRecordingRulesGet(fixture string) *MockServer {
+	return m.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+	})
+}
+
+// WithRecordingRulesCreate sets up the mock server to accept recording rule creation.
+func (m *MockServer) WithRecordingRulesCreate(fixture string) *MockServer {
+	return m.On(http.MethodPost, "/api/recording-rules", MockResponse{
+		StatusCode: http.StatusCreated,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithRecordingRulesUpdate sets up the mock server to accept recording rule updates.
+func (m *MockServer) WithRecordingRulesUpdate(fixture string) *MockServer {
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixture,
+		Validator:  RequireHeaders,
+	})
+}
+
+// WithRecordingRulesDelete sets up the mock server to accept recording rule deletion.
+func (m *MockServer) WithRecordingRulesDelete() *MockServer {
+	return m.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), MockResponse{
 		StatusCode: http.StatusNoContent,
 	})
 }

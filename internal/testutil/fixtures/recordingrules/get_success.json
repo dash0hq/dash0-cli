@@ -1,0 +1,31 @@
+{
+  "apiVersion": "monitoring.coreos.com/v1",
+  "kind": "PrometheusRule",
+  "metadata": {
+    "name": "CPU Usage Average",
+    "labels": {
+      "dash0.com/id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "dash0.com/dataset": "default",
+      "dash0.com/origin": "",
+      "dash0.com/version": "3"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-01-15T10:30:00Z",
+      "dash0.com/updated-at": "2026-01-20T14:45:00Z"
+    }
+  },
+  "spec": {
+    "groups": [
+      {
+        "name": "cpu-averages",
+        "interval": "1m",
+        "rules": [
+          {
+            "record": "instance:cpu_usage:avg5m",
+            "expr": "avg without(cpu) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m]))"
+          }
+        ]
+      }
+    ]
+  }
+}

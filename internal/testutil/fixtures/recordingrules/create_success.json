@@ -1,0 +1,24 @@
+{
+  "apiVersion": "monitoring.coreos.com/v1",
+  "kind": "PrometheusRule",
+  "metadata": {
+    "name": "CPU Usage Average",
+    "labels": {
+      "dash0.com/id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "dash0.com/dataset": "default"
+    }
+  },
+  "spec": {
+    "groups": [
+      {
+        "name": "cpu-averages",
+        "rules": [
+          {
+            "record": "instance:cpu_usage:avg5m",
+            "expr": "avg without(cpu) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m]))"
+          }
+        ]
+      }
+    ]
+  }
+}

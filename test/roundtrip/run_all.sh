@@ -36,6 +36,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_view_annotations.sh"
   "${SCRIPT_DIR}/test_synthetic_check_annotations.sh"
   "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh"
+  "${SCRIPT_DIR}/test_recording_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh"
   "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh"
   "${SCRIPT_DIR}/test_metrics_instant_roundtrip.sh"

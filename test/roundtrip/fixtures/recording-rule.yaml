@@ -1,0 +1,11 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: Roundtrip Test Recording Rule
+spec:
+  groups:
+    - name: roundtrip-test-group
+      interval: 1m
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
