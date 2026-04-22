@@ -1,0 +1,52 @@
+[
+  {
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "PrometheusRule",
+    "metadata": {
+      "name": "CPU Usage Average",
+      "labels": {
+        "dash0.com/id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "dash0.com/dataset": "default",
+        "dash0.com/origin": ""
+      }
+    },
+    "spec": {
+      "groups": [
+        {
+          "name": "cpu-averages",
+          "rules": [
+            {
+              "record": "instance:cpu_usage:avg5m",
+              "expr": "avg without(cpu) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m]))"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "PrometheusRule",
+    "metadata": {
+      "name": "Request Rate Summary",
+      "labels": {
+        "dash0.com/id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+        "dash0.com/dataset": "default",
+        "dash0.com/origin": ""
+      }
+    },
+    "spec": {
+      "groups": [
+        {
+          "name": "request-rates",
+          "rules": [
+            {
+              "record": "service:http_requests:rate5m",
+              "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

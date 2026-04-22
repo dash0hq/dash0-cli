@@ -19,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
+	"github.com/dash0hq/dash0-cli/internal/recordingrules"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/tracing"
@@ -70,6 +71,7 @@ func init() {
 	rootCmd.AddCommand(members.NewMembersCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
+	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())
 	rootCmd.AddCommand(tracing.NewSpansCmd())

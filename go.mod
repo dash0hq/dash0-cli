@@ -3,7 +3,7 @@ module github.com/dash0hq/dash0-cli
 go 1.25.1
 
 require (
-	github.com/dash0hq/dash0-api-client-go v1.9.0
+	github.com/dash0hq/dash0-api-client-go v1.9.2-0.20260422220915-d4cc63269132
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/spf13/cobra v1.8.0
