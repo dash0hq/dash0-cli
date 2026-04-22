@@ -1,0 +1,17 @@
+change_type: enhancement
+
+component: config
+
+note: Add `--profile` global flag and `DASH0_PROFILE` environment variable to select a profile per invocation.
+
+issues: [127]
+
+subtext: |
+  The selector overrides the active profile on disk for the current invocation
+  without modifying `~/.dash0/`. Precedence is `--profile` flag → `DASH0_PROFILE`
+  → the active profile. A non-existent profile fails before any API call with a
+  message listing the available profiles. Passing an empty value falls through
+  to the next step. `config show` annotates the `Profile:` line with the source
+  when a selector is in effect.
+
+change_logs: []

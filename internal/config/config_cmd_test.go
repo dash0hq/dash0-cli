@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -846,5 +847,230 @@ func TestActivateProfileAlias(t *testing.T) {
 
 	if activeProfile.Name != "test2" {
 		t.Errorf("Expected active profile name test2, got %s", activeProfile.Name)
+	}
+}
+
+// executeCommandWithContext is like executeCommand but runs the command with
+// a caller-supplied context. It is used by tests that need to seed the
+// profile selector into the context.
+func executeCommandWithContext(ctx context.Context, root *cobra.Command, args ...string) (string, error) {
+	stdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	root.SetArgs(args)
+	execErr := root.ExecuteContext(ctx)
+
+	w.Close()
+	os.Stdout = stdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+
+	return buf.String(), execErr
+}
+
+// TestShowCmdProfileSelectorFlag verifies that config show uses the profile
+// selected via the --profile flag (seeded into the context) and annotates
+// the source on the Profile: line.
+func TestShowCmdProfileSelectorFlag(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []profiles.Profile{
+		{
+			Name: "dev",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-dev.example.com",
+				AuthToken: "dev_token",
+			},
+		},
+		{
+			Name: "prod",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-prod.example.com",
+				AuthToken: "prod_token",
+			},
+		},
+	}
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	ctx := WithProfileSelector(context.Background(), ProfileSelector{
+		Name:   "prod",
+		Source: ProfileSourceFlag,
+	})
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	output, err := executeCommandWithContext(ctx, rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Profile:    prod    (from --profile flag)")) {
+		t.Errorf("Expected 'Profile:    prod    (from --profile flag)', got:\n%s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("https://api-prod.example.com")) {
+		t.Errorf("Expected prod api url in output, got:\n%s", output)
+	}
+}
+
+// TestShowCmdProfileSelectorEnv verifies that config show annotates the
+// source with the environment variable name when selected via DASH0_PROFILE.
+func TestShowCmdProfileSelectorEnv(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []profiles.Profile{
+		{
+			Name: "dev",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-dev.example.com",
+				AuthToken: "dev_token",
+			},
+		},
+		{
+			Name: "prod",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-prod.example.com",
+				AuthToken: "prod_token",
+			},
+		},
+	}
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	ctx := WithProfileSelector(context.Background(), ProfileSelector{
+		Name:   "prod",
+		Source: ProfileSourceEnv,
+	})
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	output, err := executeCommandWithContext(ctx, rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("Profile:    prod    (from DASH0_PROFILE environment variable)")) {
+		t.Errorf("Expected env annotation, got:\n%s", output)
+	}
+}
+
+// TestShowCmdProfileSelectorUnknown verifies that config show returns the
+// profile-not-found error when the selector points at a missing profile.
+func TestShowCmdProfileSelectorUnknown(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []profiles.Profile{
+		{
+			Name: "dev",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-dev.example.com",
+				AuthToken: "dev_token",
+			},
+		},
+	}
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	ctx := WithProfileSelector(context.Background(), ProfileSelector{
+		Name:   "typo",
+		Source: ProfileSourceFlag,
+	})
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	_, err := executeCommandWithContext(ctx, rootCmd, "config", "show")
+	if err == nil {
+		t.Fatal("Expected error for unknown profile selector, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte(`profile "typo" does not exist`)) {
+		t.Errorf("Expected profile-not-exist error, got: %v", err)
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("dev")) {
+		t.Errorf("Expected available profiles list, got: %v", err)
+	}
+}
+
+// TestShowCmdProfileSelectorJSONSource verifies that JSON output exposes
+// the source field when a profile is selected via --profile.
+func TestShowCmdProfileSelectorJSONSource(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []profiles.Profile{
+		{
+			Name: "prod",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-prod.example.com",
+				AuthToken: "prod_token",
+			},
+		},
+	}
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "prod")
+
+	ctx := WithProfileSelector(context.Background(), ProfileSelector{
+		Name:   "prod",
+		Source: ProfileSourceFlag,
+	})
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	output, err := executeCommandWithContext(ctx, rootCmd, "config", "show", "-o", "json")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var parsed configShowJSON
+	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
+		t.Fatalf("Failed to parse JSON output: %v\nOutput: %s", err, output)
+	}
+
+	if parsed.Profile == nil {
+		t.Fatal("Expected profile field in JSON output")
+	}
+	if parsed.Profile.Value != "prod" {
+		t.Errorf("Expected profile value 'prod', got %q", parsed.Profile.Value)
+	}
+	if parsed.Profile.Source != "flag:--profile" {
+		t.Errorf("Expected profile source 'flag:--profile', got %q", parsed.Profile.Source)
+	}
+}
+
+// TestShowCmdNoSelectorNoAnnotation verifies that the Profile line is not
+// annotated when no selector is set, preserving existing behavior.
+func TestShowCmdNoSelectorNoAnnotation(t *testing.T) {
+	configDir := setupTestConfigDir(t)
+
+	testProfiles := []profiles.Profile{
+		{
+			Name: "dev",
+			Configuration: profiles.Configuration{
+				ApiUrl:    "https://api-dev.example.com",
+				AuthToken: "dev_token",
+			},
+		},
+	}
+	createTestProfilesFile(t, configDir, testProfiles)
+	setActiveProfile(t, configDir, "dev")
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	output, err := executeCommand(rootCmd, "config", "show")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if bytes.Contains([]byte(output), []byte("(from --profile")) ||
+		bytes.Contains([]byte(output), []byte("(from DASH0_PROFILE")) {
+		t.Errorf("Did not expect profile source annotation, got:\n%s", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Profile:    dev\n")) {
+		t.Errorf("Expected unannotated Profile: dev line, got:\n%s", output)
 	}
 }

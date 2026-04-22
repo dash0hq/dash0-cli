@@ -38,3 +38,30 @@ func TestRootCommandExecution(t *testing.T) {
 		t.Errorf("Help output did not contain expected content")
 	}
 }
+
+// TestFlagValue covers the manual flag scanning used before cobra parses flags.
+func TestFlagValue(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		flag string
+		want string
+	}{
+		{"not present", []string{"foo", "bar"}, "profile", ""},
+		{"space-separated", []string{"--profile", "prod", "cmd"}, "profile", "prod"},
+		{"equals form", []string{"--profile=prod", "cmd"}, "profile", "prod"},
+		{"value missing at end", []string{"--profile"}, "profile", ""},
+		{"empty equals value", []string{"--profile=", "cmd"}, "profile", ""},
+		{"stops at --", []string{"--", "--profile", "prod"}, "profile", ""},
+		{"does not match prefix only", []string{"--profiled", "prod"}, "profile", ""},
+		{"first match wins", []string{"--profile", "first", "--profile", "second"}, "profile", "first"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := flagValue(tc.args, tc.flag)
+			if got != tc.want {
+				t.Errorf("flagValue(%v, %q) = %q, want %q", tc.args, tc.flag, got, tc.want)
+			}
+		})
+	}
+}
