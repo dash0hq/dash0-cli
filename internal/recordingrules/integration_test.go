@@ -4,7 +4,10 @@ package recordingrules
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -17,6 +20,7 @@ const (
 	fixtureListSuccess    = "recordingrules/list_success.json"
 	fixtureListEmpty      = "recordingrules/list_empty.json"
 	fixtureGetSuccess     = "recordingrules/get_success.json"
+	fixtureCreateSuccess  = "recordingrules/create_success.json"
 	fixtureUnauthorized   = "dashboards/error_unauthorized.json"
 )
 
@@ -213,4 +217,117 @@ func TestDeleteRecordingRule_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "deleted")
+}
+
+func TestListRecordingRules_DatasetQueryParam(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathRecordingRules, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureListEmpty,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewRecordingRulesCmd()
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "--dataset", "my-dataset"})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	req := server.LastRequest()
+	require.NotNil(t, req)
+	assert.Equal(t, http.MethodGet, req.Method)
+	assert.Equal(t, apiPathRecordingRules, req.Path)
+	assert.Contains(t, req.Query, "dataset=my-dataset")
+	assert.True(t, strings.HasPrefix(req.Header.Get("Authorization"), "Bearer "))
+}
+
+func TestCreateRecordingRule_DatasetQueryParam(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathRecordingRules, testutil.MockResponse{
+		StatusCode: http.StatusCreated,
+		BodyFile:   fixtureCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "rule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: Test Rule
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := NewRecordingRulesCmd()
+	cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken, "--dataset", "my-dataset"})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	req := server.LastRequest()
+	require.NotNil(t, req)
+	assert.Equal(t, http.MethodPost, req.Method)
+	assert.Contains(t, req.Query, "dataset=my-dataset")
+}
+
+func TestUpdateRecordingRule_DatasetQueryParam(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "rule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: CPU Usage Average
+  labels:
+    dash0.com/id: f47ac10b-58cc-4372-a567-0e02b2c3d479
+spec:
+  groups:
+    - name: cpu-averages
+      interval: 1m
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := NewRecordingRulesCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken, "--dataset", "my-dataset"})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	req := server.LastRequest()
+	require.NotNil(t, req)
+	assert.Equal(t, http.MethodPut, req.Method)
+	assert.Contains(t, req.Query, "dataset=my-dataset")
 }
