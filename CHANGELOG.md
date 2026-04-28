@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.11.1
+
+
+### Bug Fixes
+
+
+- `recording-rules`: Fix recording rules create and update not passing the dataset as a query parameter (#130)
+  The `--dataset` flag and profile dataset were silently ignored for `recording-rules create` and `recording-rules update`.
+  Updated `dash0-api-client-go` to v1.11.1 which passes the dataset as a query parameter.
+  
+
 ## 1.11.0
 
 
