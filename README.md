@@ -252,6 +252,17 @@ dash0 views update [id] -f view.yaml
 dash0 views delete <id> [--force]
 ```
 
+### Spam filters
+
+```bash
+dash0 spam-filters list
+dash0 spam-filters get <id>
+dash0 spam-filters get <id> -o yaml
+dash0 spam-filters create -f filter.yaml
+dash0 spam-filters update [id] -f filter.yaml
+dash0 spam-filters delete <id> [--force]
+```
+
 ### Logging
 
 #### Sending logs to Dash0

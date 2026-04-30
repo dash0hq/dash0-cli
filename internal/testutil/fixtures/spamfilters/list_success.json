@@ -1,0 +1,62 @@
+{
+  "spamFilters": [
+    {
+      "kind": "Dash0SpamFilter",
+      "metadata": {
+        "name": "Drop noisy health checks",
+        "labels": {
+          "dash0.com/id": "00000000-0000-0000-0000-000000000001",
+          "dash0.com/origin": "api-00000000-0000-0000-0000-000000000099",
+          "dash0.com/dataset": "default",
+          "dash0.com/source": "api"
+        },
+        "annotations": {
+          "dash0.com/enabled": "true"
+        }
+      },
+      "spec": {
+        "contexts": ["log"],
+        "filter": [
+          {
+            "key": "k8s.namespace.name",
+            "value": {
+              "stringValue": {
+                "operator": "equals",
+                "comparisonValue": "kube-system"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "Dash0SpamFilter",
+      "metadata": {
+        "name": "Drop debug spans",
+        "labels": {
+          "dash0.com/id": "00000000-0000-0000-0000-000000000002",
+          "dash0.com/origin": "api-00000000-0000-0000-0000-000000000098",
+          "dash0.com/dataset": "default",
+          "dash0.com/source": "api"
+        },
+        "annotations": {
+          "dash0.com/enabled": "true"
+        }
+      },
+      "spec": {
+        "contexts": ["span"],
+        "filter": [
+          {
+            "key": "otel.span.name",
+            "value": {
+              "stringValue": {
+                "operator": "starts_with",
+                "comparisonValue": "debug-"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

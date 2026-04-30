@@ -1,0 +1,6 @@
+{
+  "type": "not-found",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "Spam filter not found"
+}

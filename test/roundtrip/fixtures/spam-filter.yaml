@@ -1,0 +1,14 @@
+kind: Dash0SpamFilter
+metadata:
+  name: Drop noisy health checks
+  annotations:
+    dash0.com/enabled: "true"
+spec:
+  contexts:
+    - log
+  filter:
+    - key: "k8s.namespace.name"
+      value:
+        stringValue:
+          operator: "equals"
+          comparisonValue: "kube-system"
