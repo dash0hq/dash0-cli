@@ -5,8 +5,8 @@ github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiE
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
 github.com/bmatcuk/doublestar v1.1.1/go.mod h1:UD6OnuiIn0yFxxA2le/rnRU1G4RaI4UvFv1sNto9p6w=
 github.com/cpuguy83/go-md2man/v2 v2.0.3/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
-github.com/dash0hq/dash0-api-client-go v1.11.1 h1:qe+zTJrG+0iE3JZAUNsTjkaeoSP7JBu+xu8XaUpXi6g=
-github.com/dash0hq/dash0-api-client-go v1.11.1/go.mod h1:OB1lQ5AKhszeNlNDt+jKgmrzt7iIo/Hqx4ScxiRfoHY=
+github.com/dash0hq/dash0-api-client-go v1.12.0 h1:VExegBuiVmALYP4q/e3HA7d22u/WzjNu7XEVjl7IOrc=
+github.com/dash0hq/dash0-api-client-go v1.12.0/go.mod h1:OB1lQ5AKhszeNlNDt+jKgmrzt7iIo/Hqx4ScxiRfoHY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

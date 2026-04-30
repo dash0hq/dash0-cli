@@ -87,6 +87,13 @@ const (
 	FixtureTeamsCreateSuccess = "teams/create_success.json"
 	FixtureTeamsNotFound      = "teams/error_not_found.json"
 	FixtureTeamsUnauthorized  = "teams/error_unauthorized.json"
+
+	// Spam filters fixtures
+	FixtureSpamFiltersListSuccess   = "spamfilters/list_success.json"
+	FixtureSpamFiltersListEmpty     = "spamfilters/list_empty.json"
+	FixtureSpamFiltersGetSuccess    = "spamfilters/get_success.json"
+	FixtureSpamFiltersCreateSuccess = "spamfilters/create_success.json"
+	FixtureSpamFiltersNotFound      = "spamfilters/error_not_found.json"
 )
 
 // FixturesDir returns the absolute path to the fixtures directory.
