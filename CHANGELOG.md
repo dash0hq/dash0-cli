@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.12.0
+
+
+### New Components
+
+
+- `spam-filters`: Add spam-filters command with list, get, create, update, and delete subcommands (#132)
+  Manage dataset-scoped spam filters via `dash0 spam-filters <subcommand>`.
+  Supports file-based input (`-f`), dry-run validation, and all standard output formats (table, wide, json, yaml, csv).
+  
+
 ## 1.11.1
 
 
