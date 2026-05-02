@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.12.1
+
+
+### Bug Fixes
+
+
+- `spam-filters`: Fix spam filter FilterCriteria format in fixtures and tests to match the Dash0 API schema (#134)
+  The filter criteria now use the correct flat format with `operator` and `value` fields instead of the nested `stringValue` format.
+  
+
 ## 1.12.0
 
 
