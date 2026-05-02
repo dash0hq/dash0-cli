@@ -273,10 +273,8 @@ spec:
     - log
   filter:
     - key: "k8s.namespace.name"
-      value:
-        stringValue:
-          operator: "equals"
-          comparisonValue: "kube-system"
+      operator: "is"
+      value: "kube-system"
 `), 0644)
 	require.NoError(t, err)
 
@@ -321,10 +319,8 @@ spec:
     - log
   filter:
     - key: "k8s.namespace.name"
-      value:
-        stringValue:
-          operator: "equals"
-          comparisonValue: "kube-system"
+      operator: "is"
+      value: "kube-system"
 `), 0644)
 	require.NoError(t, err)
 

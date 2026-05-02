@@ -19,12 +19,8 @@
         "filter": [
           {
             "key": "k8s.namespace.name",
-            "value": {
-              "stringValue": {
-                "operator": "equals",
-                "comparisonValue": "kube-system"
-              }
-            }
+            "operator": "is",
+            "value": "kube-system"
           }
         ]
       }
@@ -48,12 +44,8 @@
         "filter": [
           {
             "key": "otel.span.name",
-            "value": {
-              "stringValue": {
-                "operator": "starts_with",
-                "comparisonValue": "debug-"
-              }
-            }
+            "operator": "starts_with",
+            "value": "debug-"
           }
         ]
       }
