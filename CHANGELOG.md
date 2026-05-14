@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.12.2
+
+
+### Enhancements
+
+
+- `apply`: Accept `Dash0NotificationChannel` and recording-rule `PrometheusRule` documents in `dash0 apply` (#137)
+  `dash0 apply` now accepts `Dash0NotificationChannel` documents and dispatches them to the
+  organization-level notification-channels endpoint without a dataset query parameter.
+  PrometheusRule CRDs containing recording rules (entries with `record:`) are now dispatched to the
+  recording-rule endpoint as a single PrometheusRule CRD; mixed CRDs that contain both alerting and
+  recording rules are dispatched to both endpoints in one apply. Previously, recording rules in a
+  PrometheusRule CRD were silently dropped during apply. A CRD with no rules of either kind now
+  fails validation up front with a clear error. The unified diff that apply prints for notification
+  channels and recording rules now strips server-managed fields (`dash0.com/created-at`,
+  `dash0.com/updated-at`, and similar) so the second apply on unchanged input renders as
+  "no changes".
+  
+
+- `spam-filters`: Accept v1alpha2 schema in spam-filters create/update/get and in apply (#136)
+  The CLI now detects the `apiVersion` on spam filter documents (`v1alpha1` or `v1alpha2`) and routes to the
+  matching API endpoint. `v1alpha2` uses `spec.context` (a single signal type) instead of `spec.contexts`
+  (an array). A missing `apiVersion` defaults to `v1alpha1`. An unknown value is rejected with a clear
+  error listing the supported versions. `dash0 apply` accepts `Dash0SpamFilter` documents in either
+  schema and rejects unknown `apiVersion` values during validation, before any document is applied.
+  
+
+
+### Bug Fixes
+
+
+- `client`: include the parsed server message, HTTP status, and trace ID in every API error printed by the CLI (#139)
+  Errors now show the human-readable message extracted from the Dash0 API response (instead of dumping the raw JSON body).
+  404 responses now also surface the HTTP status and trace ID so support can correlate to server-side logs.
+  
+
 ## 1.12.1
 
 
