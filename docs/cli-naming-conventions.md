@@ -90,3 +90,8 @@ Any asset format accepted by `apply` must also be accepted by the corresponding 
 For example, `dash0 apply -f prometheusrule.yaml` and `dash0 check-rules create -f prometheusrule.yaml` both accept PrometheusRule CRD files.
 Similarly, `dash0 apply -f persesdashboard.yaml` and `dash0 dashboards create -f persesdashboard.yaml` both accept PersesDashboard CRD files.
 Shared parsing and import logic lives in `internal/asset/` so that both code paths stay in sync.
+
+**This is a hard rule, not a guideline.**
+Adding a new Asset CRUD command without wiring its `kind` into `internal/apply/apply.go` is incomplete work and must be flagged in review.
+Adding a new schema version (e.g. `apiVersion: v1alpha2`) to an existing asset without teaching `apply` to detect and route on it is the same kind of incomplete work.
+See [docs/adding-commands.md, step 4](adding-commands.md#4-wire-asset-crud-commands-into-apply) for the concrete wiring steps and the [verification step](adding-commands.md#11-verify) that proves the wiring is in place.

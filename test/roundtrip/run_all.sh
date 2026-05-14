@@ -32,6 +32,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_apply_check_rule_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_view_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_synthetic_check_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_spam_filter_idempotency.sh"
   "${SCRIPT_DIR}/test_dashboard_annotations.sh"
   "${SCRIPT_DIR}/test_view_annotations.sh"
   "${SCRIPT_DIR}/test_synthetic_check_annotations.sh"
@@ -39,13 +40,15 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_recording_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh"
   "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh"
-  "${SCRIPT_DIR}/test_metrics_instant_roundtrip.sh"
+  "${SCRIPT_DIR}/test_spam_filter_roundtrip.sh"
+  "${SCRIPT_DIR}/test_spam_filter_v1alpha2_roundtrip.sh"
   "${SCRIPT_DIR}/test_team_roundtrip.sh"
 )
 
 # OTLP-based round-trip tests additionally need DASH0_OTLP_URL.
 OTLP_TESTS=(
   "${SCRIPT_DIR}/test_log_roundtrip.sh"
+  "${SCRIPT_DIR}/test_metrics_instant_roundtrip.sh"
   "${SCRIPT_DIR}/test_span_roundtrip.sh"
 )
 

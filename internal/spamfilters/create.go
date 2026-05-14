@@ -20,7 +20,8 @@ func newCreateCmd() *cobra.Command {
 		Use:     "create -f <file>",
 		Aliases: []string{"add"},
 		Short:   "[experimental] Create a spam filter from a file",
-		Long:    `Create a new spam filter from a YAML or JSON definition file. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Long: `Create a new spam filter from a YAML or JSON definition file. Use '-f -' to
+read from stdin.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 --experimental spam-filters create -f filter.yaml
 
@@ -42,13 +43,18 @@ func newCreateCmd() *cobra.Command {
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	var filter dash0api.SpamFilter
-	if err := asset.ReadDefinition(flags.File, &filter, os.Stdin); err != nil {
+	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	if err != nil {
 		return fmt.Errorf("failed to read spam filter definition: %w", err)
 	}
 
+	apiVersion, err := detectAPIVersion(raw)
+	if err != nil {
+		return err
+	}
+
 	if flags.DryRun {
-		fmt.Println("Dry run: spam filter definition is valid")
+		fmt.Printf("Dry run: spam filter definition is valid (apiVersion: %s)\n", apiVersion)
 		return nil
 	}
 
@@ -57,18 +63,47 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return err
 	}
 
-	result, importErr := asset.ImportSpamFilter(ctx, apiClient, &filter, client.ResolveDataset(ctx, flags.Dataset))
-	if importErr != nil {
-		return client.HandleAPIError(importErr, client.ErrorContext{
-			AssetType: "spam filter",
-			AssetName: dash0api.GetSpamFilterName(&filter),
-		})
-	}
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
+	switch apiVersion {
+	case string(dash0api.V1alpha1):
+		filter, err := decodeV1Alpha1(raw)
+		if err != nil {
+			return err
+		}
+		result, importErr := asset.ImportSpamFilter(ctx, apiClient, filter, dataset)
+		if importErr != nil {
+			return client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "spam filter",
+				AssetName: dash0api.GetSpamFilterName(filter),
+			})
+		}
+		printImportResult(result)
+		return nil
+	case string(dash0api.V1alpha2):
+		filter, err := decodeV1Alpha2(raw)
+		if err != nil {
+			return err
+		}
+		result, importErr := asset.ImportSpamFilterV1Alpha2(ctx, apiClient, filter, dataset)
+		if importErr != nil {
+			return client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "spam filter",
+				AssetName: filter.Metadata.Name,
+			})
+		}
+		printImportResult(result)
+		return nil
+	default:
+		// Unreachable: detectAPIVersion only returns supported values or an error.
+		return fmt.Errorf("unsupported spam filter apiVersion %q (supported: %s)", apiVersion, joinQuoted(supportedAPIVersions))
+	}
+}
+
+func printImportResult(result asset.ImportResult) {
 	if result.ID != "" {
 		fmt.Printf("Spam filter %q %s (id: %s).\n", result.Name, result.Action, result.ID)
 	} else {
 		fmt.Printf("Spam filter %q %s.\n", result.Name, result.Action)
 	}
-	return nil
 }

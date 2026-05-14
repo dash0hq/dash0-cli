@@ -45,7 +45,26 @@ In `cmd/dash0/main.go`:
 1. Add the import for the new package.
 2. Add `rootCmd.AddCommand(<package>.New<Command>Cmd())` in the `init()` function.
 
-## 4. Implement flags
+## 4. Wire asset CRUD commands into `apply`
+
+**Mandatory for every Asset CRUD command. Skip only for Query, Send, Organizational, or Raw HTTP commands.**
+
+The `apply` command and the per-asset CRUD commands must have identical expressiveness — see [parity rule](cli-naming-conventions.md#parity-between-apply-and-crud-commands).
+Adding a CRUD command without wiring it into `apply` is incomplete work and will be flagged in review.
+
+Concretely, in `internal/apply/apply.go`:
+
+1. Add the asset's `kind` (and any CRD aliases — e.g. `PersesDashboard` for dashboards, `PrometheusRule` for check rules and recording rules) to `isValidKind` and `normalizeKind`.
+2. Add a `case` in `parseDocumentHeader` that unmarshals the document into the appropriate typed struct and extracts `name` and `id`.
+3. Add a `case` in `applyDocument` that parses the raw bytes, calls the corresponding `asset.Import<Asset>(...)` helper, and returns an `applyResult`.
+4. Update the human-readable list of supported kinds in the `Long` description and in the validation error message inside `runApply`.
+5. If the asset has multiple schema versions (e.g., `apiVersion: v1alpha1` vs `v1alpha2`), validate the apiVersion during the validation phase using a `Detect<Asset>APIVersion` helper from `internal/asset/`, so a typo fails up front rather than mid-apply.
+
+The shared import logic lives in `internal/asset/<asset>.go` (an `Import<Asset>` function) so that `apply` and the dedicated `create` command call the same code path.
+
+If the asset is organization-level (no `--dataset`), the import helper must accept a `nil` dataset and `applyDocument` must pass `nil` regardless of the resolved CLI dataset.
+
+## 5. Implement flags
 
 Use the shared flag structs from `internal/asset/flags.go` where applicable:
 - `asset.ListFlags` for list commands (`--limit`, `--all`, `--skip-header`, plus common flags).
@@ -64,7 +83,7 @@ See @docs/code-style.md [agent mode](code-style.md#agent-mode) for why.
 
 For destructive commands, add `--force` and use `confirmation.ConfirmDestructiveOperation`.
 
-## 5. Implement the command logic
+## 6. Implement the command logic
 
 - Use `RunE` (not `Run`) and return errors.
   See @docs/code-style.md for error handling conventions.
@@ -78,21 +97,21 @@ For destructive commands, add `--force` and use `confirmation.ConfirmDestructive
 
 Do not duplicate shared logic — see @docs/project-structure.md for where shared code belongs.
 
-## 6. Implement agent mode
+## 7. Implement agent mode
 
 - **Asset commands:** handled automatically via `output.ParseFormat`.
 - **Non-asset commands:** write a local `parse*Format` function that defaults to JSON when `agentmode.Enabled`.
   See the [agent mode checklist](code-style.md#adding-a-new-command-agent-mode-checklist) in @docs/code-style.md.
 - Confirmation prompts, error formatting, and help rendering are handled globally — no per-command logic needed.
 
-## 7. Add examples and help text
+## 8. Add examples and help text
 
 - Add an `Example` field to every cobra command.
   See @docs/code-style.md for formatting rules (2-space indent, `<id>` placeholders, `#` comments).
 - Add a `Long` description.
 - Add standard aliases per @docs/cli-naming-conventions.md.
 
-## 8. Write tests
+## 9. Write tests
 
 - Add integration tests using the mock server.
   See @docs/testing.md for fixtures, mock server setup, and test structure.
@@ -100,19 +119,22 @@ Do not duplicate shared logic — see @docs/project-structure.md for where share
 - Run `make test-integration` to verify.
 - Add a roundtrip test if the command creates or modifies assets.
   See the [roundtrip tests](testing.md#roundtrip-tests) section in @docs/testing.md.
-- Ensure roundtrip tests work with `make test-roundtrip`
+- Ensure roundtrip tests work with `make test-roundtrip`.
+- For Asset CRUD commands, the roundtrip test must also exercise `dash0 apply -f <fixture>` (or add a separate `test_apply_<asset>_idempotency.sh`) to prove the `apply` wiring from step 4 is in place.
 
-## 9. Update documentation
+## 10. Update documentation
 
 - Add the command to @docs/commands.md under the appropriate [taxonomy category](commands.md#command-taxonomy), with flags, outputs, and examples.
+- For Asset CRUD commands, add the new `kind` (and any CRD aliases) to the list of supported kinds in the `apply` section of @docs/commands.md, and add a YAML example under "Asset YAML formats".
 - Update @README.md if the command adds new user-facing functionality.
 - Add to @docs/cli-naming-conventions.md if introducing new subcommand patterns.
 - Create a changelog entry — see @docs/changelog-maintenance.md.
 
-## 10. Verify
+## 11. Verify
 
 - `make build` succeeds.
 - `make test` passes (unit + integration).
 - `make lint` passes.
 - `./dash0 <command> --help` shows correct help text.
 - `./dash0 --agent-mode <command> --help` shows JSON help.
+- For Asset CRUD commands: `./dash0 apply -f <fixture> --dry-run` accepts the new kind without error, and `apply` rejects malformed documents during validation (before any API call).

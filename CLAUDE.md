@@ -27,6 +27,11 @@ Detailed guidelines are split into focused documents:
 - @docs/github-actions.md — how to create GitHub actions based on the `dash0` CLI, existing actions and their maintenance
 - @docs/changelog-maintenance.md — when and how to create changelog entries
 
+## Hard rules
+
+- **Adding support for an asset type (or a new schema version of an existing one)  must follow @docs/adding-commands.md and @docs/cli-naming-conventions.md in full.**
+  That document is the authoritative checklist: every numbered step and every requirement are required, not optional.
+
 ## Key Dash0 API concepts
 
 ### Origin vs ID

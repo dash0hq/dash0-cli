@@ -1,0 +1,26 @@
+{
+  "apiVersion": "v1alpha2",
+  "kind": "Dash0SpamFilter",
+  "metadata": {
+    "name": "Drop debug logs (v1alpha2)",
+    "labels": {
+      "dash0.com/id": "00000000-0000-0000-0000-0000000000a2",
+      "dash0.com/origin": "api-00000000-0000-0000-0000-0000000000a2",
+      "dash0.com/dataset": "default",
+      "dash0.com/source": "api"
+    },
+    "annotations": {
+      "dash0.com/enabled": "true"
+    }
+  },
+  "spec": {
+    "context": "log",
+    "filter": [
+      {
+        "key": "otel.log.severity.range",
+        "operator": "is",
+        "value": "DEBUG"
+      }
+    ]
+  }
+}

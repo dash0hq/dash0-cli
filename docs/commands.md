@@ -251,7 +251,7 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All six asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same CRUD subcommands.
+All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same CRUD subcommands.
 The examples below use `dashboards`, but the same patterns apply to every asset type.
 
 ### `list`
@@ -441,8 +441,8 @@ Aliases: `remove`
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
-| Notification channels | `dash0 notification-channels <subcommand>` | Dataset-scoped spam filter management |
-| Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped spam filter management |
+| Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
+| Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 
 ### `apply`
 
@@ -466,8 +466,11 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`.
 A single file may contain multiple documents separated by `---`.
+
+For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
+An unknown value fails validation up front, before any document is applied.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -576,6 +579,46 @@ spec:
         - record: instance:cpu_usage:avg5m
           expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
 ```
+
+Spam filter (v1alpha1 — `spec.contexts` is an array of signal types):
+
+```yaml
+apiVersion: v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: Drop noisy health checks
+  labels:
+    dash0.com/id: a6b7c8d9-0123-45a6-7890-cdef01234567
+spec:
+  contexts:
+    - log
+    - span
+  filter:
+    - key: http.target
+      operator: ends_with
+      value: /healthz
+```
+
+Spam filter (v1alpha2 — `spec.context` is a single signal type):
+
+```yaml
+apiVersion: v1alpha2
+kind: Dash0SpamFilter
+metadata:
+  name: Drop debug logs
+  labels:
+    dash0.com/id: b7c8d9e0-1234-56b7-8901-def012345678
+spec:
+  context: log
+  filter:
+    - key: otel.log.severity.range
+      operator: is
+      value: DEBUG
+```
+
+The CLI detects the apiVersion from the document and routes to the corresponding endpoint.
+The `list` endpoint returns v1alpha1 definitions only; use `spam-filters get <id>` to retrieve a filter in its native apiVersion.
+The `delete` endpoint is version-agnostic.
 
 Multi-document file (separated by `---`):
 

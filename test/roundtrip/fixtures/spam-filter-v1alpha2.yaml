@@ -1,0 +1,12 @@
+apiVersion: v1alpha2
+kind: Dash0SpamFilter
+metadata:
+  name: Drop debug logs (v1alpha2 roundtrip)
+  annotations:
+    dash0.com/enabled: "true"
+spec:
+  context: log
+  filter:
+    - key: "otel.log.severity.range"
+      operator: "is"
+      value: "DEBUG"

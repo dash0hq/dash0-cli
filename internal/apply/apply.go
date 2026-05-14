@@ -47,6 +47,7 @@ Supported asset types:
   - CheckRule (or PrometheusRule CRD)
   - SyntheticCheck
   - View
+  - Dash0SpamFilter
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
@@ -167,7 +168,14 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter)", doc.location(), doc.kind))
+		} else if normalizeKind(doc.kind) == "spamfilter" {
+			// Catch unknown spam filter apiVersions during validation rather
+			// than after the first PUT, so a partial apply of a multi-doc input
+			// is never triggered by a typo in apiVersion.
+			if _, err := asset.DetectSpamFilterAPIVersion(doc.raw); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
+			}
 		}
 	}
 	if len(validationErrors) > 0 {
@@ -346,6 +354,18 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = dash0api.GetPersesDashboardName(&perses)
 		id = dash0api.GetPersesDashboardID(&perses)
+
+	case "spamfilter":
+		// Metadata fields (name + dash0.com/id label) are identical across
+		// v1alpha1 and v1alpha2, so we use the v1alpha1 type for the header
+		// peek regardless of the document's apiVersion. The apiVersion-aware
+		// dispatch happens in applyDocument.
+		var filter dash0api.SpamFilter
+		if err := sigsyaml.Unmarshal(data, &filter); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetSpamFilterName(&filter)
+		id = dash0api.GetSpamFilterID(&filter)
 
 	default:
 		var raw map[string]any
@@ -536,7 +556,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 
 func isValidKind(kind string) bool {
 	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard":
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter":
 		return true
 	default:
 		return false
@@ -620,7 +640,52 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
+	case "spamfilter":
+		return applySpamFilter(ctx, apiClient, doc, dataset)
+
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
+	}
+}
+
+// applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.
+// The apiVersion field on the document selects the schema; an unknown value
+// is rejected with the list of supported versions before any API call.
+func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
+	apiVersion, err := asset.DetectSpamFilterAPIVersion(doc.raw)
+	if err != nil {
+		return nil, err
+	}
+
+	switch apiVersion {
+	case string(dash0api.V1alpha1):
+		var filter dash0api.SpamFilter
+		if err := sigsyaml.Unmarshal(doc.raw, &filter); err != nil {
+			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)
+		}
+		result, importErr := asset.ImportSpamFilter(ctx, apiClient, &filter, dataset)
+		if importErr != nil {
+			return nil, client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "spam filter",
+				AssetName: dash0api.GetSpamFilterName(&filter),
+			})
+		}
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+	case string(dash0api.V1alpha2):
+		var filter dash0api.SpamFilterV1Alpha2
+		if err := sigsyaml.Unmarshal(doc.raw, &filter); err != nil {
+			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)
+		}
+		result, importErr := asset.ImportSpamFilterV1Alpha2(ctx, apiClient, &filter, dataset)
+		if importErr != nil {
+			return nil, client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "spam filter",
+				AssetName: filter.Metadata.Name,
+			})
+		}
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+	default:
+		// Unreachable: DetectSpamFilterAPIVersion only returns supported values or an error.
+		return nil, fmt.Errorf("unsupported spam filter apiVersion %q", apiVersion)
 	}
 }

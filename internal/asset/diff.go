@@ -51,6 +51,23 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		dash0api.StripSyntheticCheckServerFields(&c)
 		stripped = &c
+	case *dash0api.SpamFilter:
+		var s dash0api.SpamFilter
+		if err := sigsyaml.Unmarshal(jsonBytes, &s); err != nil {
+			return "", fmt.Errorf("failed to unmarshal spam filter: %w", err)
+		}
+		dash0api.StripSpamFilterServerFields(&s)
+		stripped = &s
+	case *dash0api.SpamFilterV1Alpha2:
+		var s dash0api.SpamFilterV1Alpha2
+		if err := sigsyaml.Unmarshal(jsonBytes, &s); err != nil {
+			return "", fmt.Errorf("failed to unmarshal spam filter: %w", err)
+		}
+		// No v1alpha2-specific Strip helper exists yet; the v1alpha1 helper
+		// only touches metadata, so the inputs we control here are already
+		// server-field-free. If a Strip*V1Alpha2 helper lands later, plug
+		// it in here.
+		stripped = &s
 	default:
 		stripped = asset
 	}

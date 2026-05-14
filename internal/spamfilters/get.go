@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -20,7 +21,8 @@ func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "[experimental] Get a spam filter by ID",
-		Long:  `Retrieve a spam filter definition by its ID.` + internal.CONFIG_HINT,
+		Long: `Retrieve a spam filter definition by its ID. The returned definition is in
+whichever apiVersion (v1alpha1 or v1alpha2) the server has stored.` + internal.CONFIG_HINT,
 		Example: `  # Show spam filter summary
   dash0 --experimental spam-filters get <id>
 
@@ -56,7 +58,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		})
 	}
 
-	dash0api.SetSpamFilterIDIfAbsent(filter, id)
+	setIDIfAbsent(filter, id)
 
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
@@ -69,16 +71,45 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	case output.FormatJSON, output.FormatYAML:
 		return formatter.Print(filter)
 	default:
-		fmt.Printf("Kind: %s\n", filter.Kind)
-		fmt.Printf("Name: %s\n", dash0api.GetSpamFilterName(filter))
-		fmt.Printf("Dataset: %s\n", dash0api.GetSpamFilterDataset(filter))
-		origin := ""
-		if filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil {
-			origin = *filter.Metadata.Labels.Dash0Comorigin
+		fmt.Printf("Kind: %s\n", objectKind(filter))
+		fmt.Printf("API Version: %s\n", objectAPIVersion(filter))
+		fmt.Printf("Name: %s\n", objectName(filter))
+		fmt.Printf("Dataset: %s\n", objectDataset(filter))
+		fmt.Printf("Origin: %s\n", objectOrigin(filter))
+		switch v := filter.(type) {
+		case *dash0api.SpamFilter:
+			fmt.Printf("Contexts: [%s]\n", strings.Join(contextStrings(v.Spec.Contexts), ", "))
+		case *dash0api.SpamFilterV1Alpha2:
+			fmt.Printf("Context: %s\n", string(v.Spec.Context))
 		}
-		fmt.Printf("Origin: %s\n", origin)
-		fmt.Printf("Contexts: %v\n", filter.Spec.Contexts)
-		fmt.Printf("Filter criteria: %d\n", len(filter.Spec.Filter))
+		const filtersLabel = "Filters: "
+		fmt.Printf("%s%s\n", filtersLabel, renderFiltersBlock(filter, len(filtersLabel)))
 		return nil
 	}
+}
+
+// setIDIfAbsent backfills the dash0.com/id label so the printed/exported
+// definition is self-contained even when the server response omitted it.
+// The api-client only ships a v1alpha1 setter, so we handle v1alpha2 inline.
+func setIDIfAbsent(filter dash0api.SpamFilterObject, id string) {
+	switch v := filter.(type) {
+	case *dash0api.SpamFilter:
+		dash0api.SetSpamFilterIDIfAbsent(v, id)
+	case *dash0api.SpamFilterV1Alpha2:
+		if v.Metadata.Labels == nil {
+			v.Metadata.Labels = &dash0api.SpamFilterLabels{}
+		}
+		if v.Metadata.Labels.Dash0Comid == nil {
+			value := id
+			v.Metadata.Labels.Dash0Comid = &value
+		}
+	}
+}
+
+func contextStrings(values []dash0api.TelemetryFilterContext) []string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = string(v)
+	}
+	return out
 }
