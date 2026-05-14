@@ -25,6 +25,12 @@ func KindDisplayName(kind string) string {
 		return "PrometheusRule"
 	case "persesdashboard":
 		return "PersesDashboard"
+	case "recordingrule":
+		return "Recording rule"
+	case "notificationchannel":
+		return "Notification channel"
+	case "spamfilter":
+		return "Spam filter"
 	default:
 		return kind
 	}

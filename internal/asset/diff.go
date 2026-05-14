@@ -68,6 +68,20 @@ func marshalForDiff(asset any) (string, error) {
 		// server-field-free. If a Strip*V1Alpha2 helper lands later, plug
 		// it in here.
 		stripped = &s
+	case *dash0api.NotificationChannelDefinition:
+		var c dash0api.NotificationChannelDefinition
+		if err := sigsyaml.Unmarshal(jsonBytes, &c); err != nil {
+			return "", fmt.Errorf("failed to unmarshal notification channel: %w", err)
+		}
+		dash0api.StripNotificationChannelServerFields(&c)
+		stripped = &c
+	case *dash0api.RecordingRule:
+		var r dash0api.RecordingRule
+		if err := sigsyaml.Unmarshal(jsonBytes, &r); err != nil {
+			return "", fmt.Errorf("failed to unmarshal recording rule: %w", err)
+		}
+		dash0api.StripRecordingRuleServerFields(&r)
+		stripped = &r
 	default:
 		stripped = asset
 	}

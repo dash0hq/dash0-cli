@@ -466,11 +466,20 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
 An unknown value fails validation up front, before any document is applied.
+
+For `PrometheusRule`, `apply` inspects each rule entry and dispatches by type.
+Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as one check rule per alert.
+Recording rules (entries with `record:`) are sent to the recording-rule endpoint as a single PrometheusRule CRD with the alerting rules removed.
+A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
+A CRD that contains no alerting and no recording rules fails validation up front.
+
+`Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
+The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -619,6 +628,45 @@ spec:
 The CLI detects the apiVersion from the document and routes to the corresponding endpoint.
 The `list` endpoint returns v1alpha1 definitions only; use `spam-filters get <id>` to retrieve a filter in its native apiVersion.
 The `delete` endpoint is version-agnostic.
+
+Notification channel (organization-level, no `--dataset`):
+
+```yaml
+kind: Dash0NotificationChannel
+metadata:
+  name: Slack Alerts
+  labels:
+    dash0.com/origin: my-slack-channel
+spec:
+  type: slack
+  config:
+    url: https://hooks.slack.com/services/T00/B00/XXX
+```
+
+Mixed PrometheusRule (one alerting rule and one recording rule in the same CRD):
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: Mixed Rules
+  labels:
+    dash0.com/id: c8d9e0f1-2345-67c8-9012-ef0123456789
+spec:
+  groups:
+    - name: errors-and-cpu
+      interval: 1m
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+```
+
+The alerting rule is created as a check rule under `/api/alerting/check-rules`, and a recording-rule CRD with only the recording rule is created under `/api/recording-rules`.
 
 Multi-document file (separated by `---`):
 

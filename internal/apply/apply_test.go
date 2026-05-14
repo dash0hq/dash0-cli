@@ -31,6 +31,9 @@ func TestNormalizeKind(t *testing.T) {
 		{"Dash0View", "view"},
 		{"PersesDashboard", "persesdashboard"},
 		{"persesdashboard", "persesdashboard"},
+		{"Dash0NotificationChannel", "notificationchannel"},
+		{"Dash0SpamFilter", "spamfilter"},
+		{"notification-channel", "notificationchannel"},
 	}
 
 	for _, tt := range tests {
@@ -59,6 +62,9 @@ func TestIsValidKind(t *testing.T) {
 		"Dash0View",
 		"PersesDashboard",
 		"persesdashboard",
+		"Dash0SpamFilter",
+		"Dash0NotificationChannel",
+		"notification-channel",
 	}
 
 	for _, kind := range validKinds {

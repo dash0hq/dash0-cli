@@ -44,10 +44,14 @@ When a directory is specified, all .yaml and .yml files are discovered recursive
 
 Supported asset types:
   - Dashboard (or PersesDashboard CRD)
-  - CheckRule (or PrometheusRule CRD)
+  - CheckRule (or PrometheusRule CRD with alerting rules)
+  - PrometheusRule CRD with recording rules
   - SyntheticCheck
   - View
   - Dash0SpamFilter
+  - Dash0NotificationChannel
+
+A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
@@ -168,12 +172,20 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
 			// is never triggered by a typo in apiVersion.
 			if _, err := asset.DetectSpamFilterAPIVersion(doc.raw); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
+			}
+		} else if normalizeKind(doc.kind) == "prometheusrule" {
+			// Catch CRDs that contain no usable rules at all up front, before
+			// any API call. ParseAsPrometheusAlertRules already rejects
+			// alert-only-empty CRDs, but a CRD with zero rules of either kind
+			// would otherwise slip through to applyDocument.
+			if err := validatePrometheusRule(doc.raw); err != nil {
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 			}
 		}
@@ -367,6 +379,20 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		name = dash0api.GetSpamFilterName(&filter)
 		id = dash0api.GetSpamFilterID(&filter)
 
+	case "notificationchannel":
+		var channel dash0api.NotificationChannelDefinition
+		if err := sigsyaml.Unmarshal(data, &channel); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetNotificationChannelName(&channel)
+		id = dash0api.GetNotificationChannelID(&channel)
+		if id == "" {
+			// Notification channels use origin as the upsert key. Surface it
+			// as the ID in dry-run/listing output so users can see which
+			// existing channel the document will replace.
+			id = dash0api.GetNotificationChannelOrigin(&channel)
+		}
+
 	default:
 		var raw map[string]any
 		if err := sigsyaml.Unmarshal(data, &raw); err != nil {
@@ -556,7 +582,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 
 func isValidKind(kind string) bool {
 	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter":
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel":
 		return true
 	default:
 		return false
@@ -587,30 +613,11 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
-	case "checkrule", "prometheusrule":
-		rules, err := dash0yaml.ParseAsPrometheusAlertRules(doc.raw)
-		if err != nil {
-			return nil, err
-		}
-		var results []applyResult
-		for _, rule := range rules {
-			result, importErr := asset.ImportCheckRule(ctx, apiClient, rule, dataset)
-			if importErr != nil {
-				return results, client.HandleAPIError(importErr, client.ErrorContext{
-					AssetType: "check rule",
-					AssetName: rule.Name,
-				})
-			}
-			results = append(results, applyResult{
-				kind:   "CheckRule",
-				name:   result.Name,
-				id:     result.ID,
-				action: applyAction(result.Action),
-				before: result.Before,
-				after:  result.After,
-			})
-		}
-		return results, nil
+	case "checkrule":
+		return applyCheckRule(ctx, apiClient, doc, dataset)
+
+	case "prometheusrule":
+		return applyPrometheusRule(ctx, apiClient, doc, dataset)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -643,9 +650,121 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 	case "spamfilter":
 		return applySpamFilter(ctx, apiClient, doc, dataset)
 
+	case "notificationchannel":
+		var channel dash0api.NotificationChannelDefinition
+		if err := sigsyaml.Unmarshal(doc.raw, &channel); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0NotificationChannel: %w", err)
+		}
+		result, err := asset.ImportNotificationChannel(ctx, apiClient, &channel)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "notification channel",
+				AssetName: dash0api.GetNotificationChannelName(&channel),
+			})
+		}
+		return []applyResult{{kind: "Dash0NotificationChannel", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
 	}
+}
+
+// applyCheckRule handles a single CheckRule (native, non-CRD) document.
+// PrometheusRule CRD documents go through applyPrometheusRule, which inspects
+// the rule kinds and dispatches to the check-rule or recording-rule endpoint
+// (or both, when the CRD is mixed).
+func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
+	rules, err := dash0yaml.ParseAsPrometheusAlertRules(doc.raw)
+	if err != nil {
+		return nil, err
+	}
+	var results []applyResult
+	for _, rule := range rules {
+		result, importErr := asset.ImportCheckRule(ctx, apiClient, rule, dataset)
+		if importErr != nil {
+			return results, client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "check rule",
+				AssetName: rule.Name,
+			})
+		}
+		results = append(results, applyResult{
+			kind:   "CheckRule",
+			name:   result.Name,
+			id:     result.ID,
+			action: applyAction(result.Action),
+			before: result.Before,
+			after:  result.After,
+		})
+	}
+	return results, nil
+}
+
+// applyPrometheusRule handles a PrometheusRule CRD that may contain alerting
+// rules, recording rules, or both. Alerting rules are dispatched to the
+// check-rule endpoint via the existing ParseAsPrometheusAlertRules path;
+// recording rules are dispatched to the recording-rule endpoint via a
+// recording-only copy of the CRD.
+func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
+	crd, err := parsePrometheusRuleCRD(doc.raw)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []applyResult
+
+	if asset.PrometheusRuleHasAlerts(crd) {
+		alertResults, err := applyCheckRule(ctx, apiClient, doc, dataset)
+		results = append(results, alertResults...)
+		if err != nil {
+			return results, err
+		}
+	}
+
+	recordingOnly := asset.RecordingOnlyPrometheusRule(crd)
+	if recordingOnly != nil {
+		result, importErr := asset.ImportRecordingRule(ctx, apiClient, recordingOnly, dataset)
+		if importErr != nil {
+			return results, client.HandleAPIError(importErr, client.ErrorContext{
+				AssetType: "recording rule",
+				AssetName: dash0api.GetRecordingRuleName(recordingOnly),
+			})
+		}
+		results = append(results, applyResult{
+			kind:   "RecordingRule",
+			name:   result.Name,
+			id:     result.ID,
+			action: applyAction(result.Action),
+			before: result.Before,
+			after:  result.After,
+		})
+	}
+
+	return results, nil
+}
+
+// parsePrometheusRuleCRD parses raw bytes as a PrometheusRule CRD (the typed
+// dash0api.RecordingRule, an alias for the generated PrometheusRule type that
+// captures both Alert and Record per rule).
+func parsePrometheusRuleCRD(data []byte) (*dash0api.RecordingRule, error) {
+	var crd dash0api.RecordingRule
+	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
+		return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
+	}
+	return &crd, nil
+}
+
+// validatePrometheusRule rejects a PrometheusRule CRD that contains no
+// alerting and no recording rules, so the failure surfaces in the validation
+// phase rather than after the first request.
+func validatePrometheusRule(data []byte) error {
+	crd, err := parsePrometheusRuleCRD(data)
+	if err != nil {
+		return err
+	}
+	if !asset.PrometheusRuleHasAlerts(crd) && asset.RecordingOnlyPrometheusRule(crd) == nil {
+		return fmt.Errorf("PrometheusRule contains no alerting or recording rules")
+	}
+	return nil
 }
 
 // applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.

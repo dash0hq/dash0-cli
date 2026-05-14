@@ -191,7 +191,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `SyntheticCheck`, and `View`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, and `Dash0NotificationChannel`.
 
 ```bash
 dash0 apply -f assets.yaml

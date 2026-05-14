@@ -33,6 +33,8 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_apply_view_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_synthetic_check_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_spam_filter_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_recording_rule_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_notification_channel_idempotency.sh"
   "${SCRIPT_DIR}/test_dashboard_annotations.sh"
   "${SCRIPT_DIR}/test_view_annotations.sh"
   "${SCRIPT_DIR}/test_synthetic_check_annotations.sh"

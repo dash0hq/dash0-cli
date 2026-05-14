@@ -21,17 +21,21 @@ const (
 	testAuthToken = "auth_test_token"
 
 	// Standard CRUD API paths
-	apiPathDashboards      = "/api/dashboards"
-	apiPathCheckRules      = "/api/alerting/check-rules"
-	apiPathViews           = "/api/views"
-	apiPathSyntheticChecks = "/api/synthetic-checks"
+	apiPathDashboards           = "/api/dashboards"
+	apiPathCheckRules           = "/api/alerting/check-rules"
+	apiPathViews                = "/api/views"
+	apiPathSyntheticChecks      = "/api/synthetic-checks"
+	apiPathRecordingRules       = "/api/recording-rules"
+	apiPathNotificationChannels = "/api/notification-channels"
 )
 
 var (
-	dashboardIDPattern      = regexp.MustCompile(`^/api/dashboards/[^/]+$`)
-	checkRuleIDPattern      = regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`)
-	viewIDPattern           = regexp.MustCompile(`^/api/views/[^/]+$`)
-	syntheticCheckIDPattern = regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`)
+	dashboardIDPattern           = regexp.MustCompile(`^/api/dashboards/[^/]+$`)
+	checkRuleIDPattern           = regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`)
+	viewIDPattern                = regexp.MustCompile(`^/api/views/[^/]+$`)
+	syntheticCheckIDPattern      = regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`)
+	recordingRuleIDPattern       = regexp.MustCompile(`^/api/recording-rules/[^/]+$`)
+	notificationChannelIDPattern = regexp.MustCompile(`^/api/notification-channels/[^/]+$`)
 )
 
 func TestApply_CheckRule_Created(t *testing.T) {
@@ -1720,4 +1724,295 @@ spec:
 	require.NoError(t, err2)
 	assert.NotContains(t, output2, "created")
 	assert.Contains(t, output2, "no changes")
+}
+
+func TestApply_PrometheusRule_RecordingOnly(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "recordingrule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cpu-recording
+spec:
+  groups:
+    - name: cpu-averages
+      interval: 1m
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.WithRecordingRulesCreate(testutil.FixtureRecordingRulesCreateSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Recording rule")
+	assert.Contains(t, output, "created")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules), "expected POST to recording-rules")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathCheckRules), "did not expect POST to check-rules")
+
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules)
+	var rule dash0api.RecordingRule
+	require.NoError(t, json.Unmarshal(createReq.Body, &rule))
+	require.Len(t, rule.Spec.Groups, 1)
+	require.Len(t, rule.Spec.Groups[0].Rules, 1)
+	require.NotNil(t, rule.Spec.Groups[0].Rules[0].Record)
+	assert.Equal(t, "instance:cpu_usage:avg5m", *rule.Spec.Groups[0].Rules[0].Record)
+}
+
+func TestApply_PrometheusRule_Mixed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "mixed.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mixed-rules
+spec:
+  groups:
+    - name: combined-group
+      interval: 1m
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.WithCheckRulesCreate(testutil.FixtureCheckRulesImportSuccess)
+	server.WithRecordingRulesCreate(testutil.FixtureRecordingRulesCreateSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Check rule")
+	assert.Contains(t, output, "Recording rule")
+	assert.Equal(t, 2, countOccurrences(output, "created"))
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPost, apiPathCheckRules), "expected POST to check-rules")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules), "expected POST to recording-rules")
+
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules)
+	var rule dash0api.RecordingRule
+	require.NoError(t, json.Unmarshal(createReq.Body, &rule))
+	require.Len(t, rule.Spec.Groups, 1)
+	require.Len(t, rule.Spec.Groups[0].Rules, 1, "recording-rules body should contain only the record rule, not the alert")
+	require.NotNil(t, rule.Spec.Groups[0].Rules[0].Record)
+	assert.Equal(t, "instance:cpu_usage:avg5m", *rule.Spec.Groups[0].Rules[0].Record)
+	assert.Nil(t, rule.Spec.Groups[0].Rules[0].Alert)
+}
+
+func TestApply_PrometheusRule_EmptyRules(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "empty.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: empty-rules
+spec:
+  groups:
+    - name: empty-group
+      rules: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run"})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), "no alerting or recording rules")
+}
+
+func TestApply_PrometheusRule_RecordingOnly_UpdatesWhenIDSet(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const ruleID = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "recordingrule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: CPU Usage Average
+  labels:
+    dash0.com/id: f47ac10b-58cc-4372-a567-0e02b2c3d479
+spec:
+  groups:
+    - name: cpu-averages
+      interval: 1m
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathRecordingRules+"/"+ruleID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureRecordingRulesGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithRecordingRulesUpdate(testutil.FixtureRecordingRulesGetSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Recording rule")
+	assert.Contains(t, output, "no changes")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathRecordingRules+"/"+ruleID), "expected PUT to recording-rules/<id>")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules), "did not expect POST")
+}
+
+func TestApply_NotificationChannel_Created(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "channel.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: Dash0NotificationChannel
+metadata:
+  name: Slack Alerts
+spec:
+  type: slack
+  config:
+    url: https://hooks.slack.com/services/T00/B00/XXX
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathNotificationChannels, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureNotificationChannelsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Notification channel")
+	assert.Contains(t, output, "created")
+
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathNotificationChannels)
+	require.NotNil(t, createReq, "expected a create request for notification channel")
+	assert.NotContains(t, createReq.Query, "dataset=", "notification channels are org-level and must not carry a dataset query parameter")
+}
+
+func TestApply_NotificationChannel_UpdatedByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "channel.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: Dash0NotificationChannel
+metadata:
+  name: Slack Alerts
+  labels:
+    dash0.com/origin: my-origin
+spec:
+  type: slack
+  config:
+    url: https://hooks.slack.com/services/T00/B00/XXX
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, notificationChannelIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureNotificationChannelsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, notificationChannelIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureNotificationChannelsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Notification channel")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathNotificationChannels+"/my-origin"), "expected PUT to notification-channels/my-origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathNotificationChannels), "did not expect POST")
+}
+
+func TestApply_NotificationChannel_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "channel.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: Dash0NotificationChannel
+metadata:
+  name: Slack Alerts
+  labels:
+    dash0.com/id: abc-123
+spec:
+  type: slack
+  config:
+    url: https://hooks.slack.com/services/T00/B00/XXX
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Dry run")
+	assert.Contains(t, output, "Notification channel")
+	assert.Contains(t, output, "Slack Alerts")
+	assert.Contains(t, output, "abc-123")
 }
