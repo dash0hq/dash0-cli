@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -159,21 +160,22 @@ func TestNewRawHTTPConfig_NoDatasetWhenUnset(t *testing.T) {
 	assert.Empty(t, cfg.Dataset)
 }
 
-func TestFormatAPIError_BodyOnSecondLine(t *testing.T) {
+func TestFormatAPIError_PrefersParsedMessage(t *testing.T) {
 	apiErr := &dash0api.APIError{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
-		Body:       `{"error":{"code":400,"message":"Bad Request: origin mismatch"}}`,
+		Message:    "Bad Request: origin mismatch",
+		Body:       `{"error":{"code":400,"message":"Bad Request: origin mismatch","traceId":"abc123"}}`,
 		TraceID:    "abc123",
 	}
 
 	result := formatAPIError("invalid request", apiErr)
 	expected := "invalid request (status: 400, trace_id: abc123):\n" +
-		`  {"error":{"code":400,"message":"Bad Request: origin mismatch"}}`
+		"  Bad Request: origin mismatch"
 	assert.Equal(t, expected, result.Error())
 }
 
-func TestFormatAPIError_BodyWithoutTraceID(t *testing.T) {
+func TestFormatAPIError_FallsBackToBodyWhenNoMessage(t *testing.T) {
 	apiErr := &dash0api.APIError{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
@@ -186,7 +188,7 @@ func TestFormatAPIError_BodyWithoutTraceID(t *testing.T) {
 	assert.Equal(t, expected, result.Error())
 }
 
-func TestFormatAPIError_EmptyBody(t *testing.T) {
+func TestFormatAPIError_EmptyMessageAndBody(t *testing.T) {
 	apiErr := &dash0api.APIError{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
@@ -194,8 +196,7 @@ func TestFormatAPIError_EmptyBody(t *testing.T) {
 	}
 
 	result := formatAPIError("invalid request", apiErr)
-	assert.Contains(t, result.Error(), "invalid request")
-	assert.Contains(t, result.Error(), "400 Bad Request")
+	assert.Equal(t, "invalid request (status: 400, trace_id: abc123)", result.Error())
 }
 
 func TestFormatAPIError_NonAPIError(t *testing.T) {
@@ -208,22 +209,24 @@ func TestFormatAPIError_WrappedAPIError(t *testing.T) {
 	apiErr := &dash0api.APIError{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
-		Body:       `{"details": "missing required field"}`,
+		Message:    "missing required field",
+		Body:       `{"error":{"message":"missing required field"}}`,
 		TraceID:    "def456",
 	}
 	wrapped := fmt.Errorf("update dashboard failed: %w", apiErr)
 
 	result := formatAPIError("invalid request", wrapped)
-	assert.Contains(t, result.Error(), "invalid request (status: 400, trace_id: def456):")
-	assert.Contains(t, result.Error(), "missing required field")
+	assert.Equal(t,
+		"invalid request (status: 400, trace_id: def456):\n  missing required field",
+		result.Error())
 }
 
-func TestFormatAPIError_LongBodyTruncated(t *testing.T) {
-	longBody := string(make([]byte, 600))
+func TestFormatAPIError_LongDetailTruncated(t *testing.T) {
+	longMessage := strings.Repeat("x", 600)
 	apiErr := &dash0api.APIError{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
-		Body:       longBody,
+		Message:    longMessage,
 	}
 
 	result := formatAPIError("invalid request", apiErr)
@@ -232,18 +235,31 @@ func TestFormatAPIError_LongBodyTruncated(t *testing.T) {
 	assert.LessOrEqual(t, len(result.Error()), 600)
 }
 
-func TestFormatAPIError_MessageInBody(t *testing.T) {
-	// When the API client already extracted a Message, the body is still
-	// shown because it may contain additional context.
+func TestHandleAPIError_NotFoundIncludesTraceID(t *testing.T) {
 	apiErr := &dash0api.APIError{
-		StatusCode: 400,
-		Status:     "400 Bad Request",
-		Message:    "validation failed",
-		Body:       `{"message": "validation failed", "details": "extra info"}`,
-		TraceID:    "trace1",
+		StatusCode: 404,
+		Status:     "404 Not Found",
+		Message:    "Not Found: The requested dashboard does not exist or is inaccessible to you.",
+		Body:       `{"error":{"code":404,"message":"Not Found: ...","traceId":"trace-404"}}`,
+		TraceID:    "trace-404",
 	}
 
-	result := formatAPIError("invalid request", apiErr)
-	assert.Contains(t, result.Error(), "invalid request (status: 400, trace_id: trace1):")
-	assert.Contains(t, result.Error(), "extra info")
+	result := HandleAPIError(apiErr, ErrorContext{AssetType: "dashboard", AssetID: "abc"})
+	assert.Equal(t,
+		"dashboard \"abc\" not found (status: 404, trace_id: trace-404):\n"+
+			"  Not Found: The requested dashboard does not exist or is inaccessible to you.",
+		result.Error())
+}
+
+func TestHandleAPIError_NotFoundWithoutContext(t *testing.T) {
+	apiErr := &dash0api.APIError{
+		StatusCode: 404,
+		Status:     "404 Not Found",
+		TraceID:    "trace-404-bare",
+	}
+
+	result := HandleAPIError(apiErr)
+	assert.Equal(t,
+		"asset not found (status: 404, trace_id: trace-404-bare)",
+		result.Error())
 }

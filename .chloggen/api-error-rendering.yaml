@@ -1,0 +1,11 @@
+change_type: bug_fix
+
+component: client
+
+note: include the parsed server message, HTTP status, and trace ID in every API error printed by the CLI
+
+issues: [139]
+
+subtext: |
+  Errors now show the human-readable message extracted from the Dash0 API response (instead of dumping the raw JSON body).
+  404 responses now also surface the HTTP status and trace ID so support can correlate to server-side logs.

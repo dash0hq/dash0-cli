@@ -134,13 +134,16 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 	if dash0api.IsNotFound(err) {
 		assetType := getAssetType()
 		identifier := getIdentifier()
-		if assetType != "" {
-			if identifier != "" {
-				return fmt.Errorf("%s %q not found", assetType, identifier)
-			}
-			return fmt.Errorf("%s not found", assetType)
+		var prefix string
+		switch {
+		case assetType != "" && identifier != "":
+			prefix = fmt.Sprintf("%s %q not found", assetType, identifier)
+		case assetType != "":
+			prefix = fmt.Sprintf("%s not found", assetType)
+		default:
+			prefix = "asset not found"
 		}
-		return fmt.Errorf("asset not found: %w", err)
+		return formatAPIError(prefix, err)
 	}
 	if dash0api.IsUnauthorized(err) {
 		return formatAPIError("authentication failed; check your auth token", err)
@@ -173,36 +176,42 @@ func HandleAPIError(err error, ctx ...ErrorContext) error {
 }
 
 // formatAPIError builds a user-friendly error message. When the underlying
-// error is an APIError with a non-empty body, the output uses a two-line
-// format with the status metadata on the first line and the response body
-// indented on the second:
+// error is an APIError, the output uses a two-line format with the status
+// metadata on the first line and the parsed server message indented on the
+// second:
 //
 //	invalid request (status: 400, trace_id: abc123):
-//	  {"error": {"message": "..."}}
+//	  The submitted check rule has an invalid expression.
 //
-// When the body is empty, it falls back to wrapping the original error.
+// The parsed APIError.Message (extracted by the SDK from the nested
+// { "error": { "message": ... } } shape) is preferred. When no message was
+// parsed, the raw response body is used as a fallback. When neither is
+// available, only the status line is emitted so the trace ID is still surfaced.
 func formatAPIError(prefix string, err error) error {
 	var apiErr *dash0api.APIError
 	if !errors.As(err, &apiErr) {
 		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
-	body := strings.TrimSpace(apiErr.Body)
-	if body == "" {
-		return fmt.Errorf("%s: %w", prefix, err)
+	detail := strings.TrimSpace(apiErr.Message)
+	if detail == "" {
+		detail = strings.TrimSpace(apiErr.Body)
 	}
 
-	const maxBodyLen = 500
-	if len(body) > maxBodyLen {
-		body = body[:maxBodyLen] + "..."
+	const maxDetailLen = 500
+	if len(detail) > maxDetailLen {
+		detail = detail[:maxDetailLen] + "..."
 	}
 
 	statusLine := fmt.Sprintf("%s (status: %d", prefix, apiErr.StatusCode)
 	if apiErr.TraceID != "" {
 		statusLine += ", trace_id: " + apiErr.TraceID
 	}
-	statusLine += "):\n  " + body
+	statusLine += ")"
 
-	return fmt.Errorf("%s", statusLine)
+	if detail == "" {
+		return fmt.Errorf("%s", statusLine)
+	}
+	return fmt.Errorf("%s:\n  %s", statusLine, detail)
 }
 
