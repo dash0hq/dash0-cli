@@ -52,6 +52,83 @@ func TestNewClientFromContext_MissingConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "no active profile configured")
 }
 
+func TestResolveMaxRetries_Default(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "")
+	os.Unsetenv("DASH0_MAX_RETRIES")
+
+	n, err := resolveMaxRetries(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, DefaultMaxRetries, n)
+}
+
+func TestResolveMaxRetries_FromEnv(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "2")
+
+	n, err := resolveMaxRetries(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, 2, n)
+}
+
+func TestResolveMaxRetries_Zero(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "0")
+
+	n, err := resolveMaxRetries(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, 0, n)
+}
+
+func TestResolveMaxRetries_InvalidNonInteger(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "abc")
+
+	_, err := resolveMaxRetries(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must be an integer")
+}
+
+func TestResolveMaxRetries_Negative(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "-1")
+
+	_, err := resolveMaxRetries(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must not be negative")
+}
+
+func TestResolveMaxRetries_ExceedsMax(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "10")
+
+	_, err := resolveMaxRetries(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must not exceed")
+}
+
+func TestResolveMaxRetries_FlagTakesPrecedence(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "4")
+
+	flagValue := 1
+	ctx := WithMaxRetries(context.Background(), &flagValue)
+	n, err := resolveMaxRetries(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, n)
+}
+
+func TestResolveMaxRetries_FlagZeroOverridesEnv(t *testing.T) {
+	t.Setenv("DASH0_MAX_RETRIES", "3")
+
+	flagValue := 0
+	ctx := WithMaxRetries(context.Background(), &flagValue)
+	n, err := resolveMaxRetries(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, n)
+}
+
+func TestResolveMaxRetries_FlagExceedsMax(t *testing.T) {
+	flagValue := 10
+	ctx := WithMaxRetries(context.Background(), &flagValue)
+	_, err := resolveMaxRetries(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must not exceed")
+}
+
 func TestResolveDataset_FlagTakesPrecedence(t *testing.T) {
 	cfg := &profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
