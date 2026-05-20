@@ -74,6 +74,7 @@ These flags are available on every command:
 | `--color` | | `DASH0_COLOR` | `semantic` (default) or `none` |
 | `--experimental` | `-X` | | Enable experimental commands |
 | | | `DASH0_CONFIG_DIR` | Override config directory (default: `~/.dash0`) |
+| `--max-retries` | | `DASH0_MAX_RETRIES` | Maximum number of retries for failed API requests (default: `3`, max: `5`; set to `0` to disable retries) |
 
 ### Agent mode
 

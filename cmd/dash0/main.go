@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
@@ -88,6 +90,7 @@ func init() {
 	rootCmd.PersistentFlags().String("color", "", `Color mode for output: "semantic" or "none" (env: DASH0_COLOR)`)
 	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
 	rootCmd.PersistentFlags().String("profile", "", "Profile to use for this invocation; overrides the active profile on disk (env: DASH0_PROFILE)")
+	rootCmd.PersistentFlags().String("max-retries", "", "Maximum number of retries for failed API requests (0-5; default: 3; env: DASH0_MAX_RETRIES)")
 }
 
 // newVersionCmd creates a new version command
@@ -245,6 +248,16 @@ func main() {
 		ctx = profiles.WithConfiguration(ctx, cfg)
 	}
 	ctx = config.WithProfileSelector(ctx, selector)
+
+	// Resolve --max-retries before cobra parses flags (same approach as --profile).
+	if raw := flagValue(os.Args[1:], "max-retries"); raw != "" {
+		v, err := strconv.Atoi(raw)
+		if err != nil {
+			printError(fmt.Errorf("invalid --max-retries value %q: must be an integer", raw))
+			os.Exit(1)
+		}
+		ctx = client.WithMaxRetries(ctx, &v)
+	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		printError(err)

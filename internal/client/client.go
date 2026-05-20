@@ -4,11 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/version"
+)
+
+const (
+	// DefaultMaxRetries is the default number of retries for failed API requests.
+	DefaultMaxRetries = 3
 )
 
 // NewClientFromContext creates a new Dash0 API client using configuration from context.
@@ -33,10 +40,16 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		}
 	}
 
+	maxRetries, err := resolveMaxRetries(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := dash0api.NewClient(
 		dash0api.WithApiUrl(apiUrl),
 		dash0api.WithAuthToken(authToken),
 		dash0api.WithUserAgent(version.UserAgent()),
+		dash0api.WithMaxRetries(maxRetries),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API client: %w", err)
@@ -71,10 +84,16 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 		return nil, fmt.Errorf("auth-token is required; provide it as a flag, environment variable, or configure a profile")
 	}
 
+	maxRetries, err := resolveMaxRetries(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := dash0api.NewClient(
 		dash0api.WithOtlpEndpoint(dash0api.OtlpEncodingJson, finalOtlpUrl),
 		dash0api.WithAuthToken(finalAuthToken),
 		dash0api.WithUserAgent(version.UserAgent()),
+		dash0api.WithMaxRetries(maxRetries),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP client: %w", err)
@@ -94,6 +113,43 @@ func ResolveApiUrl(ctx context.Context, flagApiUrl string) string {
 		return cfg.ApiUrl
 	}
 	return ""
+}
+
+// resolveMaxRetries returns the maximum number of retries for API requests.
+// It checks (in order): the --max-retries flag from context, the
+// DASH0_MAX_RETRIES environment variable, then falls back to DefaultMaxRetries (3).
+func resolveMaxRetries(ctx context.Context) (int, error) {
+	// Check --max-retries flag from context (persistent flag on root command).
+	if cmd, ok := ctx.Value(maxRetriesCmdKey{}).(*int); ok && cmd != nil && *cmd >= 0 {
+		return validateMaxRetries(*cmd, "--max-retries flag")
+	}
+
+	raw := os.Getenv("DASH0_MAX_RETRIES")
+	if raw == "" {
+		return DefaultMaxRetries, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid DASH0_MAX_RETRIES value %q: must be an integer", raw)
+	}
+	return validateMaxRetries(n, "DASH0_MAX_RETRIES")
+}
+
+func validateMaxRetries(n int, source string) (int, error) {
+	if n < 0 {
+		return 0, fmt.Errorf("invalid %s value %q: must not be negative", source, strconv.Itoa(n))
+	}
+	if n > dash0api.MaxRetries {
+		return 0, fmt.Errorf("invalid %s value %q: must not exceed %d", source, strconv.Itoa(n), dash0api.MaxRetries)
+	}
+	return n, nil
+}
+
+type maxRetriesCmdKey struct{}
+
+// WithMaxRetries stores the --max-retries flag value in the context.
+func WithMaxRetries(ctx context.Context, maxRetries *int) context.Context {
+	return context.WithValue(ctx, maxRetriesCmdKey{}, maxRetries)
 }
 
 // ErrorContext provides context about the asset involved in an error.

@@ -411,6 +411,7 @@ dash0 -X api /api/organization/settings --dataset ""
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
 | | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
+| `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |
 
 ### Output formats
 
