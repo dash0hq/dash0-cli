@@ -71,6 +71,35 @@ jobs:
           AFTER_MTIME=$(stat -c %Y ~/.dash0/bin/dash0)
           [ "${{ steps.before.outputs.mtime }}" = "$AFTER_MTIME" ] || { echo "Error: binary was reinstalled"; exit 1; }
 
+  test-profile-update:
+    name: 'Updates existing profile with connection inputs'
+    if: github.repository == 'dash0hq/dash0-cli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Dash0 CLI with a dummy token
+        uses: ./.github/actions/setup
+        with:
+          version: '1.1.0'
+          cache: 'false'
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: auth_this-token-is-intentionally-invalid
+
+      - name: Verify profile has the dummy token
+        run: |
+          dash0 config show | grep -q '...alid'
+
+      - name: Send log event with the real token
+        uses: ./.github/actions/send-log-event
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ vars.DASH0_DATASET }}
+          event-name: dash0.ci.test
+          body: 'Profile update test'
+          service-name: send-log-event-action-ci
+
   test-rejects-old-cli:
     name: 'Rejects CLI below minimum version'
     runs-on: ubuntu-latest

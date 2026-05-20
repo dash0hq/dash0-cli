@@ -220,7 +220,7 @@ runs:
 
     # -- Ensure a profile exists --
 
-    - name: Create Dash0 profile if needed
+    - name: Create or update Dash0 profile
       shell: bash
       env:
         INPUT_OTLP_URL: ${{ inputs.otlp-url }}
@@ -229,20 +229,24 @@ runs:
       run: |
         export PATH="$HOME/.dash0/bin:$PATH"
 
-        # If an active profile already exists (e.g., from the setup action), skip creation.
-        # When no profile is configured, `dash0 config show` prints "Profile:    (none)".
-        PROFILE_LINE=$(dash0 config show 2>/dev/null | grep '^Profile:' || true)
-        if [ -n "$PROFILE_LINE" ] && ! echo "$PROFILE_LINE" | grep -q '(none)'; then
-          echo "Active profile found, skipping profile creation."
-          exit 0
-        fi
-
-        # No active profile — create one from the connection inputs.
         ARGS=()
         [ -n "$INPUT_OTLP_URL" ] && ARGS+=(--otlp-url "$INPUT_OTLP_URL")
         [ -n "$INPUT_AUTH_TOKEN" ] && ARGS+=(--auth-token "$INPUT_AUTH_TOKEN")
         [ -n "$INPUT_DATASET" ] && ARGS+=(--dataset "$INPUT_DATASET")
 
+        # If an active profile already exists (e.g., from the setup action),
+        # update it with any connection inputs provided to this action.
+        # When no profile is configured, `dash0 config show` prints "Profile:    (none)".
+        PROFILE_LINE=$(dash0 config show 2>/dev/null | grep '^Profile:' || true)
+        if [ -n "$PROFILE_LINE" ] && ! echo "$PROFILE_LINE" | grep -q '(none)'; then
+          if [ ${#ARGS[@]} -gt 0 ]; then
+            PROFILE_NAME=$(echo "$PROFILE_LINE" | sed 's/^Profile:[[:space:]]*//' | sed 's/[[:space:]]*(.*//')
+            dash0 config profiles update "$PROFILE_NAME" "${ARGS[@]}"
+          fi
+          exit 0
+        fi
+
+        # No active profile — create one from the connection inputs.
         if [ ${#ARGS[@]} -eq 0 ]; then
           echo "::error::No active profile and no connection inputs (otlp-url, auth-token) provided."
           exit 1
