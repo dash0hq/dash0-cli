@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.13.0
+
+
+### Breaking Changes
+
+
+- `config`: Rename `DASH0_RETRY_COUNT` to `DASH0_MAX_RETRIES` and add `--max-retries` global flag (#141)
+  The environment variable `DASH0_RETRY_COUNT` has been renamed to `DASH0_MAX_RETRIES` for consistency with the Terraform provider.
+  A new `--max-retries` global flag is now available on all commands as an alternative to the environment variable.
+  Resolution order: `--max-retries` flag, then `DASH0_MAX_RETRIES` env var, then default (3).
+  
+
+
+### Bug Fixes
+
+
+- `send-log-event action`: Fix `send-log-event` action ignoring connection inputs when a profile already exists (#143)
+  When a profile already existed (e.g., from the setup action), the action skipped profile creation
+  and ignored any `otlp-url`, `auth-token`, or `dataset` inputs. The action now updates the existing
+  profile with the provided values.
+  
+
 ## 1.12.2
 
 
