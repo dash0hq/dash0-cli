@@ -5,12 +5,12 @@
 class Dash0 < Formula
   desc "CLI to interact with Dash0"
   homepage "https://github.com/dash0hq/dash0-cli"
-  version "1.12.2"
+  version "1.13.0"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.12.2/dash0_1.12.2_macos_amd64.tar.gz"
-      sha256 "6d1b684e6697b50633ebd7591597a598aa3766dd046a8149bb37d30b90c0ed8a"
+      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.13.0/dash0_1.13.0_macos_amd64.tar.gz"
+      sha256 "e1e7f5f7ec32e13f160b9a9c96cee12abadd011dd48e25e2c3e0b2c2688438e1"
 
       define_method(:install) do
         bin.install "dash0"
@@ -20,8 +20,8 @@ class Dash0 < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.12.2/dash0_1.12.2_macos_arm64.tar.gz"
-      sha256 "b23b8080e8ca0644afc2ec254efa1c0ed885a180a24577352e69d9c98b18887a"
+      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.13.0/dash0_1.13.0_macos_arm64.tar.gz"
+      sha256 "3c5b96fbdf4890f002377fa0487407c860b0a8cce6a8463c622007dedb6adbdc"
 
       define_method(:install) do
         bin.install "dash0"
@@ -34,8 +34,8 @@ class Dash0 < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.12.2/dash0_1.12.2_linux_amd64.tar.gz"
-      sha256 "2ad15c4be326b8b74e577e443c8b58e598ba677b6fa2d4d871964852a945e357"
+      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.13.0/dash0_1.13.0_linux_amd64.tar.gz"
+      sha256 "ee9970d925759a2819e493aa36db941c240b0df018aff38196c55db68f1d954e"
       define_method(:install) do
         bin.install "dash0"
         bash_completion.install "completions/dash0.bash" => "dash0"
@@ -44,8 +44,8 @@ class Dash0 < Formula
       end
     end
     if Hardware::CPU.arm? && !Hardware::CPU.is_64_bit?
-      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.12.2/dash0_1.12.2_linux_arm.tar.gz"
-      sha256 "2cfc86a49421565348d65ae3366637ff24a405b6686448b0dfc28432cb702f2a"
+      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.13.0/dash0_1.13.0_linux_arm.tar.gz"
+      sha256 "be2a6270b33ba940858763d119efb693be0000df28862800fa1a211966c29cd7"
       define_method(:install) do
         bin.install "dash0"
         bash_completion.install "completions/dash0.bash" => "dash0"
@@ -54,8 +54,8 @@ class Dash0 < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.12.2/dash0_1.12.2_linux_arm64.tar.gz"
-      sha256 "2f6c632c875657d260bc7e67ed1d10aa8026f4928775cf6be4f38f52b0ad13c5"
+      url "https://github.com/dash0hq/dash0-cli/releases/download/v1.13.0/dash0_1.13.0_linux_arm64.tar.gz"
+      sha256 "82422076498fcc744c9a7b653b427aa23d06f093d45e661004a72f4cf743191f"
       define_method(:install) do
         bin.install "dash0"
         bash_completion.install "completions/dash0.bash" => "dash0"
