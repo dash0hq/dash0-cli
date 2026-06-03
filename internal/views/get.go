@@ -80,7 +80,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		}
 		fmt.Printf("Dataset: %s\n", dataset)
 		fmt.Printf("Origin: %s\n", origin)
-		if deeplinkURL := asset.ViewDeeplinkURL(apiUrl, string(view.Spec.Type), id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.ViewDeeplinkURL(apiUrl, view.Spec.Type, id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

@@ -179,7 +179,7 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				d := item.(dashboardListItem)
-				return asset.DeeplinkURL(apiUrl, "dashboard", d.Id)
+				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, d.Id)
 			}},
 		)
 	}

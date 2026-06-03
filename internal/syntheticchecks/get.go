@@ -83,7 +83,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		if check.Metadata.Description != nil {
 			fmt.Printf("Description: %s\n", *check.Metadata.Description)
 		}
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "syntheticcheck", id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSyntheticCheck, id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

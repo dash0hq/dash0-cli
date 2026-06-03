@@ -151,7 +151,7 @@ func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, form
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item any) string {
 				v := item.(*dash0api.ViewApiListItem)
-				return asset.ViewDeeplinkURL(apiUrl, string(v.Type), v.Id)
+				return dash0api.ViewDeeplinkURL(apiUrl, v.Type, v.Id)
 			}},
 		)
 	}

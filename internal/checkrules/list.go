@@ -147,7 +147,7 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertR
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
-				return asset.DeeplinkURL(apiUrl, "checkrule", r.Id)
+				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeCheckRule, r.Id)
 			}},
 		)
 	}

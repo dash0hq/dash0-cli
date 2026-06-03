@@ -229,6 +229,7 @@ metadata:
   annotations:
     dash0.com/folder-path: /test/foo/bar
     dash0.com/sharing: team-123
+  labels:
     dash0.com/source: ui
   dash0extensions:
     id: existing-dashboard-id
@@ -272,7 +273,8 @@ spec:
 	require.NotNil(t, dashboard.Metadata.Annotations)
 	assert.Equal(t, "/test/foo/bar", *dashboard.Metadata.Annotations.Dash0ComfolderPath)
 	assert.Equal(t, "team-123", *dashboard.Metadata.Annotations.Dash0Comsharing)
-	assert.Equal(t, dash0api.DashboardSourceUi, *dashboard.Metadata.Annotations.Dash0Comsource)
+	require.NotNil(t, dashboard.Metadata.Labels)
+	assert.Equal(t, dash0api.Ui, *dashboard.Metadata.Labels.Dash0Comsource)
 	// Server-generated fields are stripped
 	assert.Nil(t, dashboard.Metadata.Annotations.Dash0ComdeletedAt)
 	assert.Nil(t, dashboard.Metadata.CreatedAt)

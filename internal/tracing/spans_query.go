@@ -11,7 +11,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
@@ -236,8 +235,8 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 	}
 
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
-	deeplinkFilters := asset.FiltersToDeeplinkFilters(filters)
-	explorerURL := asset.SpansExplorerURL(apiUrl, deeplinkFilters, flags.From, flags.To, dataset)
+	deeplinkFilters := dash0api.FiltersToDeeplinkFilters(filters)
+	explorerURL := dash0api.SpansExplorerURL(apiUrl, deeplinkFilters, flags.From, flags.To, dataset)
 
 	iter := apiClient.GetSpansIter(ctx, &request)
 

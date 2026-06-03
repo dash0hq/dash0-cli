@@ -54,7 +54,7 @@ func objectAPIVersion(obj dash0api.SpamFilterObject) string {
 		if v.ApiVersion != nil {
 			return string(*v.ApiVersion)
 		}
-		return string(dash0api.V1alpha1)
+		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1)
 	case *dash0api.SpamFilterV1Alpha2:
 		return string(v.ApiVersion)
 	default:

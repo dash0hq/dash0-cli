@@ -777,7 +777,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 	}
 
 	switch apiVersion {
-	case string(dash0api.V1alpha1):
+	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
 		var filter dash0api.SpamFilter
 		if err := sigsyaml.Unmarshal(doc.raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)

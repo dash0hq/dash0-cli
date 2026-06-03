@@ -75,7 +75,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		if rule.Annotations != nil && rule.Annotations.Description != nil {
 			fmt.Printf("Description: %s\n", *rule.Annotations.Description)
 		}
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "checkrule", id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeCheckRule, id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil
