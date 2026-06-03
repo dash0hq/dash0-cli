@@ -22,6 +22,7 @@ kind: Dashboard
 metadata:
   annotations:
     dash0.com/folder-path: $FOLDER_PATH
+  labels:
     dash0.com/source: ui
   dash0extensions:
     id: $ID
@@ -58,13 +59,13 @@ if [ "$ACTUAL_FOLDER" != "$FOLDER_PATH" ]; then
 fi
 echo "folder-path: $ACTUAL_FOLDER"
 
-# dash0.com/source is set by the server based on the API path, so it may differ
-# from what we sent. Just verify it is present.
-if ! echo "$GET_YAML" | yq -e '.metadata.annotations."dash0.com/source"' > /dev/null 2>&1; then
-  echo "FAIL: dash0.com/source annotation is missing after create"
+# dash0.com/source is a server-set metadata label (based on the API path), so it
+# may differ from what we sent. Just verify it is present.
+if ! echo "$GET_YAML" | yq -e '.metadata.labels."dash0.com/source"' > /dev/null 2>&1; then
+  echo "FAIL: dash0.com/source label is missing after create"
   exit 1
 fi
-ACTUAL_SOURCE=$(echo "$GET_YAML" | yq '.metadata.annotations."dash0.com/source"')
+ACTUAL_SOURCE=$(echo "$GET_YAML" | yq '.metadata.labels."dash0.com/source"')
 echo "source: $ACTUAL_SOURCE"
 
 # Step 3: Export and re-apply (round-trip). Annotations must survive.
