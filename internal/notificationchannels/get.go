@@ -55,6 +55,7 @@ func newGetCmd() *cobra.Command {
 func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 	ctx := cmd.Context()
 
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -88,15 +89,15 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 			encoder.SetIndent("", "  ")
 			return encoder.Encode(channel)
 		}
-		return printNotificationChannelDetails(channel)
+		return printNotificationChannelDetails(channel, apiUrl)
 	case "table":
-		return printNotificationChannelDetails(channel)
+		return printNotificationChannelDetails(channel, apiUrl)
 	default:
 		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
 	}
 }
 
-func printNotificationChannelDetails(channel *dash0api.NotificationChannelDefinition) error {
+func printNotificationChannelDetails(channel *dash0api.NotificationChannelDefinition, apiUrl string) error {
 	id := dash0api.GetNotificationChannelID(channel)
 	origin := dash0api.GetNotificationChannelOrigin(channel)
 
@@ -108,6 +109,11 @@ func printNotificationChannelDetails(channel *dash0api.NotificationChannelDefini
 	}
 	if origin != "" {
 		fmt.Printf("Origin: %s\n", origin)
+	}
+	if id != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeNotificationChannel, id, nil); deeplinkURL != "" {
+			fmt.Printf("URL:   %s\n", deeplinkURL)
+		}
 	}
 	return nil
 }

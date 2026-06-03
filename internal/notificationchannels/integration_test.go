@@ -55,9 +55,11 @@ func TestListNotificationChannels_Success(t *testing.T) {
 	assert.Contains(t, output, "NAME")
 	assert.Contains(t, output, "TYPE")
 	assert.Contains(t, output, "ID")
+	assert.Contains(t, output, "URL")
 	assert.Contains(t, output, "Slack Alerts")
 	assert.Contains(t, output, "PagerDuty On-Call")
 	assert.Contains(t, output, "Email Digest")
+	assert.Contains(t, output, "/goto/settings/notifications?channel_id=abc-123-def-456")
 }
 
 func TestListNotificationChannels_Empty(t *testing.T) {
@@ -152,8 +154,9 @@ func TestListNotificationChannels_CSV(t *testing.T) {
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	require.GreaterOrEqual(t, len(lines), 4) // header + 3 channels
-	assert.Equal(t, "name,type,id,origin", lines[0])
+	assert.Equal(t, "name,type,id,origin,url", lines[0])
 	assert.Contains(t, lines[1], "Slack Alerts")
+	assert.Contains(t, lines[1], "/goto/settings/notifications?channel_id=abc-123-def-456")
 }
 
 func TestListNotificationChannels_Unauthorized(t *testing.T) {
@@ -210,6 +213,7 @@ func TestGetNotificationChannel_Success(t *testing.T) {
 	assert.Contains(t, output, "Name:  Slack Alerts")
 	assert.Contains(t, output, "Type:  slack")
 	assert.Contains(t, output, "ID:    abc-123-def-456")
+	assert.Contains(t, output, "/goto/settings/notifications?channel_id=abc-123-def-456")
 }
 
 func TestGetNotificationChannel_JSON(t *testing.T) {
