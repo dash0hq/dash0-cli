@@ -11,7 +11,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -170,7 +169,7 @@ func teamValues(item *dash0api.TeamsListItem, apiUrl string) map[string]string {
 		"id":      item.Id,
 		"members": formatMemberCount(item),
 		"origin":  origin,
-		"url":     asset.DeeplinkURL(apiUrl, "team", item.Id),
+		"url":     dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeTeam, item.Id),
 	}
 }
 

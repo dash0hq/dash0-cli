@@ -88,7 +88,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		}
 		fmt.Printf("Dataset: %s\n", dataset)
 		fmt.Printf("Origin: %s\n", origin)
-		if deeplinkURL := asset.DeeplinkURL(apiUrl, "dashboard", id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, id); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		if dashboard.Metadata.CreatedAt != nil {

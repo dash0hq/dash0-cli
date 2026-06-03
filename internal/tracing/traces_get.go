@@ -12,7 +12,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	colorpkg "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
@@ -244,7 +243,7 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 	}
 
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
-	explorerURL := asset.TracesExplorerURL(apiUrl, traceID, dataset)
+	explorerURL := dash0api.TracesExplorerURL(apiUrl, traceID, dataset)
 
 	switch format {
 	case getFormatTable:

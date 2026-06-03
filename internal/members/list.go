@@ -10,7 +10,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -172,7 +171,7 @@ func MemberValues(m *dash0api.MemberDefinition, apiUrl string) map[string]string
 		"name":  name,
 		"email": email,
 		"id":    id,
-		"url":   asset.DeeplinkURL(apiUrl, "member", id),
+		"url":   dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeMember, id),
 	}
 }
 

@@ -147,7 +147,7 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticC
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				c := item.(*dash0api.SyntheticChecksApiListItem)
-				return asset.DeeplinkURL(apiUrl, "syntheticcheck", c.Id)
+				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSyntheticCheck, c.Id)
 			}},
 		)
 	}

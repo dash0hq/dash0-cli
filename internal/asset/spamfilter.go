@@ -13,7 +13,7 @@ import (
 // CLI understands. Exported so callers can render the supported list in their
 // own error messages.
 var SpamFilterSupportedAPIVersions = []string{
-	string(dash0api.V1alpha1),
+	string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1),
 	string(dash0api.V1alpha2),
 }
 
@@ -30,8 +30,8 @@ func DetectSpamFilterAPIVersion(data []byte) (string, error) {
 		return "", fmt.Errorf("failed to detect spam filter apiVersion: %w", err)
 	}
 	switch disc.ApiVersion {
-	case "", string(dash0api.V1alpha1):
-		return string(dash0api.V1alpha1), nil
+	case "", string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
+		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), nil
 	case string(dash0api.V1alpha2):
 		return string(dash0api.V1alpha2), nil
 	default:
