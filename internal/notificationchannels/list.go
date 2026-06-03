@@ -41,6 +41,7 @@ var notificationChannelListDefaultColumns = []query.ColumnDef{
 	{Key: "type", Aliases: []string{"channel type"}, Header: internal.HEADER_TYPE, Width: 15},
 	{Key: "id", Aliases: []string{"channel id"}, Header: internal.HEADER_ID, Width: 36},
 	{Key: "origin", Header: internal.HEADER_ORIGIN, Width: 20},
+	{Key: "url", Header: internal.HEADER_URL, Width: 70},
 }
 
 func parseListFormat(s string) (listFormat, error) {
@@ -139,15 +140,17 @@ func runList(cmd *cobra.Command, flags *listFlags) error {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: "notification channel"})
 	}
 
+	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+
 	switch format {
 	case listFormatJSON:
 		return renderNotificationChannelsJSON(items)
 	case listFormatYAML:
 		return renderNotificationChannelsYAML(items)
 	case listFormatTable:
-		return renderNotificationChannelsTable(items, cols, flags.SkipHeader)
+		return renderNotificationChannelsTable(items, cols, flags.SkipHeader, apiUrl)
 	case listFormatCSV:
-		return renderNotificationChannelsCSV(items, cols, flags.SkipHeader)
+		return renderNotificationChannelsCSV(items, cols, flags.SkipHeader, apiUrl)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
@@ -164,16 +167,18 @@ func resolveListColumns(columns []string) ([]query.ColumnDef, error) {
 	return query.ResolveColumns(specs, notificationChannelListDefaultColumns), nil
 }
 
-func channelValues(item *dash0api.NotificationChannelDefinition) map[string]string {
+func channelValues(item *dash0api.NotificationChannelDefinition, apiUrl string) map[string]string {
 	origin := dash0api.GetNotificationChannelOrigin(item)
 	if origin == "" {
 		origin = "-"
 	}
+	id := dash0api.GetNotificationChannelID(item)
 	return map[string]string{
 		"name":   dash0api.GetNotificationChannelName(item),
 		"type":   string(item.Spec.Type),
-		"id":     dash0api.GetNotificationChannelID(item),
+		"id":     id,
 		"origin": origin,
+		"url":    dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeNotificationChannel, id, nil),
 	}
 }
 
@@ -204,20 +209,20 @@ func renderNotificationChannelsYAML(items []*dash0api.NotificationChannelDefinit
 	return nil
 }
 
-func renderNotificationChannelsTable(items []*dash0api.NotificationChannelDefinition, cols []query.ColumnDef, skipHeader bool) error {
+func renderNotificationChannelsTable(items []*dash0api.NotificationChannelDefinition, cols []query.ColumnDef, skipHeader bool, apiUrl string) error {
 	if len(items) == 0 {
 		fmt.Println("No notification channels found.")
 		return nil
 	}
 	var rows []map[string]string
 	for _, item := range items {
-		rows = append(rows, channelValues(item))
+		rows = append(rows, channelValues(item, apiUrl))
 	}
 	query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	return nil
 }
 
-func renderNotificationChannelsCSV(items []*dash0api.NotificationChannelDefinition, cols []query.ColumnDef, skipHeader bool) error {
+func renderNotificationChannelsCSV(items []*dash0api.NotificationChannelDefinition, cols []query.ColumnDef, skipHeader bool, apiUrl string) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
 		if err := query.WriteCSVHeader(w, cols); err != nil {
@@ -225,7 +230,7 @@ func renderNotificationChannelsCSV(items []*dash0api.NotificationChannelDefiniti
 		}
 	}
 	for _, item := range items {
-		values := channelValues(item)
+		values := channelValues(item, apiUrl)
 		if err := query.WriteCSVRow(w, cols, values); err != nil {
 			return err
 		}

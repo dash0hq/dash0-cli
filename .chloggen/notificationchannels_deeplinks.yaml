@@ -1,0 +1,12 @@
+change_type: enhancement
+
+component: notification-channels
+
+note: surface the Dash0 web app deep link in `notification-channels list` and `notification-channels get`
+
+issues: [147]
+
+subtext: |
+  The `list` table and CSV output now include a `URL` column with a direct link
+  to the channel in the Dash0 web app. The `get` table output prints the same
+  URL as a new `URL:` field.
