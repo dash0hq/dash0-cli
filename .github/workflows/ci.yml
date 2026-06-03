@@ -97,4 +97,5 @@ jobs:
           DASH0_API_URL: ${{ secrets.DASH0_API_URL }}
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
           DASH0_OTLP_URL: ${{ secrets.DASH0_OTLP_URL }}
+          DASH0_DATASET: ${{ secrets.DASH0_DATASET }}
         run: bash test/roundtrip/${{ matrix.test }}.sh
