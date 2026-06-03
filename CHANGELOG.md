@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.13.1
+
+
+### Enhancements
+
+
+- `notification-channels`: surface the Dash0 web app deep link in `notification-channels list` and `notification-channels get` (#147)
+  The `list` table and CSV output now include a `URL` column with a direct link
+  to the channel in the Dash0 web app. The `get` table output prints the same
+  URL as a new `URL:` field.
+  
+
 ## 1.13.0
 
 
