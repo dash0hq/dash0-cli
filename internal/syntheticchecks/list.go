@@ -92,7 +92,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		}
 		return formatter.PrintJSON(definitions)
 	default:
-		return printSyntheticCheckTable(formatter, checks, format, apiUrl)
+		return printSyntheticCheckTable(formatter, checks, format, apiUrl, dataset)
 	}
 }
 
@@ -117,7 +117,7 @@ func fetchFullSyntheticChecks(
 	return definitions, nil
 }
 
-func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticChecksApiListItem, format output.Format, apiUrl string) error {
+func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticChecksApiListItem, format output.Format, apiUrl string, dataset *string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			c := item.(*dash0api.SyntheticChecksApiListItem)
@@ -147,7 +147,7 @@ func printSyntheticCheckTable(f *output.Formatter, checks []*dash0api.SyntheticC
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				c := item.(*dash0api.SyntheticChecksApiListItem)
-				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSyntheticCheck, c.Id)
+				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSyntheticCheck, c.Id, dataset)
 			}},
 		)
 	}

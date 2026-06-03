@@ -92,7 +92,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		}
 		return formatter.PrintJSON(definitions)
 	default:
-		return printViewTable(formatter, views, format, apiUrl)
+		return printViewTable(formatter, views, format, apiUrl, dataset)
 	}
 }
 
@@ -117,7 +117,7 @@ func fetchFullViews(
 	return definitions, nil
 }
 
-func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format, apiUrl string) error {
+func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, format output.Format, apiUrl string, dataset *string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item any) string {
 			v := item.(*dash0api.ViewApiListItem)
@@ -151,7 +151,7 @@ func printViewTable(f *output.Formatter, views []*dash0api.ViewApiListItem, form
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item any) string {
 				v := item.(*dash0api.ViewApiListItem)
-				return dash0api.ViewDeeplinkURL(apiUrl, v.Type, v.Id)
+				return dash0api.ViewDeeplinkURL(apiUrl, v.Type, v.Id, dataset)
 			}},
 		)
 	}

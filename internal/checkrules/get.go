@@ -40,12 +40,13 @@ func newGetCmd() *cobra.Command {
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	rule, err := apiClient.GetCheckRule(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
+	rule, err := apiClient.GetCheckRule(ctx, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "check rule",
@@ -75,7 +76,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		if rule.Annotations != nil && rule.Annotations.Description != nil {
 			fmt.Printf("Description: %s\n", *rule.Annotations.Description)
 		}
-		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeCheckRule, id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeCheckRule, id, dataset); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

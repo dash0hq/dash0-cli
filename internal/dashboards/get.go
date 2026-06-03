@@ -40,12 +40,13 @@ func newGetCmd() *cobra.Command {
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	dashboard, err := apiClient.GetDashboard(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
+	dashboard, err := apiClient.GetDashboard(ctx, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",
@@ -73,11 +74,11 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		if displayName != "" {
 			fmt.Printf("Name: %s\n", displayName)
 		}
-		dataset := ""
+		dashboardDataset := ""
 		origin := ""
 		if dashboard.Metadata.Dash0Extensions != nil {
 			if dashboard.Metadata.Dash0Extensions.Dataset != nil {
-				dataset = *dashboard.Metadata.Dash0Extensions.Dataset
+				dashboardDataset = *dashboard.Metadata.Dash0Extensions.Dataset
 			}
 			// Origin is deprecated and replaced by Id
 			if dashboard.Metadata.Dash0Extensions.Id != nil {
@@ -86,9 +87,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 				origin = *dashboard.Metadata.Dash0Extensions.Origin
 			}
 		}
-		fmt.Printf("Dataset: %s\n", dataset)
+		fmt.Printf("Dataset: %s\n", dashboardDataset)
 		fmt.Printf("Origin: %s\n", origin)
-		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, id, dataset); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		if dashboard.Metadata.CreatedAt != nil {

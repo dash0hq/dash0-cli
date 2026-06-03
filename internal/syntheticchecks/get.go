@@ -40,12 +40,13 @@ func newGetCmd() *cobra.Command {
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	check, err := apiClient.GetSyntheticCheck(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
+	check, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",
@@ -68,22 +69,22 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	default:
 		fmt.Printf("Kind: %s\n", check.Kind)
 		fmt.Printf("Name: %s\n", dash0api.GetSyntheticCheckName(check))
-		dataset := ""
+		checkDataset := ""
 		origin := ""
 		if check.Metadata.Labels != nil {
 			if check.Metadata.Labels.Dash0Comdataset != nil {
-				dataset = *check.Metadata.Labels.Dash0Comdataset
+				checkDataset = *check.Metadata.Labels.Dash0Comdataset
 			}
 			if check.Metadata.Labels.Dash0Comorigin != nil {
 				origin = *check.Metadata.Labels.Dash0Comorigin
 			}
 		}
-		fmt.Printf("Dataset: %s\n", dataset)
+		fmt.Printf("Dataset: %s\n", checkDataset)
 		fmt.Printf("Origin: %s\n", origin)
 		if check.Metadata.Description != nil {
 			fmt.Printf("Description: %s\n", *check.Metadata.Description)
 		}
-		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSyntheticCheck, id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSyntheticCheck, id, dataset); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

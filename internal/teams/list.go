@@ -169,7 +169,7 @@ func teamValues(item *dash0api.TeamsListItem, apiUrl string) map[string]string {
 		"id":      item.Id,
 		"members": formatMemberCount(item),
 		"origin":  origin,
-		"url":     dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeTeam, item.Id),
+		"url":     dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeTeam, item.Id, nil),
 	}
 }
 

@@ -92,7 +92,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		}
 		return formatter.PrintJSON(definitions)
 	default:
-		return printCheckRuleTable(formatter, rules, format, apiUrl)
+		return printCheckRuleTable(formatter, rules, format, apiUrl, dataset)
 	}
 }
 
@@ -117,7 +117,7 @@ func fetchFullCheckRules(
 	return definitions, nil
 }
 
-func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertRuleApiListItem, format output.Format, apiUrl string) error {
+func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertRuleApiListItem, format output.Format, apiUrl string, dataset *string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			r := item.(*dash0api.PrometheusAlertRuleApiListItem)
@@ -147,7 +147,7 @@ func printCheckRuleTable(f *output.Formatter, rules []*dash0api.PrometheusAlertR
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				r := item.(*dash0api.PrometheusAlertRuleApiListItem)
-				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeCheckRule, r.Id)
+				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeCheckRule, r.Id, dataset)
 			}},
 		)
 	}

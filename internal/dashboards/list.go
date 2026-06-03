@@ -117,7 +117,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 				Origin:      item.Origin,
 			})
 		}
-		return printDashboardTable(formatter, dashboards, format, apiUrl)
+		return printDashboardTable(formatter, dashboards, format, apiUrl, dataset)
 	}
 }
 
@@ -152,7 +152,7 @@ func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, d
 	return dash0api.GetDashboardName(dashboard)
 }
 
-func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format, apiUrl string) error {
+func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format, apiUrl string, dataset *string) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			d := item.(dashboardListItem)
@@ -179,7 +179,7 @@ func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, fo
 			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
 				d := item.(dashboardListItem)
-				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, d.Id)
+				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, d.Id, dataset)
 			}},
 		)
 	}

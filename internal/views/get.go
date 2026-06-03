@@ -40,12 +40,13 @@ func newGetCmd() *cobra.Command {
 
 func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	view, err := apiClient.GetView(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
+	view, err := apiClient.GetView(ctx, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "view",
@@ -68,19 +69,19 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	default:
 		fmt.Printf("Kind: %s\n", view.Kind)
 		fmt.Printf("Name: %s\n", dash0api.GetViewName(view))
-		dataset := ""
+		viewDataset := ""
 		origin := ""
 		if view.Metadata.Labels != nil {
 			if view.Metadata.Labels.Dash0Comdataset != nil {
-				dataset = *view.Metadata.Labels.Dash0Comdataset
+				viewDataset = *view.Metadata.Labels.Dash0Comdataset
 			}
 			if view.Metadata.Labels.Dash0Comorigin != nil {
 				origin = *view.Metadata.Labels.Dash0Comorigin
 			}
 		}
-		fmt.Printf("Dataset: %s\n", dataset)
+		fmt.Printf("Dataset: %s\n", viewDataset)
 		fmt.Printf("Origin: %s\n", origin)
-		if deeplinkURL := dash0api.ViewDeeplinkURL(apiUrl, view.Spec.Type, id); deeplinkURL != "" {
+		if deeplinkURL := dash0api.ViewDeeplinkURL(apiUrl, view.Spec.Type, id, dataset); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)
 		}
 		return nil

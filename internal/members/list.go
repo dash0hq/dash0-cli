@@ -171,7 +171,7 @@ func MemberValues(m *dash0api.MemberDefinition, apiUrl string) map[string]string
 		"name":  name,
 		"email": email,
 		"id":    id,
-		"url":   dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeMember, id),
+		"url":   dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeMember, id, nil),
 	}
 }
 
