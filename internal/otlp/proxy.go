@@ -17,11 +17,6 @@ import (
 const (
 	defaultHTTPPort = 4318
 	defaultGRPCPort = 4317
-
-	// proxyMaxConcurrent is the outbound concurrency limit handed to
-	// dash0-api-client-go. Hardcoded to the client's ceiling (10) because the
-	// proxy is a local-dev shortcut, not a high-throughput forwarder.
-	proxyMaxConcurrent = 10
 )
 
 // Environment-variable names for proxy flag overrides.
