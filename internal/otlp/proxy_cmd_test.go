@@ -1,6 +1,7 @@
 package otlp
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -290,6 +291,226 @@ func TestRequiresExperimentalFlag(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "experimental") {
 		t.Errorf("error should mention experimental flag; got %q", err.Error())
+	}
+}
+
+func TestParsePort(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    int
+		wantErr bool
+	}{
+		{"zero", "0", 0, false},
+		{"valid", "4318", 4318, false},
+		{"max", "65535", 65535, false},
+		{"empty", "", 0, true},
+		{"negative", "-1", 0, true},
+		{"over max", "65536", 0, true},
+		{"non-numeric", "abc", 0, true},
+		{"trailing garbage", "4318abc", 0, true},
+		{"leading whitespace", " 4318", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parsePort("TEST_SOURCE", tc.raw)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("parsePort(%q) = %d; want error", tc.raw, got)
+				}
+				if err != nil && !strings.Contains(err.Error(), "TEST_SOURCE") {
+					t.Errorf("error should name the source; got %q", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("parsePort(%q) unexpected error: %v", tc.raw, err)
+				return
+			}
+			if got != tc.want {
+				t.Errorf("parsePort(%q) = %d; want %d", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNonEmptyEnv(t *testing.T) {
+	const probe = "DASH0_OTLP_PROXY_TEST_PROBE"
+	t.Run("unset", func(t *testing.T) {
+		os.Unsetenv(probe)
+		if v, ok := nonEmptyEnv(probe); ok {
+			t.Errorf("nonEmptyEnv(unset) = (%q, true); want (\"\", false)", v)
+		}
+	})
+	t.Run("set empty", func(t *testing.T) {
+		t.Setenv(probe, "")
+		if v, ok := nonEmptyEnv(probe); ok {
+			t.Errorf("nonEmptyEnv(set-empty) = (%q, true); want (\"\", false) so the next tier applies", v)
+		}
+	})
+	t.Run("set non-empty", func(t *testing.T) {
+		t.Setenv(probe, "value")
+		v, ok := nonEmptyEnv(probe)
+		if !ok || v != "value" {
+			t.Errorf("nonEmptyEnv(set-non-empty) = (%q, %t); want (\"value\", true)", v, ok)
+		}
+	})
+}
+
+func TestParseOTELExporterEnv_ProtocolCaseInsensitive(t *testing.T) {
+	cases := []struct {
+		name     string
+		protocol string
+		wantHTTP bool
+		wantGRPC bool
+	}{
+		{"grpc lower", "grpc", false, true},
+		{"grpc upper", "GRPC", false, true},
+		{"grpc mixed", "GrPc", false, true},
+		{"http/protobuf", "http/protobuf", true, false},
+		{"HTTP/PROTOBUF", "HTTP/PROTOBUF", true, false},
+		{"http/json", "http/json", true, false},
+		{"unknown", "xml", false, false},
+		{"empty", "", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envOTELEndpoint, "http://localhost:5555")
+			t.Setenv(envOTELProtocol, tc.protocol)
+
+			httpPort, grpcPort, err := parseOTELExporterEnv()
+			if err != nil {
+				t.Fatalf("parseOTELExporterEnv: %v", err)
+			}
+			if tc.wantHTTP && (httpPort == nil || *httpPort != 5555) {
+				t.Errorf("HTTP port = %v; want 5555", httpPort)
+			}
+			if !tc.wantHTTP && httpPort != nil {
+				t.Errorf("HTTP port = %v; want nil", *httpPort)
+			}
+			if tc.wantGRPC && (grpcPort == nil || *grpcPort != 5555) {
+				t.Errorf("gRPC port = %v; want 5555", grpcPort)
+			}
+			if !tc.wantGRPC && grpcPort != nil {
+				t.Errorf("gRPC port = %v; want nil", *grpcPort)
+			}
+		})
+	}
+}
+
+func TestParseOTELExporterEnv_UnsetEndpointReturnsNil(t *testing.T) {
+	t.Setenv(envOTELEndpoint, "")
+	t.Setenv(envOTELProtocol, "grpc")
+
+	httpPort, grpcPort, err := parseOTELExporterEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if httpPort != nil || grpcPort != nil {
+		t.Errorf("unset OTEL_EXPORTER_OTLP_ENDPOINT should leave both ports nil; got HTTP=%v gRPC=%v", httpPort, grpcPort)
+	}
+}
+
+func TestParseOTELExporterEnv_BadPortPropagatesError(t *testing.T) {
+	t.Setenv(envOTELEndpoint, "http://localhost:not-a-port")
+	t.Setenv(envOTELProtocol, "http/protobuf")
+
+	_, _, err := parseOTELExporterEnv()
+	if err == nil {
+		t.Fatal("parseOTELExporterEnv should propagate parse errors")
+	}
+	if !strings.Contains(err.Error(), envOTELEndpoint) {
+		t.Errorf("error should name the env var; got %q", err.Error())
+	}
+}
+
+func TestProxyFlags_EmptyDASHEnvFallsThrough(t *testing.T) {
+	// An explicitly-empty DASH0_OTLP_PROXY_HTTP_PORT must NOT override the default;
+	// it should be treated as "not set" so the OTEL or default tier wins.
+	t.Setenv(envHTTPPort, "")
+	t.Setenv(envOTELEndpoint, "")
+
+	cmd := newProxyCmd()
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	flags := readFlagsFromCmd(t, cmd)
+	if err := resolveEnvOverrides(cmd, flags); err != nil {
+		t.Fatalf("resolveEnvOverrides: %v", err)
+	}
+
+	if flags.HTTPPort != defaultHTTPPort {
+		t.Errorf("empty DASH0_OTLP_PROXY_HTTP_PORT should leave default %d; got %d", defaultHTTPPort, flags.HTTPPort)
+	}
+}
+
+func TestEnvVarNameConstantsAreStable(t *testing.T) {
+	// Regression guard: these are user-facing env var names that propagate to
+	// docs and shell scripts. A typo or rename here is a breaking change.
+	cases := []struct{ got, want string }{
+		{envHTTPPort, "DASH0_OTLP_PROXY_HTTP_PORT"},
+		{envGRPCPort, "DASH0_OTLP_PROXY_GRPC_PORT"},
+		{envOTELEndpoint, "OTEL_EXPORTER_OTLP_ENDPOINT"},
+		{envOTELProtocol, "OTEL_EXPORTER_OTLP_PROTOCOL"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("env var name = %q; want %q (this is user-facing — renames are breaking changes)", tc.got, tc.want)
+		}
+	}
+}
+
+func TestProxyFlags_TailParsing(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"unset", nil, false},
+		{"explicit", []string{"--tail"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newProxyCmd()
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			flags := readFlagsFromCmd(t, cmd)
+			if flags.Tail != tc.want {
+				t.Errorf("Tail = %t; want %t", flags.Tail, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewOtlpCmd_HasProxySubcommand(t *testing.T) {
+	cmd := NewOtlpCmd()
+	if cmd.Use != "otlp" {
+		t.Errorf("parent Use = %q; want %q", cmd.Use, "otlp")
+	}
+	var foundProxy bool
+	for _, sub := range cmd.Commands() {
+		if sub.Use == "proxy" {
+			foundProxy = true
+			break
+		}
+	}
+	if !foundProxy {
+		t.Error("otlp parent command should expose a `proxy` subcommand")
+	}
+}
+
+func TestRunProxy_StubReturnsImplementationPending(t *testing.T) {
+	// The lifecycle implementation lands in U5+. Until then runProxy must
+	// fail loudly so accidentally invoking the command never appears to
+	// succeed.
+	cmd := newProxyCmd()
+	err := runProxy(cmd, &proxyFlags{HTTPPort: defaultHTTPPort, GRPCPort: defaultGRPCPort})
+	if err == nil {
+		t.Fatal("runProxy stub should return an error until lifecycle (U5+) lands")
+	}
+	if !strings.Contains(err.Error(), "implementation pending") {
+		t.Errorf("runProxy stub error should signal implementation-pending; got %q", err.Error())
 	}
 }
 
