@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
@@ -16,13 +15,13 @@ import (
 
 // Default values for proxy flags.
 const (
-	defaultHTTPPort      = 4318
-	defaultGRPCPort      = 4317
-	defaultStatsInterval = time.Second
-	defaultMaxConcurrent = 10
+	defaultHTTPPort = 4318
+	defaultGRPCPort = 4317
 
-	// maxAllowedConcurrent matches dash0-api-client-go's hard ceiling.
-	maxAllowedConcurrent = 10
+	// proxyMaxConcurrent is the outbound concurrency limit handed to
+	// dash0-api-client-go. Hardcoded to the client's ceiling (10) because the
+	// proxy is a local-dev shortcut, not a high-throughput forwarder.
+	proxyMaxConcurrent = 10
 )
 
 // Environment-variable names for proxy flag overrides.
@@ -35,9 +34,8 @@ const (
 //     OTEL_EXPORTER_OTLP_PROTOCOL)
 //  4. built-in default (4318 HTTP, 4317 gRPC)
 const (
-	envHTTPPort      = "DASH0_OTLP_PROXY_HTTP_PORT"
-	envGRPCPort      = "DASH0_OTLP_PROXY_GRPC_PORT"
-	envMaxConcurrent = "DASH0_OTLP_PROXY_MAX_CONCURRENT"
+	envHTTPPort = "DASH0_OTLP_PROXY_HTTP_PORT"
+	envGRPCPort = "DASH0_OTLP_PROXY_GRPC_PORT"
 
 	envOTELEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envOTELProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL"
@@ -59,12 +57,7 @@ type proxyFlags struct {
 	GRPCPort int
 
 	// Visibility
-	Tail          bool
-	TailStderr    bool
-	StatsInterval time.Duration
-
-	// Outbound
-	MaxConcurrent int
+	Tail bool
 }
 
 // newProxyCmd creates the experimental `dash0 otlp proxy` command.
@@ -115,17 +108,13 @@ surfaces to SDKs as HTTP 503 / gRPC UNAVAILABLE.`,
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to route forwarded telemetry to (overrides active profile)")
 	cmd.Flags().IntVar(&flags.HTTPPort, "http-port", defaultHTTPPort,
-		"OTLP/HTTP listener port; set 0 for OS-assigned; env: "+envHTTPPort)
+		fmt.Sprintf("OTLP/HTTP listener port (default %d, the standard OTLP/HTTP port; set 0 for OS-assigned; env: %s)",
+			defaultHTTPPort, envHTTPPort))
 	cmd.Flags().IntVar(&flags.GRPCPort, "grpc-port", defaultGRPCPort,
-		"OTLP/gRPC listener port; set 0 for OS-assigned; env: "+envGRPCPort)
+		fmt.Sprintf("OTLP/gRPC listener port (default %d, the standard OTLP/gRPC port; set 0 for OS-assigned; env: %s)",
+			defaultGRPCPort, envGRPCPort))
 	cmd.Flags().BoolVar(&flags.Tail, "tail", false,
-		"Print each forwarded record in collector-debug-exporter style (to stdout in TTY mode; requires --tail-stderr in agent mode)")
-	cmd.Flags().BoolVar(&flags.TailStderr, "tail-stderr", false,
-		"Route --tail output to stderr instead of stdout (required when combining --tail with agent mode)")
-	cmd.Flags().DurationVar(&flags.StatsInterval, "stats-interval", defaultStatsInterval,
-		"Interval between live-stats updates")
-	cmd.Flags().IntVar(&flags.MaxConcurrent, "max-concurrent", defaultMaxConcurrent,
-		"Maximum number of concurrent outbound requests to Dash0 (1-10); env: "+envMaxConcurrent)
+		"Print each forwarded record in collector-debug-exporter style on stdout (incompatible with --agent-mode; use the NDJSON event stream instead)")
 
 	return cmd
 }
@@ -164,15 +153,6 @@ func resolveEnvOverrides(cmd *cobra.Command, flags *proxyFlags) error {
 			flags.GRPCPort = port
 		} else if grpcFromOTEL != nil {
 			flags.GRPCPort = *grpcFromOTEL
-		}
-	}
-	if !cmd.Flags().Changed("max-concurrent") {
-		if v, ok := nonEmptyEnv(envMaxConcurrent); ok {
-			n, err := strconv.Atoi(v)
-			if err != nil {
-				return fmt.Errorf("%s: invalid integer %q", envMaxConcurrent, v)
-			}
-			flags.MaxConcurrent = n
 		}
 	}
 	return nil
@@ -298,9 +278,8 @@ func parsePort(source, raw string) (int, error) {
 // been applied.
 //
 // Listed validations:
-//   - HTTP and gRPC listeners cannot share a TCP port (KTD6).
-//   - MaxConcurrent must be within the dash0api.Client's supported range.
 //   - HTTPPort / GRPCPort must be within the valid TCP port range.
+//   - HTTP and gRPC listeners cannot share a TCP port (KTD6).
 func validateFlags(flags *proxyFlags) error {
 	if flags.HTTPPort < 0 || flags.HTTPPort > 65535 {
 		return fmt.Errorf("--http-port %d is out of range (0-65535)", flags.HTTPPort)
@@ -313,14 +292,6 @@ func validateFlags(flags *proxyFlags) error {
 	// distinct OS-assigned ports.
 	if flags.HTTPPort != 0 && flags.HTTPPort == flags.GRPCPort {
 		return errors.New("HTTP and gRPC listeners cannot share a port (--http-port and --grpc-port must differ)")
-	}
-	if flags.MaxConcurrent < 1 || flags.MaxConcurrent > maxAllowedConcurrent {
-		return fmt.Errorf("--max-concurrent %d is out of range (1-%d)", flags.MaxConcurrent, maxAllowedConcurrent)
-	}
-	if flags.Tail && flags.TailStderr {
-		// Both flags set is fine — TailStderr only kicks in if agent mode is also
-		// on; in TTY mode it has no effect. No validation needed here.
-		_ = flags
 	}
 	return nil
 }

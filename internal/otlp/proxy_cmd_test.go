@@ -7,10 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+
 func TestProxyFlags_Defaults(t *testing.T) {
 	t.Setenv(envHTTPPort, "")
 	t.Setenv(envGRPCPort, "")
-	t.Setenv(envMaxConcurrent, "")
 
 	cmd := newProxyCmd()
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -24,17 +24,8 @@ func TestProxyFlags_Defaults(t *testing.T) {
 	if flags.GRPCPort != defaultGRPCPort {
 		t.Errorf("default GRPCPort = %d; want %d", flags.GRPCPort, defaultGRPCPort)
 	}
-	if flags.StatsInterval != defaultStatsInterval {
-		t.Errorf("default StatsInterval = %s; want %s", flags.StatsInterval, defaultStatsInterval)
-	}
-	if flags.MaxConcurrent != defaultMaxConcurrent {
-		t.Errorf("default MaxConcurrent = %d; want %d", flags.MaxConcurrent, defaultMaxConcurrent)
-	}
 	if flags.Tail {
 		t.Errorf("default Tail = true; want false")
-	}
-	if flags.TailStderr {
-		t.Errorf("default TailStderr = true; want false")
 	}
 }
 
@@ -55,7 +46,6 @@ func TestProxyFlags_FlagOverridesDefault(t *testing.T) {
 func TestProxyFlags_EnvOverridesDefault(t *testing.T) {
 	t.Setenv(envHTTPPort, "8888")
 	t.Setenv(envGRPCPort, "8889")
-	t.Setenv(envMaxConcurrent, "5")
 
 	cmd := newProxyCmd()
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -71,9 +61,6 @@ func TestProxyFlags_EnvOverridesDefault(t *testing.T) {
 	}
 	if flags.GRPCPort != 8889 {
 		t.Errorf("GRPCPort = %d; want 8889 from %s", flags.GRPCPort, envGRPCPort)
-	}
-	if flags.MaxConcurrent != 5 {
-		t.Errorf("MaxConcurrent = %d; want 5 from %s", flags.MaxConcurrent, envMaxConcurrent)
 	}
 }
 
@@ -247,11 +234,7 @@ func TestProxyFlags_EnvInvalidIntegerErrors(t *testing.T) {
 
 func TestValidateFlags_SamePortRejected(t *testing.T) {
 	// Covers AE9.
-	flags := &proxyFlags{
-		HTTPPort:      4318,
-		GRPCPort:      4318,
-		MaxConcurrent: defaultMaxConcurrent,
-	}
+	flags := &proxyFlags{HTTPPort: 4318, GRPCPort: 4318}
 	err := validateFlags(flags)
 	if err == nil {
 		t.Fatal("validateFlags should reject same explicit port for HTTP and gRPC")
@@ -263,40 +246,9 @@ func TestValidateFlags_SamePortRejected(t *testing.T) {
 
 func TestValidateFlags_SamePortZeroAllowed(t *testing.T) {
 	// Port 0 means OS-assigned for both; the kernel hands out distinct ports.
-	flags := &proxyFlags{
-		HTTPPort:      0,
-		GRPCPort:      0,
-		MaxConcurrent: defaultMaxConcurrent,
-	}
+	flags := &proxyFlags{HTTPPort: 0, GRPCPort: 0}
 	if err := validateFlags(flags); err != nil {
 		t.Errorf("validateFlags should allow both ports being 0 (OS-assigned); got %v", err)
-	}
-}
-
-func TestValidateFlags_MaxConcurrentRange(t *testing.T) {
-	cases := []struct {
-		val     int
-		wantErr bool
-	}{
-		{0, true},
-		{1, false},
-		{10, false},
-		{11, true},
-		{100, true},
-	}
-	for _, tc := range cases {
-		flags := &proxyFlags{
-			HTTPPort:      defaultHTTPPort,
-			GRPCPort:      defaultGRPCPort,
-			MaxConcurrent: tc.val,
-		}
-		err := validateFlags(flags)
-		if tc.wantErr && err == nil {
-			t.Errorf("validateFlags(MaxConcurrent=%d) should error", tc.val)
-		}
-		if !tc.wantErr && err != nil {
-			t.Errorf("validateFlags(MaxConcurrent=%d) unexpected error: %v", tc.val, err)
-		}
 	}
 }
 
@@ -314,11 +266,7 @@ func TestValidateFlags_PortRange(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			flags := &proxyFlags{
-				HTTPPort:      tc.http,
-				GRPCPort:      tc.grpc,
-				MaxConcurrent: defaultMaxConcurrent,
-			}
+			flags := &proxyFlags{HTTPPort: tc.http, GRPCPort: tc.grpc}
 			err := validateFlags(flags)
 			if tc.wantErr && err == nil {
 				t.Errorf("expected error; got nil")
@@ -374,20 +322,12 @@ func readFlagsFromCmd(t *testing.T, cmd *cobra.Command) *proxyFlags {
 		return v
 	}
 
-	d, err := f.GetDuration("stats-interval")
-	if err != nil {
-		t.Fatalf("GetDuration(stats-interval): %v", err)
-	}
-
 	return &proxyFlags{
-		OtlpUrl:       mustString("otlp-url"),
-		AuthToken:     mustString("auth-token"),
-		Dataset:       mustString("dataset"),
-		HTTPPort:      mustInt("http-port"),
-		GRPCPort:      mustInt("grpc-port"),
-		Tail:          mustBool("tail"),
-		TailStderr:    mustBool("tail-stderr"),
-		StatsInterval: d,
-		MaxConcurrent: mustInt("max-concurrent"),
+		OtlpUrl:   mustString("otlp-url"),
+		AuthToken: mustString("auth-token"),
+		Dataset:   mustString("dataset"),
+		HTTPPort:  mustInt("http-port"),
+		GRPCPort:  mustInt("grpc-port"),
+		Tail:      mustBool("tail"),
 	}
 }
