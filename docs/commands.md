@@ -6,7 +6,7 @@ For every command, this reference lists the exact syntax, all flags, expected ou
 
 ## Command taxonomy
 
-Every command falls into one of six categories.
+Every command falls into one of seven categories.
 Each category has distinct patterns for flags, output, and behavior.
 
 | Category | Commands | Characteristics |
@@ -15,6 +15,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
+| [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 
@@ -1164,6 +1165,135 @@ $ dash0 spans send --name "db-query" \
     --kind CLIENT \
     --trace-id 0af7651916cd43dd8448eb211c80319c \
     --parent-span-id b7ad6b7169203331
+```
+
+## Daemon commands
+
+Daemon commands run as long-lived foreground processes and exit on `SIGINT` or `SIGTERM` rather than after a single operation.
+They write a startup banner to stderr, accept traffic until signaled, then drain in-flight work within a bounded deadline before exiting.
+
+### `otlp proxy` (experimental)
+
+Run a local OTLP forwarder that accepts OTLP/HTTP and OTLP/gRPC traffic on `127.0.0.1` and forwards every batch to Dash0 using the active profile's credentials.
+Requires the `-X` (or `--experimental`) flag.
+
+The proxy is a local-dev shortcut for the common "I want telemetry in Dash0 right now while iterating on my code" loop.
+An OpenTelemetry SDK at default endpoint configuration (`OTEL_EXPORTER_OTLP_ENDPOINT` unset or pointing at `127.0.0.1:4318` / `4317`) connects with no extra setup.
+
+> [!NOTE]
+> The proxy is not a replacement for the OpenTelemetry Collector.
+> It does not buffer outbound on Dash0 outages.
+> Backpressure surfaces to SDKs as HTTP 503 or gRPC `UNAVAILABLE` with `Retry-After` honored by the SDK.
+
+```bash
+dash0 -X otlp proxy [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--http-port` | 4318 | TCP port for the OTLP/HTTP listener |
+| `--grpc-port` | 4317 | TCP port for the OTLP/gRPC listener |
+| `--tail` | false | Print every forwarded record on stdout in collector-debug-exporter style (incompatible with `--agent-mode`) |
+
+The default ports follow the OTLP specification.
+When a default port is in use, the proxy falls back to an OS-assigned port and prints the resolved endpoint in the start banner.
+When `--http-port` or `--grpc-port` is set explicitly and the port is in use, the proxy exits non-zero — the user asked for that specific port and silently moving would surprise them.
+
+#### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `DASH0_OTLP_PROXY_HTTP_PORT` | Override for `--http-port` |
+| `DASH0_OTLP_PROXY_GRPC_PORT` | Override for `--grpc-port` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Parsed; routed to HTTP or gRPC by `OTEL_EXPORTER_OTLP_PROTOCOL` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc`, `http/protobuf`, or `http/json`; disambiguates the endpoint |
+
+Precedence per port flag (high to low):
+
+1. Explicit `--http-port` or `--grpc-port` on the command line
+2. `DASH0_OTLP_PROXY_*`
+3. `OTEL_EXPORTER_OTLP_ENDPOINT` (parsed; routed by `OTEL_EXPORTER_OTLP_PROTOCOL`)
+4. Built-in default (4318 HTTP, 4317 gRPC)
+
+#### Start banner
+
+On startup the proxy writes a single banner line to stderr listing both endpoints, the active profile name, and the resolved dataset.
+
+```
+dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile "dev" dataset "default"
+```
+
+In TTY mode the banner is followed by a live per-signal stats line on stderr that updates once per second:
+
+```
+logs   ▁▂▄▆█▇ 42/s · 1234 total   spans  ▁▂▃▄▅▆ 18/s · 540 total   metrics ▂▂▂▂▂▂ 0/s · 0 total
+```
+
+When stderr is not a TTY (piped to a file or another process), the stats line is suppressed but lifecycle messages still print as plain lines.
+
+#### Failure modes
+
+The proxy implements **async-forward** semantics per the OTLP specification: an HTTP 200 / gRPC `OK` to the SDK means "accepted at this node" — the actual upstream forward happens asynchronously on the worker pool.
+
+When the per-signal queue saturates (128 deep), the receiver returns HTTP 503 (or gRPC `UNAVAILABLE`) and the SDK retries with exponential backoff.
+On upstream errors, the worker pool classifies the outcome:
+
+| Classification | Triggers |
+|----------------|----------|
+| `upstream_unreachable` | Network errors, DNS failures, no response |
+| `upstream_5xx` | Dash0 returns 500-599 |
+| `upstream_4xx_auth` | Dash0 returns 401 or 403; surfaces a throttled stderr warning |
+| `upstream_4xx_other` | Dash0 returns 400, 404, 422, etc. |
+| `internal_panic` | A worker panicked (caught and emitted; the worker restarts) |
+
+The first 401 or 403 from upstream writes a one-shot stderr warning ("authentication to Dash0 failed; check your profile").
+Subsequent auth failures within 30 seconds are suppressed to avoid filling the terminal.
+
+#### Agent mode
+
+When `--agent-mode` is active, the proxy emits NDJSON OTLP/JSON event records on stdout instead of human-readable output.
+Each record is one log record with a `dash0.cli.otlp_proxy.*` event name.
+Stats redraw on stderr is suppressed and `--tail` is rejected with an error (agents already see batches through the structured event stream).
+
+Event names and key attributes:
+
+| `event_name` | Attributes |
+|--------------|-----------|
+| `dash0.cli.otlp_proxy.started` | `endpoint.http`, `endpoint.grpc`, `dataset`, `profile.name` |
+| `dash0.cli.otlp_proxy.forwarded` | `signal` (`logs`, `spans`, `metrics`), `count`, `bytes` |
+| `dash0.cli.otlp_proxy.stats` | `logs.rate`, `logs.total`, `logs.failed`, `spans.rate`, `spans.total`, `spans.failed`, `metrics.rate`, `metrics.total`, `metrics.failed` |
+| `dash0.cli.otlp_proxy.error` | `error.kind` (per the failure-modes table), `reason`, `code` (HTTP status when available) |
+| `dash0.cli.otlp_proxy.shutdown` | `reason` (`signal` or `deadline`), `final_total.logs`, `final_total.spans`, `final_total.metrics` |
+
+Every event record carries the resource attributes `service.name="dash0-cli"` and `service.instance.id=<uuid>` so multiple proxy instances are distinguishable in the event stream.
+
+#### Shutdown
+
+The proxy listens for `SIGINT` (Ctrl-C) and `SIGTERM`.
+On signal, it stops accepting new traffic, drains in-flight RPCs and worker queues within a 5-second deadline, emits the `shutdown` event with final cumulative totals, and exits zero.
+A drain that hits the deadline still exits zero — the `reason` attribute on the `shutdown` event distinguishes the two cases.
+
+Startup failures (missing profile, both listener ports unavailable) exit non-zero before the banner.
+
+#### Examples
+
+```bash
+# Just run it. SDK defaults already point at 127.0.0.1:4318 / 4317.
+$ dash0 -X otlp proxy
+dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile "dev" dataset "default"
+logs   ▁▁▁▁▁▁ 0/s · 0 total   spans  ▁▁▁▁▁▁ 0/s · 0 total   metrics ▁▁▁▁▁▁ 0/s · 0 total
+
+# Override the HTTP port while keeping the gRPC default.
+$ dash0 -X otlp proxy --http-port 8318
+
+# Print every forwarded record to stdout in collector-debug-exporter style.
+$ dash0 -X otlp proxy --tail
+
+# Agent-mode event stream (one NDJSON record per event).
+$ dash0 --agent-mode -X otlp proxy
+{"resourceLogs":[...]}
+{"resourceLogs":[...]}
+...
 ```
 
 ## Organizational commands

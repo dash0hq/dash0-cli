@@ -396,6 +396,26 @@ dash0 -X api POST /api/signal-to-metrics/configs -f config.json
 dash0 -X api /api/organization/settings --dataset ""
 ```
 
+### Local OTLP proxy (experimental)
+
+The `otlp proxy` command runs a long-lived local OTLP forwarder.
+It accepts OTLP/HTTP on `127.0.0.1:4318` and OTLP/gRPC on `127.0.0.1:4317` and forwards every batch to Dash0 using the active profile's credentials.
+An OpenTelemetry SDK at default endpoint configuration connects without any environment variable change, collapsing the local-dev setup from a YAML-heavy Collector config to a single command.
+
+```bash
+# Just run it. SDK defaults already point at the proxy.
+dash0 -X otlp proxy
+
+# Print every forwarded record on stdout in collector-debug-exporter style.
+dash0 -X otlp proxy --tail
+
+# Pick non-default ports.
+dash0 -X otlp proxy --http-port 8318 --grpc-port 8317
+```
+
+The proxy exits on `Ctrl-C` (or `SIGTERM`) after draining in-flight work within a 5-second deadline.
+See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the agent-mode event schema and failure-mode classification.
+
 ### Common settings
 
 | Flag | Short | Env Variable | Description |
@@ -411,6 +431,8 @@ dash0 -X api /api/organization/settings --dataset ""
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
 | | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
+| | | `DASH0_OTLP_PROXY_GRPC_PORT` | Override `dash0 otlp proxy --grpc-port` |
+| | | `DASH0_OTLP_PROXY_HTTP_PORT` | Override `dash0 otlp proxy --http-port` |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |
 
 ### Output formats
