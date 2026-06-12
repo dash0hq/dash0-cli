@@ -20,6 +20,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/members"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
+	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
@@ -74,6 +75,7 @@ func init() {
 	rootCmd.AddCommand(members.NewMembersCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
+	rootCmd.AddCommand(otlp.NewOtlpCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
 	rootCmd.AddCommand(spamfilters.NewSpamFiltersCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
@@ -228,6 +230,12 @@ func main() {
 	if colorMode == colorModeNone {
 		dashcolor.NoColor = true
 	}
+
+	// Propagate the resolved color state into internal/otlp. The proxy's
+	// `--tail` renderer reuses the same semantic palette as `logs query`
+	// but cannot import internal/color directly (cycle: color → otlp for
+	// the severity range type), so main bridges the value here.
+	otlp.SetTailColorEnabled(!dashcolor.NoColor)
 
 	// Resolve the per-invocation profile selector (--profile flag or
 	// DASH0_PROFILE env var) before loading config so the selection flows

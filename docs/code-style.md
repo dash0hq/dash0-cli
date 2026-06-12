@@ -12,11 +12,20 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 
 | Module | Purpose |
 |--------|---------|
-| `github.com/dash0hq/dash0-api-client-go` | API and OTLP client for the Dash0 backend |
-| `github.com/google/uuid` | UUID generation for asset imports |
+| `github.com/dash0hq/dash0-api-client-go` | API and OTLP client for the Dash0 backend (outbound for `otlp proxy`, all asset CRUD, send and query commands) |
+| `github.com/google/uuid` | UUID generation for asset imports and the `otlp proxy` `service.instance.id` |
 | `github.com/muesli/termenv` | Semantic coloring of terminal output (severity levels, diffs, errors) |
 | `github.com/spf13/cobra` | CLI command structure, flag parsing, and routing |
+| `go.opentelemetry.io/collector/component` | Component lifecycle types for the `otlp proxy` receiver pipeline |
+| `go.opentelemetry.io/collector/config/configgrpc` | gRPC server configuration for the `otlp proxy` listener |
+| `go.opentelemetry.io/collector/config/confighttp` | HTTP server configuration for the `otlp proxy` listener |
+| `go.opentelemetry.io/collector/config/configoptional` | Optional-config wrappers required by the receiver Config |
+| `go.opentelemetry.io/collector/consumer` | Consumer interface implemented by the proxy bridge to the worker pool |
+| `go.opentelemetry.io/collector/consumer/consumererror` | Retryable error wrapping so the receiver maps queue-full to HTTP 503 / gRPC `UNAVAILABLE` |
 | `go.opentelemetry.io/collector/pdata` | OTLP data structures for logs, traces, and metrics |
+| `go.opentelemetry.io/collector/receiver` | Receiver interface contract for `otlp proxy` |
+| `go.opentelemetry.io/collector/receiver/otlpreceiver` | OTLP receiver implementation reused as the proxy's inbound listener stack |
+| `go.uber.org/zap` | Logger required by the receiver; the proxy passes a nop logger |
 | `golang.org/x/term` | TTY detection and terminal size for progress bars |
 | `gopkg.in/yaml.v3` | YAML marshalling/unmarshalling for asset definitions, needed for YAML stream processing |
 | `sigs.k8s.io/yaml` | YAML handling that respects JSON struct tags and `omitempty` |

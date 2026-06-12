@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: Simplify local-dev OTel sending</title>
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=inter:400,500,600,700|jetbrains-mono:400,500">
+<style>
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --ink: #1a1d21;
+  --ink-muted: #5b6068;
+  --rule: #e6e8eb;
+  --rule-soft: #f0f1f3;
+  --accent: #1d4ed8;
+  --accent-soft: #eef2ff;
+  --accent-text: #1e40af;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --warn-text: #92400e;
+  --success: #047857;
+  --success-soft: #d1fae5;
+  --success-text: #065f46;
+  --code-bg: #f4f5f7;
+  --halo: #fafafa;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #161a21;
+    --ink: #e6e8eb;
+    --ink-muted: #9aa0a8;
+    --rule: #262b33;
+    --rule-soft: #1c2128;
+    --accent: #93c5fd;
+    --accent-soft: #1e293b;
+    --accent-text: #bfdbfe;
+    --warn: #fbbf24;
+    --warn-soft: #2a2010;
+    --warn-text: #fbd38d;
+    --success: #6ee7b7;
+    --success-soft: #14281f;
+    --success-text: #a7f3d0;
+    --code-bg: #1c2128;
+    --halo: #0f1115;
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 16px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  line-height: 1.55;
+}
+.page {
+  max-width: 60rem;
+  margin-inline: auto;
+  padding: 3rem 1.25rem 4rem;
+}
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+h1 {
+  font-size: 2rem;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+  margin: 0.4rem 0 0.8rem;
+}
+h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin-top: 3rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--rule);
+}
+h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 0;
+  margin-bottom: 0.35rem;
+}
+p { max-width: 70ch; }
+section > p { margin: 0.5em 0; }
+code, pre {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+pre code { background: transparent; padding: 0; }
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.86rem;
+  color: var(--ink-muted);
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.metadata dt {
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+.metadata dd { margin: 0.15rem 0 0; }
+.metadata-item { display: flex; flex-direction: column; }
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.25rem 0 2rem;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  padding: 0.75rem 0.9rem;
+}
+.stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: block;
+}
+.stat-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.axes-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+.axes-list li { margin-bottom: 0.3rem; max-width: 70ch; }
+.jump-list {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  padding: 0.9rem 1.1rem;
+  margin: 1.25rem 0 1.75rem;
+  list-style: none;
+  counter-reset: idx;
+}
+.jump-list li {
+  counter-increment: idx;
+  margin: 0.3rem 0;
+  font-size: 0.95rem;
+}
+.jump-list li::before {
+  content: counter(idx) ".";
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  width: 1.5rem;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+.idea {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0.75rem;
+  padding: 1.5rem 1.5rem 1.25rem;
+  margin: 1.25rem 0;
+  scroll-margin-top: 1rem;
+}
+.idea-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.idea-id {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.8rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: 0.4rem;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 0.78rem;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.idea-title {
+  font-size: 1.15rem;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.idea-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 1rem;
+  font-size: 0.78rem;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--rule-soft);
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 0.76rem;
+  border: 1px solid var(--rule);
+}
+.pill-axis { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+.pill-conf-high { background: var(--success-soft); color: var(--success-text); border-color: transparent; }
+.pill-conf-med { background: var(--warn-soft); color: var(--warn-text); border-color: transparent; }
+.pill-conf-low { background: var(--rule-soft); color: var(--ink-muted); }
+.pill-cx { font-variant-numeric: tabular-nums; }
+.field-block {
+  margin: 0.6rem 0;
+}
+.field-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+  display: block;
+}
+.field-value {
+  margin: 0;
+  max-width: 70ch;
+}
+.basis-tag {
+  display: inline-block;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  padding: 0.05em 0.4em;
+  border-radius: 0.3rem;
+  background: var(--code-bg);
+  margin-right: 0.4em;
+  font-weight: 600;
+}
+.basis-direct { color: var(--success-text); background: var(--success-soft); }
+.basis-external { color: var(--accent-text); background: var(--accent-soft); }
+.basis-reasoned { color: var(--warn-text); background: var(--warn-soft); }
+.idea-visual {
+  margin: 1rem 0 1.25rem;
+  text-align: center;
+}
+.idea-visual svg {
+  max-width: 100%;
+  height: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+th, td {
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  background: var(--rule-soft);
+}
+tr:last-child td { border-bottom: none; }
+.reject-id {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.composition-signal {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+.tldr {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.85rem 1.1rem;
+  margin: 1.25rem 0 2rem;
+  max-width: 70ch;
+}
+.tldr p { margin: 0.35rem 0; }
+.crosscut {
+  background: var(--rule-soft);
+  border-radius: 0.6rem;
+  padding: 0.9rem 1.1rem;
+  margin: 0.9rem 0;
+  max-width: 70ch;
+}
+.crosscut h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.crosscut p { margin: 0; font-size: 0.93rem; }
+.position-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 0.85rem 0;
+}
+@media (min-width: 720px) {
+  .position-grid { grid-template-columns: 1fr 1fr; }
+}
+.position {
+  background: var(--rule-soft);
+  border-radius: 0.5rem;
+  padding: 0.8rem 1rem;
+}
+.position h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.position p { margin: 0; font-size: 0.92rem; max-width: none; }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header>
+  <p class="eyebrow">Ce-Ideate · Repo-Grounded</p>
+  <h1>Simplifying local-dev OTel sending in <code>dash0-cli</code></h1>
+  <dl class="metadata">
+    <div class="metadata-item">
+      <dt>Date</dt>
+      <dd><time datetime="2026-06-11">2026-06-11</time></dd>
+    </div>
+    <div class="metadata-item">
+      <dt>Topic</dt>
+      <dd>otlp-proxy-local-dev</dd>
+    </div>
+    <div class="metadata-item">
+      <dt>Focus</dt>
+      <dd><code>dash0 otlp proxy</code> command + filelog-style <code>logs send</code> mode</dd>
+    </div>
+    <div class="metadata-item">
+      <dt>Mode</dt>
+      <dd>repo-grounded</dd>
+    </div>
+  </dl>
+</header>
+
+<section class="tldr">
+  <p><strong>Chosen direction (Phase 5):</strong> ideas <a href="#i2">I2</a> + <a href="#i3">I3</a> — a zero-config <code>dash0 otlp proxy</code> paired with a pipe-first <code>dash0 logs tail</code>. Together these match the user's original framing exactly: an OTLP-forwarder command plus a filelog-style log-streaming mode, both shipping behind <code>-X</code> per the project's adding-commands guide. The remaining survivors (I1, I4-I7) were deferred at Phase 5 and are listed in the rejection summary.</p>
+  <p><strong>Open design questions for brainstorm:</strong> port selection and lifecycle (daemon-only, or compose later with a subprocess wrapper); auth and dataset routing (broker pattern vs passthrough); buffering policy (durable spool vs fail-loud); whether the two commands live under <code>dash0 otlp</code> + <code>dash0 logs</code> or under a future <code>dash0 dev</code> umbrella.</p>
+</section>
+
+<div class="stats">
+  <div class="stat"><span class="stat-value">48</span><span class="stat-label">Raw ideas</span></div>
+  <div class="stat"><span class="stat-value">20</span><span class="stat-label">Clusters after dedupe</span></div>
+  <div class="stat"><span class="stat-value">2</span><span class="stat-label">Chosen for brainstorm</span></div>
+  <div class="stat"><span class="stat-value">5</span><span class="stat-label">Deferred at Phase 5</span></div>
+</div>
+
+<section id="grounding-context">
+<h2>Codebase Context</h2>
+
+<p>The <code>dash0-cli</code> is a Go CLI built on cobra, domain-organized under <code>internal/</code>. Two send commands exist today: <code>logs send</code> (<code>internal/logging/send.go</code>, ~220 lines) and <code>spans send</code> (<code>internal/tracing/spans_send.go</code>, ~327 lines). Both are one-shot, flag-driven; <code>logs send</code> takes a single <code>&lt;body&gt;</code> positional plus repeatable <code>--resource-attribute</code> / <code>--log-attribute</code> / <code>--scope-attribute</code>. The OTLP client comes from <code>dash0-api-client-go</code> and exposes <code>SendLogs</code> / <code>SendTraces</code> / <code>SendMetrics</code> over HTTP/JSON only — no gRPC.</p>
+
+<p>No proxy, tail, follow, fsnotify, stdin-reading, or multi-signal accept patterns exist yet. Shared OTLP utilities live in <code>internal/otlp/</code> (key-value parsing, scope defaults, trace/span ID parsing). Config resolution follows env &gt; flags &gt; profile, with the CLI distinguishing <code>api-url</code> from <code>otlp-url</code>. The existing <code>api</code> command (<code>internal/rawapi/</code>) sets the precedent for experimental escape-hatch commands behind <code>-X</code>: it reuses the active profile for connection, owns the <code>Authorization</code> header (rejecting it as <code>-H</code> input), and is documented as a stop-gap until first-class subcommands ship.</p>
+
+<p>Novel command shapes must be gated <code>-X</code> initially per the project's adding-commands guide; the apply-parity rule applies only to Asset CRUD and exempts both proposals. Agent-mode constraints (NDJSON output, no colored output, no confirmation prompts) apply to every command, but the project has not yet made a design choice on NDJSON heartbeats for long-running commands.</p>
+
+<p>External context: no major vendor ships a "proxy" subcommand in their CLI today. Datadog requires its full agent; Honeycomb / New Relic / Grafana require Collector configs. The OTel 2026 community survey reports 63 percent of Collector users cite config management as their top pain — minimum bearer-token forwarding is roughly 25 lines of YAML across four concepts (receivers, exporters, extensions, pipelines). <code>otel-desktop-viewer</code> (824 stars) confirms appetite for local OTLP inspection but ships no forwarder. Log-tail UX has converged across Fluent Bit, Vector, and Promtail on glob paths, SQLite/disk checkpoints, explicit start-from-beginning-vs-tail control, and inline multiline config; OTel's own filelog-receiver is the documented complexity outlier (issues #35162 and #31256 catalog multiline misconfiguration and lack of harvest observability). Cross-domain analogies that match the shape: <code>kubectl proxy</code>, <code>ngrok</code>, <code>mkcert</code>, <code>gcloud auth application-default login</code>, <code>aws-vault exec</code>, <code>direnv</code>.</p>
+
+</section>
+
+<section id="topic-axes">
+<h2>Topic Axes</h2>
+<p>Five orthogonal surfaces the survivor set spreads across.</p>
+<ol class="axes-list">
+  <li><strong>Receive surface</strong> — what the CLI accepts as input (OTLP HTTP, OTLP gRPC translation, files, stdin/pipes, structured streams, env-var auto-injection into subprocesses).</li>
+  <li><strong>Auth &amp; connection management</strong> — bearer token injection, profile-aware credentials, multi-dataset routing, header policy on inbound vs outbound, multi-tenant local routing.</li>
+  <li><strong>Local developer ergonomics</strong> — port selection, env-var propagation to subprocesses, integration with <code>OTEL_EXPORTER_OTLP_*</code> standards, lifecycle (Ctrl-C, daemonize, autostart), directory-aware behavior.</li>
+  <li><strong>Buffering, batching, &amp; failure modes</strong> — offline behavior, backpressure, batching defaults, retry, restart-resilience, file checkpoints, rotation handling.</li>
+  <li><strong>Visibility &amp; feedback</strong> — how the user knows data is flowing (logging, NDJSON heartbeats, optional local preview, byte/record counts, error surfacing, in-flight diagnostics).</li>
+</ol>
+</section>
+
+<section id="ranked-ideas">
+<h2>Ranked Ideas</h2>
+
+<ol class="jump-list">
+  <li><a href="#i2">I2 — Zero-config <code>dash0 otlp proxy</code>: no flags that matter</a></li>
+  <li><a href="#i3">I3 — Pipe-first <code>dash0 logs tail</code>: files become explicit opt-in</a></li>
+</ol>
+<p style="font-size: 0.88rem; color: var(--ink-muted); margin: 0.5rem 0 1.5rem;">I1, I4, I5, I6, I7 were deferred at Phase 5 — see <a href="#rejection-summary">Rejection Summary</a> for their reasons.</p>
+
+<!-- I2 -->
+<article class="idea" id="i2">
+  <div class="idea-header">
+    <span class="idea-id">I2</span>
+    <h3 class="idea-title">Zero-config <code>dash0 otlp proxy</code>: no flags that matter</h3>
+  </div>
+  <div class="idea-pills">
+    <span class="pill pill-axis">Axis: Local developer ergonomics</span>
+    <span class="pill pill-conf-high">Confidence: High (80%)</span>
+    <span class="pill pill-cx">Complexity: Medium</span>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Description</span>
+    <p class="field-value"><code>dash0 otlp proxy</code> with no arguments picks an OS-assigned port (default <code>--port 0</code>), exposes the OTLP/HTTP spec paths (<code>/v1/logs</code>, <code>/v1/traces</code>, <code>/v1/metrics</code>) on one listener, uses the active profile's auth and dataset, prints exactly two lines on start (the <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> to export, plus a live forwarded-records counter), and exits cleanly on Ctrl-C. Every flag exists, but every flag has a sensible default. No receivers, exporters, extensions, or pipelines concepts.</p>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Basis</span>
+    <p class="field-value"><span class="basis-tag basis-external">external</span><code>mkcert</code> ("collapse 10 manual steps into one"), <code>kubectl proxy</code> (exact structural match: local HTTP server, CLI handles auth/TLS, Ctrl-C to stop), OTel 2026 community survey reporting 63 percent of Collector users cite config management as top pain. The minimum bearer-token forwarding Collector config is ~25 lines of YAML across four distinct concepts; a Dash0-only proxy collapses that to a spec-defined URL layout. Three convergent frame agents.</p>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Rationale</span>
+    <p class="field-value">The user's stated goal is "simplify"; this is the operational definition. The <code>mkcert</code> framing applies directly: a single command collapsing what would otherwise require multi-concept YAML. The OTel Collector exists for cases the Dash0 proxy explicitly does not address (any-backend, any-receiver, complex pipelines); a Dash0-only proxy can be radically simpler because its target is fixed. Pairs naturally with idea I1 (subprocess wrap) — they can be the same code path with different invocation modes.</p>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Downsides</span>
+    <p class="field-value">"Zero config" is achievable only if the active profile is already set up. New users hit the wall at profile creation; this composes with an OAuth-on-first-run path that the in-flight <code>feat/oauth-login</code> branch is preparing. Hides a useful escape hatch — power users wanting custom batching, gRPC ingest, non-default scope defaults, or different OTLP listener paths need flags that exist but aren't surfaced. Discoverability of the escape hatch is a UX problem the docs need to solve.</p>
+  </div>
+</article>
+
+<!-- I3 -->
+<article class="idea" id="i3">
+  <div class="idea-header">
+    <span class="idea-id">I3</span>
+    <h3 class="idea-title">Pipe-first <code>dash0 logs tail</code>: files become explicit opt-in</h3>
+  </div>
+  <div class="idea-pills">
+    <span class="pill pill-axis">Axis: Receive surface</span>
+    <span class="pill pill-conf-high">Confidence: High (80%)</span>
+    <span class="pill pill-cx">Complexity: Medium</span>
+  </div>
+
+  <div class="idea-visual" aria-label="Diagram: file-first filelog-receiver versus pipe-first dash0 logs tail">
+    <svg viewBox="0 0 640 220" role="img" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .lbl { font: 600 11px "Inter", system-ui, sans-serif; fill: #1a1d21; }
+        .lbl-mut { font: 400 10px "Inter", system-ui, sans-serif; fill: #5b6068; }
+        .lbl-title { font: 700 12px "Inter", system-ui, sans-serif; fill: #1a1d21; letter-spacing: 0.02em; }
+        .box-warn { fill: #fef3c7; stroke: #b45309; stroke-width: 1.5; }
+        .box-ok { fill: #d1fae5; stroke: #047857; stroke-width: 1.5; }
+        .box-app { fill: #eef2ff; stroke: #1d4ed8; stroke-width: 1.5; }
+        .arrow { stroke: #5b6068; stroke-width: 1.5; fill: none; marker-end: url(#b); }
+        text { paint-order: stroke fill; stroke: #fafafa; stroke-width: 3px; }
+      </style>
+      <defs>
+        <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b6068" stroke="none"/>
+        </marker>
+      </defs>
+      <!-- File-first -->
+      <text x="20" y="22" class="lbl-title">File-first (filelog-receiver)</text>
+      <rect x="20" y="38" width="100" height="40" rx="6" class="box-app"/>
+      <text x="70" y="60" text-anchor="middle" class="lbl">app</text>
+      <text x="70" y="72" text-anchor="middle" class="lbl-mut">writes</text>
+      <path d="M120,58 L180,58" class="arrow"/>
+      <rect x="180" y="38" width="120" height="40" rx="6" class="box-warn"/>
+      <text x="240" y="60" text-anchor="middle" class="lbl">app.log</text>
+      <text x="240" y="72" text-anchor="middle" class="lbl-mut">rotation, inodes</text>
+      <path d="M300,58 L360,58" class="arrow"/>
+      <rect x="360" y="38" width="160" height="40" rx="6" class="box-warn"/>
+      <text x="440" y="55" text-anchor="middle" class="lbl">filelog: globs,</text>
+      <text x="440" y="68" text-anchor="middle" class="lbl-mut">checkpoints, multiline parser</text>
+      <path d="M520,58 L580,58" class="arrow"/>
+      <text x="600" y="62" text-anchor="middle" class="lbl">Dash0</text>
+
+      <!-- Pipe-first -->
+      <text x="20" y="120" class="lbl-title">Pipe-first (dash0 logs tail -)</text>
+      <rect x="20" y="136" width="100" height="40" rx="6" class="box-app"/>
+      <text x="70" y="158" text-anchor="middle" class="lbl">app</text>
+      <text x="70" y="170" text-anchor="middle" class="lbl-mut">stdout</text>
+      <path d="M120,156 L260,156" class="arrow"/>
+      <text x="190" y="148" text-anchor="middle" class="lbl-mut">| pipe</text>
+      <rect x="260" y="136" width="220" height="40" rx="6" class="box-ok"/>
+      <text x="370" y="155" text-anchor="middle" class="lbl">dash0 logs tail -</text>
+      <text x="370" y="168" text-anchor="middle" class="lbl-mut">auto-detect JSON / logfmt / plain</text>
+      <path d="M480,156 L580,156" class="arrow"/>
+      <text x="600" y="160" text-anchor="middle" class="lbl">Dash0</text>
+      <text x="20" y="200" class="lbl-mut">Files become explicit opt-in: dash0 logs tail '/var/log/myapp/*.log' for cases that genuinely need rotation, multi-line, restart-resilience.</text>
+    </svg>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Description</span>
+    <p class="field-value">Invert the filelog framing. The default surface is the pipe: <code>myapp 2&gt;&amp;1 | dash0 logs tail -</code> reads stdin line-by-line, auto-detects JSON-lines (fields lift to attributes), logfmt, or plain text (becomes the log body). Files are the explicit opt-in: <code>dash0 logs tail '/var/log/myapp/*.log'</code>. When tailing files, ship the converged Fluent Bit / Vector / Promtail UX — SQLite checkpoint at <code>~/.dash0/tail-state/</code>, CRC fingerprinting for rotation survival, default <code>--from-beginning</code> (opposite of filelog-receiver's surprising <code>start_at: end</code>), single <code>--multiline-start "&lt;regex&gt;"</code> flag instead of the receiver's separate-parser design. Ship as a new subcommand <code>logs tail</code>, not a flag on <code>logs send</code> — preserves <code>logs send</code>'s one-shot contract that the <code>send-log-event</code> GitHub Action depends on.</p>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Basis</span>
+    <p class="field-value"><span class="basis-tag basis-external">external</span>Fluent Bit's tail input (<code>Path</code>, <code>Read_from_Head</code>, <code>DB</code> SQLite checkpoint, <code>Multiline.Parser</code>), Vector's file source (CRC fingerprinting, <code>read_from: end</code>, inline multiline), Promtail's <code>pipeline_stages</code>. OTel filelog-receiver pain points cataloged in issues #35162 and #31256 — multiline misconfiguration described as "most mysterious log parser," no observability into files being harvested, <code>start_at: end</code> default surprises new users. Three convergent frame agents.</p>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Rationale</span>
+    <p class="field-value">Most local-dev "I want my logs in Dash0" cases are actually "I want stdout/stderr of <code>npm run dev</code> in Dash0." A pipe handles that without ever introducing the file — shells already solve "follow a process's output." Picking up the convergent Fluent Bit / Vector / Promtail UX while explicitly diverging from filelog-receiver's complexity hits the user's "simplify" framing on the head. The new subcommand naming resolves verb confusion (<code>logs send</code> is one-shot; <code>logs tail</code> is long-running) and keeps <code>logs send</code>'s GitHub Action contract intact.</p>
+  </div>
+
+  <div class="field-block">
+    <span class="field-label">Downsides</span>
+    <p class="field-value">Two ways to do "logs from a running process" (pipe or file) — readers need to learn the distinction. CRC fingerprinting and SQLite checkpoints add real implementation surface (Vector's took years to get right). Auto-detection of structured-vs-plain has edge cases: JSON-lines with stray non-JSON lines, logfmt with embedded equals signs, mixed content streams. Needs an explicit <code>--format json|logfmt|plain</code> opt-out.</p>
+  </div>
+</article>
+
+
+</section>
+
+<section id="cross-cutting-threads">
+<h2>Open Questions for Brainstorm</h2>
+<p>Things the chosen direction (I2 + I3) leaves open. The brainstorm pass should commit one position on each — the ideation doc surfaces them, the brainstorm doc resolves them.</p>
+
+<div class="crosscut">
+  <h4>CC1 — Lifecycle: daemon-only, or compose with a subprocess wrapper later?</h4>
+  <p>I2 ships as a long-running daemon (Ctrl-C to stop). A future <code>dash0 exec -- &lt;cmd&gt;</code> wrapper (deferred at Phase 5) could share the same listener implementation and inject env vars into a child. The brainstorm should decide whether to design I2's internals so that <code>exec</code> mode plugs in later without rework, or commit to daemon-only and revisit when the demand surfaces.</p>
+</div>
+
+<div class="crosscut">
+  <h4>CC2 — Auth and dataset routing: broker pattern vs passthrough</h4>
+  <p>Both I2 and I3 need to know where the auth token comes from. Two viable models: (a) <strong>credential broker</strong> — inbound carries no auth, CLI injects bearer from the active profile on the outbound hop (matches the existing <code>rawapi</code> precedent); (b) <strong>passthrough</strong> — apps set their own headers, proxy just forwards. Per-request dataset routing (via header or resource attribute) is a separate optional layer on top of either model.</p>
+</div>
+
+<div class="crosscut">
+  <h4>CC3 — Buffering policy on Dash0 unreachable</h4>
+  <p>Three positions to choose between: durable WAL-backed disk spool (survives laptop sleep, big implementation surface), fail-loud (return 503, cuts implementation in half, surfaces problems immediately), or a small in-memory ring buffer (a middle ground — survives transient blips, no disk state). The pipe-first tail (I3) has the same question — what happens to lines that arrive while offline?</p>
+</div>
+
+<div class="crosscut">
+  <h4>CC4 — Visibility default: silent, chatty, or NDJSON-by-default</h4>
+  <p>The proxy and tail are both long-running commands without a precedent in the CLI. The Phase 5-deferred I5 explored one direction (deep-links per record + NDJSON heartbeats + optional inspect TUI). Brainstorm needs to pick a sensible default for TTY vs agent mode, and decide whether to lock the NDJSON event schema now (so a future <code>exec</code> or <code>wrap</code> command inherits it for free) or wait.</p>
+</div>
+
+<div class="crosscut">
+  <h4>CC5 — Command placement: under <code>dash0 otlp</code> + <code>dash0 logs</code> or a future <code>dash0 dev</code> umbrella</h4>
+  <p>Today's user prompt naturally lands at <code>dash0 otlp proxy</code> and <code>dash0 logs tail</code>. A future <code>dash0 dev</code> umbrella was considered and deferred at Phase 5. The brainstorm should commit to the v1 placement (the obvious one) and note whether a later move to <code>dev</code> would be a rename or a parallel surface.</p>
+</div>
+
+</section>
+
+<section id="rejection-summary">
+<h2>Rejection Summary</h2>
+<p>Considered-and-cut clusters with one-line reasons.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 3rem;">#</th>
+      <th>Idea</th>
+      <th>Reason rejected</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="reject-id">R1</td>
+      <td>gRPC ingest translation</td>
+      <td>Solid pragmatic gap (Java / Python SDKs default to gRPC), but better expressed as a scope question inside I2 — not a standalone ideation candidate.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R2</td>
+      <td>Multi-protocol input (Zipkin, Jaeger, statsd)</td>
+      <td>Scope overrun; competes with OTel Collector on protocol breadth, which Dash0 should not chase as v1.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R3</td>
+      <td>Shared <code>internal/ingest/</code> receive-surface abstraction</td>
+      <td>Engineering implementation detail; correct answer if I1/I2/I3 ship together, but not an ideation candidate on its own.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R4</td>
+      <td>Replay buffer with manual capture trigger</td>
+      <td>Clever cross-domain, but doesn't directly address "simplify sending"; below ambition floor for the stated focus.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R5</td>
+      <td>mDNS-advertised proxy</td>
+      <td>mDNS in Docker / devcontainers is finicky; value/cost unfavorable for v1; security implications underdiscussed.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R6</td>
+      <td>Synaptic pruning of redundant telemetry</td>
+      <td>Dev ingest cost is not a stated pain; premature optimization.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R7</td>
+      <td>Unix domain socket transport</td>
+      <td>Solves real port-collision pain but OTel SDKs widely default to TCP; better as a <code>--socket</code> flag inside I2.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R8</td>
+      <td>Self-emitting proxy telemetry (dogfood)</td>
+      <td>Should be done anyway; doesn't need ideation surface to advocate for.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R9</td>
+      <td>Auto-spawn / socket-activated proxy</td>
+      <td>Too platform-specific; high cost relative to likely value; risky for v1.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R10</td>
+      <td>OAuth tokenless mode</td>
+      <td>Naturally composes with I4 (the broker pattern) and the in-flight <code>feat/oauth-login</code> branch; standalone framing duplicates without adding distinct ideation surface.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R11</td>
+      <td>Shareable session via tunnel</td>
+      <td>Defer to v2+; not directly about "simplify local sending." Worth designing I2 + I3 in a way that doesn't preclude it later.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R12</td>
+      <td>I1 — <code>dash0 exec -- &lt;cmd&gt;</code> ephemeral subprocess-bound proxy</td>
+      <td>Deferred at Phase 5 — user selected I2 + I3 as the v1 direction. Worth revisiting once the daemon proxy lands.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R13</td>
+      <td>I4 — Profile-aware credential broker with directory-aware dataset routing</td>
+      <td>Deferred at Phase 5 — the broker pattern remains an open question for the brainstorm (see CC2); directory-aware routing waits for the v1 daemon to land.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R14</td>
+      <td>I5 — Visibility by default (NDJSON heartbeats, deep-links, optional inspect)</td>
+      <td>Deferred at Phase 5 — visibility defaults remain an open question for the brainstorm (see CC4). The optional inspect TUI is explicitly out of v1 scope.</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R15</td>
+      <td>I6 — Decide: durable buffer or fail-loud</td>
+      <td>Deferred at Phase 5 — the decision itself remains an open question for the brainstorm (see CC3).</td>
+    </tr>
+    <tr>
+      <td class="reject-id">R16</td>
+      <td>I7 — <code>dash0 dev</code> umbrella</td>
+      <td>Deferred at Phase 5 — taxonomy decision remains open (see CC5); v1 likely lands under <code>dash0 otlp</code> + <code>dash0 logs</code> with <code>dash0 dev</code> revisitable later.</td>
+    </tr>
+  </tbody>
+</table>
+</section>
+
+<footer class="composition-signal">
+  Composed 2026-06-11 by ce-ideate, repo-grounded mode, from the focus hint: <em>simplify the sending of OTel data through Dash0 for local development flows</em>. Run scratch: <code>/tmp/compound-engineering/ce-ideate/a7b3c9f1/</code>.
+</footer>
+
+</main>
+</body>
+</html>
