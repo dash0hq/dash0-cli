@@ -17,6 +17,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // recordingForwarder captures Send-method invocations for assertion. Used
@@ -158,6 +160,24 @@ func (h *integrationHarness) HTTPEndpoint() string {
 	return h.pipeline.Endpoints().HTTPEndpoint
 }
 
+// GRPCEndpoint returns the bound gRPC listener address.
+func (h *integrationHarness) GRPCEndpoint() string {
+	return h.pipeline.Endpoints().GRPCEndpoint
+}
+
+// dialGRPC opens an insecure gRPC connection to the proxy's gRPC
+// endpoint and registers cleanup on t. The proxy listens on 127.0.0.1
+// without TLS, so credentials.Insecure is the correct choice.
+func (h *integrationHarness) dialGRPC(t *testing.T) *grpc.ClientConn {
+	t.Helper()
+	conn, err := grpc.NewClient(h.GRPCEndpoint(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
 // waitForCount polls a counter until it reaches want or the deadline expires.
 func waitForCount(t *testing.T, fetch func() int, want int, label string) {
 	t.Helper()
@@ -268,6 +288,86 @@ func TestIntegration_HTTPJSONMetricsForwarded(t *testing.T) {
 	got := forwarded.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Name()
 	if got != "integration_counter" {
 		t.Errorf("forwarded metric name = %q; want 'integration_counter'", got)
+	}
+}
+
+func TestIntegration_GRPCLogsForwarded(t *testing.T) {
+	h := newIntegrationHarness(t, nil)
+	defer h.shutdown()
+
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "grpc-integration-test")
+	sl := rl.ScopeLogs().AppendEmpty()
+	sl.LogRecords().AppendEmpty().Body().SetStr("hello from grpc")
+
+	client := plogotlp.NewGRPCClient(h.dialGRPC(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, plogotlp.NewExportRequestFromLogs(ld)); err != nil {
+		t.Fatalf("gRPC Export: %v", err)
+	}
+
+	waitForCount(t, h.forwarder.logsCount, 1, "gRPC logs forwarded")
+
+	forwarded := h.forwarder.logs[0]
+	got := forwarded.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().Str()
+	if got != "hello from grpc" {
+		t.Errorf("forwarded gRPC body = %q; want 'hello from grpc'", got)
+	}
+}
+
+func TestIntegration_GRPCTracesForwarded(t *testing.T) {
+	h := newIntegrationHarness(t, nil)
+	defer h.shutdown()
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "grpc-integration-test")
+	ss := rs.ScopeSpans().AppendEmpty()
+	ss.Spans().AppendEmpty().SetName("grpc-span")
+
+	client := ptraceotlp.NewGRPCClient(h.dialGRPC(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, ptraceotlp.NewExportRequestFromTraces(td)); err != nil {
+		t.Fatalf("gRPC Export: %v", err)
+	}
+
+	waitForCount(t, h.forwarder.tracesCount, 1, "gRPC traces forwarded")
+
+	forwarded := h.forwarder.traces[0]
+	got := forwarded.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Name()
+	if got != "grpc-span" {
+		t.Errorf("forwarded gRPC span name = %q; want 'grpc-span'", got)
+	}
+}
+
+func TestIntegration_GRPCMetricsForwarded(t *testing.T) {
+	h := newIntegrationHarness(t, nil)
+	defer h.shutdown()
+
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "grpc-integration-test")
+	sm := rm.ScopeMetrics().AppendEmpty()
+	m := sm.Metrics().AppendEmpty()
+	m.SetName("grpc_counter")
+	m.SetEmptyGauge().DataPoints().AppendEmpty().SetIntValue(99)
+
+	client := pmetricotlp.NewGRPCClient(h.dialGRPC(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, pmetricotlp.NewExportRequestFromMetrics(md)); err != nil {
+		t.Fatalf("gRPC Export: %v", err)
+	}
+
+	waitForCount(t, h.forwarder.metricsCount, 1, "gRPC metrics forwarded")
+
+	forwarded := h.forwarder.metrics[0]
+	got := forwarded.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Name()
+	if got != "grpc_counter" {
+		t.Errorf("forwarded gRPC metric name = %q; want 'grpc_counter'", got)
 	}
 }
 
