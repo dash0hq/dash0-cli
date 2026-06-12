@@ -466,7 +466,7 @@ func TestIntegration_QueueSaturationReturns503(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPipeline: %v", err)
 	}
-	workers := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", nil), consumer, nil)
+	workers := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", nil), consumer, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var wg sync.WaitGroup
