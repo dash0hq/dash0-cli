@@ -2,9 +2,15 @@ name: Test setup action
 
 on:
   push:
-    branches: ['*']
+    branches:
+      - main
     # Release-only artifacts: no CLI or action code changed, and the release binary
     # may not be available yet when these commits land.
+    paths-ignore:
+      - 'Formula/**'
+      - 'CHANGELOG.md'
+      - .chloggen/**
+  pull_request:
     paths-ignore:
       - 'Formula/**'
       - 'CHANGELOG.md'

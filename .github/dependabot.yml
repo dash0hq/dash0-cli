@@ -6,8 +6,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     groups:
-      go-minor-and-patch:
+      go-deps:
         update-types:
+          - major
           - minor
           - patch
 
@@ -17,8 +18,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     groups:
-      github-actions-minor-and-patch:
+      github-actions:
         update-types:
+          - major
           - minor
           - patch
 
@@ -26,8 +28,20 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      docker:
+        update-types:
+          - major
+          - minor
+          - patch
 
   - package-ecosystem: docker
     directory: /actions/dash0-deployment
     schedule:
       interval: weekly
+    groups:
+      docker:
+        update-types:
+          - major
+          - minor
+          - patch

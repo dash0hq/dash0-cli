@@ -38,7 +38,8 @@ When modifying the flags of `dash0 logs send`, ensure that the [send-log-event](
 
 ## Testing the action
 
-The workflow `.github/workflows/test-setup-action.yml` runs on **every push** (not just changes to the action) because CLI changes — especially to `dash0 config profiles create` — can break the action's profile-creation step.
+The workflow `.github/workflows/test-setup-action.yml` runs on every pull request and on every push to `main` (not just changes to the action) because CLI changes — especially to `dash0 config profiles create` — can break the action's profile-creation step.
+Direct pushes to feature branches without an open PR do not trigger the workflow; open a (draft) PR to run it.
 The workflow can also be triggered manually via `workflow_dispatch`.
 
 The profile-creation tests mirror the parameter combinations tested in `TestCreateProfileCmdPartialFields` in `internal/config/config_cmd_test.go`.
