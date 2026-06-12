@@ -5,10 +5,14 @@ import (
 	"strings"
 )
 
-// sparklineGlyphs holds the 8-level Unicode block ramp used by Sparkline.
-// Each rune is one of the standard ▁▂▃▄▅▆▇█ characters that line up at the
-// baseline so successive runes form a flat-bottomed timeline silhouette.
-const sparklineGlyphs = "▁▂▃▄▅▆▇█"
+// sparklineGlyphs holds the 7-level Unicode block ramp used by Sparkline.
+// Each rune lines up at the baseline so successive runes form a
+// flat-bottomed timeline silhouette. The full-block character (█) is
+// intentionally omitted: at the cap, a full block fuses visually with
+// the line of text above and makes the silhouette look like it bleeds
+// upward. Stopping at ▇ (7/8 cell height) leaves a one-pixel gap at the
+// top, so the tallest bar never reaches the row above.
+const sparklineGlyphs = "▁▂▃▄▅▆▇"
 
 // Sparkline returns a string of len(series) characters from the
 // sparklineGlyphs ramp, normalized against the maximum non-zero value in the

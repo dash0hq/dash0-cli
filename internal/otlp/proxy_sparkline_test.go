@@ -48,8 +48,8 @@ func TestSparkline_SinglePeakMaxesGlyph(t *testing.T) {
 	if len(runes) != 5 {
 		t.Fatalf("expected 5 runes; got %d", len(runes))
 	}
-	if runes[2] != '█' {
-		t.Errorf("peak should be highest glyph ▇/█; got %c", runes[2])
+	if runes[2] != '▇' {
+		t.Errorf("peak should be highest glyph ▇ (the cap); got %c", runes[2])
 	}
 	for i, r := range runes {
 		if i == 2 {
@@ -83,7 +83,7 @@ func TestSparkline_NaNAndInfTreatedAsZero(t *testing.T) {
 			t.Errorf("NaN/Inf[%d] should floor to lowest glyph; got %c", i, runes[i])
 		}
 	}
-	if runes[3] != '█' {
+	if runes[3] != '▇' {
 		t.Errorf("max value should hit the highest glyph; got %c", runes[3])
 	}
 }

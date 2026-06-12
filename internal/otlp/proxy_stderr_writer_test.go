@@ -106,18 +106,6 @@ func TestStderrWriter_ExitsOnContextCancel(t *testing.T) {
 	}
 }
 
-// signalLines filters out the blank separator rows from a formatStatsBlock
-// result so individual signal rows can be checked by index 0..statsBlockLines-1.
-func signalLines(lines []string) []string {
-	out := make([]string, 0, signalCount)
-	for _, l := range lines {
-		if l != "" {
-			out = append(out, l)
-		}
-	}
-	return out
-}
-
 func TestFormatStatsBlock_OneLinePerSignal(t *testing.T) {
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{100, 200, 300}},
@@ -125,18 +113,14 @@ func TestFormatStatsBlock_OneLinePerSignal(t *testing.T) {
 	}
 	history := [][]float64{{1, 2, 5}, {3, 7, 10}, {0, 0, 0}}
 	lines := formatStatsBlock(history, snap, 5)
-	if len(lines) != statsBlockLines {
-		t.Fatalf("got %d lines; want %d (signal rows + blank separators)", len(lines), statsBlockLines)
-	}
-	signals := signalLines(lines)
-	if len(signals) != signalCount {
-		t.Fatalf("got %d non-blank lines; want %d", len(signals), signalCount)
+	if len(lines) != signalCount {
+		t.Fatalf("got %d lines; want %d (one per signal)", len(lines), signalCount)
 	}
 	// Each signal row must carry its own label, rate, and total.
 	wantPrefixes := []string{"logs:", "spans:", "metrics:"}
 	wantSuffixes := []string{"100 total", "200 total", "300 total"}
 	wantRates := []string{"5/s", "10/s", "0/s"}
-	for i, line := range signals {
+	for i, line := range lines {
 		if !strings.HasPrefix(strings.TrimSpace(line), wantPrefixes[i]) {
 			t.Errorf("signal row %d (%q) should start with %q", i, line, wantPrefixes[i])
 		}
@@ -149,28 +133,6 @@ func TestFormatStatsBlock_OneLinePerSignal(t *testing.T) {
 	}
 }
 
-func TestFormatStatsBlock_BlankSeparatorsBetweenSignals(t *testing.T) {
-	// The output has signalCount rows interleaved with (statsBlockLines-1)
-	// blank rows — visual breathing room between signals.
-	snap := SnapshotWithRate{
-		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
-		Rate:     [signalCount]float64{4, 5, 6},
-	}
-	lines := formatStatsBlock(nil, snap, 5)
-	for i, line := range lines {
-		// Odd indices (1, 3, ...) should be blank; even indices have content.
-		if i%2 == 0 {
-			if line == "" {
-				t.Errorf("line %d expected to be a signal row; got blank", i)
-			}
-		} else {
-			if line != "" {
-				t.Errorf("line %d expected to be a blank separator; got %q", i, line)
-			}
-		}
-	}
-}
-
 func TestFormatStatsBlock_LabelsAreColumnAligned(t *testing.T) {
 	// Labels share the same prefix width — the colon after each label
 	// sits at the same column. Walk only the signal rows so the blank
@@ -179,7 +141,7 @@ func TestFormatStatsBlock_LabelsAreColumnAligned(t *testing.T) {
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
 		Rate:     [signalCount]float64{4, 5, 6},
 	}
-	signals := signalLines(formatStatsBlock(nil, snap, 5))
+	signals := formatStatsBlock(nil, snap, 5)
 
 	colonAt := -1
 	for i, line := range signals {
@@ -211,7 +173,7 @@ func TestFormatStatsBlock_SparklineHonoursRequestedWidth(t *testing.T) {
 		Rate:     [signalCount]float64{4, 5, 6},
 	}
 	const requestedWidth = 7
-	signals := signalLines(formatStatsBlock(history, snap, requestedWidth))
+	signals := formatStatsBlock(history, snap, requestedWidth)
 	for i, line := range signals {
 		glyphs := 0
 		for _, r := range line {
@@ -237,7 +199,7 @@ func TestFormatStatsBlock_TotalsAreRightAligned(t *testing.T) {
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1234, 540, 0}},
 		Rate:     [signalCount]float64{42, 18, 0},
 	}
-	signals := signalLines(formatStatsBlock(nil, snap, 5))
+	signals := formatStatsBlock(nil, snap, 5)
 
 	totalIdx := -1
 	for i, line := range signals {
@@ -274,7 +236,7 @@ func TestFormatStatsBlock_EmptyHistoryPreservesAlignment(t *testing.T) {
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{0, 0, 0}},
 		Rate:     [signalCount]float64{0, 0, 0},
 	}
-	signals := signalLines(formatStatsBlock(nil, snap, 5))
+	signals := formatStatsBlock(nil, snap, 5)
 	// All signal rows should be the same length (assuming totals format
 	// the same width). With Forwarded=0 across all signals this holds.
 	wantLen := utf8.RuneCountInString(signals[0])
@@ -367,8 +329,8 @@ func TestRenderPaddedSparkline_LongTailSlices(t *testing.T) {
 	// The rightmost glyph should be the highest of the last 5 samples
 	// (value 10 → top of the 8-level ramp → full block).
 	runes := []rune(got)
-	if runes[len(runes)-1] != '█' {
-		t.Errorf("last glyph = %q; want '█' (highest of last 5 samples)", string(runes[len(runes)-1]))
+	if runes[len(runes)-1] != '▇' {
+		t.Errorf("last glyph = %q; want '▇' (cap glyph for the highest of the last 5 samples)", string(runes[len(runes)-1]))
 	}
 }
 

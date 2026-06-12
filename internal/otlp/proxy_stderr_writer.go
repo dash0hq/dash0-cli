@@ -46,9 +46,13 @@ const statsBlockFixedOverhead = 8 + 1 + 5 + 2 + 1 + 1 + 6
 const statsLineSafetyMargin = 2
 
 // statsBlockLines is the total number of rendered lines in the stats
-// block: `signalCount` signal rows interleaved with `signalCount-1`
-// blank separators for visual breathing room.
-const statsBlockLines = 2*signalCount - 1
+// block: one row per signal. Blank-line separators were considered for
+// breathing room but the capped sparkline ramp (see sparklineGlyphs in
+// proxy_sparkline.go) already provides enough vertical whitespace at
+// the top of each cell to keep the silhouette from touching the row
+// above, so the extra blank rows added height without aiding scan-
+// ability.
+const statsBlockLines = signalCount
 
 // isTerminal is the substitutable hook the writer uses to decide whether
 // to emit ANSI cursor-control sequences. Production code points it at
@@ -195,8 +199,7 @@ func recordRate(history [][]float64, rates [signalCount]float64) {
 }
 
 // formatStatsBlock renders the per-signal stats as `statsBlockLines`
-// lines: one row per signal interleaved with blank rows for visual
-// breathing room. Each signal row has the form:
+// lines, one row per signal. Each signal row has the form:
 //
 //	<label>: <rate>/s <sparkline> <total> total
 //
@@ -234,20 +237,15 @@ func formatStatsBlock(history [][]float64, snap SnapshotWithRate, sparklineWidth
 		}
 	}
 
-	// Output has signalCount signal rows interleaved with (signalCount-1)
-	// blank rows.
-	out := make([]string, 0, statsBlockLines)
+	out := make([]string, signalCount)
 	for i, label := range labels {
-		if i > 0 {
-			out = append(out, "")
-		}
 		var samples []float64
 		if i < len(history) {
 			samples = history[i]
 		}
 		spark := renderPaddedSparkline(samples, sparklineWidth)
-		out = append(out, fmt.Sprintf("%*s %5.0f/s %s %*s total",
-			labelWidth, label+":", snap.Rate[i], spark, totalWidth, totalStrs[i]))
+		out[i] = fmt.Sprintf("%*s %5.0f/s %s %*s total",
+			labelWidth, label+":", snap.Rate[i], spark, totalWidth, totalStrs[i])
 	}
 	return out
 }

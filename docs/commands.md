@@ -1226,12 +1226,13 @@ dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317
 In TTY mode the banner is followed by a live per-signal stats block on stderr that updates once per second:
 
 ```
-   logs:    42/s ▁▂▄▆█ 1234 total
+   logs:    42/s ▁▂▄▆▇ 1234 total
   spans:    18/s ▁▂▃▄▅  540 total
 metrics:     0/s ▁▁▁▁▁    0 total
 ```
 
 Each signal occupies its own line; labels, rates, sparklines, and totals all right-align so the eye can scan vertically.
+The sparkline width adapts to the terminal: wider terminals show more of the 30-sample rolling history.
 The block redraws in place via ANSI cursor controls.
 When stderr is not a TTY (piped to a file or another process), the block is suppressed but lifecycle messages still print as plain lines.
 
