@@ -56,14 +56,22 @@ type proxyFlags struct {
 
 	// Outbound decoration. Mirrors the same flags on
 	// `dash0 logs send` and `dash0 spans send`. Upsert into each
-	// resource / scope on every forwarded batch. Unlike the send
-	// commands, ScopeName and ScopeVersion default to "" — the proxy
-	// only overwrites the SDK's scope identity when the user
+	// resource / scope / record on every forwarded batch. Unlike the
+	// send commands, ScopeName and ScopeVersion default to "" — the
+	// proxy only overwrites the SDK's scope identity when the user
 	// explicitly sets the flag.
 	ResourceAttributes []string
 	ScopeAttributes    []string
 	ScopeName          string
 	ScopeVersion       string
+
+	// Per-signal attribute upserts. Applied to each individual record
+	// (LogRecord / Span / metric data point) on its respective
+	// signal type. A flag is signal-specific so the user can tag one
+	// signal type without affecting the others.
+	LogAttributes    []string
+	SpanAttributes   []string
+	MetricAttributes []string
 }
 
 // newProxyCmd creates the experimental `dash0 otlp proxy` command.
@@ -134,6 +142,13 @@ surfaces to SDKs as HTTP 503 / gRPC UNAVAILABLE.`,
 		"Instrumentation-scope name to set on every forwarded batch (default: preserve the SDK's value)")
 	cmd.Flags().StringVar(&flags.ScopeVersion, "scope-version", "",
 		"Instrumentation-scope version to set on every forwarded batch (default: preserve the SDK's value)")
+
+	cmd.Flags().StringArrayVar(&flags.LogAttributes, "log-attribute", nil,
+		"Attribute as 'key=value' to upsert on every forwarded log record (repeatable)")
+	cmd.Flags().StringArrayVar(&flags.SpanAttributes, "span-attribute", nil,
+		"Attribute as 'key=value' to upsert on every forwarded span (repeatable)")
+	cmd.Flags().StringArrayVar(&flags.MetricAttributes, "metric-attribute", nil,
+		"Attribute as 'key=value' to upsert on every forwarded metric data point (repeatable)")
 
 	return cmd
 }

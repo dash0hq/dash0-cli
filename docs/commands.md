@@ -1198,11 +1198,19 @@ dash0 -X otlp proxy [flags]
 | `--scope-attribute` | | Instrumentation-scope attribute as `key=value` to upsert into every forwarded batch (repeatable) |
 | `--scope-name` | | Instrumentation-scope name to set on every forwarded batch (default: preserve the SDK's value) |
 | `--scope-version` | | Instrumentation-scope version to set on every forwarded batch (default: preserve the SDK's value) |
+| `--log-attribute` | | Attribute as `key=value` to upsert on every forwarded log record (repeatable) |
+| `--span-attribute` | | Attribute as `key=value` to upsert on every forwarded span (repeatable) |
+| `--metric-attribute` | | Attribute as `key=value` to upsert on every forwarded metric data point (repeatable) |
 
 #### Outbound decoration
 
-The `--resource-attribute` / `--scope-attribute` / `--scope-name` / `--scope-version` flags upsert values onto every forwarded pdata batch.
-They mirror the same flags on `dash0 logs send` and `dash0 spans send` so the user experience is consistent across signal-authoring and signal-forwarding workflows.
+The decoration flags upsert values onto every forwarded pdata batch at three levels:
+
+- **Resource level** (`--resource-attribute`) — applied to each `ResourceLogs`, `ResourceSpans`, or `ResourceMetrics` resource. This is the level Dash0 indexes for filtering.
+- **Scope level** (`--scope-attribute`, `--scope-name`, `--scope-version`) — applied to each instrumentation scope.
+- **Record level** (`--log-attribute`, `--span-attribute`, `--metric-attribute`) — applied to every individual log record, span, or metric data point of the corresponding signal type. Per-signal flags don't cross signal boundaries: a `--log-attribute` never lands on a span.
+
+The flag shape mirrors `dash0 logs send` and `dash0 spans send` so the user experience is consistent across signal-authoring and signal-forwarding workflows.
 
 When a key collides with one the inbound SDK already set (e.g., `--resource-attribute service.name=foo` against an SDK-set `service.name`), the flag value wins.
 Unlike the send commands, `--scope-name` and `--scope-version` default to empty — the proxy preserves the SDK's instrumentation-library identity unless the user explicitly overrides it.

@@ -30,16 +30,34 @@ type Decorator struct {
 	scopeAttrs    map[string]string
 	scopeName     string
 	scopeVersion  string
+
+	// Per-signal record-level attribute upserts. Each is applied to
+	// every individual record of its respective signal type:
+	//   logAttrs    → every LogRecord.Attributes()
+	//   spanAttrs   → every Span.Attributes()
+	//   metricAttrs → every metric data point's Attributes(), for all
+	//                 metric flavors (Gauge, Sum, Histogram,
+	//                 ExponentialHistogram, Summary)
+	logAttrs    map[string]string
+	spanAttrs   map[string]string
+	metricAttrs map[string]string
 }
 
 // NewDecorator returns a Decorator with the supplied user-controlled
 // upserts. Any zero-valued field is a no-op when Decorate* is called.
-func NewDecorator(resourceAttrs, scopeAttrs map[string]string, scopeName, scopeVersion string) *Decorator {
+func NewDecorator(
+	resourceAttrs, scopeAttrs map[string]string,
+	scopeName, scopeVersion string,
+	logAttrs, spanAttrs, metricAttrs map[string]string,
+) *Decorator {
 	return &Decorator{
 		resourceAttrs: resourceAttrs,
 		scopeAttrs:    scopeAttrs,
 		scopeName:     scopeName,
 		scopeVersion:  scopeVersion,
+		logAttrs:      logAttrs,
+		spanAttrs:     spanAttrs,
+		metricAttrs:   metricAttrs,
 	}
 }
 
@@ -51,11 +69,14 @@ func (d *Decorator) IsEmpty() bool {
 		(len(d.resourceAttrs) == 0 &&
 			len(d.scopeAttrs) == 0 &&
 			d.scopeName == "" &&
-			d.scopeVersion == "")
+			d.scopeVersion == "" &&
+			len(d.logAttrs) == 0 &&
+			len(d.spanAttrs) == 0 &&
+			len(d.metricAttrs) == 0)
 }
 
-// DecorateLogs upserts the configured fields onto each ResourceLogs +
-// ScopeLogs pair in ld.
+// DecorateLogs upserts the configured fields onto each ResourceLogs,
+// each ScopeLogs scope, and each LogRecord in ld.
 func (d *Decorator) DecorateLogs(ld plog.Logs) {
 	if d.IsEmpty() {
 		return
@@ -66,13 +87,20 @@ func (d *Decorator) DecorateLogs(ld plog.Logs) {
 		d.upsertResource(rl.Resource().Attributes())
 		sls := rl.ScopeLogs()
 		for j := 0; j < sls.Len(); j++ {
-			d.upsertScope(sls.At(j).Scope())
+			sl := sls.At(j)
+			d.upsertScope(sl.Scope())
+			if len(d.logAttrs) > 0 {
+				lrs := sl.LogRecords()
+				for k := 0; k < lrs.Len(); k++ {
+					d.upsertMap(lrs.At(k).Attributes(), d.logAttrs)
+				}
+			}
 		}
 	}
 }
 
-// DecorateTraces upserts the configured fields onto each ResourceSpans +
-// ScopeSpans pair in td.
+// DecorateTraces upserts the configured fields onto each ResourceSpans,
+// each ScopeSpans scope, and each Span in td.
 func (d *Decorator) DecorateTraces(td ptrace.Traces) {
 	if d.IsEmpty() {
 		return
@@ -83,13 +111,22 @@ func (d *Decorator) DecorateTraces(td ptrace.Traces) {
 		d.upsertResource(rs.Resource().Attributes())
 		sss := rs.ScopeSpans()
 		for j := 0; j < sss.Len(); j++ {
-			d.upsertScope(sss.At(j).Scope())
+			ss := sss.At(j)
+			d.upsertScope(ss.Scope())
+			if len(d.spanAttrs) > 0 {
+				spans := ss.Spans()
+				for k := 0; k < spans.Len(); k++ {
+					d.upsertMap(spans.At(k).Attributes(), d.spanAttrs)
+				}
+			}
 		}
 	}
 }
 
-// DecorateMetrics upserts the configured fields onto each ResourceMetrics
-// + ScopeMetrics pair in md.
+// DecorateMetrics upserts the configured fields onto each ResourceMetrics,
+// each ScopeMetrics scope, and each metric data point in md. Metric data
+// points come in five flavors — Gauge, Sum, Histogram, ExponentialHistogram,
+// Summary — and the decorator iterates the appropriate slice for each.
 func (d *Decorator) DecorateMetrics(md pmetric.Metrics) {
 	if d.IsEmpty() {
 		return
@@ -100,8 +137,57 @@ func (d *Decorator) DecorateMetrics(md pmetric.Metrics) {
 		d.upsertResource(rm.Resource().Attributes())
 		sms := rm.ScopeMetrics()
 		for j := 0; j < sms.Len(); j++ {
-			d.upsertScope(sms.At(j).Scope())
+			sm := sms.At(j)
+			d.upsertScope(sm.Scope())
+			if len(d.metricAttrs) > 0 {
+				ms := sm.Metrics()
+				for k := 0; k < ms.Len(); k++ {
+					d.upsertMetricDataPoints(ms.At(k))
+				}
+			}
 		}
+	}
+}
+
+// upsertMetricDataPoints applies the metricAttrs map to every data point
+// of m, fanning out across the five metric type variants. A metric in a
+// pdata batch always has exactly one populated variant (the others are
+// zero-length), so iterating all five is safe and the unused branches
+// short-circuit at the Len() check.
+func (d *Decorator) upsertMetricDataPoints(m pmetric.Metric) {
+	switch m.Type() {
+	case pmetric.MetricTypeGauge:
+		dps := m.Gauge().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			d.upsertMap(dps.At(i).Attributes(), d.metricAttrs)
+		}
+	case pmetric.MetricTypeSum:
+		dps := m.Sum().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			d.upsertMap(dps.At(i).Attributes(), d.metricAttrs)
+		}
+	case pmetric.MetricTypeHistogram:
+		dps := m.Histogram().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			d.upsertMap(dps.At(i).Attributes(), d.metricAttrs)
+		}
+	case pmetric.MetricTypeExponentialHistogram:
+		dps := m.ExponentialHistogram().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			d.upsertMap(dps.At(i).Attributes(), d.metricAttrs)
+		}
+	case pmetric.MetricTypeSummary:
+		dps := m.Summary().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			d.upsertMap(dps.At(i).Attributes(), d.metricAttrs)
+		}
+	}
+}
+
+// upsertMap is a small helper to keep the four call sites consistent.
+func (d *Decorator) upsertMap(attrs pcommon.Map, src map[string]string) {
+	for k, v := range src {
+		attrs.PutStr(k, v)
 	}
 }
 

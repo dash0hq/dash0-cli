@@ -109,7 +109,23 @@ func runProxy(cmd *cobra.Command, flags *proxyFlags) error {
 	if err != nil {
 		return fmt.Errorf("--scope-attribute: %w", err)
 	}
-	decorator := NewDecorator(resourceAttrs, scopeAttrs, flags.ScopeName, flags.ScopeVersion)
+	logAttrs, err := ParseKeyValuePairs(flags.LogAttributes)
+	if err != nil {
+		return fmt.Errorf("--log-attribute: %w", err)
+	}
+	spanAttrs, err := ParseKeyValuePairs(flags.SpanAttributes)
+	if err != nil {
+		return fmt.Errorf("--span-attribute: %w", err)
+	}
+	metricAttrs, err := ParseKeyValuePairs(flags.MetricAttributes)
+	if err != nil {
+		return fmt.Errorf("--metric-attribute: %w", err)
+	}
+	decorator := NewDecorator(
+		resourceAttrs, scopeAttrs,
+		flags.ScopeName, flags.ScopeVersion,
+		logAttrs, spanAttrs, metricAttrs,
+	)
 
 	workers := NewWorkerPool(apiClient, dataset, stats, emitter, consumer, lifecycleChOut, decorator)
 
