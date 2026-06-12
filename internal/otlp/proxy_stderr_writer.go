@@ -22,11 +22,23 @@ const stderrChannelDepth = 8
 // equals roughly thirty seconds of timeline.
 const sparklineHistoryCapacity = 30
 
-// sparklineMinWidth is the minimum terminal column count below which
-// sparklines are suppressed and the stats line falls back to text-only
-// counts. The threshold trades visual density against readability — under
-// 100 columns the per-signal sparkline+rate+total triples overlap.
-const sparklineMinWidth = 100
+// sparklineMaxWidth is the maximum number of columns the sparkline
+// occupies for one signal. Used by formatStatsLine to decide whether
+// the sparklines fit alongside the text counts on the current terminal.
+// At the 1Hz tick cadence the window is sparklineHistoryCapacity = 30,
+// but the per-render width is capped here so the stats line stays
+// readable on narrower terminals — 5 glyphs is the highest cap that
+// still lets an 80-column terminal show sparklines alongside the text
+// counts for small totals.
+const sparklineMaxWidth = 5
+
+// statsLineSafetyMargin reserves columns at the right edge so the live
+// stats line never writes right up to the cursor's wrap column. A
+// rounding edge case at exactly `len(line) == width` can wrap on some
+// terminals; 2 columns of headroom is the smallest value that
+// reproducibly avoids it in practice without forcing sparklines off
+// 80-column terminals at low traffic.
+const statsLineSafetyMargin = 2
 
 // defaultLineWidth is the fallback terminal width assumed when stderr is
 // not a TTY or term.GetSize returns an error.
@@ -162,19 +174,51 @@ func recordRate(history [][]float64, rates [signalCount]float64) {
 }
 
 // formatStatsLine renders the per-signal stats. Includes sparklines when
-// the terminal is wide enough; otherwise falls back to text-only counts.
+// the terminal is wide enough for them; otherwise falls back to text-
+// only counts. The threshold is computed against the actual rendered
+// text line — a fixed-column threshold can't know whether the totals
+// have grown to 5+ digits, so we measure first and decide.
+//
+// `width` is the current terminal column count. When `width <= 0` (the
+// width is unknown, e.g. non-TTY fallback), sparklines are included if
+// any history is available — non-TTY callers don't render the stats
+// line anyway (StderrWriter.render returns early when !isTTY), but the
+// helper stays consistent for tests.
 func formatStatsLine(history [][]float64, snap SnapshotWithRate, width int) string {
-	showSparkline := width >= sparklineMinWidth
 	labels := [signalCount]string{"logs", "spans", "metrics"}
 
-	parts := make([]string, 0, signalCount)
+	// First pass: render the text-only line so we know its real width.
+	textParts := make([]string, signalCount)
+	for i, label := range labels {
+		textParts[i] = fmt.Sprintf("%s %.0f/s · %d total", label, snap.Rate[i], snap.Forwarded[i])
+	}
+	textOnly := strings.Join(textParts, "   ")
+
+	// Decide whether the sparklines fit. Each signal's sparkline costs
+	// up to sparklineMaxWidth + 1 (the trailing space before the rate).
+	// A safety margin keeps the cursor away from the wrap column.
+	const sparklineCost = sparklineMaxWidth + 1
+	available := width - utf8.RuneCountInString(textOnly) - statsLineSafetyMargin
+	if width > 0 && available < signalCount*sparklineCost {
+		return textOnly
+	}
+
+	// Second pass: prepend sparklines for signals with at least one
+	// sample in history. Tail-slice the history so each per-signal
+	// sparkline never exceeds sparklineMaxWidth columns even when the
+	// rolling window has filled to sparklineHistoryCapacity.
+	parts := make([]string, signalCount)
 	for i, label := range labels {
 		var prefix string
-		if showSparkline && i < len(history) && len(history[i]) > 0 {
-			prefix = Sparkline(history[i]) + " "
+		if i < len(history) && len(history[i]) > 0 {
+			tail := history[i]
+			if len(tail) > sparklineMaxWidth {
+				tail = tail[len(tail)-sparklineMaxWidth:]
+			}
+			prefix = Sparkline(tail) + " "
 		}
-		parts = append(parts, fmt.Sprintf("%s %s%.0f/s · %d total",
-			label, prefix, snap.Rate[i], snap.Forwarded[i]))
+		parts[i] = fmt.Sprintf("%s %s%.0f/s · %d total",
+			label, prefix, snap.Rate[i], snap.Forwarded[i])
 	}
 	return strings.Join(parts, "   ")
 }
