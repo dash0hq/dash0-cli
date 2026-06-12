@@ -1246,7 +1246,7 @@ Precedence per port flag (high to low):
 On startup the proxy writes a single banner line to stderr listing both endpoints, the active profile name, and the resolved dataset.
 
 ```
-dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile "dev" dataset "default"
+dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile: dev (dataset: default)
 ```
 
 In TTY mode the banner is followed by a live per-signal stats block on stderr that updates once per second:
@@ -1308,24 +1308,117 @@ Startup failures (missing profile, both listener ports unavailable) exit non-zer
 
 #### Examples
 
-```bash
-# Just run it. SDK defaults already point at 127.0.0.1:4318 / 4317.
-$ dash0 -X otlp proxy
-dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile "dev" dataset "default"
-logs   ▁▁▁▁▁▁ 0/s · 0 total   spans  ▁▁▁▁▁▁ 0/s · 0 total   metrics ▁▁▁▁▁▁ 0/s · 0 total
+##### Just run it
 
-# Override the HTTP port while keeping the gRPC default.
+SDK defaults already point at `127.0.0.1:4318` (HTTP) and `127.0.0.1:4317` (gRPC) so no environment variable change is required on the SDK side.
+
+```bash
+$ dash0 -X otlp proxy
+dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile: dev (dataset: default)
+   logs:    42/s ▁▂▄▆▇ 1234 total
+  spans:    18/s ▁▂▃▄▅  540 total
+metrics:     0/s ▁▁▁▁▁    0 total
+```
+
+##### Override the listener ports
+
+```bash
+# Move the HTTP listener; keep the gRPC default.
 $ dash0 -X otlp proxy --http-port 8318
 
-# Print every forwarded record to stdout in collector-debug-exporter style.
-$ dash0 -X otlp proxy --tail
+# Move both, e.g. when another local Collector is on 4317/4318.
+$ dash0 -X otlp proxy --http-port 8318 --grpc-port 8317
+```
 
-# Agent-mode event stream (one NDJSON record per event).
-$ dash0 --agent-mode -X otlp proxy
-{"resourceLogs":[...]}
-{"resourceLogs":[...]}
+If a port is already in use, the proxy fails with an actionable error that names the holder (resolved via `lsof` on Unix):
+
+```
+HTTP port 4318 is already in use by "otelcol-contrib" (PID 12345)
+  Stop that process, or pass --http-port <N> to use another port (cause: …)
+```
+
+##### Watch the forwarded data
+
+The `--tail` flag prints every forwarded record on stdout in the same style as the OpenTelemetry Collector's `debug` exporter — useful for verifying SDK output before going to the Dash0 UI.
+
+```bash
+$ dash0 -X otlp proxy --tail
+dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile: dev (dataset: default)
+ResourceLogs #0
+Resource attributes:
+  service.name: Str("frontend")
+ScopeLogs #0
+ScopeLogs SchemaURL:
+InstrumentationScope dash0-cli v1
+LogRecord #0
+ObservedTimestamp: 2026-06-12T10:08:42.123Z
+Timestamp: 2026-06-12T10:08:42.123Z
+SeverityText: INFO
+SeverityNumber: 9 (INFO)
+Body: Str("Application started successfully")
 ...
 ```
+
+##### Tag forwarded data for filtering
+
+The decoration flags upsert attributes onto every forwarded batch at three levels: resource (filterable in Dash0), scope, and per-record.
+
+```bash
+# Add a developer-specific tag at the resource level so each developer's
+# data is filterable in the Dash0 UI even on a shared backend.
+$ dash0 -X otlp proxy \
+    --resource-attribute developer=alice \
+    --resource-attribute deployment.environment.name=local
+
+# Tag the environment at the resource level (filterable) and mark every
+# individual span and log as having flowed through your proxy.
+$ dash0 -X otlp proxy \
+    --resource-attribute deployment.environment.name=local \
+    --span-attribute proxy.tagged=true \
+    --log-attribute proxy.tagged=true \
+    --metric-attribute proxy.tagged=true
+
+# Override the instrumentation-scope identity on every forwarded batch.
+# By default the proxy preserves the SDK's scope name and version; these
+# flags explicitly overwrite them.
+$ dash0 -X otlp proxy \
+    --scope-name dash0-cli-otlp-proxy \
+    --scope-version v1
+```
+
+Resource attribute keys collide with values the SDK already set; the flag's value wins:
+
+```bash
+# The SDK has set service.name=frontend; this overrides it to "frontend-staging".
+$ dash0 -X otlp proxy --resource-attribute service.name=frontend-staging
+```
+
+##### Agent mode
+
+When `--agent-mode` is active, the proxy emits one NDJSON OTLP/JSON event record per line on stdout. The stats redraw on stderr is suppressed; `--tail` is incompatible (agents already see batches through the structured event stream).
+
+```bash
+$ dash0 --agent-mode -X otlp proxy
+{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"dash0-cli"}},...]},"scopeLogs":[{"scope":{"name":"dash0.cli.otlp_proxy"},"logRecords":[{"timeUnixNano":"...","attributes":[{"key":"endpoint.http","value":{"stringValue":"127.0.0.1:4318"}},...],"eventName":"dash0.cli.otlp_proxy.started"}]}]}]}
+{"resourceLogs":[{...,"eventName":"dash0.cli.otlp_proxy.forwarded","attributes":[{"key":"signal","value":{"stringValue":"logs"}},{"key":"count","value":{"intValue":"3"}},...]}]}
+...
+```
+
+##### Use with `telemetrygen` for a quick smoke test
+
+[`telemetrygen`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/cmd/telemetrygen) generates synthetic OTLP data, which is convenient for verifying the proxy without running a real SDK.
+
+```bash
+# In one terminal: start the proxy.
+$ dash0 -X otlp proxy
+
+# In another: send 10 traces over gRPC, 20 logs over HTTP, and 5 metrics over gRPC.
+$ telemetrygen traces  --otlp-insecure                  --otlp-endpoint 127.0.0.1:4317 --traces 10
+$ telemetrygen logs    --otlp-insecure --otlp-http      --otlp-endpoint 127.0.0.1:4318 --logs 20
+$ telemetrygen metrics --otlp-insecure                  --otlp-endpoint 127.0.0.1:4317 --metrics 5
+```
+
+The proxy's stats block updates in place as the data flows through, then the records appear in the Dash0 UI under the active profile's dataset.
 
 ## Organizational commands
 

@@ -409,12 +409,18 @@ dash0 -X otlp proxy
 # Print every forwarded record on stdout in collector-debug-exporter style.
 dash0 -X otlp proxy --tail
 
-# Pick non-default ports.
+# Pick non-default ports (e.g., when another local Collector holds the defaults).
 dash0 -X otlp proxy --http-port 8318 --grpc-port 8317
+
+# Tag every forwarded batch at the resource level so it is filterable in Dash0.
+dash0 -X otlp proxy \
+    --resource-attribute developer=alice \
+    --resource-attribute deployment.environment.name=local
 ```
 
 The proxy exits on `Ctrl-C` (or `SIGTERM`) after draining in-flight work within a 5-second deadline.
-See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the agent-mode event schema and failure-mode classification.
+On startup, if either default port is already in use, the proxy exits non-zero with an actionable error that names the holding process.
+See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the decoration flags (`--scope-attribute`, `--log-attribute`, `--span-attribute`, `--metric-attribute`, `--scope-name`, `--scope-version`), the agent-mode event schema, and the failure-mode classification.
 
 ### Common settings
 

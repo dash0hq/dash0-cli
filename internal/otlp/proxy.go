@@ -86,8 +86,9 @@ telemetry to Dash0 using the active profile's credentials.
 
 The proxy binds 127.0.0.1:4318 (HTTP) and 127.0.0.1:4317 (gRPC) by default
 so an OpenTelemetry SDK at default endpoint configuration connects with no
-env-var change. If a default port is in use, the proxy falls back to an
-OS-assigned port and prints the actual endpoint on stderr.
+env-var change. When a port is already in use, the proxy exits non-zero
+with an error that names the holding process; pass --http-port or
+--grpc-port to use a different port.
 
 The proxy is a local-dev shortcut, not a replacement for the OpenTelemetry
 Collector. It does not buffer outbound on Dash0 outages; backpressure
@@ -98,11 +99,30 @@ surfaces to SDKs as HTTP 503 / gRPC UNAVAILABLE.`,
   # Override the HTTP port (the gRPC default is preserved).
   dash0 -X otlp proxy --http-port 8318
 
-  # Watch each forwarded record in the terminal.
+  # Watch each forwarded record in the terminal in debug-exporter style.
   dash0 -X otlp proxy --tail
 
   # Run under agent mode for structured event consumption.
-  dash0 --agent-mode -X otlp proxy`,
+  dash0 --agent-mode -X otlp proxy
+
+  # Tag every forwarded batch with a per-developer session id at the
+  # resource level so the data is filterable in Dash0.
+  dash0 -X otlp proxy \
+      --resource-attribute developer=alice \
+      --resource-attribute session=local-dev-$(date +%s)
+
+  # Add an environment tag at the resource level AND a per-record tag
+  # on every span and log forwarded by this proxy.
+  dash0 -X otlp proxy \
+      --resource-attribute deployment.environment.name=local \
+      --span-attribute proxy.tagged=true \
+      --log-attribute proxy.tagged=true
+
+  # Override the instrumentation-scope name to mark every forwarded
+  # batch as coming through your proxy (preserved by default).
+  dash0 -X otlp proxy \
+      --scope-name dash0-cli-otlp-proxy \
+      --scope-version v1`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {
