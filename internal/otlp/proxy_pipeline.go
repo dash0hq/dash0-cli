@@ -193,7 +193,9 @@ func preBindPort(label string, requested int) (int, error) {
 
 // portInUseError formats a user-facing error for a port-collision. When
 // lookupPortHolder identifies the process holding the port, the message
-// names it; otherwise it falls back to a generic actionable hint.
+// names it; otherwise it falls back to a platform-appropriate hint
+// (lsof on Unix, netstat on Windows) so the developer can resolve the
+// holder themselves.
 func portInUseError(label string, port int, cause error) error {
 	flag := "--http-port"
 	if label == "grpc" {
@@ -203,8 +205,8 @@ func portInUseError(label string, port int, cause error) error {
 		return fmt.Errorf("%s port %d is already in use by %q (PID %d)\n  Stop that process, or pass %s <N> to use another port (cause: %w)",
 			strings.ToUpper(label), port, name, pid, flag, cause)
 	}
-	return fmt.Errorf("%s port %d is already in use\n  Find the holder with: lsof -iTCP:%d -sTCP:LISTEN\n  Then stop it, or pass %s <N> to use another port (cause: %w)",
-		strings.ToUpper(label), port, port, flag, cause)
+	return fmt.Errorf("%s port %d is already in use\n  Find the holder with: %s\n  Then stop it, or pass %s <N> to use another port (cause: %w)",
+		strings.ToUpper(label), port, portInUseHint(port), flag, cause)
 }
 
 // buildReceiverConfig assembles an otlpreceiver.Config from scratch with

@@ -16,6 +16,14 @@ import (
 // missing or hangs.
 const portLookupTimeout = 500 * time.Millisecond
 
+// portInUseHint returns the platform-appropriate command the user can
+// run to identify the process holding a given TCP port. Surfaced in the
+// fallback path of portInUseError when lookupPortHolder couldn't
+// auto-resolve the holder.
+func portInUseHint(port int) string {
+	return "lsof -iTCP:" + strconv.Itoa(port) + " -sTCP:LISTEN"
+}
+
 // lookupPortHolder identifies the process holding a listening TCP port
 // on 127.0.0.1 via lsof. Returns the command name and PID when
 // identification succeeds. ok=false means lsof was unavailable, didn't
