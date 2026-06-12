@@ -20,7 +20,7 @@ on:
 jobs:
   test-standalone-install:
     name: 'Standalone install (no setup action)'
-    if: github.repository == 'dash0hq/dash0-cli'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -47,7 +47,7 @@ jobs:
 
   test-reuses-setup:
     name: 'Reuse setup action installation'
-    if: github.repository == 'dash0hq/dash0-cli'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -79,7 +79,7 @@ jobs:
 
   test-profile-update:
     name: 'Updates existing profile with connection inputs'
-    if: github.repository == 'dash0hq/dash0-cli'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -130,7 +130,7 @@ jobs:
 
   test-argument-mapping:
     name: 'Argument mapping'
-    if: github.repository == 'dash0hq/dash0-cli'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -234,7 +234,7 @@ jobs:
 
   test-send:
     name: 'End-to-end send'
-    if: github.repository == 'dash0hq/dash0-cli'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -280,7 +280,7 @@ jobs:
 
   test-arm64:
     name: 'Standalone install on arm64'
-    if: github.repository == 'dash0hq/dash0-cli'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
