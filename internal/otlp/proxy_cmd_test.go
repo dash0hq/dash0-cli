@@ -500,20 +500,6 @@ func TestNewOtlpCmd_HasProxySubcommand(t *testing.T) {
 	}
 }
 
-func TestRunProxy_StubReturnsImplementationPending(t *testing.T) {
-	// The lifecycle implementation lands in U5+. Until then runProxy must
-	// fail loudly so accidentally invoking the command never appears to
-	// succeed.
-	cmd := newProxyCmd()
-	err := runProxy(cmd, &proxyFlags{HTTPPort: defaultHTTPPort, GRPCPort: defaultGRPCPort})
-	if err == nil {
-		t.Fatal("runProxy stub should return an error until lifecycle (U5+) lands")
-	}
-	if !strings.Contains(err.Error(), "implementation pending") {
-		t.Errorf("runProxy stub error should signal implementation-pending; got %q", err.Error())
-	}
-}
-
 // readFlagsFromCmd reconstructs a proxyFlags struct from the parsed cobra
 // flags. It mirrors the variable bindings inside newProxyCmd so tests can
 // introspect the parsed state without depending on the closure capture.

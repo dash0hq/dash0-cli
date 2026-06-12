@@ -292,7 +292,4 @@ func validateFlags(flags *proxyFlags) error {
 }
 
 // runProxy is the entrypoint for the proxy command. The lifecycle supervisor
-// (U5) takes over from here once it lands.
-func runProxy(cmd *cobra.Command, flags *proxyFlags) error {
-	return errors.New("dash0 otlp proxy: implementation pending (U5+ lifecycle, U12 pipeline, U13 consumer, U4 workers)")
-}
+// (U5) — its implementation lives in proxy_lifecycle.go.
