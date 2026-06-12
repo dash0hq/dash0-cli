@@ -176,7 +176,7 @@ func runProxy(cmd *cobra.Command, flags *proxyFlags) error {
 	endpoints := pipeline.Endpoints()
 	lifecycleCh <- LifecycleEvent{
 		Kind: LifecycleBanner,
-		Message: fmt.Sprintf("dash0 otlp proxy listening — http://%s (OTLP/HTTP), %s (OTLP/gRPC) — profile %q dataset %q",
+		Message: fmt.Sprintf("dash0 otlp proxy listening — http://%s (OTLP/HTTP), %s (OTLP/gRPC) — profile: %s (dataset: %s)",
 			endpoints.HTTPEndpoint, endpoints.GRPCEndpoint, profileName, datasetLabel(cfg, flags.Dataset)),
 	}
 	emitter.EmitStarted(endpoints.HTTPEndpoint, endpoints.GRPCEndpoint, datasetLabel(cfg, flags.Dataset), profileName)
@@ -284,20 +284,40 @@ func resolveProxyConfig(ctx context.Context, flags *proxyFlags) (*profiles.Confi
 	return cfg, profileName, nil
 }
 
-// resolveProfileNameForBanner picks a human-readable label for the banner
-// + started event. The dash0api Configuration struct doesn't carry a
-// Name, so we read the selector (when set explicitly via --profile or
-// DASH0_PROFILE) and otherwise fall back to a "(active profile)" label
-// — the user can run `dash0 config show` for the canonical answer if
-// they care about which profile won the resolution chain.
+// resolveProfileNameForBanner picks a human-readable name for the banner
+// + started event. Resolution order:
+//   1. Explicit profile selector (--profile flag or DASH0_PROFILE env)
+//      — use that name verbatim.
+//   2. Active profile on disk — query the profiles store for the actual
+//      name so the banner reads `profile: dev` instead of a placeholder.
+//   3. Fallback `env/flags` — only reached when no profile is on disk
+//      and connection settings came from env vars or CLI flags.
 func resolveProfileNameForBanner(ctx context.Context, cfg *profiles.Configuration) string {
 	if sel := config.ProfileSelectorFromContext(ctx); sel.IsSet() {
 		return sel.Name
 	}
 	if cfg != nil {
-		return "(active profile)"
+		if name := lookupActiveProfileName(); name != "" {
+			return name
+		}
+		return "active"
 	}
-	return "(env/flags)"
+	return "env/flags"
+}
+
+// lookupActiveProfileName reads the active profile from the on-disk
+// store and returns its name. Errors (no store, no active profile)
+// produce an empty string so callers can fall back gracefully.
+func lookupActiveProfileName() string {
+	store, err := profiles.NewStore()
+	if err != nil {
+		return ""
+	}
+	p, err := store.GetActiveProfile()
+	if err != nil || p == nil {
+		return ""
+	}
+	return p.Name
 }
 
 // datasetLabel returns the dataset string for human-facing banners. The

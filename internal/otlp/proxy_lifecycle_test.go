@@ -14,6 +14,10 @@ import (
 )
 
 func TestResolveProxyConfig_FromContextProfile(t *testing.T) {
+	// Isolate from the developer's real ~/.dash0/ so the active-profile
+	// store lookup returns nothing and we exercise the fallback branch.
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
 	cfg := &profiles.Configuration{
 		OtlpUrl:   "https://ingress.example.com",
 		AuthToken: "tok",
@@ -29,8 +33,8 @@ func TestResolveProxyConfig_FromContextProfile(t *testing.T) {
 	if got != cfg {
 		t.Errorf("returned cfg != input cfg")
 	}
-	if name != "(active profile)" {
-		t.Errorf("profile name = %q; want (active profile)", name)
+	if name != "active" {
+		t.Errorf("profile name = %q; want 'active' (no on-disk profile in temp config dir)", name)
 	}
 }
 
@@ -100,15 +104,18 @@ func TestResolveProfileNameForBanner_ExplicitSelectorWins(t *testing.T) {
 	}
 }
 
-func TestResolveProfileNameForBanner_ConfigOnly(t *testing.T) {
-	if got := resolveProfileNameForBanner(context.Background(), &profiles.Configuration{}); got != "(active profile)" {
-		t.Errorf("got %q; want (active profile)", got)
+func TestResolveProfileNameForBanner_ConfigOnly_NoStore(t *testing.T) {
+	// Empty config dir → lookupActiveProfileName returns "" → fallback
+	// label "active" is emitted.
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+	if got := resolveProfileNameForBanner(context.Background(), &profiles.Configuration{}); got != "active" {
+		t.Errorf("got %q; want 'active' (fallback when store has no active profile)", got)
 	}
 }
 
 func TestResolveProfileNameForBanner_NoConfigNoSelector(t *testing.T) {
-	if got := resolveProfileNameForBanner(context.Background(), nil); got != "(env/flags)" {
-		t.Errorf("got %q; want (env/flags)", got)
+	if got := resolveProfileNameForBanner(context.Background(), nil); got != "env/flags" {
+		t.Errorf("got %q; want 'env/flags'", got)
 	}
 }
 

@@ -106,63 +106,101 @@ func TestStderrWriter_ExitsOnContextCancel(t *testing.T) {
 	}
 }
 
+// signalLines filters out the blank separator rows from a formatStatsBlock
+// result so individual signal rows can be checked by index 0..statsBlockLines-1.
+func signalLines(lines []string) []string {
+	out := make([]string, 0, signalCount)
+	for _, l := range lines {
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 func TestFormatStatsBlock_OneLinePerSignal(t *testing.T) {
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{100, 200, 300}},
 		Rate:     [signalCount]float64{5, 10, 0},
 	}
 	history := [][]float64{{1, 2, 5}, {3, 7, 10}, {0, 0, 0}}
-	lines := formatStatsBlock(history, snap)
-	if len(lines) != signalCount {
-		t.Fatalf("got %d lines; want %d (one per signal)", len(lines), signalCount)
+	lines := formatStatsBlock(history, snap, 5)
+	if len(lines) != statsBlockLines {
+		t.Fatalf("got %d lines; want %d (signal rows + blank separators)", len(lines), statsBlockLines)
 	}
-	// Each line must carry its own label, rate, and total.
+	signals := signalLines(lines)
+	if len(signals) != signalCount {
+		t.Fatalf("got %d non-blank lines; want %d", len(signals), signalCount)
+	}
+	// Each signal row must carry its own label, rate, and total.
 	wantPrefixes := []string{"logs:", "spans:", "metrics:"}
 	wantSuffixes := []string{"100 total", "200 total", "300 total"}
 	wantRates := []string{"5/s", "10/s", "0/s"}
-	for i, line := range lines {
+	for i, line := range signals {
 		if !strings.HasPrefix(strings.TrimSpace(line), wantPrefixes[i]) {
-			t.Errorf("line %d (%q) should start with %q", i, line, wantPrefixes[i])
+			t.Errorf("signal row %d (%q) should start with %q", i, line, wantPrefixes[i])
 		}
 		if !strings.Contains(line, wantSuffixes[i]) {
-			t.Errorf("line %d (%q) missing %q", i, line, wantSuffixes[i])
+			t.Errorf("signal row %d (%q) missing %q", i, line, wantSuffixes[i])
 		}
 		if !strings.Contains(line, wantRates[i]) {
-			t.Errorf("line %d (%q) missing rate %q", i, line, wantRates[i])
+			t.Errorf("signal row %d (%q) missing rate %q", i, line, wantRates[i])
+		}
+	}
+}
+
+func TestFormatStatsBlock_BlankSeparatorsBetweenSignals(t *testing.T) {
+	// The output has signalCount rows interleaved with (statsBlockLines-1)
+	// blank rows — visual breathing room between signals.
+	snap := SnapshotWithRate{
+		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
+		Rate:     [signalCount]float64{4, 5, 6},
+	}
+	lines := formatStatsBlock(nil, snap, 5)
+	for i, line := range lines {
+		// Odd indices (1, 3, ...) should be blank; even indices have content.
+		if i%2 == 0 {
+			if line == "" {
+				t.Errorf("line %d expected to be a signal row; got blank", i)
+			}
+		} else {
+			if line != "" {
+				t.Errorf("line %d expected to be a blank separator; got %q", i, line)
+			}
 		}
 	}
 }
 
 func TestFormatStatsBlock_LabelsAreColumnAligned(t *testing.T) {
-	// All three lines must share the same prefix width — the colon
-	// after each label sits at the same column. Walk each line up to
-	// its colon and assert they all end at the same byte index.
+	// Labels share the same prefix width — the colon after each label
+	// sits at the same column. Walk only the signal rows so the blank
+	// separators don't trip the colon search.
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
 		Rate:     [signalCount]float64{4, 5, 6},
 	}
-	lines := formatStatsBlock(nil, snap)
+	signals := signalLines(formatStatsBlock(nil, snap, 5))
 
 	colonAt := -1
-	for i, line := range lines {
+	for i, line := range signals {
 		idx := strings.Index(line, ":")
 		if idx < 0 {
-			t.Fatalf("line %d missing colon: %q", i, line)
+			t.Fatalf("signal row %d missing colon: %q", i, line)
 		}
 		if colonAt == -1 {
 			colonAt = idx
 			continue
 		}
 		if idx != colonAt {
-			t.Errorf("line %d colon at column %d; want %d (labels not aligned)\nline 0: %q\nthis  : %q",
-				i, idx, colonAt, lines[0], line)
+			t.Errorf("signal row %d colon at column %d; want %d (labels not aligned)\nrow 0: %q\nthis : %q",
+				i, idx, colonAt, signals[0], line)
 		}
 	}
 }
 
-func TestFormatStatsBlock_SparklineCappedAtMaxWidth(t *testing.T) {
-	// History longer than sparklineMaxWidth must tail-slice so the
-	// rendered sparkline never exceeds the cap on any line.
+func TestFormatStatsBlock_SparklineHonoursRequestedWidth(t *testing.T) {
+	// Pass a sparkline width and assert each signal row carries at most
+	// that many glyphs, regardless of how much history was supplied.
 	long := make([]float64, sparklineHistoryCapacity)
 	for i := range long {
 		long[i] = float64(i + 1)
@@ -172,8 +210,9 @@ func TestFormatStatsBlock_SparklineCappedAtMaxWidth(t *testing.T) {
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
 		Rate:     [signalCount]float64{4, 5, 6},
 	}
-	lines := formatStatsBlock(history, snap)
-	for i, line := range lines {
+	const requestedWidth = 7
+	signals := signalLines(formatStatsBlock(history, snap, requestedWidth))
+	for i, line := range signals {
 		glyphs := 0
 		for _, r := range line {
 			for _, g := range "▁▂▃▄▅▆▇█" {
@@ -183,70 +222,121 @@ func TestFormatStatsBlock_SparklineCappedAtMaxWidth(t *testing.T) {
 				}
 			}
 		}
-		if glyphs > sparklineMaxWidth {
-			t.Errorf("line %d has %d sparkline glyphs; want at most %d",
-				i, glyphs, sparklineMaxWidth)
+		if glyphs > requestedWidth {
+			t.Errorf("signal row %d has %d sparkline glyphs; want at most %d",
+				i, glyphs, requestedWidth)
 		}
 	}
 }
 
 func TestFormatStatsBlock_TotalsAreRightAligned(t *testing.T) {
-	// Totals across rows must right-align: the rightmost digit of each
-	// total sits at the same column, and `<digits> total` lines up. This
-	// matters when totals span very different magnitudes — e.g., 1234
-	// spans vs 0 metrics — because left-aligned totals would push
-	// `total` to different columns and the eye would lose the column.
+	// Totals across signal rows must right-align: the rightmost digit
+	// of each total sits at the same column, and `<digits> total` lines
+	// up. Skip blank separator rows when looking for the suffix.
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1234, 540, 0}},
 		Rate:     [signalCount]float64{42, 18, 0},
 	}
-	lines := formatStatsBlock(nil, snap)
+	signals := signalLines(formatStatsBlock(nil, snap, 5))
 
-	// The "total" word's column must be identical across rows.
 	totalIdx := -1
-	for i, line := range lines {
+	for i, line := range signals {
 		idx := strings.Index(line, " total")
 		if idx < 0 {
-			t.Fatalf("line %d missing ' total': %q", i, line)
+			t.Fatalf("signal row %d missing ' total': %q", i, line)
 		}
 		if totalIdx == -1 {
 			totalIdx = idx
 			continue
 		}
 		if idx != totalIdx {
-			t.Errorf("line %d ' total' at column %d; want %d (totals not right-aligned)\nline 0: %q\nthis  : %q",
-				i, idx, totalIdx, lines[0], line)
+			t.Errorf("signal row %d ' total' at column %d; want %d (totals not right-aligned)\nrow 0: %q\nthis : %q",
+				i, idx, totalIdx, signals[0], line)
 		}
 	}
 
 	// Spot-check the largest number sits flush with the ' total' anchor:
 	// the four-digit "1234" should appear immediately before " total".
-	if !strings.Contains(lines[0], "1234 total") {
-		t.Errorf("line 0 should contain '1234 total' with no padding before the number; got %q", lines[0])
+	if !strings.Contains(signals[0], "1234 total") {
+		t.Errorf("logs row should contain '1234 total' with no padding before the number; got %q", signals[0])
 	}
 	// And smaller numbers carry leading spaces so they still end at the
 	// same column.
-	if !strings.Contains(lines[2], "   0 total") {
-		t.Errorf("line 2 should pad '0' with three leading spaces (3 = 4 - 1); got %q", lines[2])
+	if !strings.Contains(signals[2], "   0 total") {
+		t.Errorf("metrics row should pad '0' with three leading spaces (3 = 4 - 1); got %q", signals[2])
 	}
 }
 
 func TestFormatStatsBlock_EmptyHistoryPreservesAlignment(t *testing.T) {
-	// With no history, the sparkline must render as `sparklineMaxWidth`
-	// spaces so the `<total> total` column still lines up across rows.
+	// With no history, the sparkline must render as `width` spaces so
+	// the `<total> total` column still lines up across signal rows.
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{0, 0, 0}},
 		Rate:     [signalCount]float64{0, 0, 0},
 	}
-	lines := formatStatsBlock(nil, snap)
-	// All lines should be the same length (assuming totals format the
-	// same width). With Forwarded=0 across all signals this holds.
-	wantLen := utf8.RuneCountInString(lines[0])
-	for i, line := range lines {
+	signals := signalLines(formatStatsBlock(nil, snap, 5))
+	// All signal rows should be the same length (assuming totals format
+	// the same width). With Forwarded=0 across all signals this holds.
+	wantLen := utf8.RuneCountInString(signals[0])
+	for i, line := range signals {
 		if utf8.RuneCountInString(line) != wantLen {
-			t.Errorf("line %d length = %d; want %d (alignment broken)\nline 0: %q\nthis  : %q",
-				i, utf8.RuneCountInString(line), wantLen, lines[0], line)
+			t.Errorf("signal row %d length = %d; want %d (alignment broken)\nrow 0: %q\nthis : %q",
+				i, utf8.RuneCountInString(line), wantLen, signals[0], line)
 		}
+	}
+}
+
+func TestCurrentSparklineWidth_NonTTYReturnsDefault(t *testing.T) {
+	// Non-TTY fd → fallback to sparklineDefaultWidth regardless of any
+	// terminalSize override (the function returns before calling it).
+	prev := isTerminal
+	isTerminal = func(int) bool { return false }
+	t.Cleanup(func() { isTerminal = prev })
+
+	if got := currentSparklineWidth(0); got != sparklineDefaultWidth {
+		t.Errorf("currentSparklineWidth on non-TTY = %d; want %d", got, sparklineDefaultWidth)
+	}
+}
+
+func TestCurrentSparklineWidth_ScalesWithTerminalWidth(t *testing.T) {
+	// At 200 cols there's plenty of room — the result should saturate at
+	// sparklineHistoryCapacity. At 60 cols the result should be smaller.
+	// At a tiny 30 cols the result should clamp to sparklineMinWidth.
+	prev := isTerminal
+	isTerminal = func(int) bool { return true }
+	t.Cleanup(func() { isTerminal = prev })
+
+	prevSize := terminalSize
+	t.Cleanup(func() { terminalSize = prevSize })
+
+	cases := []struct {
+		cols int
+		want int
+	}{
+		{cols: 200, want: sparklineHistoryCapacity},
+		{cols: 60, want: 60 - statsBlockFixedOverhead - 10 - statsLineSafetyMargin},
+		{cols: 30, want: sparklineMinWidth}, // clamp floor
+	}
+	for _, c := range cases {
+		terminalSize = func(int) (int, int, error) { return c.cols, 24, nil }
+		got := currentSparklineWidth(1)
+		if got != c.want {
+			t.Errorf("currentSparklineWidth at %d cols = %d; want %d", c.cols, got, c.want)
+		}
+	}
+}
+
+func TestCurrentSparklineWidth_SizeErrorFallsBackToDefault(t *testing.T) {
+	prev := isTerminal
+	isTerminal = func(int) bool { return true }
+	t.Cleanup(func() { isTerminal = prev })
+
+	prevSize := terminalSize
+	t.Cleanup(func() { terminalSize = prevSize })
+	terminalSize = func(int) (int, int, error) { return 0, 0, fmt.Errorf("size unknown") }
+
+	if got := currentSparklineWidth(1); got != sparklineDefaultWidth {
+		t.Errorf("currentSparklineWidth with size error = %d; want %d", got, sparklineDefaultWidth)
 	}
 }
 
@@ -365,7 +455,7 @@ func TestStderrWriter_TTY_RedrawErasesBetweenTicks(t *testing.T) {
 
 	// Wait for two blocks to land. Each block is signalCount lines, but
 	// since render writes lines joined by '\n' the buffer should contain
-	// 2 × (signalCount-1) newlines plus the erase sequence.
+	// 2 × (statsBlockLines-1) newlines plus the erase sequence.
 	deadline := time.After(500 * time.Millisecond)
 	for {
 		if strings.Count(buf.String(), "metrics:") >= 2 {
@@ -383,8 +473,8 @@ func TestStderrWriter_TTY_RedrawErasesBetweenTicks(t *testing.T) {
 
 	got := buf.String()
 
-	// The erase sequence is `\r\x1b[<N>A\x1b[J` where N = signalCount-1.
-	wantErase := fmt.Sprintf("\r\x1b[%dA\x1b[J", signalCount-1)
+	// The erase sequence is `\r\x1b[<N>A\x1b[J` where N = statsBlockLines-1.
+	wantErase := fmt.Sprintf("\r\x1b[%dA\x1b[J", statsBlockLines-1)
 	if !strings.Contains(got, wantErase) {
 		t.Errorf("expected the cursor-up + clear-screen sequence between ticks; not found in output:\n%q", got)
 	}
@@ -439,7 +529,7 @@ func TestStderrWriter_TTY_RedrawErasesOnFinalShutdown(t *testing.T) {
 	// minimum the ctx.Done erase. Easier assertion: the final erase is
 	// present, count >= 1.
 	got := buf.String()
-	wantErase := fmt.Sprintf("\r\x1b[%dA\x1b[J", signalCount-1)
+	wantErase := fmt.Sprintf("\r\x1b[%dA\x1b[J", statsBlockLines-1)
 	if strings.Count(got, wantErase) < 1 {
 		t.Errorf("expected at least one erase sequence after shutdown; got:\n%q", got)
 	}

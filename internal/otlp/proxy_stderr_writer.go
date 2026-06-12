@@ -23,11 +23,32 @@ const stderrChannelDepth = 8
 // equals roughly thirty seconds of timeline.
 const sparklineHistoryCapacity = 30
 
-// sparklineMaxWidth caps the rendered sparkline at this many glyphs. The
-// rolling-window history retains more samples (sparklineHistoryCapacity)
-// so the proxy can grow the window if a future redesign uses more
-// horizontal space, but the per-render width stays bounded.
-const sparklineMaxWidth = 5
+// sparklineMinWidth is the floor on the per-line sparkline width. Even on
+// very narrow terminals we'd rather show one glyph than drop the
+// silhouette entirely.
+const sparklineMinWidth = 5
+
+// sparklineDefaultWidth is the sparkline width assumed when the terminal
+// width can't be determined (non-TTY, GetSize error). Picked to match
+// the minimum so the layout looks consistent across both paths.
+const sparklineDefaultWidth = 5
+
+// statsBlockFixedOverhead is the number of columns the stats line uses
+// for everything OTHER than the sparkline: label + colon (8), spaces
+// (5 inter-field), rate (5) + "/s" (2), and " total" (6). The
+// total-column width adds on top of this. See formatStatsBlock for the
+// computation that uses this constant to size the sparkline against the
+// terminal width.
+const statsBlockFixedOverhead = 8 + 1 + 5 + 2 + 1 + 1 + 6
+
+// statsLineSafetyMargin reserves columns at the right edge so the live
+// stats line never writes right up to the cursor's wrap column.
+const statsLineSafetyMargin = 2
+
+// statsBlockLines is the total number of rendered lines in the stats
+// block: `signalCount` signal rows interleaved with `signalCount-1`
+// blank separators for visual breathing room.
+const statsBlockLines = 2*signalCount - 1
 
 // isTerminal is the substitutable hook the writer uses to decide whether
 // to emit ANSI cursor-control sequences. Production code points it at
@@ -35,6 +56,10 @@ const sparklineMaxWidth = 5
 // without an actual TTY. The variable holds no state — only a function
 // reference — so substitution is safe.
 var isTerminal = term.IsTerminal
+
+// terminalSize is the substitutable hook for term.GetSize. Tests use it
+// to drive the sparkline-width scaling logic at a deterministic width.
+var terminalSize = term.GetSize
 
 // LifecycleEvent is the typed channel input for one-shot stderr messages
 // that should print above the live stats block. The writer renders Message
@@ -116,10 +141,10 @@ func (w *StderrWriter) Run(ctx context.Context, statsCh <-chan SnapshotWithRate,
 		if !isTTY || !blockRendered {
 			return
 		}
-		// Move to column 0, then up (signalCount-1) lines so the cursor
-		// sits at the start of the stats block's top line, then clear
-		// from cursor to end of screen.
-		fmt.Fprintf(w.out, "\r\x1b[%dA\x1b[J", signalCount-1)
+		// Move to column 0, up (statsBlockLines-1) rows so the cursor
+		// sits at the start of the block's top line, then clear from
+		// cursor to end of screen.
+		fmt.Fprintf(w.out, "\r\x1b[%dA\x1b[J", statsBlockLines-1)
 		blockRendered = false
 	}
 
@@ -130,11 +155,11 @@ func (w *StderrWriter) Run(ctx context.Context, statsCh <-chan SnapshotWithRate,
 		// Always erase any previously-rendered block before redrawing.
 		// On the very first render `blockRendered` is false and erase()
 		// is a no-op, so the initial draw lands at the natural cursor
-		// position. Every subsequent tick clears the prior three rows
-		// first, otherwise the new block would be appended at the end
-		// of the old block's last line instead of overwriting it.
+		// position. Every subsequent tick clears the prior rows first,
+		// otherwise the new block would be appended at the end of the
+		// old block's last line instead of overwriting it.
 		erase()
-		lines := formatStatsBlock(history[:], lastSnapshot)
+		lines := formatStatsBlock(history[:], lastSnapshot, currentSparklineWidth(w.fd))
 		fmt.Fprint(w.out, strings.Join(lines, "\n"))
 		blockRendered = true
 	}
@@ -169,8 +194,9 @@ func recordRate(history [][]float64, rates [signalCount]float64) {
 	}
 }
 
-// formatStatsBlock renders the per-signal stats as `signalCount` lines,
-// one per signal, in the form:
+// formatStatsBlock renders the per-signal stats as `statsBlockLines`
+// lines: one row per signal interleaved with blank rows for visual
+// breathing room. Each signal row has the form:
 //
 //	<label>: <rate>/s <sparkline> <total> total
 //
@@ -178,18 +204,24 @@ func recordRate(history [][]float64, rates [signalCount]float64) {
 //   - Labels right-align to the longest signal name's width — the colon
 //     becomes the column anchor (`   logs:`, `  spans:`, `metrics:`).
 //   - Rate right-aligns in 5 columns.
-//   - Sparklines are left-padded to sparklineMaxWidth so signals with
-//     less history align with the cap.
+//   - Sparklines are left-padded to `sparklineWidth` so signals with
+//     less history align with signals at the cap. Callers compute
+//     sparklineWidth against the live terminal width so the silhouette
+//     scales to fill available horizontal space.
 //   - Totals right-align across rows to the widest total's digit count,
 //     so leading whitespace grows for smaller numbers and `<digits>
 //     total` always lines up.
-func formatStatsBlock(history [][]float64, snap SnapshotWithRate) []string {
+func formatStatsBlock(history [][]float64, snap SnapshotWithRate, sparklineWidth int) []string {
 	labels := [signalCount]string{"logs", "spans", "metrics"}
 
 	// Width of the longest signal label plus its colon, so all labels
 	// right-align to that width: `   logs:`, `  spans:`, `metrics:` —
 	// eight columns each, colon at column 7.
 	const labelWidth = len("metrics:")
+
+	if sparklineWidth < 1 {
+		sparklineWidth = 1
+	}
 
 	// Pre-render totals as strings and find the max digit count so the
 	// total column right-aligns across rows.
@@ -202,17 +234,51 @@ func formatStatsBlock(history [][]float64, snap SnapshotWithRate) []string {
 		}
 	}
 
-	lines := make([]string, signalCount)
+	// Output has signalCount signal rows interleaved with (signalCount-1)
+	// blank rows.
+	out := make([]string, 0, statsBlockLines)
 	for i, label := range labels {
+		if i > 0 {
+			out = append(out, "")
+		}
 		var samples []float64
 		if i < len(history) {
 			samples = history[i]
 		}
-		spark := renderPaddedSparkline(samples, sparklineMaxWidth)
-		lines[i] = fmt.Sprintf("%*s %5.0f/s %s %*s total",
-			labelWidth, label+":", snap.Rate[i], spark, totalWidth, totalStrs[i])
+		spark := renderPaddedSparkline(samples, sparklineWidth)
+		out = append(out, fmt.Sprintf("%*s %5.0f/s %s %*s total",
+			labelWidth, label+":", snap.Rate[i], spark, totalWidth, totalStrs[i]))
 	}
-	return lines
+	return out
+}
+
+// currentSparklineWidth scales the sparkline width to consume available
+// terminal columns, clamped to [sparklineMinWidth,
+// sparklineHistoryCapacity]. Wider terminals show more history; narrower
+// ones gracefully reduce the silhouette.
+//
+// The computation reserves space for everything else on the stats line:
+// label, rate, " total" suffix, and a safety margin to keep the cursor
+// off the wrap column.
+func currentSparklineWidth(fd int) int {
+	if !isTerminal(fd) {
+		return sparklineDefaultWidth
+	}
+	cols, _, err := terminalSize(fd)
+	if err != nil || cols <= 0 {
+		return sparklineDefaultWidth
+	}
+	// Assume worst-case 10-digit totals when sizing — keeps the layout
+	// stable as counters grow without re-resizing the sparkline mid-run.
+	const assumedTotalWidth = 10
+	w := cols - statsBlockFixedOverhead - assumedTotalWidth - statsLineSafetyMargin
+	if w < sparklineMinWidth {
+		return sparklineMinWidth
+	}
+	if w > sparklineHistoryCapacity {
+		return sparklineHistoryCapacity
+	}
+	return w
 }
 
 // renderPaddedSparkline returns a sparkline string padded to `width`
