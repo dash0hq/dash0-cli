@@ -1227,11 +1227,11 @@ In TTY mode the banner is followed by a live per-signal stats block on stderr th
 
 ```
    logs:    42/s ▁▂▄▆█ 1234 total
-  spans:    18/s ▁▂▃▄▅ 540 total
-metrics:     0/s ▁▁▁▁▁ 0 total
+  spans:    18/s ▁▂▃▄▅  540 total
+metrics:     0/s ▁▁▁▁▁    0 total
 ```
 
-Each signal occupies its own line so the rates, sparklines, and totals line up vertically.
+Each signal occupies its own line; labels, rates, sparklines, and totals all right-align so the eye can scan vertically.
 The block redraws in place via ANSI cursor controls.
 When stderr is not a TTY (piped to a file or another process), the block is suppressed but lifecycle messages still print as plain lines.
 

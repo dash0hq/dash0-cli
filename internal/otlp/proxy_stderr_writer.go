@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -159,11 +160,15 @@ func recordRate(history [][]float64, rates [signalCount]float64) {
 //
 //	<label>: <rate>/s <sparkline> <total> total
 //
-// Labels are right-aligned so the colons line up vertically — the colon
-// then serves as a column anchor across rows. Rate is right-aligned in
-// 5 columns; the sparkline is left-padded with spaces to
-// sparklineMaxWidth so signals with shorter history still align with
-// signals at the cap.
+// Every column is right-aligned so the eye can scan vertically:
+//   - Labels right-align to the longest signal name's width — the colon
+//     becomes the column anchor (`   logs:`, `  spans:`, `metrics:`).
+//   - Rate right-aligns in 5 columns.
+//   - Sparklines are left-padded to sparklineMaxWidth so signals with
+//     less history align with the cap.
+//   - Totals right-align across rows to the widest total's digit count,
+//     so leading whitespace grows for smaller numbers and `<digits>
+//     total` always lines up.
 func formatStatsBlock(history [][]float64, snap SnapshotWithRate) []string {
 	labels := [signalCount]string{"logs", "spans", "metrics"}
 
@@ -172,6 +177,17 @@ func formatStatsBlock(history [][]float64, snap SnapshotWithRate) []string {
 	// eight columns each, colon at column 7.
 	const labelWidth = len("metrics:")
 
+	// Pre-render totals as strings and find the max digit count so the
+	// total column right-aligns across rows.
+	totalStrs := [signalCount]string{}
+	totalWidth := 0
+	for i := 0; i < signalCount; i++ {
+		totalStrs[i] = strconv.FormatInt(snap.Forwarded[i], 10)
+		if len(totalStrs[i]) > totalWidth {
+			totalWidth = len(totalStrs[i])
+		}
+	}
+
 	lines := make([]string, signalCount)
 	for i, label := range labels {
 		var samples []float64
@@ -179,8 +195,8 @@ func formatStatsBlock(history [][]float64, snap SnapshotWithRate) []string {
 			samples = history[i]
 		}
 		spark := renderPaddedSparkline(samples, sparklineMaxWidth)
-		lines[i] = fmt.Sprintf("%*s %5.0f/s %s %d total",
-			labelWidth, label+":", snap.Rate[i], spark, snap.Forwarded[i])
+		lines[i] = fmt.Sprintf("%*s %5.0f/s %s %*s total",
+			labelWidth, label+":", snap.Rate[i], spark, totalWidth, totalStrs[i])
 	}
 	return lines
 }

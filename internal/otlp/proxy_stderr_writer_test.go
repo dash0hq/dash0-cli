@@ -189,6 +189,47 @@ func TestFormatStatsBlock_SparklineCappedAtMaxWidth(t *testing.T) {
 	}
 }
 
+func TestFormatStatsBlock_TotalsAreRightAligned(t *testing.T) {
+	// Totals across rows must right-align: the rightmost digit of each
+	// total sits at the same column, and `<digits> total` lines up. This
+	// matters when totals span very different magnitudes — e.g., 1234
+	// spans vs 0 metrics — because left-aligned totals would push
+	// `total` to different columns and the eye would lose the column.
+	snap := SnapshotWithRate{
+		Snapshot: Snapshot{Forwarded: [signalCount]int64{1234, 540, 0}},
+		Rate:     [signalCount]float64{42, 18, 0},
+	}
+	lines := formatStatsBlock(nil, snap)
+
+	// The "total" word's column must be identical across rows.
+	totalIdx := -1
+	for i, line := range lines {
+		idx := strings.Index(line, " total")
+		if idx < 0 {
+			t.Fatalf("line %d missing ' total': %q", i, line)
+		}
+		if totalIdx == -1 {
+			totalIdx = idx
+			continue
+		}
+		if idx != totalIdx {
+			t.Errorf("line %d ' total' at column %d; want %d (totals not right-aligned)\nline 0: %q\nthis  : %q",
+				i, idx, totalIdx, lines[0], line)
+		}
+	}
+
+	// Spot-check the largest number sits flush with the ' total' anchor:
+	// the four-digit "1234" should appear immediately before " total".
+	if !strings.Contains(lines[0], "1234 total") {
+		t.Errorf("line 0 should contain '1234 total' with no padding before the number; got %q", lines[0])
+	}
+	// And smaller numbers carry leading spaces so they still end at the
+	// same column.
+	if !strings.Contains(lines[2], "   0 total") {
+		t.Errorf("line 2 should pad '0' with three leading spaces (3 = 4 - 1); got %q", lines[2])
+	}
+}
+
 func TestFormatStatsBlock_EmptyHistoryPreservesAlignment(t *testing.T) {
 	// With no history, the sparkline must render as `sparklineMaxWidth`
 	// spaces so the `<total> total` column still lines up across rows.
