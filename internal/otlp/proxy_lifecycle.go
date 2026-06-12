@@ -187,10 +187,11 @@ func runProxy(cmd *cobra.Command, flags *proxyFlags) error {
 	select {
 	case <-supCtx.Done():
 		// upstream cancellation (e.g. test fixture)
-	case sig := <-sigCh:
+	case <-sigCh:
 		lifecycleCh <- LifecycleEvent{
-			Kind:    LifecycleInfo,
-			Message: fmt.Sprintf("received %s, shutting down", sig),
+			Kind: LifecycleInfo,
+			Message: fmt.Sprintf("Shutting down — draining in-flight telemetry (up to %s)",
+				proxyShutdownDeadline),
 		}
 	}
 
