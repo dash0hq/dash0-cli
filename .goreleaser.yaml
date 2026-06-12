@@ -97,6 +97,12 @@ docker_signs:
       - "--yes"
 
 brews:
+  # Legacy formula tap inside the source repo.
+  # Kept publishing here until the cutover release so existing users on
+  # `dash0hq/dash0-cli` keep getting updates during the migration window.
+  # After cutover this entry gets `skip_upload: true` and `Formula/dash0.rb`
+  # is hand-edited to add a `deprecate!` directive pointing at the new cask.
+  # See docs/brew-tap-migration-2026-06.md.
   - name: dash0
     repository:
       owner: dash0hq
@@ -112,3 +118,31 @@ brews:
       bash_completion.install "completions/dash0.bash" => "dash0"
       zsh_completion.install "completions/dash0.zsh" => "_dash0"
       fish_completion.install "completions/dash0.fish" => "dash0.fish"
+
+homebrew_casks:
+  # New dedicated tap. Ships as a Homebrew cask (not a formula) because the
+  # CLI is a pre-built binary — that's what casks are for, and what goreleaser
+  # recommends since v2.10 (the `brews:` section is being phased out).
+  # Resolves to `brew install --cask dash0hq/dash0-cli/dash0` for users
+  # (Homebrew strips the `homebrew-` prefix from the repo name).
+  # First release opens a draft PR for review; once the pipeline is proven,
+  # drop `pull_request:` to push directly to main.
+  - name: dash0
+    repository:
+      owner: dash0hq
+      name: homebrew-dash0-cli
+      branch: "dash0-{{ .Version }}"
+      pull_request:
+        enabled: true
+        draft: true
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "chore: brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: https://github.com/dash0hq/dash0-cli
+    description: CLI to interact with Dash0
+    binary: dash0
+    completions:
+      bash: completions/dash0.bash
+      zsh: completions/dash0.zsh
+      fish: completions/dash0.fish
