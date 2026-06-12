@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
@@ -75,11 +76,11 @@ type Pipeline struct {
 // are leaked because pre-bound listeners are closed before construction
 // returns.
 func BuildPipeline(ctx context.Context, httpPort, grpcPort int, consumer *ProxyConsumer) (*Pipeline, error) {
-	resolvedHTTP, err := preBindPort("http", httpPort, defaultHTTPPort)
+	resolvedHTTP, err := preBindPort("http", httpPort)
 	if err != nil {
 		return nil, err
 	}
-	resolvedGRPC, err := preBindPort("grpc", grpcPort, defaultGRPCPort)
+	resolvedGRPC, err := preBindPort("grpc", grpcPort)
 	if err != nil {
 		return nil, err
 	}
@@ -167,36 +168,43 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 
 // preBindPort resolves the actual port the proxy should advertise. When
 // `requested` is the default, a port-in-use collision falls back to an
-// OS-assigned port (per KTD4 / AE3). When `requested` is an explicit
-// non-default, a collision is fatal — the user asked for this specific
-// port and silently moving would surprise them.
+// requested port. A collision is always fatal — silent fallback to an
+// OS-assigned port is too easy to miss when the SDK is still pointed at
+// the original default, leading the developer to debug "no telemetry"
+// when the proxy actually started successfully on a different port. The
+// error names the holding process when it can be identified via lsof so
+// the developer can act on the message without a separate investigation.
 //
-// Implementation strategy: bind, capture the actual port (which equals
-// `requested` on success or an OS-assigned port after fallback), then
-// close the listener so the receiver internals can re-bind. The race
-// window between our close and the receiver's bind is microseconds; on
+// Implementation strategy: bind, capture the resolved port, then close
+// the listener so the receiver internals can re-bind. The race window
+// between our close and the receiver's bind is microseconds; on
 // 127.0.0.1 the OS won't reassign that port to anything else in that
-// window in practice. The plan acknowledges this tradeoff in OQ5.
-func preBindPort(label string, requested, defaultPort int) (int, error) {
+// window in practice.
+func preBindPort(label string, requested int) (int, error) {
 	address := net.JoinHostPort(proxyListenHost, strconv.Itoa(requested))
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
-		if requested != defaultPort {
-			return 0, fmt.Errorf("bind %s port %d: %w", label, requested, err)
-		}
-		// Fallback for the default port: try OS-assigned.
-		fallback, fallbackErr := net.Listen("tcp", net.JoinHostPort(proxyListenHost, "0"))
-		if fallbackErr != nil {
-			return 0, fmt.Errorf("bind %s default port %d failed (%v) and OS-assigned fallback also failed: %w",
-				label, defaultPort, err, fallbackErr)
-		}
-		port := fallback.Addr().(*net.TCPAddr).Port
-		_ = fallback.Close()
-		return port, nil
+		return 0, portInUseError(label, requested, err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()
 	return port, nil
+}
+
+// portInUseError formats a user-facing error for a port-collision. When
+// lookupPortHolder identifies the process holding the port, the message
+// names it; otherwise it falls back to a generic actionable hint.
+func portInUseError(label string, port int, cause error) error {
+	flag := "--http-port"
+	if label == "grpc" {
+		flag = "--grpc-port"
+	}
+	if name, pid, ok := lookupPortHolder(port); ok {
+		return fmt.Errorf("%s port %d is already in use by %q (PID %d)\n  Stop that process, or pass %s <N> to use another port (cause: %w)",
+			strings.ToUpper(label), port, name, pid, flag, cause)
+	}
+	return fmt.Errorf("%s port %d is already in use\n  Find the holder with: lsof -iTCP:%d -sTCP:LISTEN\n  Then stop it, or pass %s <N> to use another port (cause: %w)",
+		strings.ToUpper(label), port, port, flag, cause)
 }
 
 // buildReceiverConfig assembles an otlpreceiver.Config from scratch with

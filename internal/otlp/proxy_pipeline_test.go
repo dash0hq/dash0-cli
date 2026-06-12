@@ -29,21 +29,22 @@ func pickFreePort(t *testing.T) int {
 	return port
 }
 
-func TestPreBindPort_DefaultPortAvailable(t *testing.T) {
-	// Use a freshly-picked free port as the "default", so the bind succeeds
-	// on the first try.
+func TestPreBindPort_AvailablePortSucceeds(t *testing.T) {
 	port := pickFreePort(t)
-	resolved, err := preBindPort("test", port, port)
+	resolved, err := preBindPort("http", port)
 	if err != nil {
 		t.Fatalf("preBindPort: %v", err)
 	}
 	if resolved != port {
-		t.Errorf("resolved port = %d; want %d (default was available)", resolved, port)
+		t.Errorf("resolved port = %d; want %d (port was available)", resolved, port)
 	}
 }
 
-func TestPreBindPort_DefaultPortInUseFallsBackToZero(t *testing.T) {
-	// Hold a port to simulate collision.
+func TestPreBindPort_PortInUseFailsWithActionableError(t *testing.T) {
+	// Default-port collisions now fail loudly with a process-identifying
+	// error message; the silent OS-assigned fallback was removed because
+	// it was too easy to miss when the SDK was still pointed at the
+	// original default.
 	occupied, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -51,37 +52,38 @@ func TestPreBindPort_DefaultPortInUseFallsBackToZero(t *testing.T) {
 	defer func() { _ = occupied.Close() }()
 	port := occupied.Addr().(*net.TCPAddr).Port
 
-	// Same port as both "requested" and "default" → fallback path fires.
-	resolved, err := preBindPort("test", port, port)
-	if err != nil {
-		t.Fatalf("preBindPort fallback: %v", err)
-	}
-	if resolved == port {
-		t.Errorf("fallback should yield a different port; got the same %d", resolved)
-	}
-	if resolved == 0 {
-		t.Errorf("fallback port should be non-zero (OS-assigned); got 0")
-	}
-}
-
-func TestPreBindPort_ExplicitOverrideInUseErrors(t *testing.T) {
-	// When the requested port is explicitly set (i.e., requested !=
-	// defaultPort) and is taken, the function must error rather than
-	// silently fall back. AE6 covers this.
-	occupied, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	defer func() { _ = occupied.Close() }()
-	port := occupied.Addr().(*net.TCPAddr).Port
-
-	// requested != defaultPort triggers strict mode (no fallback).
-	_, err = preBindPort("test", port, port+1)
+	_, err = preBindPort("http", port)
 	if err == nil {
-		t.Fatal("expected error on explicit-override collision; got nil")
+		t.Fatal("expected error on port collision; got nil")
 	}
-	if !strings.Contains(err.Error(), "bind test port") {
-		t.Errorf("error message should mention the bind failure; got: %v", err)
+	msg := err.Error()
+
+	// The error must name the port and the override flag so the developer
+	// can act on it without a separate investigation.
+	if !strings.Contains(msg, "is already in use") {
+		t.Errorf("error should say the port is in use; got: %v", err)
+	}
+	if !strings.Contains(msg, "--http-port") {
+		t.Errorf("error should mention the override flag; got: %v", err)
+	}
+}
+
+func TestPreBindPort_GRPCErrorReferencesGRPCFlag(t *testing.T) {
+	// The label drives which flag is named in the error message. The
+	// "grpc" label must produce a --grpc-port hint.
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = occupied.Close() }()
+	port := occupied.Addr().(*net.TCPAddr).Port
+
+	_, err = preBindPort("grpc", port)
+	if err == nil {
+		t.Fatal("expected error; got nil")
+	}
+	if !strings.Contains(err.Error(), "--grpc-port") {
+		t.Errorf("gRPC error should mention --grpc-port; got: %v", err)
 	}
 }
 

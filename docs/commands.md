@@ -1196,8 +1196,14 @@ dash0 -X otlp proxy [flags]
 | `--tail` | false | Print every forwarded record on stdout in collector-debug-exporter style (incompatible with `--agent-mode`) |
 
 The default ports follow the OTLP specification.
-When a default port is in use, the proxy falls back to an OS-assigned port and prints the resolved endpoint in the start banner.
-When `--http-port` or `--grpc-port` is set explicitly and the port is in use, the proxy exits non-zero — the user asked for that specific port and silently moving would surprise them.
+If either port is already in use, the proxy exits non-zero with an actionable error that names the holding process (resolved via `lsof` on Unix) and points at the `--http-port` / `--grpc-port` override:
+
+```
+HTTP port 4318 is already in use by "otelcol-contrib" (PID 12345)
+  Stop that process, or pass --http-port <N> to use another port (cause: …)
+```
+
+A silent fallback to an OS-assigned port was considered but discarded — when an SDK is still pointed at the original default, the proxy starting on a different port produces an invisible "no telemetry" failure that's painful to debug.
 
 #### Environment variables
 
