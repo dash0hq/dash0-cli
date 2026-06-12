@@ -1194,6 +1194,18 @@ dash0 -X otlp proxy [flags]
 | `--http-port` | 4318 | TCP port for the OTLP/HTTP listener |
 | `--grpc-port` | 4317 | TCP port for the OTLP/gRPC listener |
 | `--tail` | false | Print every forwarded record on stdout in collector-debug-exporter style (incompatible with `--agent-mode`) |
+| `--resource-attribute` | | Resource attribute as `key=value` to upsert into every forwarded batch (repeatable) |
+| `--scope-attribute` | | Instrumentation-scope attribute as `key=value` to upsert into every forwarded batch (repeatable) |
+| `--scope-name` | | Instrumentation-scope name to set on every forwarded batch (default: preserve the SDK's value) |
+| `--scope-version` | | Instrumentation-scope version to set on every forwarded batch (default: preserve the SDK's value) |
+
+#### Outbound decoration
+
+The `--resource-attribute` / `--scope-attribute` / `--scope-name` / `--scope-version` flags upsert values onto every forwarded pdata batch.
+They mirror the same flags on `dash0 logs send` and `dash0 spans send` so the user experience is consistent across signal-authoring and signal-forwarding workflows.
+
+When a key collides with one the inbound SDK already set (e.g., `--resource-attribute service.name=foo` against an SDK-set `service.name`), the flag value wins.
+Unlike the send commands, `--scope-name` and `--scope-version` default to empty — the proxy preserves the SDK's instrumentation-library identity unless the user explicitly overrides it.
 
 The default ports follow the OTLP specification.
 If either port is already in use, the proxy exits non-zero with an actionable error that names the holding process (resolved via `lsof` on Unix) and points at the `--http-port` / `--grpc-port` override:

@@ -98,7 +98,20 @@ func runProxy(cmd *cobra.Command, flags *proxyFlags) error {
 	}
 	consumer := NewProxyConsumer(stats, emitter, tailCh)
 
-	workers := NewWorkerPool(apiClient, dataset, stats, emitter, consumer, lifecycleChOut)
+	// Build the outbound decorator from the user-facing flags. Empty
+	// flags produce an empty decorator whose Decorate* calls short-
+	// circuit, so the zero-flag case has no per-batch cost.
+	resourceAttrs, err := ParseKeyValuePairs(flags.ResourceAttributes)
+	if err != nil {
+		return fmt.Errorf("--resource-attribute: %w", err)
+	}
+	scopeAttrs, err := ParseKeyValuePairs(flags.ScopeAttributes)
+	if err != nil {
+		return fmt.Errorf("--scope-attribute: %w", err)
+	}
+	decorator := NewDecorator(resourceAttrs, scopeAttrs, flags.ScopeName, flags.ScopeVersion)
+
+	workers := NewWorkerPool(apiClient, dataset, stats, emitter, consumer, lifecycleChOut, decorator)
 
 	pipeline, err := BuildPipeline(ctx, flags.HTTPPort, flags.GRPCPort, consumer)
 	if err != nil {

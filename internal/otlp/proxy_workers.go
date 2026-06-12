@@ -44,6 +44,7 @@ type WorkerPool struct {
 	stats     *Stats
 	emitter   *Emitter
 	consumer  *ProxyConsumer
+	decorator *Decorator
 
 	// lifecycleCh receives the at-most-once auth-failure warning. nil in
 	// non-agent / non-TTY runs; the stderr writer also suppresses lifecycle
@@ -60,14 +61,16 @@ type WorkerPool struct {
 }
 
 // NewWorkerPool constructs a pool. No goroutines are started until Run is
-// called.
-func NewWorkerPool(forwarder Forwarder, dataset *string, stats *Stats, emitter *Emitter, consumer *ProxyConsumer, lifecycleCh chan<- LifecycleEvent) *WorkerPool {
+// called. The decorator may be nil — workers treat that the same as an
+// empty decorator and skip the per-batch upsert step.
+func NewWorkerPool(forwarder Forwarder, dataset *string, stats *Stats, emitter *Emitter, consumer *ProxyConsumer, lifecycleCh chan<- LifecycleEvent, decorator *Decorator) *WorkerPool {
 	return &WorkerPool{
 		forwarder:   forwarder,
 		dataset:     dataset,
 		stats:       stats,
 		emitter:     emitter,
 		consumer:    consumer,
+		decorator:   decorator,
 		lifecycleCh: lifecycleCh,
 		now:         time.Now,
 	}
@@ -143,6 +146,7 @@ func (p *WorkerPool) drain(ctx context.Context, sig Signal) {
 func (p *WorkerPool) sendLogs(ctx context.Context, ld plog.Logs) {
 	count := ld.LogRecordCount()
 	defer p.recoverPanic(SignalLogs)
+	p.decorator.DecorateLogs(ld)
 	err := p.forwarder.SendLogs(ctx, ld, p.dataset)
 	p.classifyOutcome(SignalLogs, count, err)
 }
@@ -150,6 +154,7 @@ func (p *WorkerPool) sendLogs(ctx context.Context, ld plog.Logs) {
 func (p *WorkerPool) sendTraces(ctx context.Context, td ptrace.Traces) {
 	count := td.SpanCount()
 	defer p.recoverPanic(SignalSpans)
+	p.decorator.DecorateTraces(td)
 	err := p.forwarder.SendTraces(ctx, td, p.dataset)
 	p.classifyOutcome(SignalSpans, count, err)
 }
@@ -157,6 +162,7 @@ func (p *WorkerPool) sendTraces(ctx context.Context, td ptrace.Traces) {
 func (p *WorkerPool) sendMetrics(ctx context.Context, md pmetric.Metrics) {
 	count := md.DataPointCount()
 	defer p.recoverPanic(SignalMetrics)
+	p.decorator.DecorateMetrics(md)
 	err := p.forwarder.SendMetrics(ctx, md, p.dataset)
 	p.classifyOutcome(SignalMetrics, count, err)
 }

@@ -53,6 +53,17 @@ type proxyFlags struct {
 
 	// Visibility
 	Tail bool
+
+	// Outbound decoration. Mirrors the same flags on
+	// `dash0 logs send` and `dash0 spans send`. Upsert into each
+	// resource / scope on every forwarded batch. Unlike the send
+	// commands, ScopeName and ScopeVersion default to "" — the proxy
+	// only overwrites the SDK's scope identity when the user
+	// explicitly sets the flag.
+	ResourceAttributes []string
+	ScopeAttributes    []string
+	ScopeName          string
+	ScopeVersion       string
 }
 
 // newProxyCmd creates the experimental `dash0 otlp proxy` command.
@@ -110,6 +121,19 @@ surfaces to SDKs as HTTP 503 / gRPC UNAVAILABLE.`,
 			defaultGRPCPort, envGRPCPort))
 	cmd.Flags().BoolVar(&flags.Tail, "tail", false,
 		"Print each forwarded record in collector-debug-exporter style on stdout (incompatible with --agent-mode; use the NDJSON event stream instead)")
+
+	// Outbound-decoration flags mirror `dash0 logs send`. Defaults are
+	// intentionally empty for ScopeName / ScopeVersion: the proxy
+	// preserves the SDK's instrumentation-library identity unless the
+	// user explicitly overrides it.
+	cmd.Flags().StringArrayVar(&flags.ResourceAttributes, "resource-attribute", nil,
+		"Resource attribute as 'key=value' to upsert into every forwarded batch (repeatable)")
+	cmd.Flags().StringArrayVar(&flags.ScopeAttributes, "scope-attribute", nil,
+		"Instrumentation-scope attribute as 'key=value' to upsert into every forwarded batch (repeatable)")
+	cmd.Flags().StringVar(&flags.ScopeName, "scope-name", "",
+		"Instrumentation-scope name to set on every forwarded batch (default: preserve the SDK's value)")
+	cmd.Flags().StringVar(&flags.ScopeVersion, "scope-version", "",
+		"Instrumentation-scope version to set on every forwarded batch (default: preserve the SDK's value)")
 
 	return cmd
 }

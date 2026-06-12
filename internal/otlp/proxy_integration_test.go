@@ -117,7 +117,7 @@ func newIntegrationHarness(t *testing.T, dataset *string) *integrationHarness {
 		t.Fatalf("BuildPipeline: %v", err)
 	}
 
-	workers := NewWorkerPool(forwarder, dataset, stats, emitter, consumer, nil)
+	workers := NewWorkerPool(forwarder, dataset, stats, emitter, consumer, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	h := &integrationHarness{

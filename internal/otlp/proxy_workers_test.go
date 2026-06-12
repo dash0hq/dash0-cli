@@ -212,7 +212,7 @@ func TestWorkerPool_HappyPath_NoFailedNoEvent(t *testing.T) {
 	eventCh := make(chan plog.Logs, 4)
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil, nil)
 
 	pool.sendLogs(context.Background(), newLogsBatch(3))
 
@@ -235,7 +235,7 @@ func TestWorkerPool_Upstream5xx_BumpsFailedAndEmitsEvent(t *testing.T) {
 	eventCh := make(chan plog.Logs, 4)
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil, nil)
 
 	pool.sendLogs(context.Background(), newLogsBatch(2))
 
@@ -269,7 +269,7 @@ func TestWorkerPool_Upstream401_EmitsLifecycleWarning(t *testing.T) {
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
 	lifecycleCh := make(chan LifecycleEvent, 2)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, lifecycleCh)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, lifecycleCh, nil)
 
 	pool.sendLogs(context.Background(), newLogsBatch(1))
 
@@ -302,7 +302,7 @@ func TestWorkerPool_Upstream401_ThrottleSuppressesRepeat(t *testing.T) {
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
 	lifecycleCh := make(chan LifecycleEvent, 4)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, lifecycleCh)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, lifecycleCh, nil)
 
 	// Use a fixed clock so the throttle window is deterministic.
 	fixed := time.Now()
@@ -349,7 +349,7 @@ func TestWorkerPool_Upstream400_ClassifiedAs4xxOther(t *testing.T) {
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
 	lifecycleCh := make(chan LifecycleEvent, 2)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, lifecycleCh)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, lifecycleCh, nil)
 
 	pool.sendLogs(context.Background(), newLogsBatch(1))
 
@@ -378,7 +378,7 @@ func TestWorkerPool_NetworkError_ClassifiedAsUnreachable(t *testing.T) {
 	eventCh := make(chan plog.Logs, 4)
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil, nil)
 
 	pool.sendLogs(context.Background(), newLogsBatch(1))
 
@@ -399,7 +399,7 @@ func TestWorkerPool_PanicRecoveredAndReported(t *testing.T) {
 	eventCh := make(chan plog.Logs, 4)
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil, nil)
 
 	// Should NOT propagate the panic out of sendLogs.
 	pool.sendLogs(context.Background(), newLogsBatch(1))
@@ -419,7 +419,7 @@ func TestWorkerPool_DatasetPassthrough(t *testing.T) {
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
 
 	staging := "staging"
-	pool := NewWorkerPool(forwarder, &staging, stats, NewEmitter("inst", nil), consumer, nil)
+	pool := NewWorkerPool(forwarder, &staging, stats, NewEmitter("inst", nil), consumer, nil, nil)
 	pool.sendLogs(context.Background(), newLogsBatch(1))
 	if forwarder.lastDataset == nil || *forwarder.lastDataset != "staging" {
 		t.Errorf("dataset on call = %v; want pointer to %q", forwarder.lastDataset, "staging")
@@ -428,7 +428,7 @@ func TestWorkerPool_DatasetPassthrough(t *testing.T) {
 	// Passing nil dataset should reach the forwarder as nil — meaning "use
 	// the profile's default" per the dash0api convention.
 	forwarder.lastDataset = &staging // sentinel: should be overwritten with nil
-	poolNil := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", nil), consumer, nil)
+	poolNil := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", nil), consumer, nil, nil)
 	poolNil.sendLogs(context.Background(), newLogsBatch(1))
 	if forwarder.lastDataset != nil {
 		t.Errorf("nil dataset should pass through as nil; got %v", forwarder.lastDataset)
@@ -447,7 +447,7 @@ func TestWorkerPool_TracesAndMetricsHaveSameOutcomeContract(t *testing.T) {
 	eventCh := make(chan plog.Logs, 4)
 	emitter := NewEmitter("inst", eventCh)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, emitter, consumer, nil, nil)
 
 	pool.sendTraces(context.Background(), newTracesBatch(2))
 	pool.sendMetrics(context.Background(), newMetricsBatch(3))
@@ -469,7 +469,7 @@ func TestWorkerPool_Run_DrainsAllSignals(t *testing.T) {
 	forwarder := &fakeForwarder{}
 	stats := &Stats{}
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", nil), consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", nil), consumer, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -521,7 +521,7 @@ func TestWorkerPool_Run_PanicRecoversInGoroutine(t *testing.T) {
 	stats := &Stats{}
 	eventCh := make(chan plog.Logs, 4)
 	consumer := NewProxyConsumer(stats, NewEmitter("inst", nil), nil)
-	pool := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", eventCh), consumer, nil)
+	pool := NewWorkerPool(forwarder, nil, stats, NewEmitter("inst", eventCh), consumer, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
