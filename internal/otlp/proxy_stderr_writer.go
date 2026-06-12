@@ -29,6 +29,13 @@ const sparklineHistoryCapacity = 30
 // horizontal space, but the per-render width stays bounded.
 const sparklineMaxWidth = 5
 
+// isTerminal is the substitutable hook the writer uses to decide whether
+// to emit ANSI cursor-control sequences. Production code points it at
+// term.IsTerminal; tests override it so the redraw path is exercisable
+// without an actual TTY. The variable holds no state — only a function
+// reference — so substitution is safe.
+var isTerminal = term.IsTerminal
+
 // LifecycleEvent is the typed channel input for one-shot stderr messages
 // that should print above the live stats block. The writer renders Message
 // verbatim followed by a newline; Kind is reserved for future color or
@@ -90,7 +97,7 @@ func NewStderrWriter(out io.Writer, fd int) (*StderrWriter, chan SnapshotWithRat
 // process means in-place redraw would litter the output with control
 // sequences rather than produce a useful log.
 func (w *StderrWriter) Run(ctx context.Context, statsCh <-chan SnapshotWithRate, lifecycleCh <-chan LifecycleEvent) {
-	isTTY := term.IsTerminal(w.fd)
+	isTTY := isTerminal(w.fd)
 
 	var history [signalCount][]float64
 	for i := range history {
@@ -120,6 +127,13 @@ func (w *StderrWriter) Run(ctx context.Context, statsCh <-chan SnapshotWithRate,
 		if !isTTY || !lastSnapshotSet {
 			return
 		}
+		// Always erase any previously-rendered block before redrawing.
+		// On the very first render `blockRendered` is false and erase()
+		// is a no-op, so the initial draw lands at the natural cursor
+		// position. Every subsequent tick clears the prior three rows
+		// first, otherwise the new block would be appended at the end
+		// of the old block's last line instead of overwriting it.
+		erase()
 		lines := formatStatsBlock(history[:], lastSnapshot)
 		fmt.Fprint(w.out, strings.Join(lines, "\n"))
 		blockRendered = true

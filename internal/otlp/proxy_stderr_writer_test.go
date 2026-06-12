@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -322,6 +323,125 @@ func TestRecordRate_FillingWindow(t *testing.T) {
 		if history[SignalLogs][i] != want {
 			t.Errorf("history[%d] = %f; want %f", i, history[SignalLogs][i], want)
 		}
+	}
+}
+
+// withFakeTTY substitutes the isTerminal hook so the writer's TTY
+// redraw path runs in tests. Restores the original on cleanup.
+func withFakeTTY(t *testing.T) {
+	t.Helper()
+	prev := isTerminal
+	isTerminal = func(int) bool { return true }
+	t.Cleanup(func() { isTerminal = prev })
+}
+
+func TestStderrWriter_TTY_RedrawErasesBetweenTicks(t *testing.T) {
+	// Regression for the multi-line redraw bug: two stats ticks should
+	// produce exactly two stats blocks in the output, with an ANSI
+	// cursor-up + clear-to-end-of-screen sequence between them. Before
+	// the fix the second block was appended to the end of the first
+	// block's last line and showed up as one long mangled line.
+	withFakeTTY(t)
+
+	buf := &safeBuffer{}
+	w, statsCh, _ := NewStderrWriter(buf, 1) // any non-negative fd; isTerminal is faked
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		w.Run(ctx, statsCh, nil)
+		close(done)
+	}()
+
+	first := SnapshotWithRate{
+		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
+		Rate:     [signalCount]float64{4, 5, 6},
+	}
+	second := SnapshotWithRate{
+		Snapshot: Snapshot{Forwarded: [signalCount]int64{10, 20, 30}},
+		Rate:     [signalCount]float64{40, 50, 60},
+	}
+	statsCh <- first
+	statsCh <- second
+
+	// Wait for two blocks to land. Each block is signalCount lines, but
+	// since render writes lines joined by '\n' the buffer should contain
+	// 2 × (signalCount-1) newlines plus the erase sequence.
+	deadline := time.After(500 * time.Millisecond)
+	for {
+		if strings.Count(buf.String(), "metrics:") >= 2 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("did not see two stats blocks within 500ms; buf:\n%s", buf.String())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	<-done
+
+	got := buf.String()
+
+	// The erase sequence is `\r\x1b[<N>A\x1b[J` where N = signalCount-1.
+	wantErase := fmt.Sprintf("\r\x1b[%dA\x1b[J", signalCount-1)
+	if !strings.Contains(got, wantErase) {
+		t.Errorf("expected the cursor-up + clear-screen sequence between ticks; not found in output:\n%q", got)
+	}
+
+	// And the second block should not be appended to the first block's
+	// final line — the substring "metrics:" should appear at column 0
+	// of its line at least twice (once per block). Verify by checking
+	// that no line contains "metrics:" followed by " logs:" without a
+	// newline between them.
+	if strings.Contains(got, "metrics:     6/s ▁▁▁  3 total   logs:") {
+		t.Errorf("second block appended to first block's last line:\n%s", got)
+	}
+}
+
+func TestStderrWriter_TTY_RedrawErasesOnFinalShutdown(t *testing.T) {
+	// On context cancel the writer should erase the block so the shell
+	// prompt appears at the top of where the block was, not at the end
+	// of metrics:'s line.
+	withFakeTTY(t)
+	buf := &safeBuffer{}
+	w, statsCh, _ := NewStderrWriter(buf, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		w.Run(ctx, statsCh, nil)
+		close(done)
+	}()
+
+	statsCh <- SnapshotWithRate{
+		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
+		Rate:     [signalCount]float64{4, 5, 6},
+	}
+
+	// Wait for the first block.
+	deadline := time.After(500 * time.Millisecond)
+	for {
+		if strings.Contains(buf.String(), "metrics:") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("first block did not render")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	<-done
+
+	// After cancel, the erase sequence should appear at least twice:
+	// once before the (no-op) second render that doesn't fire, and at
+	// minimum the ctx.Done erase. Easier assertion: the final erase is
+	// present, count >= 1.
+	got := buf.String()
+	wantErase := fmt.Sprintf("\r\x1b[%dA\x1b[J", signalCount-1)
+	if strings.Count(got, wantErase) < 1 {
+		t.Errorf("expected at least one erase sequence after shutdown; got:\n%q", got)
 	}
 }
 
