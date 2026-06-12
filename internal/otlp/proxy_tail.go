@@ -134,10 +134,10 @@ func writeLogRecord(b *strings.Builder, indent string, lr plog.LogRecord) {
 		fmt.Fprintf(b, "%sEventName: %s\n", indent, name)
 	}
 	if sev := lr.SeverityText(); sev != "" {
-		fmt.Fprintf(b, "%sSeverityText: %s\n", indent, sev)
+		fmt.Fprintf(b, "%sSeverityText: %s\n", indent, colorSeverity(sev, 0))
 	}
 	if num := lr.SeverityNumber(); num != plog.SeverityNumberUnspecified {
-		fmt.Fprintf(b, "%sSeverityNumber: %d (%s)\n", indent, num, SeverityNumberToRange(int32(num)))
+		fmt.Fprintf(b, "%sSeverityNumber: %d (%s)\n", indent, num, colorSeverity(SeverityNumberToRange(int32(num)), 0))
 	}
 	fmt.Fprintf(b, "%sBody: %s\n", indent, renderValue(lr.Body()))
 	if tid := lr.TraceID(); !tid.IsEmpty() {
@@ -166,7 +166,7 @@ func writeSpan(b *strings.Builder, indent string, sp ptrace.Span) {
 		fmt.Fprintf(b, "%sEnd time: %s\n", indent, ts.UTC().Format(time.RFC3339Nano))
 	}
 	status := sp.Status()
-	fmt.Fprintf(b, "%sStatus code: %s\n", indent, status.Code().String())
+	fmt.Fprintf(b, "%sStatus code: %s\n", indent, colorSpanStatus(status.Code().String(), 0))
 	if msg := status.Message(); msg != "" {
 		fmt.Fprintf(b, "%sStatus message: %s\n", indent, msg)
 	}

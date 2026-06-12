@@ -231,6 +231,12 @@ func main() {
 		dashcolor.NoColor = true
 	}
 
+	// Propagate the resolved color state into internal/otlp. The proxy's
+	// `--tail` renderer reuses the same semantic palette as `logs query`
+	// but cannot import internal/color directly (cycle: color → otlp for
+	// the severity range type), so main bridges the value here.
+	otlp.SetTailColorEnabled(!dashcolor.NoColor)
+
 	// Resolve the per-invocation profile selector (--profile flag or
 	// DASH0_PROFILE env var) before loading config so the selection flows
 	// into both the loaded configuration and the context consumed by
