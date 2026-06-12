@@ -1223,13 +1223,17 @@ On startup the proxy writes a single banner line to stderr listing both endpoint
 dash0 otlp proxy listening — http://127.0.0.1:4318 (OTLP/HTTP), 127.0.0.1:4317 (OTLP/gRPC) — profile "dev" dataset "default"
 ```
 
-In TTY mode the banner is followed by a live per-signal stats line on stderr that updates once per second:
+In TTY mode the banner is followed by a live per-signal stats block on stderr that updates once per second:
 
 ```
-logs   ▁▂▄▆█▇ 42/s · 1234 total   spans  ▁▂▃▄▅▆ 18/s · 540 total   metrics ▂▂▂▂▂▂ 0/s · 0 total
+   logs:    42/s ▁▂▄▆█ 1234 total
+  spans:    18/s ▁▂▃▄▅ 540 total
+metrics:     0/s ▁▁▁▁▁ 0 total
 ```
 
-When stderr is not a TTY (piped to a file or another process), the stats line is suppressed but lifecycle messages still print as plain lines.
+Each signal occupies its own line so the rates, sparklines, and totals line up vertically.
+The block redraws in place via ANSI cursor controls.
+When stderr is not a TTY (piped to a file or another process), the block is suppressed but lifecycle messages still print as plain lines.
 
 #### Failure modes
 

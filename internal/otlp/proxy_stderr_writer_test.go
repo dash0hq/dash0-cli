@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // nonTTYFd is a fake file descriptor that will fail TTY detection. The
@@ -104,92 +105,63 @@ func TestStderrWriter_ExitsOnContextCancel(t *testing.T) {
 	}
 }
 
-func TestFormatStatsLine_AllSignalsLabeled(t *testing.T) {
+func TestFormatStatsBlock_OneLinePerSignal(t *testing.T) {
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{100, 200, 300}},
 		Rate:     [signalCount]float64{5, 10, 0},
 	}
 	history := [][]float64{{1, 2, 5}, {3, 7, 10}, {0, 0, 0}}
-	// Wide terminal — sparklines should appear.
-	got := formatStatsLine(history, snap, 200)
-	for _, want := range []string{"logs", "spans", "metrics", "5/s", "10/s", "0/s", "100 total", "200 total", "300 total"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("stats line missing %q; got:\n%s", want, got)
+	lines := formatStatsBlock(history, snap)
+	if len(lines) != signalCount {
+		t.Fatalf("got %d lines; want %d (one per signal)", len(lines), signalCount)
+	}
+	// Each line must carry its own label, rate, and total.
+	wantPrefixes := []string{"logs:", "spans:", "metrics:"}
+	wantSuffixes := []string{"100 total", "200 total", "300 total"}
+	wantRates := []string{"5/s", "10/s", "0/s"}
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), wantPrefixes[i]) {
+			t.Errorf("line %d (%q) should start with %q", i, line, wantPrefixes[i])
+		}
+		if !strings.Contains(line, wantSuffixes[i]) {
+			t.Errorf("line %d (%q) missing %q", i, line, wantSuffixes[i])
+		}
+		if !strings.Contains(line, wantRates[i]) {
+			t.Errorf("line %d (%q) missing rate %q", i, line, wantRates[i])
 		}
 	}
 }
 
-func TestFormatStatsLine_NarrowTerminalDropsSparkline(t *testing.T) {
+func TestFormatStatsBlock_LabelsAreColumnAligned(t *testing.T) {
+	// All three lines must share the same prefix width — the colon
+	// after each label sits at the same column. Walk each line up to
+	// its colon and assert they all end at the same byte index.
 	snap := SnapshotWithRate{
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
 		Rate:     [signalCount]float64{4, 5, 6},
 	}
-	history := [][]float64{{1, 2, 3}, {3, 4, 5}, {0, 1, 2}}
-	got := formatStatsLine(history, snap, 60)
-	// None of the 8-level glyphs should appear when sparklines are
-	// suppressed. The text rate/total fields should still be present.
-	for _, g := range "▁▂▃▄▅▆▇█" {
-		if strings.ContainsRune(got, g) {
-			t.Errorf("narrow terminal should omit sparkline glyph %c; got:\n%s", g, got)
+	lines := formatStatsBlock(nil, snap)
+
+	colonAt := -1
+	for i, line := range lines {
+		idx := strings.Index(line, ":")
+		if idx < 0 {
+			t.Fatalf("line %d missing colon: %q", i, line)
 		}
-	}
-	for _, want := range []string{"logs", "spans", "metrics", "4/s", "5/s", "6/s"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("narrow stats line missing %q; got:\n%s", want, got)
+		if colonAt == -1 {
+			colonAt = idx
+			continue
+		}
+		if idx != colonAt {
+			t.Errorf("line %d colon at column %d; want %d (labels not aligned)\nline 0: %q\nthis  : %q",
+				i, idx, colonAt, lines[0], line)
 		}
 	}
 }
 
-func TestFormatStatsLine_DynamicFit90Cols(t *testing.T) {
-	// At a 90-col terminal with single-digit counts the dynamic-fit
-	// logic must include sparklines. The text-only line is roughly 64
-	// columns; sparkline cost is 3 × (sparklineMaxWidth + 1) = 18; plus
-	// statsLineSafetyMargin = 2, total ≈ 84 cols.
-	//
-	// This is the case the old fixed 100-col gate failed: an SDK
-	// developer with a comfortably-sized but not huge terminal saw
-	// rates updating without the trend silhouette.
-	snap := SnapshotWithRate{
-		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
-		Rate:     [signalCount]float64{4, 5, 6},
-	}
-	history := [][]float64{{1, 2, 3}, {3, 4, 5}, {0, 1, 2}}
-	got := formatStatsLine(history, snap, 90)
-	var foundGlyph bool
-	for _, g := range "▁▂▃▄▅▆▇█" {
-		if strings.ContainsRune(got, g) {
-			foundGlyph = true
-			break
-		}
-	}
-	if !foundGlyph {
-		t.Errorf("90-col terminal with short totals should fit sparklines; got:\n%s", got)
-	}
-}
-
-func TestFormatStatsLine_LongTotalsSuppressSparkline(t *testing.T) {
-	// When the totals grow into 6+ digits, the text-only line eats most
-	// of the available width and sparklines must drop, otherwise the
-	// line wraps and corrupts the in-place redraw.
-	snap := SnapshotWithRate{
-		Snapshot: Snapshot{Forwarded: [signalCount]int64{999999, 888888, 777777}},
-		Rate:     [signalCount]float64{12345, 67890, 11111},
-	}
-	history := [][]float64{{1, 2, 3, 4, 5}, {3, 4, 5}, {0, 1, 2}}
-	got := formatStatsLine(history, snap, 80)
-	for _, g := range "▁▂▃▄▅▆▇█" {
-		if strings.ContainsRune(got, g) {
-			t.Errorf("80-col terminal with long totals should suppress sparklines; got:\n%s", got)
-			break
-		}
-	}
-}
-
-func TestFormatStatsLine_TailSlicesHistoryToMaxWidth(t *testing.T) {
-	// When history has more samples than sparklineMaxWidth, only the
-	// most recent sparklineMaxWidth samples are rendered so the per-
-	// signal sparkline width stays bounded even after the rolling
-	// window has filled.
+func TestFormatStatsBlock_SparklineCappedAtMaxWidth(t *testing.T) {
+	// History longer than sparklineMaxWidth must tail-slice so the
+	// rendered sparkline never exceeds the cap on any line.
 	long := make([]float64, sparklineHistoryCapacity)
 	for i := range long {
 		long[i] = float64(i + 1)
@@ -199,41 +171,72 @@ func TestFormatStatsLine_TailSlicesHistoryToMaxWidth(t *testing.T) {
 		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
 		Rate:     [signalCount]float64{4, 5, 6},
 	}
-	got := formatStatsLine(history, snap, 300)
-
-	glyphCount := 0
-	for _, r := range got {
-		for _, g := range "▁▂▃▄▅▆▇█" {
-			if r == g {
-				glyphCount++
-				break
+	lines := formatStatsBlock(history, snap)
+	for i, line := range lines {
+		glyphs := 0
+		for _, r := range line {
+			for _, g := range "▁▂▃▄▅▆▇█" {
+				if r == g {
+					glyphs++
+					break
+				}
 			}
 		}
-	}
-	if glyphCount > signalCount*sparklineMaxWidth {
-		t.Errorf("sparkline glyph count = %d; want at most %d (3 × sparklineMaxWidth)",
-			glyphCount, signalCount*sparklineMaxWidth)
+		if glyphs > sparklineMaxWidth {
+			t.Errorf("line %d has %d sparkline glyphs; want at most %d",
+				i, glyphs, sparklineMaxWidth)
+		}
 	}
 }
 
-func TestFormatStatsLine_WideTerminalHasSparkline(t *testing.T) {
+func TestFormatStatsBlock_EmptyHistoryPreservesAlignment(t *testing.T) {
+	// With no history, the sparkline must render as `sparklineMaxWidth`
+	// spaces so the `<total> total` column still lines up across rows.
 	snap := SnapshotWithRate{
-		Snapshot: Snapshot{Forwarded: [signalCount]int64{1, 2, 3}},
-		Rate:     [signalCount]float64{4, 5, 6},
+		Snapshot: Snapshot{Forwarded: [signalCount]int64{0, 0, 0}},
+		Rate:     [signalCount]float64{0, 0, 0},
 	}
-	history := [][]float64{{1, 2, 3, 4, 5}, {3, 4, 5}, {0, 1, 2}}
-	got := formatStatsLine(history, snap, 200)
-	// At least one block glyph should appear since some series have non-
-	// zero variation.
-	var foundGlyph bool
-	for _, g := range "▁▂▃▄▅▆▇█" {
-		if strings.ContainsRune(got, g) {
-			foundGlyph = true
-			break
+	lines := formatStatsBlock(nil, snap)
+	// All lines should be the same length (assuming totals format the
+	// same width). With Forwarded=0 across all signals this holds.
+	wantLen := utf8.RuneCountInString(lines[0])
+	for i, line := range lines {
+		if utf8.RuneCountInString(line) != wantLen {
+			t.Errorf("line %d length = %d; want %d (alignment broken)\nline 0: %q\nthis  : %q",
+				i, utf8.RuneCountInString(line), wantLen, lines[0], line)
 		}
 	}
-	if !foundGlyph {
-		t.Errorf("wide terminal should include sparkline glyphs; got:\n%s", got)
+}
+
+func TestRenderPaddedSparkline_EmptyReturnsSpaces(t *testing.T) {
+	got := renderPaddedSparkline(nil, 5)
+	if got != "     " {
+		t.Errorf("empty history → %q; want 5 spaces", got)
+	}
+}
+
+func TestRenderPaddedSparkline_ShortLeftPads(t *testing.T) {
+	// Two samples in a 5-wide slot → 3 leading spaces + 2 glyphs.
+	got := renderPaddedSparkline([]float64{1, 2}, 5)
+	if utf8.RuneCountInString(got) != 5 {
+		t.Errorf("rune count = %d; want 5", utf8.RuneCountInString(got))
+	}
+	if !strings.HasPrefix(got, "   ") {
+		t.Errorf("short history should be left-padded; got %q", got)
+	}
+}
+
+func TestRenderPaddedSparkline_LongTailSlices(t *testing.T) {
+	// Ten samples in a 5-wide slot → the most recent 5 only.
+	got := renderPaddedSparkline([]float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 5)
+	if utf8.RuneCountInString(got) != 5 {
+		t.Errorf("rune count = %d; want 5", utf8.RuneCountInString(got))
+	}
+	// The rightmost glyph should be the highest of the last 5 samples
+	// (value 10 → top of the 8-level ramp → full block).
+	runes := []rune(got)
+	if runes[len(runes)-1] != '█' {
+		t.Errorf("last glyph = %q; want '█' (highest of last 5 samples)", string(runes[len(runes)-1]))
 	}
 }
 

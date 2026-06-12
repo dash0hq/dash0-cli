@@ -22,30 +22,14 @@ const stderrChannelDepth = 8
 // equals roughly thirty seconds of timeline.
 const sparklineHistoryCapacity = 30
 
-// sparklineMaxWidth is the maximum number of columns the sparkline
-// occupies for one signal. Used by formatStatsLine to decide whether
-// the sparklines fit alongside the text counts on the current terminal.
-// At the 1Hz tick cadence the window is sparklineHistoryCapacity = 30,
-// but the per-render width is capped here so the stats line stays
-// readable on narrower terminals — 5 glyphs is the highest cap that
-// still lets an 80-column terminal show sparklines alongside the text
-// counts for small totals.
+// sparklineMaxWidth caps the rendered sparkline at this many glyphs. The
+// rolling-window history retains more samples (sparklineHistoryCapacity)
+// so the proxy can grow the window if a future redesign uses more
+// horizontal space, but the per-render width stays bounded.
 const sparklineMaxWidth = 5
 
-// statsLineSafetyMargin reserves columns at the right edge so the live
-// stats line never writes right up to the cursor's wrap column. A
-// rounding edge case at exactly `len(line) == width` can wrap on some
-// terminals; 2 columns of headroom is the smallest value that
-// reproducibly avoids it in practice without forcing sparklines off
-// 80-column terminals at low traffic.
-const statsLineSafetyMargin = 2
-
-// defaultLineWidth is the fallback terminal width assumed when stderr is
-// not a TTY or term.GetSize returns an error.
-const defaultLineWidth = 80
-
 // LifecycleEvent is the typed channel input for one-shot stderr messages
-// that should print above the live stats line. The writer renders Message
+// that should print above the live stats block. The writer renders Message
 // verbatim followed by a newline; Kind is reserved for future color or
 // prefix customization and currently informational only.
 type LifecycleEvent struct {
@@ -66,7 +50,7 @@ const (
 )
 
 // StderrWriter owns os.Stderr in TTY mode and interleaves the live stats
-// line with one-shot lifecycle messages.
+// block with one-shot lifecycle messages.
 //
 // The writer maintains its own rolling per-signal rate history independent
 // of the RateSampler — the stats channel only carries the current
@@ -83,7 +67,7 @@ type StderrWriter struct {
 }
 
 // NewStderrWriter returns a writer plus the two channels callers push to.
-// Stats updates feed the live line; lifecycle events render above it.
+// Stats updates feed the live block; lifecycle events render above it.
 func NewStderrWriter(out io.Writer, fd int) (*StderrWriter, chan SnapshotWithRate, chan LifecycleEvent) {
 	return &StderrWriter{
 			out: out,
@@ -95,20 +79,15 @@ func NewStderrWriter(out io.Writer, fd int) (*StderrWriter, chan SnapshotWithRat
 
 // Run drains the stats and lifecycle channels until ctx is done.
 //
-// In TTY mode the writer:
-//   - Tracks the rendered stats line so it can erase via \r-and-pad before
-//     a lifecycle message or before redrawing.
-//   - Maintains a per-signal rate ring buffer of capacity
-//     sparklineHistoryCapacity for the sparkline.
-//   - Re-snapshots terminal width on every render so a SIGWINCH-triggered
-//     resize is picked up at the next stats tick (no separate resize
-//     channel needed; see proxy_stderr_writer_unix.go for the optional
-//     immediate-refresh path).
+// In TTY mode the writer renders a multi-line stats block — one line per
+// signal — and redraws it in place on each tick using ANSI cursor
+// controls. Lifecycle messages are inserted above the block by erasing
+// the block first, printing the message, then redrawing.
 //
-// In non-TTY mode the writer emits the start banner and other lifecycle
-// events as plain lines but skips the redrawing stats display — piping
-// stderr to a file or another process means in-place redraw would produce
-// `\r`-littered output rather than a useful log.
+// In non-TTY mode the writer emits lifecycle events as plain lines but
+// skips the live stats display — piping stderr to a file or another
+// process means in-place redraw would litter the output with control
+// sequences rather than produce a useful log.
 func (w *StderrWriter) Run(ctx context.Context, statsCh <-chan SnapshotWithRate, lifecycleCh <-chan LifecycleEvent) {
 	isTTY := term.IsTerminal(w.fd)
 
@@ -118,29 +97,31 @@ func (w *StderrWriter) Run(ctx context.Context, statsCh <-chan SnapshotWithRate,
 	}
 	var lastSnapshot SnapshotWithRate
 	var lastSnapshotSet bool
-	var statsLineLen int
+
+	// blockRendered tracks whether a stats block currently occupies the
+	// signalCount lines above (and including) the cursor's current line.
+	// erase() uses this to decide whether to emit cursor-movement +
+	// screen-clear sequences.
+	var blockRendered bool
 
 	erase := func() {
-		if !isTTY || statsLineLen == 0 {
+		if !isTTY || !blockRendered {
 			return
 		}
-		// Carriage-return to the start, write spaces to overwrite the
-		// previous line content, carriage-return again so the next write
-		// starts at column zero.
-		fmt.Fprintf(w.out, "\r%s\r", strings.Repeat(" ", statsLineLen))
-		statsLineLen = 0
+		// Move to column 0, then up (signalCount-1) lines so the cursor
+		// sits at the start of the stats block's top line, then clear
+		// from cursor to end of screen.
+		fmt.Fprintf(w.out, "\r\x1b[%dA\x1b[J", signalCount-1)
+		blockRendered = false
 	}
 
 	render := func() {
 		if !isTTY || !lastSnapshotSet {
 			return
 		}
-		width := terminalWidth(w.fd)
-		line := formatStatsLine(history[:], lastSnapshot, width)
-		// Erase any prior content on this line, then write the new line
-		// without trailing newline so subsequent ticks overwrite in place.
-		fmt.Fprintf(w.out, "\r%s", line)
-		statsLineLen = utf8.RuneCountInString(line)
+		lines := formatStatsBlock(history[:], lastSnapshot)
+		fmt.Fprint(w.out, strings.Join(lines, "\n"))
+		blockRendered = true
 	}
 
 	for {
@@ -173,65 +154,53 @@ func recordRate(history [][]float64, rates [signalCount]float64) {
 	}
 }
 
-// formatStatsLine renders the per-signal stats. Includes sparklines when
-// the terminal is wide enough for them; otherwise falls back to text-
-// only counts. The threshold is computed against the actual rendered
-// text line — a fixed-column threshold can't know whether the totals
-// have grown to 5+ digits, so we measure first and decide.
+// formatStatsBlock renders the per-signal stats as `signalCount` lines,
+// one per signal, in the form:
 //
-// `width` is the current terminal column count. When `width <= 0` (the
-// width is unknown, e.g. non-TTY fallback), sparklines are included if
-// any history is available — non-TTY callers don't render the stats
-// line anyway (StderrWriter.render returns early when !isTTY), but the
-// helper stays consistent for tests.
-func formatStatsLine(history [][]float64, snap SnapshotWithRate, width int) string {
+//	<label>: <rate>/s <sparkline> <total> total
+//
+// Labels are right-aligned so the colons line up vertically — the colon
+// then serves as a column anchor across rows. Rate is right-aligned in
+// 5 columns; the sparkline is left-padded with spaces to
+// sparklineMaxWidth so signals with shorter history still align with
+// signals at the cap.
+func formatStatsBlock(history [][]float64, snap SnapshotWithRate) []string {
 	labels := [signalCount]string{"logs", "spans", "metrics"}
 
-	// First pass: render the text-only line so we know its real width.
-	textParts := make([]string, signalCount)
-	for i, label := range labels {
-		textParts[i] = fmt.Sprintf("%s %.0f/s · %d total", label, snap.Rate[i], snap.Forwarded[i])
-	}
-	textOnly := strings.Join(textParts, "   ")
+	// Width of the longest signal label plus its colon, so all labels
+	// right-align to that width: `   logs:`, `  spans:`, `metrics:` —
+	// eight columns each, colon at column 7.
+	const labelWidth = len("metrics:")
 
-	// Decide whether the sparklines fit. Each signal's sparkline costs
-	// up to sparklineMaxWidth + 1 (the trailing space before the rate).
-	// A safety margin keeps the cursor away from the wrap column.
-	const sparklineCost = sparklineMaxWidth + 1
-	available := width - utf8.RuneCountInString(textOnly) - statsLineSafetyMargin
-	if width > 0 && available < signalCount*sparklineCost {
-		return textOnly
-	}
-
-	// Second pass: prepend sparklines for signals with at least one
-	// sample in history. Tail-slice the history so each per-signal
-	// sparkline never exceeds sparklineMaxWidth columns even when the
-	// rolling window has filled to sparklineHistoryCapacity.
-	parts := make([]string, signalCount)
+	lines := make([]string, signalCount)
 	for i, label := range labels {
-		var prefix string
-		if i < len(history) && len(history[i]) > 0 {
-			tail := history[i]
-			if len(tail) > sparklineMaxWidth {
-				tail = tail[len(tail)-sparklineMaxWidth:]
-			}
-			prefix = Sparkline(tail) + " "
+		var samples []float64
+		if i < len(history) {
+			samples = history[i]
 		}
-		parts[i] = fmt.Sprintf("%s %s%.0f/s · %d total",
-			label, prefix, snap.Rate[i], snap.Forwarded[i])
+		spark := renderPaddedSparkline(samples, sparklineMaxWidth)
+		lines[i] = fmt.Sprintf("%*s %5.0f/s %s %d total",
+			labelWidth, label+":", snap.Rate[i], spark, snap.Forwarded[i])
 	}
-	return strings.Join(parts, "   ")
+	return lines
 }
 
-// terminalWidth returns the current terminal column count for fd, or
-// defaultLineWidth when not a TTY or the size lookup fails.
-func terminalWidth(fd int) int {
-	if !term.IsTerminal(fd) {
-		return defaultLineWidth
+// renderPaddedSparkline returns a sparkline string padded to `width`
+// columns. Missing history (zero samples) renders as `width` spaces so
+// the columns following the sparkline still line up across signals.
+// Histories with fewer than `width` samples are left-padded with spaces
+// so the most recent sample sits at the right edge.
+func renderPaddedSparkline(samples []float64, width int) string {
+	if len(samples) == 0 {
+		return strings.Repeat(" ", width)
 	}
-	cols, _, err := term.GetSize(fd)
-	if err != nil || cols <= 0 {
-		return defaultLineWidth
+	if len(samples) > width {
+		samples = samples[len(samples)-width:]
 	}
-	return cols
+	s := Sparkline(samples)
+	if pad := width - utf8.RuneCountInString(s); pad > 0 {
+		return strings.Repeat(" ", pad) + s
+	}
+	return s
 }
+
