@@ -60,6 +60,7 @@ func runRemoveMembers(cmd *cobra.Command, teamID string, memberIDs []string, fla
 		noun = "members"
 	}
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
+		ctx,
 		fmt.Sprintf("Are you sure you want to remove %d %s from team %q? [y/N]: ", len(memberIDs), noun, teamID),
 		flags.Force,
 	)

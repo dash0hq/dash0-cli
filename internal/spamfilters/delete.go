@@ -40,6 +40,7 @@ func newDeleteCmd() *cobra.Command {
 
 func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
+		ctx,
 		fmt.Sprintf("Are you sure you want to delete spam filter %q? [y/N]: ", id),
 		flags.Force,
 	)

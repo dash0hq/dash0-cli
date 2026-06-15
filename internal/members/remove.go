@@ -59,6 +59,7 @@ func runRemove(cmd *cobra.Command, memberIDs []string, flags *removeFlags) error
 		noun = "members"
 	}
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
+		ctx,
 		fmt.Sprintf("Are you sure you want to remove %d %s? [y/N]: ", len(memberIDs), noun),
 		flags.Force,
 	)

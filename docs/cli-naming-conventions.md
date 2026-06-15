@@ -54,6 +54,17 @@ The `members` command manages organization membership:
 | `invite`   | `add`    | Invite members by email              |
 | `remove`   | `delete` | Remove members from the organization |
 
+## Authentication Commands
+`login` and `logout` are top-level (not under `config`) so they read like the equivalent commands in `kubectl`, `gh`, and `terraform`:
+
+| Command  | Alias | Description                                                       |
+|----------|-------|-------------------------------------------------------------------|
+| `login`  | -     | Open the browser to authenticate via OAuth 2.0 + PKCE             |
+| `logout` | -     | Clear (and best-effort revoke) the OAuth tokens of a profile      |
+
+Neither command takes a positional argument; the target profile is the active profile by default and can be overridden with `--profile <name>`.
+`logout` keeps the profile shell so subsequent `login` can re-fill it; to leave OAuth behind entirely use `dash0 config profiles update <name> --oauth=false`.
+
 ## Aliases
 - `activate` → `select`
 - `add` → `create` / `invite`

@@ -141,17 +141,43 @@ Profiles are the recommended way to manage credentials locally; environment vari
 #### Profiles
 
 Configure API access using profiles.
-All profile fields are optional at creation time.
-Missing values can be supplied later via `config profiles update` or overridden at runtime with [environment variables or CLI flags](#common-settings).
+A profile can authenticate with either a long-lived static auth token or via OAuth 2.0 + PKCE (browser-based login).
+All other profile fields are optional at creation time and can be supplied later via `config profiles update` or overridden at runtime with [environment variables or CLI flags](#common-settings).
+
+Browser-based OAuth login (recommended for human users):
+
+```bash
+dash0 config profiles create dev --oauth \
+    --api-url https://api.us-west-2.aws.dash0.com
+```
+
+```bash
+dash0 login
+```
+
+`dash0 login` opens the system browser, completes the OAuth flow, and saves the access and refresh tokens into the profile.
+Access tokens are refreshed automatically as long as the refresh token is valid; `dash0 logout` revokes and clears them.
+
+Static-token profile (suited to CI/CD and agent workflows):
 
 ```bash
 dash0 config profiles create dev \
     --api-url https://api.us-west-2.aws.dash0.com \
     --otlp-url https://ingress.us-west-2.aws.dash0.com \
     --auth-token auth_xxx
+```
 
+Manage and inspect profiles:
+
+```bash
 dash0 config profiles list
+```
+
+```bash
 dash0 config profiles select dev
+```
+
+```bash
 dash0 config show
 ```
 
@@ -164,8 +190,9 @@ Profiles and the active-profile selection are stored on disk in `~/.dash0/`:
 
 | File | Content |
 |------|---------|
-| `profiles.json` | All configured profiles (name, URLs, auth token, dataset) |
+| `profiles.json` | All configured profiles (name, URLs, auth token, dataset, OAuth state) |
 | `activeProfile` | Name of the currently active profile |
+| `oauth-clients.json` | Cached OAuth dynamic client registrations, keyed by API URL |
 
 The directory is created automatically when you create your first profile.
 
@@ -211,75 +238,76 @@ Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
 Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, and `Dash0NotificationChannel`.
 
+From a single file:
+
 ```bash
 dash0 apply -f assets.yaml
+```
+
+From a directory (recursive):
+
+```bash
 dash0 apply -f dashboards/
+```
+
+From stdin:
+
+```bash
 cat assets.yaml | dash0 apply -f -
+```
+
+Validate without applying:
+
+```bash
 dash0 apply -f assets.yaml --dry-run
 ```
 
 **Note:** In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources".
 The reason for this is that the word "resource" is overloaded in OpenTelemetry, where it describes "where telemetry comes from".
 
-### Dashboards
+### Asset CRUD commands
+
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) supports the same five subcommands.
+Substitute the asset noun in the examples below.
+
+List all assets of a type:
 
 ```bash
 dash0 dashboards list
+```
+
+Get one by ID (in table form):
+
+```bash
 dash0 dashboards get <id>
+```
+
+Get one by ID (in a re-appliable YAML form):
+
+```bash
 dash0 dashboards get <id> -o yaml
+```
+
+Create from a YAML file:
+
+```bash
 dash0 dashboards create -f dashboard.yaml
-dash0 dashboards create -f persesdashboard.yaml
-dash0 dashboards update [id] -f dashboard.yaml
-dash0 dashboards delete <id> [--force]
 ```
 
-### Check rules
+Update from a YAML file (the ID is read from the file when not passed explicitly):
 
 ```bash
-dash0 check-rules list
-dash0 check-rules get <id>
-dash0 check-rules get <id> -o yaml
-dash0 check-rules create -f rule.yaml
-dash0 check-rules create -f prometheus-rules.yaml
-dash0 check-rules update [id] -f rule.yaml
-dash0 check-rules delete <id> [--force]
+dash0 dashboards update -f dashboard.yaml
 ```
 
-Both `apply` and `dashboards create` also accept PersesDashboard CRD files.
-Both `apply` and `check-rules create` also accept PrometheusRule CRD files.
-
-### Synthetic checks
+Delete by ID (use `--force` to skip the confirmation prompt):
 
 ```bash
-dash0 synthetic-checks list
-dash0 synthetic-checks get <id>
-dash0 synthetic-checks get <id> -o yaml
-dash0 synthetic-checks create -f check.yaml
-dash0 synthetic-checks update [id] -f check.yaml
-dash0 synthetic-checks delete <id> [--force]
+dash0 dashboards delete <id>
 ```
 
-### Views
-
-```bash
-dash0 views list
-dash0 views get <id>
-dash0 views get <id> -o yaml
-dash0 views create -f view.yaml
-dash0 views update [id] -f view.yaml
-dash0 views delete <id> [--force]
-```
-
-### Spam filters
-
-```bash
-dash0 spam-filters list
-dash0 spam-filters get <id>
-dash0 spam-filters get <id> -o yaml
-dash0 spam-filters create -f filter.yaml
-dash0 spam-filters update [id] -f filter.yaml
-dash0 spam-filters delete <id> [--force]
-```
+`dashboards create` and `apply` also accept PersesDashboard CRD files; `check-rules create` and `apply` also accept PrometheusRule CRD files.
+See [docs/commands.md](docs/commands.md) for the full per-asset reference and the YAML formats.
 
 ### Logging
 
@@ -300,18 +328,49 @@ dash0 logs send "Application started" \
 > [!NOTE]
 > The `dash0 logs query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
+Recent logs (default: last 15 minutes, up to 50):
+
 ```bash
 dash0 logs query
+```
+
+Explicit time range and higher limit:
+
+```bash
 dash0 logs query --from now-1h --to now --limit 100
+```
+
+Filter by service:
+
+```bash
 dash0 logs query --filter "service.name is my-service"
+```
+
+Filter by severity range (errors and warnings):
+
+```bash
 dash0 logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
+```
+
+JSON filter criteria copied from the Dash0 UI:
+
+```bash
 dash0 logs query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+```
+
+CSV output for pipelines:
+
+```bash
 dash0 logs query -o csv
+```
+
+Custom columns:
+
+```bash
 dash0 logs query --column time --column service.name --column body
 dash0 logs query --precision disabled --filter "test.id is <id>"
 ```
 
-The `--filter` flag also accepts JSON filter criteria copied from the Dash0 UI.
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
 Pass `--precision disabled` to turn off [adaptive sampling](docs/commands.md#precision-mode-adaptive-sampling) when a narrow filter must always return every match.
 
@@ -333,13 +392,45 @@ dash0 spans send --name "GET /api/users" \
 > [!NOTE]
 > The `dash0 spans query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
+Recent spans (default: last 15 minutes, up to 50):
+
 ```bash
 dash0 spans query
+```
+
+Explicit time range and higher limit:
+
+```bash
 dash0 spans query --from now-1h --to now --limit 100
+```
+
+Filter by service:
+
+```bash
 dash0 spans query --filter "service.name is my-service"
+```
+
+Filter by span status:
+
+```bash
 dash0 spans query --filter "otel.span.status.code is ERROR"
+```
+
+JSON filter criteria copied from the Dash0 UI:
+
+```bash
 dash0 spans query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+```
+
+CSV output:
+
+```bash
 dash0 spans query -o csv
+```
+
+Custom columns:
+
+```bash
 dash0 spans query --column otel.span.start_time --column otel.span.duration --column "span name" --column http.request.method
 dash0 spans query --precision disabled --filter "test.id is <id>"
 ```
@@ -352,11 +443,33 @@ Pass `--precision disabled` to turn off [adaptive sampling](docs/commands.md#pre
 > [!NOTE]
 > The `dash0 traces get` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
 
+Get all spans of a trace:
+
 ```bash
 dash0 traces get <trace-id>
+```
+
+Look back further when the trace is older:
+
+```bash
 dash0 traces get <trace-id> --from now-2h
+```
+
+Follow span links to related traces:
+
+```bash
 dash0 traces get <trace-id> --follow-span-links
+```
+
+OTLP JSON output:
+
+```bash
 dash0 traces get <trace-id> -o json
+```
+
+Custom columns:
+
+```bash
 dash0 traces get <trace-id> --column otel.span.start_time --column otel.span.duration --column "span name" --column otel.span.status.code
 ```
 
@@ -367,10 +480,14 @@ dash0 traces get <trace-id> --column otel.span.start_time --column otel.span.dur
 ```bash
 # Instant query — current request rate per service
 dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
+```
 
+```bash
 # Instant query with filters
 dash0 metrics instant --filter 'service.name is my-service'
+```
 
+```bash
 # Output as CSV with specific columns
 dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --column value --column service_name
 ```
@@ -380,13 +497,19 @@ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_
 ```bash
 # List all teams
 dash0 -X teams list
+```
 
+```bash
 # Get team details (members + accessible assets)
 dash0 -X teams get <id>
+```
 
+```bash
 # Create a team
 dash0 -X teams create "Backend Team" --color-from "#FF6B6B" --color-to "#4ECDC4"
+```
 
+```bash
 # Add members to a team
 dash0 -X teams add-members <team-id> <member-id-1> <member-id-2>
 ```
@@ -396,10 +519,14 @@ dash0 -X teams add-members <team-id> <member-id-1> <member-id-2>
 ```bash
 # List organization members
 dash0 -X members list
+```
 
+```bash
 # Invite a member (default role: basic_member)
 dash0 -X members invite user@example.com
+```
 
+```bash
 # Delete a member
 dash0 -X members delete <member-id> --force
 ```
@@ -412,10 +539,14 @@ It is useful for endpoints that do not yet have a dedicated subcommand.
 ```bash
 # GET — dataset auto-injected from the active profile
 dash0 -X api /api/signal-to-metrics/configs
+```
 
+```bash
 # POST with a payload from a file
 dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+```
 
+```bash
 # Skip dataset injection for organization-level endpoints
 dash0 -X api /api/organization/settings --dataset ""
 ```

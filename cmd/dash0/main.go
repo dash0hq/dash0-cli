@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
@@ -17,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
+	"github.com/dash0hq/dash0-cli/internal/login"
 	"github.com/dash0hq/dash0-cli/internal/members"
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
@@ -72,6 +75,8 @@ func init() {
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
+	rootCmd.AddCommand(login.NewLoginCmd())
+	rootCmd.AddCommand(login.NewLogoutCmd())
 	rootCmd.AddCommand(members.NewMembersCmd())
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
@@ -204,7 +209,18 @@ func resolveColorMode() (colorMode, error) {
 }
 
 func main() {
-	ctx := context.Background()
+	// Wire SIGINT/SIGTERM cancellation into the root context. Commands that
+	// pass the context to network calls (OAuth login, API requests) will see
+	// `ctx.Err() == context.Canceled` on Ctrl-C, return cleanly, and run
+	// their deferred cleanups (listener close, file handles, partial-state
+	// compensation). Without this, the runtime kills the process on first
+	// SIGINT and deferred cleanups are skipped — most visibly for `dash0
+	// login`, which would leave the callback HTTP server bound to a port
+	// until the OS reclaims the socket. The second SIGINT (or one after
+	// `stop()`) gets the default behavior so a wedged command is still
+	// killable.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Determine which command will be executed (best-effort; Traverse may
 	// return the root command when persistent flags like -X come first).
@@ -242,18 +258,24 @@ func main() {
 	// into both the loaded configuration and the context consumed by
 	// `config show`.
 	selector := config.ResolveProfileSelector(flagValue(os.Args[1:], "profile"))
-	if selector.IsSet() {
+	// login/logout resolve the target profile themselves (login may create a
+	// missing profile; logout produces its own profile-not-found message).
+	// Skip the pre-resolve so `dash0 login --profile <new>` can reach runLogin.
+	skipProfileResolve := targetCmd != nil && (targetCmd.Name() == "login" || targetCmd.Name() == "logout")
+	if selector.IsSet() && !skipProfileResolve {
 		cfg, err := config.ResolveConfigurationForProfile(selector.Name)
 		if err != nil {
 			printError(err)
 			os.Exit(1)
 		}
 		ctx = profiles.WithConfiguration(ctx, cfg)
-	} else if cfg := loadConfig(); cfg != nil {
-		// Always attempt to load configuration. Commands that don't need it
-		// (help, version, config) simply ignore it. Commands that do need it
-		// will fail with a clear error if the required values are missing.
-		ctx = profiles.WithConfiguration(ctx, cfg)
+	} else if !selector.IsSet() {
+		if cfg := loadConfig(); cfg != nil {
+			// Always attempt to load configuration. Commands that don't need it
+			// (help, version, config) simply ignore it. Commands that do need it
+			// will fail with a clear error if the required values are missing.
+			ctx = profiles.WithConfiguration(ctx, cfg)
+		}
 	}
 	ctx = config.WithProfileSelector(ctx, selector)
 

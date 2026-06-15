@@ -9,6 +9,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-api-client-go/profiles"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -339,4 +340,125 @@ func TestHandleAPIError_NotFoundWithoutContext(t *testing.T) {
 	assert.Equal(t,
 		"asset not found (status: 404, trace_id: trace-404-bare)",
 		result.Error())
+}
+
+// TestCheckOAuthOnOtlp_RefusesOAuthProfile asserts that OTLP-bound
+// commands (logs send / spans send) refuse upfront when the active
+// profile is OAuth-typed and no static-token override is in effect.
+// Without this gate, the OTLP ingress returns a generic 401 ("invalid
+// authentication token starting with 'at_…'") that does not point users
+// at the workaround.
+func TestCheckOAuthOnOtlp_RefusesOAuthProfile(t *testing.T) {
+	os.Unsetenv("DASH0_AUTH_TOKEN")
+
+	cfg := &profiles.Configuration{
+		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
+		AuthToken: "dash0_at_oauth_access_xyz",
+		OAuth: &profiles.OAuthState{
+			ClientID:     "client-abc",
+			RefreshToken: "dash0_rt_xyz",
+		},
+	}
+
+	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken)
+	if err == nil {
+		t.Fatalf("expected an error for OAuth profile + no override, got nil")
+	}
+	if !strings.Contains(err.Error(), "OTLP ingestion does not accept OAuth access tokens") {
+		t.Errorf("error does not name the root cause: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "DASH0_AUTH_TOKEN") {
+		t.Errorf("error does not mention the env-var escape hatch: %q", err.Error())
+	}
+}
+
+// TestCheckOAuthOnOtlp_StaticProfilePassesThrough asserts a static-token
+// profile is not flagged by the OAuth check.
+func TestCheckOAuthOnOtlp_StaticProfilePassesThrough(t *testing.T) {
+	os.Unsetenv("DASH0_AUTH_TOKEN")
+
+	cfg := &profiles.Configuration{
+		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
+		AuthToken: "auth_static_xxx",
+	}
+
+	if err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken); err != nil {
+		t.Errorf("expected nil for static profile, got %v", err)
+	}
+}
+
+// TestCheckOAuthOnOtlp_EnvOverrideShadowsOAuth asserts that
+// DASH0_AUTH_TOKEN bypasses the OAuth check, matching checkOAuthEmpty's
+// behavior — users with a known-good static token should not have to
+// convert the whole profile to send telemetry.
+func TestCheckOAuthOnOtlp_EnvOverrideShadowsOAuth(t *testing.T) {
+	os.Setenv("DASH0_AUTH_TOKEN", "auth_static_override_xxx")
+	defer os.Unsetenv("DASH0_AUTH_TOKEN")
+
+	cfg := &profiles.Configuration{
+		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
+		AuthToken: "dash0_at_oauth_access_xyz",
+		OAuth: &profiles.OAuthState{
+			ClientID:     "client-abc",
+			RefreshToken: "dash0_rt_xyz",
+		},
+	}
+
+	if err := checkOAuthOnOtlp(context.Background(), cfg, "auth_static_override_xxx"); err != nil {
+		t.Errorf("expected env-var override to suppress the gate, got %v", err)
+	}
+}
+
+// TestCheckOAuthOnOtlp_FlagOverrideShadowsOAuth asserts that a per-command
+// --auth-token override (resolvedAuthToken != cfg.AuthToken) bypasses the
+// gate.
+func TestCheckOAuthOnOtlp_FlagOverrideShadowsOAuth(t *testing.T) {
+	os.Unsetenv("DASH0_AUTH_TOKEN")
+
+	cfg := &profiles.Configuration{
+		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
+		AuthToken: "dash0_at_oauth_access_xyz",
+		OAuth: &profiles.OAuthState{
+			ClientID:     "client-abc",
+			RefreshToken: "dash0_rt_xyz",
+		},
+	}
+
+	if err := checkOAuthOnOtlp(context.Background(), cfg, "auth_flag_override_xxx"); err != nil {
+		t.Errorf("expected --auth-token override to suppress the gate, got %v", err)
+	}
+}
+
+// TestCheckOAuthOnOtlp_AgentModeMessage asserts the agent-mode branch
+// drops the `dash0 login` reference (login is off-limits there) and
+// keeps DASH0_AUTH_TOKEN + the profile conversion as escape hatches.
+func TestCheckOAuthOnOtlp_AgentModeMessage(t *testing.T) {
+	os.Unsetenv("DASH0_AUTH_TOKEN")
+
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	defer func() { agentmode.Enabled = prev }()
+
+	cfg := &profiles.Configuration{
+		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
+		AuthToken: "dash0_at_oauth_access_xyz",
+		OAuth: &profiles.OAuthState{
+			ClientID:     "client-abc",
+			RefreshToken: "dash0_rt_xyz",
+		},
+	}
+
+	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken)
+	if err == nil {
+		t.Fatalf("expected an error in agent mode, got nil")
+	}
+	if strings.Contains(err.Error(), "dash0 login") {
+		t.Errorf("agent-mode error must not point at `dash0 login`: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "DASH0_AUTH_TOKEN") {
+		t.Errorf("agent-mode error must surface DASH0_AUTH_TOKEN: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "--oauth=false") {
+		t.Errorf("agent-mode error must surface the profile conversion path: %q", err.Error())
+	}
 }

@@ -11,6 +11,7 @@ Each category has distinct patterns for flags, output, and behavior.
 
 | Category | Commands | Characteristics |
 |----------|----------|-----------------|
+| [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters |
@@ -18,6 +19,11 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
+
+**Authentication commands** populate or revoke the OAuth tokens of a profile.
+A profile can be in one of three auth states: **static** (holds a long-lived `auth_*` token), **OAuth-active** (holds a `dash0_at_*` access token and a refresh token; auto-refreshes), or **OAuth-empty** (marked as OAuth but not yet logged in).
+`dash0 login` requires an interactive terminal and never silently mutates a static profile.
+`dash0 logout` clears the OAuth tokens from a profile but keeps the profile shell for re-login.
 
 **Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks, recording rules).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
@@ -95,6 +101,124 @@ Agent mode is resolved in this priority order (first match wins):
 3. `DASH0_AGENT_MODE=1|true` — explicitly enabled via environment variable.
 4. Auto-detection via known AI agent environment variables: `AIDER`, `CLAUDE_CODE`, `CLAUDECODE`, `CLINE`, `CLINE_TASK_ID`, `CODEX`, `CURSOR_AGENT`, `CURSOR_SESSION_ID`, `GITHUB_COPILOT`, `MCP_SESSION_ID`, `OPENAI_CODEX`, `WINDSURF_AGENT`, `WINDSURF_SESSION_ID`.
 
+## Authentication
+
+`dash0 login` and `dash0 logout` manage the OAuth tokens of a profile.
+Both commands operate on the active profile by default; pass `--profile <name>` to target a specific one.
+
+### Profile auth states
+
+A profile is in exactly one of three auth states:
+
+| State | `Auth Token:` in `config show` | How to get there |
+|-------|--------------------------------|------------------|
+| **Static** | masked `...auth_*` | `dash0 config profiles create <name> --auth-token auth_<...>` |
+| **OAuth-empty** | `(OAuth, not logged in)` | `dash0 config profiles create <name> --oauth`, `dash0 config profiles update <name> --oauth`, or `dash0 logout` from OAuth-active |
+| **OAuth-active** | masked `...dash0_at_*` with `(OAuth, expires in …)` | `dash0 login` on an OAuth-empty or OAuth-active profile |
+
+OAuth-empty profiles cannot serve API calls — running a CLI command against one prints `the active profile is OAuth-typed but not authenticated. Hint: Run \`dash0 login\` to log in.` (or `profile "<name>" is OAuth-typed but not authenticated.` when `--profile` was passed).
+
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), the hint is rewritten because `dash0 login` requires an interactive terminal.
+Agents are routed to two escape hatches: either set `DASH0_AUTH_TOKEN` to a static `auth_*` token, or convert the profile back to static auth with `dash0 config profiles update <name> --oauth=false --auth-token auth_<...> --force`.
+The same agent-mode hint appears when an OAuth refresh fails at the API layer (token revoked or expired server-side).
+
+### `login`
+
+Authenticate to Dash0 via OAuth 2.0 with PKCE.
+Opens the system browser, listens on a localhost TCP port for the callback, exchanges the authorization code for tokens, and saves them in the target profile.
+
+```bash
+dash0 login [--profile <name>] [--api-url <url>] [--port <n>] [--timeout <duration>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--profile` | active profile | Profile to save tokens under |
+| `--api-url` | active profile's URL / `DASH0_API_URL` | Dash0 API URL to authenticate against |
+| `--port` | OS-assigned ephemeral | Local TCP port for the OAuth callback listener |
+| `--timeout` | `2m` | How long to wait for the browser callback before aborting |
+
+State machine:
+
+- **OAuth-empty / OAuth-active target** — proceeds silently.
+  Re-login on an OAuth-active profile revokes the prior refresh token best-effort.
+- **Static target** — prompts: `<profile> uses a static auth token. Convert it to an OAuth profile (the existing auth token will be discarded)? [y/N]:`.
+  Aborts cleanly on `n`.
+- **No-auth target** — prompts: `<profile> has no auth token configured. Mark it as OAuth and log in? [y/N]:`.
+  Aborts cleanly on `n`.
+- **Missing target** — prompts to create the profile as OAuth before proceeding.
+- **No active profile and no `--profile`** — fails immediately with a hint pointing at `dash0 config profiles create` and `dash0 login --profile <name>`.
+
+The command requires an interactive terminal.
+In agent mode or when stdout is not a TTY, it exits with an error pointing at the static-token fallback (`DASH0_AUTH_TOKEN` or `dash0 config profiles create --auth-token`).
+
+Log in to the active profile:
+
+```bash
+$ dash0 login
+Opening your browser to log in to https://api.eu-west-1.aws.dash0.com
+If the browser does not open automatically, paste this URL:
+  https://api.eu-west-1.aws.dash0.com/oauth/authorize?...
+Logged in as profile "prod" (access token expires in 1h0m0s).
+```
+
+Log in to a specific profile:
+
+```bash
+dash0 login --profile staging
+```
+
+Log in to a Dash0 region different from the active profile:
+
+```bash
+dash0 login --profile eu --api-url https://api.eu-west-1.aws.dash0.com
+```
+
+The OAuth client registration (RFC 7591) is cached per API URL in `~/.dash0/oauth-clients.json`, so re-running `login` against the same Dash0 region does not re-register a new client every time.
+The cache is invalidated automatically when the server reports `invalid_client` during token exchange.
+
+OAuth access tokens are organization-scoped: each token is bound to whichever Dash0 organization the user picks during the browser consent step.
+Profiles for different organizations must each go through their own `dash0 login`.
+
+### `logout`
+
+Clear the OAuth tokens of a profile and best-effort revoke them server-side.
+The profile shell is kept so a future `dash0 login` can re-fill it.
+
+```bash
+dash0 logout [--profile <name>] [--force]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--profile` | active profile | Profile to log out of |
+| `--force` | `false` | Skip the confirmation prompt |
+
+Refuses to operate on static-token profiles and points the user at `dash0 config profiles delete` instead.
+Logging out of an OAuth-empty profile is a no-op and exits 0.
+
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`, also auto-detected from agent env vars like `CLAUDE_CODE`), `logout` requires an explicit `--force` and otherwise refuses with an error.
+This mirrors `dash0 login`'s blanket refusal to run in agent mode: both directions of the OAuth session transition require deliberate user intent, so an AI agent invoking `dash0 logout` cannot silently revoke the refresh token of whichever profile the env points at.
+
+Log out of the active profile:
+
+```bash
+$ dash0 logout
+Log out of the active profile 'prod' (revoking its OAuth refresh token)? [y/N]: y
+Logged out.
+```
+
+Log out of a named profile without confirmation:
+
+```bash
+$ dash0 logout --profile staging --force
+Logged out of profile "staging".
+```
+
+> [!NOTE]
+> To leave OAuth behind entirely (not just log out), use `dash0 config profiles update <name> --oauth=false`.
+> That clears the OAuth marker and lets the profile take a static token again.
+
 ## Configuration
 
 ### `config profiles create`
@@ -108,17 +232,31 @@ dash0 config profiles create <name> \
     [--api-url <url>] \
     [--otlp-url <url>] \
     [--auth-token <token>] \
-    [--dataset <dataset>]
+    [--dataset <dataset>] \
+    [--oauth]
 ```
 
-Example:
+Pass `--oauth` to mark the profile as OAuth-authenticated.
+An OAuth profile is created in the **OAuth-empty** state — `--api-url` is required (so `dash0 login` knows where to authenticate), and `--oauth` is mutually exclusive with `--auth-token`.
+Run `dash0 login` afterwards to obtain the access and refresh tokens.
+
+Example — static-token profile:
 
 ```bash
 $ dash0 config profiles create dev \
     --api-url https://api.us-west-2.aws.dash0.com \
     --otlp-url https://ingress.us-west-2.aws.dash0.com \
     --auth-token auth_xxx
-Profile "dev" added and set as active
+Profile "dev" added
+```
+
+Example — OAuth profile:
+
+```bash
+$ dash0 config profiles create dev --oauth \
+    --api-url https://api.us-west-2.aws.dash0.com
+Profile "dev" created (OAuth).
+Hint: Run `dash0 login` to authenticate.
 ```
 
 Aliases: `add`
@@ -134,14 +272,56 @@ dash0 config profiles update <name> \
     [--api-url <url>] \
     [--otlp-url <url>] \
     [--auth-token <token>] \
-    [--dataset <dataset>]
+    [--dataset <dataset>] \
+    [--oauth[=true|=false]] \
+    [--force]
 ```
 
-Example:
+`--oauth` is the off-ramp for switching a profile between **static** and **OAuth** authentication.
+Both transitions are destructive and prompt for confirmation unless `--force` is set:
+
+- `--oauth` (or `--oauth=true`) on a static profile discards the existing static token and marks the profile as OAuth-empty (run `dash0 login` next).
+- `--oauth=false` on an OAuth profile revokes its refresh token (best-effort) and clears the OAuth block.
+  Pair it with `--auth-token auth_<...>` to land in a static profile in one command; otherwise the profile is left token-less and `dash0 config profiles update` must be used again to set one.
+
+`--oauth=true` and `--auth-token` are mutually exclusive in the same invocation.
+Setting `--auth-token` on an OAuth-active profile without also passing `--oauth=false` is rejected — the library cannot interpret a profile that holds both a static token and an OAuth block.
+
+Update the API URL of a profile:
 
 ```bash
 $ dash0 config profiles update prod --api-url https://api.us-east-1.aws.dash0.com
-Profile 'prod' updated
+Profile "prod" updated
+```
+
+Convert a static-token profile to OAuth (prompts unless `--force`):
+
+```bash
+$ dash0 config profiles update prod --oauth --force
+Profile "prod" updated
+Hint: Run `dash0 login` to authenticate.
+```
+
+Convert an OAuth profile back to static in one command:
+
+```bash
+$ dash0 config profiles update prod --oauth=false --auth-token auth_xxx --force
+Profile "prod" updated
+```
+
+Convert an OAuth profile back to no-auth (the user can set a token later):
+
+```bash
+$ dash0 config profiles update prod --oauth=false --force
+Profile "prod" updated
+Hint: This profile has no auth token configured. Set one with `dash0 config profiles update prod --auth-token auth_<...>`.
+```
+
+Remove a field by passing an empty string:
+
+```bash
+$ dash0 config profiles update prod --dataset ''
+Profile "prod" updated
 ```
 
 ### `config profiles list`
@@ -161,10 +341,20 @@ dash0 config profiles list [-o <format>] [--skip-header]
 Example output:
 
 ```
-  NAME  API URL                              OTLP URL                                    DATASET  AUTH TOKEN
-* dev   https://api.us-west-2.aws.dash0.com  https://ingress.us-west-2.aws.dash0.com     default  ...ULSzVkM
-  prod  https://api.eu-west-1.aws.dash0.com  https://ingress.eu-west-1.aws.dash0.com     default  ...uth_yyy
+  NAME  API URL                              OTLP URL                                    DATASET  AUTH
+* dev   https://api.us-west-2.aws.dash0.com  https://ingress.us-west-2.aws.dash0.com     default  oauth ...dash0_at_xx (47m)
+  prod  https://api.eu-west-1.aws.dash0.com  https://ingress.eu-west-1.aws.dash0.com     default  static ...uth_yyy
+  cold  https://api.eu-west-1.aws.dash0.com                                              default  oauth (not logged in)
 ```
+
+The `AUTH` column carries the auth state per profile:
+
+- `static <masked-token>` for a profile with a long-lived `auth_*` token.
+- `oauth <masked-token> (<remaining-lifetime>)` for an OAuth-active profile.
+- `oauth (not logged in)` for an OAuth-empty profile (created with `--oauth` but `dash0 login` not yet run, or just logged out).
+- `(none)` when no token is configured.
+
+JSON output keeps the existing `authToken` field and adds a sibling `authKind` field with values `static`, `oauth-active`, `oauth-empty`, or `none`.
 
 Use `-o json` to get structured output (the default in agent mode):
 
@@ -215,7 +405,7 @@ Display the resolved configuration (selected profile + environment variable over
 dash0 config show
 ```
 
-Example output:
+Example output for a static-token profile:
 
 ```
 Profile:    prod
@@ -223,6 +413,47 @@ API URL:    https://api.eu-west-1.aws.dash0.com
 OTLP URL:   https://ingress.eu-west-1.aws.dash0.com
 Dataset:    default
 Auth Token: ...uth_yyy
+```
+
+When the profile is OAuth, the `Auth Token:` line is annotated:
+
+```
+Profile:    dev
+API URL:    https://api.us-west-2.aws.dash0.com
+OTLP URL:   (not set)
+Dataset:    default
+Auth Token: ...dash0_at_xx    (OAuth, expires in 47m23s)
+```
+
+When the profile is OAuth but not yet logged in (OAuth-empty), the line points the user at `dash0 login`:
+
+```
+Profile:    dev
+API URL:    https://api.us-west-2.aws.dash0.com
+OTLP URL:   (not set)
+Dataset:    default
+Auth Token: (OAuth, not logged in)
+            Hint: Run `dash0 login` to authenticate.
+```
+
+The hint elides `--profile <name>` when the displayed profile is already the active one.
+
+`-o json` (the default in agent mode) emits the same fields plus an `oauth` object on OAuth profiles.
+For OAuth-active profiles the object contains `clientId`, `expiresAt` (RFC 3339), and `"authenticated": true`.
+For OAuth-empty profiles the object contains `"authenticated": false` plus a `hint` field naming the agent-mode recovery path (`DASH0_AUTH_TOKEN` or `dash0 config profiles update <name> --oauth=false --auth-token auth_<...> --force`).
+The `oauth` object is omitted entirely when `DASH0_AUTH_TOKEN` is set, because the static token shadows the OAuth state.
+
+```bash
+$ dash0 config show -o json
+{
+  "profile": {"value": "dev"},
+  "apiUrl": {"value": "https://api.us-west-2.aws.dash0.com"},
+  ...
+  "oauth": {
+    "authenticated": false,
+    "hint": "set DASH0_AUTH_TOKEN to a static `auth_*` token, or convert the profile with `dash0 config profiles update dev --oauth=false --auth-token auth_<...> --force`"
+  }
+}
 ```
 
 When an environment variable overrides a profile value, the output indicates the source:
@@ -381,10 +612,9 @@ The `--dry-run` flag shows the diff without applying the update.
 dash0 dashboards update [id] -f <file> [--dry-run]
 ```
 
-Examples:
+Update a dashboard from a file:
 
 ```bash
-# Update a dashboard from a file
 $ dash0 dashboards update <id> -f dashboard.yaml
 --- Dashboard (before)
 +++ Dashboard (after)
@@ -393,8 +623,11 @@ $ dash0 dashboards update <id> -f dashboard.yaml
    display:
 -    name: Old Dashboard Name
 +    name: New Dashboard Name
+```
 
-# Preview changes without applying
+Preview changes without applying:
+
+```bash
 $ dash0 dashboards update -f dashboard.yaml --dry-run
 --- Dashboard (before)
 +++ Dashboard (after)
@@ -421,13 +654,17 @@ Prompts for confirmation unless `--force` is passed.
 dash0 dashboards delete <id> [--force]
 ```
 
-Examples:
+Interactive deletion (prompts for confirmation):
 
 ```bash
 $ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab
 Are you sure you want to delete dashboard "a1b2c3d4-..."? [y/N]: y
 Dashboard "a1b2c3d4-..." deleted
+```
 
+Non-interactive deletion (`--force` skips the prompt):
+
+```bash
 $ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
 Dashboard "a1b2c3d4-..." deleted
 ```
@@ -488,25 +725,33 @@ The `dash0.com/origin` label is the upsert key when present; otherwise the serve
 > Do not use shell glob patterns like `-f assets/*` — the shell expands the glob into multiple arguments and only the first file is passed to `-f`.
 > Use `-f assets/` (the directory) instead.
 
-Examples:
+Apply a single file:
 
 ```bash
-# Apply a single file
 $ dash0 apply -f dashboard.yaml
 Dashboard "Production Overview" (a1b2c3d4-...) created
+```
 
-# Apply a directory recursively
+Apply a directory recursively:
+
+```bash
 $ dash0 apply -f assets/
 assets/dashboard.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
 assets/rule.yaml: Check rule "High Error Rate" (b2c3d4e5-...) updated
 ...
+```
 
-# Apply from stdin
+Apply from stdin (the `cat … | dash0 apply -f -` pipeline counts as one command):
+
+```bash
 $ cat assets.yaml | dash0 apply -f -
 Dashboard "Production Overview" (a1b2c3d4-...) created
 ...
+```
 
-# Dry-run validation
+Dry-run validation:
+
+```bash
 $ dash0 apply -f assets.yaml --dry-run
 Dry run: 1 document validated
   1. Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
@@ -696,6 +941,7 @@ They share a common set of characteristics:
 - Pagination: `--limit`.
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
 - Sampling flag: `--precision` to disable [adaptive sampling](#precision-mode-adaptive-sampling) on `logs query` and `spans query` (`traces get` always disables it).
+
 ### `logs query`
 
 Query log records from Dash0.
@@ -719,47 +965,73 @@ dash0 logs query [flags]
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
 
-Examples:
+Query recent logs (last 15 minutes, up to 50 records):
 
 ```bash
-# Query recent logs (last 15 minutes, up to 50 records)
 $ dash0 logs query
 TIMESTAMP                     SEVERITY    BODY
 2026-02-16T09:12:03.456Z      INFO        Application started successfully
 2026-02-16T09:12:04.789Z      ERROR       Connection timeout
 ...
+```
 
-# Query with time range
-$ dash0 logs query --from now-1h --to now --limit 100
+Query with a time range:
 
-# Filter by service
-$ dash0 logs query --filter "service.name is my-service"
+```bash
+dash0 logs query --from now-1h --to now --limit 100
+```
 
-# Filter by severity (errors and above)
-$ dash0 logs query --filter "otel.log.severity.number gte 17"
+Filter by service:
 
-# Multiple filters (AND logic)
-$ dash0 logs query \
+```bash
+dash0 logs query --filter "service.name is my-service"
+```
+
+Filter by severity (errors and above):
+
+```bash
+dash0 logs query --filter "otel.log.severity.number gte 17"
+```
+
+Multiple filters (AND logic):
+
+```bash
+dash0 logs query \
     --filter "service.name is my-service" \
     --filter "otel.log.severity.range is_one_of ERROR WARN"
+```
 
-# Use JSON filter criteria copied from the Dash0 UI
-$ dash0 logs query \
+Use JSON filter criteria copied from the Dash0 UI:
+
+```bash
+dash0 logs query \
     --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+```
 
-# Output as JSON (full OTLP payload)
-$ dash0 logs query -o json
+Output as JSON (full OTLP payload):
 
-# Output as CSV (pipe-friendly)
+```bash
+dash0 logs query -o json
+```
+
+Output as CSV (pipe-friendly):
+
+```bash
 $ dash0 logs query -o csv
 otel.log.time,otel.log.severity.range,otel.log.body
 2026-02-16T09:12:03.456Z,INFO,Application started successfully
 ...
+```
 
-# CSV without header
-$ dash0 logs query -o csv --skip-header
+CSV without header:
 
-# Disable adaptive sampling so a narrow filter always returns every match
+```bash
+dash0 logs query -o csv --skip-header
+```
+
+Disable adaptive sampling so a narrow filter always returns every match:
+
+```bash
 $ dash0 logs query --precision disabled --filter "test.id is <id>"
 ```
 
@@ -785,37 +1057,54 @@ dash0 spans query [flags]
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
-Examples:
+Query recent spans (last 15 minutes, up to 50 spans):
 
 ```bash
-# Query recent spans (last 15 minutes, up to 50 spans)
 $ dash0 spans query
 TIMESTAMP                     DURATION    SPAN NAME                                 STATUS    SERVICE NAME                    PARENT ID         TRACE ID                          SPAN LINKS
 2026-02-16T09:12:03.456Z      150ms       GET /api/users                            OK        my-service                                        0af76519...
 2026-02-16T09:12:04.789Z      500ms       POST /api/orders                          ERROR     api-gateway                     b7ad6b7169203331  3d3d3d3d...
 ...
+```
 
-# Query with time range
-$ dash0 spans query --from now-1h --to now --limit 100
+Query with a time range:
 
-# Filter by service
-$ dash0 spans query --filter "service.name is my-service"
+```bash
+dash0 spans query --from now-1h --to now --limit 100
+```
 
-# Filter by span status
-$ dash0 spans query --filter "otel.span.status.code is ERROR"
+Filter by service:
 
-# Use JSON filter criteria copied from the Dash0 UI
-$ dash0 spans query \
+```bash
+dash0 spans query --filter "service.name is my-service"
+```
+
+Filter by span status:
+
+```bash
+dash0 spans query --filter "otel.span.status.code is ERROR"
+```
+
+Use JSON filter criteria copied from the Dash0 UI:
+
+```bash
+dash0 spans query \
     --filter '[{"key":"service.name","operator":"is","value":"api"}]'
+```
 
-# Output as CSV
+Output as CSV:
+
+```bash
 $ dash0 spans query -o csv
 otel.span.start_time,otel.span.duration,otel.span.name,otel.span.status.code,service.name,otel.parent.id,otel.trace.id,otel.span.links
 2026-02-16T09:12:03.456Z,150ms,GET /api/users,OK,my-service,,0af76519...,
 ...
+```
 
-# Output as OTLP JSON
-$ dash0 spans query -o json --limit 10
+Output as OTLP JSON:
+
+```bash
+dash0 spans query -o json --limit 10
 ```
 
 The `--filter` flag uses the same [filter syntax](#filter-syntax) as `logs query`.
@@ -846,29 +1135,43 @@ The `<trace-id>` argument must be 32 hex characters.
 
 In table format, spans are displayed as a hierarchical tree with child spans indented under their parents.
 
-Examples:
+Get all spans in a trace:
 
 ```bash
-# Get all spans in a trace
 $ dash0 traces get <trace-id>
 TIMESTAMP                     DURATION    TRACE ID                          SPAN ID           PARENT ID         SPAN NAME                                   STATUS    SERVICE NAME                    SPAN LINKS
 2026-02-16T09:12:03.456Z      200ms       0af7651916cd43dd8448eb211c80319c  b7ad6b7169203331                    GET /api/users                              OK        frontend
 2026-02-16T09:12:03.486Z      150ms       0af7651916cd43dd8448eb211c80319c  00f067aa0ba902b7  b7ad6b7169203331  SELECT * FROM users                         UNSET     frontend
 2026-02-16T09:12:03.641Z      10ms        0af7651916cd43dd8448eb211c80319c  123456789abcdef0  b7ad6b7169203331  serialize response                          UNSET     frontend
+```
 
-# Get a trace with a specific time range
-$ dash0 traces get <trace-id> --from now-2h
+Get a trace with a specific time range:
 
-# Follow span links to related traces
-$ dash0 traces get <trace-id> --follow-span-links
+```bash
+dash0 traces get <trace-id> --from now-2h
+```
 
-# Follow span links with a custom lookback period
-$ dash0 traces get <trace-id> --follow-span-links 2h
+Follow span links to related traces:
 
-# Output as OTLP JSON
-$ dash0 traces get <trace-id> -o json
+```bash
+dash0 traces get <trace-id> --follow-span-links
+```
 
-# Output as CSV
+Follow span links with a custom lookback period:
+
+```bash
+dash0 traces get <trace-id> --follow-span-links 2h
+```
+
+Output as OTLP JSON:
+
+```bash
+dash0 traces get <trace-id> -o json
+```
+
+Output as CSV:
+
+```bash
 $ dash0 traces get <trace-id> -o csv
 otel.trace.id,otel.span.start_time,otel.span.duration,otel.span.id,otel.parent.id,otel.span.name,otel.span.status.code,service.name,otel.span.links
 0af7651916cd43dd8448eb211c80319c,2026-02-16T09:12:03.456Z,200ms,b7ad6b7169203331,,GET /api/users,OK,frontend,
@@ -882,8 +1185,15 @@ The command follows links recursively up to a maximum of 20 traces.
 
 Run an instant PromQL query against the Dash0 API, returning a single datapoint per time series.
 
+With a raw PromQL expression:
+
 ```bash
 dash0 metrics instant --promql <promql> [--from <timestamp>] [--dataset <dataset>] [-o <format>]
+```
+
+With one or more `--filter` expressions (translated to PromQL label matchers):
+
+```bash
 dash0 metrics instant --filter <filter> [--from <timestamp>] [--dataset <dataset>] [-o <format>]
 ```
 
@@ -929,30 +1239,52 @@ OTel attribute keys are normalized to Prometheus label names (dots replaced with
 
 #### Examples
 
+Query the current request rate per service:
+
 ```bash
-# Query the current request rate per service
-$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
+```
 
-# Query with a specific dataset
-$ dash0 metrics instant --promql 'sum(rate(http_server_request_duration_seconds_count[5m]))' --dataset production
+Query against a specific dataset:
 
-# Query at a specific time
-$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --from 2024-01-25T10:00:00Z
+```bash
+dash0 metrics instant --promql 'sum(rate(http_server_request_duration_seconds_count[5m]))' --dataset production
+```
 
-# Query with filters instead of PromQL
-$ dash0 metrics instant --filter 'service.name is my-service'
+Query at a specific evaluation time:
 
-# Output as CSV
-$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv
+```bash
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --from 2024-01-25T10:00:00Z
+```
 
-# Output as CSV without header
-$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --skip-header
+Query with filters instead of PromQL:
 
-# Select specific columns
-$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --column value --column service_name
+```bash
+dash0 metrics instant --filter 'service.name is my-service'
+```
 
-# Output as JSON
-$ dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o json
+Output as CSV:
+
+```bash
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv
+```
+
+Output as CSV without header:
+
+```bash
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --skip-header
+```
+
+Select specific columns:
+
+```bash
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' --column value --column service_name
+```
+
+Output as JSON:
+
+```bash
+dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o json
 ```
 
 ### Filter syntax
@@ -1025,6 +1357,11 @@ When the flag is omitted, the request leaves the sampling field unset and the se
 dash0 logs query --precision disabled --filter "test.id is <id>"
 ```
 
+```bash
+# Narrow lookup: always return every matching span
+dash0 spans query --precision disabled --filter "test.id is <id>"
+```
+
 `traces get` does not accept `--precision` — it always disables adaptive sampling so the complete trace, including any spans that would otherwise be sampled out, is returned.
 
 The flag is not available on `metrics instant`: the Prometheus-compatible API the command uses does not honor the sampling field.
@@ -1035,16 +1372,23 @@ The `--column` flag lets you choose which columns appear in `table` and `csv` ou
 It is repeatable: pass one `--column` per column.
 When used, the flag replaces the default column set entirely.
 
-```bash
-# Show only timestamp and body
-dash0 logs query --column time --column body
+Show only timestamp and body:
 
-# Include an arbitrary attribute column
+```bash
+dash0 logs query --column time --column body
+```
+
+Include an arbitrary attribute column:
+
+```bash
 dash0 spans query \
     --column timestamp --column duration \
     --column "span name" --column http.request.method
+```
 
-# Include an arbitrary attribute column by key
+Include an arbitrary attribute column by key:
+
+```bash
 dash0 logs query --column time --column service.name --column body
 ```
 
@@ -1089,6 +1433,14 @@ They share a common set of characteristics:
 - Repeatable attribute flags: `--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag.
 - OTLP scope flags: `--scope-name` (default: `dash0-cli`), `--scope-version` (default: CLI version).
 
+> [!IMPORTANT]
+> The Dash0 OTLP ingress does not accept OAuth access tokens — it only honors static `auth_*` tokens.
+> Send commands running against an OAuth-typed profile fail upfront with a clear error instead of producing a generic 401 from the server.
+> Workarounds, in order of least-invasive:
+> 1. Pass `--auth-token auth_<...>` for the single invocation.
+> 2. Set `DASH0_AUTH_TOKEN=auth_<...>` in the environment (shadows the profile for any one command).
+> 3. Convert the profile to a static token with `dash0 config profiles update <name> --oauth=false --auth-token auth_<...> --force`.
+
 ### `logs send`
 
 Send a log record to Dash0 via OTLP.
@@ -1119,21 +1471,26 @@ Key flags:
 | `--log-dropped-attributes-count <n>` | Number of dropped log record attributes |
 | `--scope-dropped-attributes-count <n>` | Number of dropped scope attributes |
 
-Examples:
+Simple log message:
 
 ```bash
-# Simple log message
 $ dash0 logs send "Application started"
 Log record sent
+```
 
-# Log with severity and attributes
+Log with severity and attributes:
+
+```bash
 $ dash0 logs send "Application started" \
     --resource-attribute service.name=my-service \
     --log-attribute user.id=12345 \
     --severity-text INFO --severity-number 9
 Log record sent
+```
 
-# Deployment event with event name
+Deployment event with event name:
+
+```bash
 $ dash0 logs send "Deployment completed" \
     --event-name dash0.deployment \
     --severity-number 9 \
@@ -1141,8 +1498,11 @@ $ dash0 logs send "Deployment completed" \
     --resource-attribute deployment.environment.name=production \
     --log-attribute deployment.status=succeeded
 Log record sent
+```
 
-# Using environment variables for connection
+Using environment variables for connection (env-var prefix counts as part of a single command per the [code block rules](documentation.md#code-blocks)):
+
+```bash
 $ DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com \
   DASH0_AUTH_TOKEN=auth_xxx \
   dash0 logs send "Health check passed" \
@@ -1178,26 +1538,34 @@ dash0 spans send --name <name> [flags]
 | `--scope-version` | CLI version | Instrumentation scope version |
 | `--scope-attribute` | | Instrumentation scope attribute as `key=value` (repeatable) |
 
-Examples:
+Send a simple span:
 
 ```bash
-# Send a simple span
 $ dash0 spans send --name "my-operation"
 Span sent (trace-id: 0af7651916cd43dd8448eb211c80319c, span-id: b7ad6b7169203331)
+```
 
-# Send a server span with duration
+Send a server span with duration:
+
+```bash
 $ dash0 spans send --name "GET /api/users" \
     --kind SERVER --status-code OK --duration 100ms \
     --resource-attribute service.name=my-service
 Span sent (trace-id: ..., span-id: ...)
+```
 
-# Send a span with a link to another trace
-$ dash0 spans send --name "process-message" \
+Send a span with a link to another trace:
+
+```bash
+dash0 spans send --name "process-message" \
     --kind CONSUMER \
     --span-link 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331
+```
 
-# Send a child span with explicit parent
-$ dash0 spans send --name "db-query" \
+Send a child span with explicit parent:
+
+```bash
+dash0 spans send --name "db-query" \
     --kind CLIENT \
     --trace-id 0af7651916cd43dd8448eb211c80319c \
     --parent-span-id b7ad6b7169203331
@@ -1547,17 +1915,22 @@ dash0 -X notification-channels create -f <file> [--dry-run]
 | `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
 | `--dry-run` | Validate without creating |
 
-Examples:
+Create from a YAML file:
 
 ```bash
-# Create from a YAML file
 $ dash0 -X notification-channels create -f channel.yaml
 Notification channel "Slack Alerts" created (id: abc-123).
+```
 
-# Create from stdin
-$ cat channel.yaml | dash0 -X notification-channels create -f -
+Create from stdin (the `cat | dash0 …` pipeline is a single command):
 
-# Validate without creating
+```bash
+cat channel.yaml | dash0 -X notification-channels create -f -
+```
+
+Validate without creating:
+
+```bash
 $ dash0 -X notification-channels create -f channel.yaml --dry-run
 Dry run: notification channel definition is valid
 ```
@@ -1573,14 +1946,16 @@ If the ID argument is omitted, the ID is extracted from the file content.
 dash0 -X notification-channels update [id] -f <file> [--dry-run]
 ```
 
-Examples:
+Update a notification channel from a file:
 
 ```bash
-# Update a notification channel from a file
-$ dash0 -X notification-channels update <id> -f channel.yaml
+dash0 -X notification-channels update <id> -f channel.yaml
+```
 
-# Update using the ID from the file
-$ dash0 -X notification-channels update -f channel.yaml
+Update using the ID embedded in the file content:
+
+```bash
+dash0 -X notification-channels update -f channel.yaml
 ```
 
 ### `notification-channels delete` (experimental)
@@ -1742,18 +2117,23 @@ When an email address is provided, it is resolved to a member ID via the members
 dash0 -X teams add-members <team-id> <member-id-or-email> [<member-id-or-email>...]
 ```
 
-Examples:
+Add members by ID:
 
 ```bash
-# Add members by ID
 $ dash0 -X teams add-members <team-id> <member-id-1> <member-id-2>
 2 members added to team "<team-id>"
+```
 
-# Add a member by email address
+Add a member by email address:
+
+```bash
 $ dash0 -X teams add-members <team-id> <email-address>
 1 member added to team "<team-id>"
+```
 
-# Mix of IDs and email addresses
+Mix of IDs and email addresses (a single invocation; each positional arg is one member):
+
+```bash
 $ dash0 -X teams add-members <team-id> <member-id> <email-address>
 2 members added to team "<team-id>"
 ```
@@ -1768,14 +2148,16 @@ Prompts for confirmation unless `--force` is passed.
 dash0 -X teams remove-members <team-id> <member-id-or-email> [<member-id-or-email>...] [--force]
 ```
 
-Examples:
+Remove a member by ID:
 
 ```bash
-# Remove a member by ID
 $ dash0 -X teams remove-members <team-id> <member-id> --force
 1 member removed from team "<team-id>"
+```
 
-# Remove a member by email address
+Remove a member by email address:
+
+```bash
 $ dash0 -X teams remove-members <team-id> <email-address> --force
 1 member removed from team "<team-id>"
 ```
@@ -1820,12 +2202,16 @@ dash0 -X members invite <email> [<email>...] [--role <role>]
 |------|---------|-------------|
 | `--role` | `basic_member` | Role to assign: `basic_member` or `admin` |
 
-Example:
+Invite a single user:
 
 ```bash
 $ dash0 -X members invite user@example.com
 Invitation sent to user@example.com
+```
 
+Invite multiple users in one call with an explicit role:
+
+```bash
 $ dash0 -X members invite user1@example.com user2@example.com --role admin
 Invitations sent to 2 email addresses
 ```
@@ -1842,14 +2228,16 @@ Prompts for confirmation unless `--force` is passed.
 dash0 -X members remove <member-id-or-email> [<member-id-or-email>...] [--force]
 ```
 
-Examples:
+Remove a member by ID:
 
 ```bash
-# Remove a member by ID
 $ dash0 -X members remove <member-id> --force
 Member "<member-id>" removed
+```
 
-# Remove a member by email address
+Remove a member by email address (resolved to an ID server-side):
+
+```bash
 $ dash0 -X members remove <email-address> --force
 Member "<member-id>" removed
 ```
@@ -1931,69 +2319,103 @@ Use `-v` to see the full request line, outbound headers, request body, response 
 
 #### Examples
 
+GET — dataset auto-injected from the active profile:
+
 ```bash
-# GET — dataset auto-injected from the active profile
-$ dash0 -X api /api/signal-to-metrics/configs
+dash0 -X api /api/signal-to-metrics/configs
+```
 
-# GET against an organization-level endpoint that does not take a dataset
-$ dash0 -X api /api/organization/settings --dataset ""
+GET against an organization-level endpoint that does not take a dataset:
 
-# GET with query parameters baked into the path
-$ dash0 -X api "/api/signal-to-metrics/configs?limit=50&enabled=true"
+```bash
+dash0 -X api /api/organization/settings --dataset ""
+```
 
-# POST with a payload from a file
-$ dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+GET with query parameters baked into the path:
 
-# POST with a payload from stdin and a custom header
-$ echo '{"name":"my-config","enabled":true}' \
+```bash
+dash0 -X api "/api/signal-to-metrics/configs?limit=50&enabled=true"
+```
+
+POST with a payload from a file:
+
+```bash
+dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+```
+
+POST with a payload from stdin and a custom header (the `echo | dash0 …` pipeline is a single command):
+
+```bash
+echo '{"name":"my-config","enabled":true}' \
   | dash0 -X api POST /api/signal-to-metrics/configs -f - -H 'X-Request-Id: abc123'
+```
 
-# DELETE with an explicit dataset override
-$ dash0 -X api delete /api/signal-to-metrics/configs/<id> --dataset production
+DELETE with an explicit dataset override:
 
-# Debug a failing request
-$ dash0 -X api POST /api/signal-to-metrics/configs -f config.json -v
+```bash
+dash0 -X api delete /api/signal-to-metrics/configs/<id> --dataset production
+```
+
+Debug a failing request:
+
+```bash
+dash0 -X api POST /api/signal-to-metrics/configs -f config.json -v
 ```
 
 ## Common workflows for AI agents
 
 ### Set up credentials from environment variables
 
-When environment variables are already set, no profile is needed:
+When environment variables are already set, no profile is needed.
+Export the four connection variables once in your shell:
 
 ```bash
-export DASH0_API_URL=https://api.us-west-2.aws.dash0.com
-export DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com
-export DASH0_AUTH_TOKEN=auth_xxx
-export DASH0_DATASET=default
+export DASH0_API_URL=https://api.us-west-2.aws.dash0.com DASH0_OTLP_URL=https://ingress.us-west-2.aws.dash0.com DASH0_AUTH_TOKEN=auth_xxx DASH0_DATASET=default
+```
 
-# All commands now work without --api-url/--auth-token flags
+Then any subsequent command picks them up without `--api-url`/`--auth-token` flags, for example:
+
+```bash
 dash0 dashboards list
+```
+
+```bash
 dash0 logs query --from now-1h
 ```
 
 ### Export an asset, modify it, and re-apply
 
+Export the asset to YAML:
+
 ```bash
-# Export to YAML
 dash0 dashboards get <id> -o yaml > dashboard.yaml
+```
 
-# Edit the file, then update (ID is read from the file)
+Edit the file, then update — the ID is read from the file content so no positional arg is needed:
+
+```bash
 dash0 dashboards update -f dashboard.yaml
+```
 
-# Or use apply (auto-detects create vs update)
+Alternatively, use `apply`, which auto-detects create vs update from the asset's ID:
+
+```bash
 dash0 apply -f dashboard.yaml
 ```
 
 ### Bulk export all assets of one type
 
-The YAML output contains full asset definitions as a multi-document stream, ready to be re-applied:
+The YAML output contains full asset definitions as a multi-document stream, ready to be re-applied.
+
+Export all dashboards to a file:
 
 ```bash
-# Export all dashboards
 dash0 dashboards list -o yaml > all-dashboards.yaml
+```
 
-# Re-apply them later
+Re-apply them later (the same file can be replayed across environments):
+
+```bash
 dash0 apply -f all-dashboards.yaml
 ```
 

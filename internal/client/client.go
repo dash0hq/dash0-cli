@@ -10,6 +10,8 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-api-client-go/profiles"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/version"
 )
 
@@ -26,8 +28,9 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		// Fallback to ResolveConfiguration if not in context
 		resolved, err := profiles.ResolveConfiguration(apiUrl, authToken)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve configuration: %w", err)
+			return nil, translateConfigError(ctx, err)
 		}
+		cfg = resolved
 		apiUrl = resolved.ApiUrl
 		authToken = resolved.AuthToken
 	} else {
@@ -38,6 +41,10 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		if authToken == "" {
 			authToken = cfg.AuthToken
 		}
+	}
+
+	if err := checkOAuthEmpty(ctx, cfg, authToken); err != nil {
+		return nil, err
 	}
 
 	maxRetries, err := resolveMaxRetries(ctx)
@@ -75,6 +82,13 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 	}
 	if authToken != "" {
 		finalAuthToken = authToken
+	}
+
+	if err := checkOAuthEmpty(ctx, cfg, finalAuthToken); err != nil {
+		return nil, err
+	}
+	if err := checkOAuthOnOtlp(ctx, cfg, finalAuthToken); err != nil {
+		return nil, err
 	}
 
 	if finalOtlpUrl == "" {
@@ -143,6 +157,155 @@ func validateMaxRetries(n int, source string) (int, error) {
 		return 0, fmt.Errorf("invalid %s value %q: must not exceed %d", source, strconv.Itoa(n), dash0api.MaxRetries)
 	}
 	return n, nil
+}
+
+// translateConfigError rewrites a profile-resolution error so that OAuth
+// refresh failures point users at the right next step instead of leaking
+// a wrapped SDK error. In agent mode the next step is NOT `dash0 login`
+// (login refuses to run without a TTY) — agents are routed to the
+// DASH0_AUTH_TOKEN / `--oauth=false` escape hatches mirroring
+// checkOAuthEmpty.
+func translateConfigError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if dash0api.IsOAuthTokenError(err) {
+		selector := config.ProfileSelectorFromContext(ctx)
+		displayName := selector.Name
+		if agentmode.Enabled {
+			return fmt.Errorf(
+				"your Dash0 session has expired or was revoked, and `dash0 login` cannot run in agent mode.\nHint: Set DASH0_AUTH_TOKEN to a static `auth_*` token, or convert %s to a static profile with `dash0 config profiles update %s --oauth=false --auth-token auth_<...> --force`.",
+				config.ProfileDisplayName(displayName),
+				profileNameForUpdate(ctx, displayName),
+			)
+		}
+		return fmt.Errorf("your Dash0 session has expired or was revoked.\nHint: Run `dash0 login%s` to re-authenticate.", config.ProfileFlagFragment(displayName))
+	}
+	return fmt.Errorf("failed to resolve configuration: %w", err)
+}
+
+// profileNameForUpdate returns the bare profile name to splice into a
+// `dash0 config profiles update <name>` hint. Used in agent-mode error
+// hints where the update subcommand requires the name as a positional
+// argument (the `--profile` flag selects which profile reads run against,
+// not which profile is the subject of the update). Falls back to looking
+// up the active profile when displayName is empty (i.e. no --profile was
+// passed) so the hint is always copy-pasteable.
+func profileNameForUpdate(_ context.Context, displayName string) string {
+	if displayName != "" {
+		return displayName
+	}
+	store, err := profiles.NewStore()
+	if err != nil {
+		return "<active-profile>"
+	}
+	active, err := store.GetActiveProfile()
+	if err != nil || active == nil {
+		return "<active-profile>"
+	}
+	return active.Name
+}
+
+// checkOAuthEmpty surfaces a friendly "not authenticated" error when the
+// resolved profile is OAuth-typed but has no refresh token (i.e. nobody
+// has run `dash0 login` against it yet, or the user has just logged out).
+// It returns nil when the profile is fine or when an env-var auth token is
+// shadowing the OAuth state.
+func checkOAuthEmpty(ctx context.Context, cfg *profiles.Configuration, resolvedAuthToken string) error {
+	if cfg == nil || cfg.OAuth == nil {
+		return nil
+	}
+	if cfg.OAuth.RefreshToken != "" {
+		return nil
+	}
+	// If the user has shadowed the OAuth profile with an explicit
+	// DASH0_AUTH_TOKEN (or a static token via a flag), let them through —
+	// the static path takes precedence.
+	if os.Getenv(profiles.EnvAuthToken) != "" {
+		return nil
+	}
+	if resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken {
+		// resolvedAuthToken came from a flag override; trust it.
+		return nil
+	}
+
+	selector := config.ProfileSelectorFromContext(ctx)
+	// When the user passed --profile, refer to the profile by name; otherwise
+	// say "the active profile". The hint mirrors that — `dash0 login` when
+	// implicitly active, `dash0 login --profile X` when explicit.
+	displayName := selector.Name
+
+	// `dash0 login` refuses to run in agent mode (no browser handoff), so
+	// pointing an agent at it is a dead end. Route agents to the escape
+	// hatches documented in docs/commands.md — DASH0_AUTH_TOKEN, or
+	// `profiles update <name> --oauth=false --auth-token … --force`.
+	// `profiles update` takes the profile name as a POSITIONAL arg, not
+	// via `--profile`, so splice the bare name (resolved when implicit).
+	if agentmode.Enabled {
+		return fmt.Errorf(
+			"%s is OAuth-typed but not authenticated, and `dash0 login` cannot run in agent mode.\nHint: Set DASH0_AUTH_TOKEN to a static `auth_*` token, or convert the profile with `dash0 config profiles update %s --oauth=false --auth-token auth_<...> --force`.",
+			config.ProfileDisplayName(displayName),
+			profileNameForUpdate(ctx, displayName),
+		)
+	}
+	return fmt.Errorf(
+		"%s is OAuth-typed but not authenticated.\nHint: Run `dash0 login%s` to log in.",
+		config.ProfileDisplayName(displayName),
+		config.ProfileFlagFragment(displayName),
+	)
+}
+
+// checkOAuthOnOtlp refuses to construct an OTLP client whose auth token
+// would be an OAuth-issued access token. The Dash0 OTLP ingress does not
+// (yet) accept OAuth access tokens — it only honors static `auth_*`
+// tokens — so a `dash0 logs send` or `dash0 spans send` driven from an
+// OAuth profile would otherwise emit a noisy 401 from the server with no
+// hint at the actual root cause. Fail upfront with a copy-pasteable
+// recovery path instead.
+//
+// Mirrors checkOAuthEmpty's escape-hatch rules: an explicit
+// DASH0_AUTH_TOKEN env var or a per-command --auth-token flag override
+// shadows the OAuth state and is trusted as-is. That keeps the
+// "set DASH0_AUTH_TOKEN to a static auth_* token" workaround working
+// without forcing the user to convert the whole profile.
+func checkOAuthOnOtlp(ctx context.Context, cfg *profiles.Configuration, resolvedAuthToken string) error {
+	if cfg == nil || cfg.OAuth == nil {
+		return nil // not an OAuth profile
+	}
+	// Env-var override: trust the static token shadow.
+	if os.Getenv(profiles.EnvAuthToken) != "" {
+		return nil
+	}
+	// Flag override: the resolved token differs from what the profile
+	// would have supplied, so the user passed --auth-token explicitly.
+	if resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken {
+		return nil
+	}
+
+	selector := config.ProfileSelectorFromContext(ctx)
+	displayName := selector.Name
+
+	// OTLP-bound commands are routinely run from CI / agent contexts, so
+	// surface the static-token fallback (env var or `--auth-token`)
+	// front-and-center in both modes; the agent-mode branch additionally
+	// names the per-profile conversion command since `dash0 login` is
+	// off-limits there.
+	if agentmode.Enabled {
+		return fmt.Errorf(
+			"OTLP ingestion does not accept OAuth access tokens; %s is OAuth-typed.\n"+
+				"Hint: Set DASH0_AUTH_TOKEN to a static `auth_*` token for this invocation, "+
+				"or convert the profile with `dash0 config profiles update %s --oauth=false --auth-token auth_<...> --force`.",
+			config.ProfileDisplayName(displayName),
+			profileNameForUpdate(ctx, displayName),
+		)
+	}
+	return fmt.Errorf(
+		"OTLP ingestion does not accept OAuth access tokens; %s is OAuth-typed.\n"+
+			"Hint: Pass `--auth-token auth_<...>` for this invocation, set DASH0_AUTH_TOKEN, "+
+			"or convert the profile with `dash0 config profiles update %s --oauth=false --auth-token auth_<...> --force`.",
+		config.ProfileDisplayName(displayName),
+		profileNameForUpdate(ctx, displayName),
+	)
 }
 
 type maxRetriesCmdKey struct{}
