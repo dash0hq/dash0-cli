@@ -3,7 +3,8 @@ module github.com/dash0hq/dash0-cli
 go 1.25.1
 
 require (
-	github.com/dash0hq/dash0-api-client-go v1.14.0
+	github.com/cli/browser v1.3.0
+	github.com/dash0hq/dash0-api-client-go v1.15.0
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
@@ -41,6 +42,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect

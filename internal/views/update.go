@@ -76,6 +76,14 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	// Strip server-managed labels before sending the body back. An exported
+	// view (e.g. via `dash0 views get -o yaml`) carries dash0.com/origin,
+	// which the server then compares against the URL-path origin and rejects
+	// with a "view origin does not match" 400. The apply code path
+	// (asset.ImportView) does the same strip; without it, `apply -f`
+	// and `update -f` diverge on the same exported file.
+	dash0api.StripViewServerFields(&view)
+
 	if flags.DryRun {
 		return asset.PrintDiff(os.Stdout, "View", view.Metadata.Name, before, &view)
 	}

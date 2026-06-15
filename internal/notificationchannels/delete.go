@@ -49,6 +49,7 @@ func runDelete(cmd *cobra.Command, originOrID string, flags *deleteFlags) error 
 	ctx := cmd.Context()
 
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
+		ctx,
 		fmt.Sprintf("Are you sure you want to delete notification channel %q? [y/N]: ", originOrID),
 		flags.Force,
 	)

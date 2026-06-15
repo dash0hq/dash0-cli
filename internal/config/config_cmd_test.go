@@ -436,7 +436,7 @@ func TestCreateProfileCmdPartialFields(t *testing.T) {
 				t.Fatalf("Unexpected error: %v", err)
 			}
 
-			if !bytes.Contains([]byte(output), []byte("Profile 'test-profile' added")) {
+			if !bytes.Contains([]byte(output), []byte(`Profile "test-profile" added`)) {
 				t.Errorf("Expected success message, got: %s", output)
 			}
 
@@ -649,7 +649,7 @@ func TestCreateProfileCmd(t *testing.T) {
 	}
 
 	// Verify output contains success message
-	if !bytes.Contains([]byte(output), []byte("Profile 'new-profile' added")) {
+	if !bytes.Contains([]byte(output), []byte(`Profile "new-profile" added`)) {
 		t.Errorf("Expected output to contain success message, got: %s", output)
 	}
 
@@ -1072,5 +1072,145 @@ func TestShowCmdNoSelectorNoAnnotation(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("Profile:    dev\n")) {
 		t.Errorf("Expected unannotated Profile: dev line, got:\n%s", output)
+	}
+}
+
+// TestCreateProfileCmdOAuth verifies that --oauth creates an OAuth-empty
+// profile with no AuthToken and a non-nil OAuth block.
+func TestCreateProfileCmdOAuth(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	out, err := executeCommand(rootCmd, "config", "profiles", "create", "oauth-prof",
+		"--oauth", "--api-url", "https://api.example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !bytes.Contains([]byte(out), []byte("(OAuth)")) {
+		t.Errorf("expected output to mention OAuth, got: %s", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("dash0 login")) {
+		t.Errorf("expected output to include the login hint, got: %s", out)
+	}
+
+	store, _ := profiles.NewStore()
+	all, _ := store.GetProfiles()
+	if len(all) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(all))
+	}
+	p := all[0]
+	if p.Configuration.AuthToken != "" {
+		t.Errorf("expected empty AuthToken, got %q", p.Configuration.AuthToken)
+	}
+	if p.Configuration.OAuth == nil {
+		t.Fatalf("expected non-nil OAuth block")
+	}
+	if p.Configuration.OAuth.RefreshToken != "" {
+		t.Errorf("expected empty RefreshToken on a fresh OAuth-empty profile")
+	}
+}
+
+// TestCreateProfileCmdOAuthRejectsAuthToken verifies the mutual-exclusion.
+func TestCreateProfileCmdOAuthRejectsAuthToken(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	_, err := executeCommand(rootCmd, "config", "profiles", "create", "x",
+		"--oauth", "--api-url", "https://api.example.com",
+		"--auth-token", "auth_xxxxx")
+	if err == nil {
+		t.Fatalf("expected error for --oauth + --auth-token combo")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("mutually exclusive")) {
+		t.Errorf("expected mutual-exclusion error, got: %v", err)
+	}
+}
+
+// TestCreateProfileCmdOAuthRequiresApiUrl verifies --oauth needs --api-url.
+func TestCreateProfileCmdOAuthRequiresApiUrl(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	_, err := executeCommand(rootCmd, "config", "profiles", "create", "x", "--oauth")
+	if err == nil {
+		t.Fatalf("expected error when --oauth is set without --api-url")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("--api-url")) {
+		t.Errorf("expected --api-url mention in error, got: %v", err)
+	}
+}
+
+// TestUpdateProfileCmdOAuthOnStaticDiscardsTokenWithForce verifies the
+// Static → OAuth-empty transition works with --force (no prompt).
+func TestUpdateProfileCmdOAuthOnStaticDiscardsTokenWithForce(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	store, _ := profiles.NewStore()
+	if err := store.AddProfile(profiles.Profile{
+		Name: "stat",
+		Configuration: profiles.Configuration{
+			ApiUrl:    "https://api.example.com",
+			AuthToken: "auth_old_xxxxxxxxxxx",
+		},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	if _, err := executeCommand(rootCmd, "config", "profiles", "update", "stat",
+		"--oauth", "--force"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	all, _ := store.GetProfiles()
+	if len(all) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(all))
+	}
+	if all[0].Configuration.AuthToken != "" {
+		t.Errorf("expected AuthToken cleared, got %q", all[0].Configuration.AuthToken)
+	}
+	if all[0].Configuration.OAuth == nil {
+		t.Errorf("expected non-nil OAuth block after conversion")
+	}
+}
+
+// TestUpdateProfileCmdAuthTokenOnOAuthActiveErrors verifies we refuse
+// `--auth-token` on an OAuth-active profile unless `--oauth=false` is set.
+func TestUpdateProfileCmdAuthTokenOnOAuthActiveErrors(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	store, _ := profiles.NewStore()
+	if err := store.AddProfile(profiles.Profile{
+		Name: "oauth-active",
+		Configuration: profiles.Configuration{
+			ApiUrl:    "https://api.example.com",
+			AuthToken: "dash0_at_xxxxxxxxxxxx",
+			OAuth: &profiles.OAuthState{
+				ClientID:     "cli",
+				RefreshToken: "dash0_rt_yyy",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	_, err := executeCommand(rootCmd, "config", "profiles", "update", "oauth-active",
+		"--auth-token", "auth_xxxxxx")
+	if err == nil {
+		t.Fatalf("expected error setting --auth-token on OAuth-active")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("--oauth=false")) {
+		t.Errorf("expected error to suggest --oauth=false, got: %v", err)
 	}
 }

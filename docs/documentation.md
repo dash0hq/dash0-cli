@@ -46,6 +46,11 @@ Seaction headers should be written in sentence case, e.g., "This is an example".
 ### Code Blocks
 - Fence with triple backticks and a language identifier (e.g., ` ```yaml `).
 - Use code blocks to provide illustrative examples.
+- **One independent command per code block.**
+  Do not stack unrelated commands inside the same ` ```bash ` block.
+  A reader's "copy" action should never grab more than one thing they intended to run.
+  Exceptions: a multi-line invocation continued with `\`, a `key=value` env-var prefix followed by the command (`DASH0_AGENT_MODE=0 dash0 foo`), or a pipeline (`dash0 foo | jq …`) — those are a *single* command.
+  Workflows that genuinely involve several steps should use one code block per step, with prose between them describing what the previous step accomplished and what the next one does.
 
 ### Punctuation and Typography
 - End sentences with full stops.

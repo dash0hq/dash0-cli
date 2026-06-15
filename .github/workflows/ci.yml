@@ -75,6 +75,24 @@ jobs:
           echo "tests=$tests" >> "$GITHUB_OUTPUT"
 
   roundtrip:
+    # Runs each roundtrip test against the Dash0 dev environment under two auth
+    # modes:
+    #   - token_kind: static  → DASH0_AUTH_TOKEN secret (legacy long-lived `auth_*`).
+    #   - token_kind: oauth   → a profile file written to ~/.dash0 that holds an
+    #                           OAuth client_id + refresh token; the CLI's
+    #                           auto-refresh exchanges the refresh token for a
+    #                           fresh `dash0_at_*` access token on first use.
+    #
+    # The OAuth matrix is the catch for issues that are only surfaced by
+    # OAuth-issued tokens (e.g. the server-side scope gaps tracked in
+    # docs/issues/oauth-access-token-scope-gap.md). OAuth runs are gated on the
+    # DASH0_OAUTH_REFRESH_TOKEN secret being set — until it is, those jobs
+    # short-circuit with a clear skip message, leaving the matrix structure in
+    # place so the dimension exists the day the secret is provisioned.
+    #
+    # OTLP-bound tests (logs/spans send) are excluded from the OAuth matrix
+    # because the CLI refuses OTLP sends on OAuth profiles upfront — see
+    # `checkOAuthOnOtlp` in internal/client/client.go.
     runs-on: ubuntu-latest
     needs: [build, discover-roundtrip-tests]
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
@@ -82,6 +100,7 @@ jobs:
       fail-fast: false
       matrix:
         test: ${{ fromJson(needs.discover-roundtrip-tests.outputs.tests) }}
+        token_kind: [static, oauth]
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -95,10 +114,93 @@ jobs:
       - name: Make CLI binary executable
         run: chmod +x build/dash0
 
-      - name: Run ${{ matrix.test }}
+      - name: Skip OTLP-only tests under OAuth
+        # `logs send` / `spans send` go through the OTLP ingress, which the
+        # Dash0 backend currently does not accept OAuth-issued access tokens
+        # for. The CLI refuses these upfront with a clear error; running them
+        # in the OAuth matrix would surface that pre-flight refusal rather
+        # than testing anything new.
+        if: matrix.token_kind == 'oauth' && (matrix.test == 'test_log_roundtrip' || matrix.test == 'test_span_roundtrip')
+        run: |
+          echo "Skipped: ${{ matrix.test }} sends telemetry via OTLP, which OAuth tokens cannot use."
+          echo "skip=true" >> "$GITHUB_ENV"
+
+      - name: Guard OAuth runs on secret availability
+        # The OAuth matrix is meaningful only once a refresh-token secret is
+        # provisioned. Until then, treat each OAuth-mode test as a no-op so
+        # the workflow file already has the dimension wired in for the day
+        # the secret lands. Skip is honored as PASS here.
+        if: matrix.token_kind == 'oauth' && env.skip != 'true'
+        env:
+          DASH0_OAUTH_REFRESH_TOKEN: ${{ secrets.DASH0_OAUTH_REFRESH_TOKEN }}
+        run: |
+          if [ -z "${DASH0_OAUTH_REFRESH_TOKEN}" ]; then
+            echo "Skipped: DASH0_OAUTH_REFRESH_TOKEN secret is not set. Provision it on the dash0-dev tenant and unset this skip."
+            echo "skip=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up OAuth profile from secrets
+        # Writes a profile JSON file under DASH0_CONFIG_DIR (ephemeral, run-
+        # scoped) so the CLI sees an OAuth-typed active profile. The
+        # api-client-go's auto-refresh issues a fresh access token using the
+        # refresh token on the first API call, so the static `access_token`
+        # placeholder below is intentionally a no-op past tense.
+        #
+        # The matrix uses dash0-dev for both static and OAuth so any
+        # OAuth-only failures can be diffed against the static baseline on
+        # the same Dash0 organization.
+        if: matrix.token_kind == 'oauth' && env.skip != 'true'
+        env:
+          API_URL: ${{ secrets.DASH0_API_URL }}
+          OTLP_URL: ${{ secrets.DASH0_OTLP_URL }}
+          DATASET: ${{ secrets.DASH0_DATASET }}
+          OAUTH_CLIENT_ID: ${{ secrets.DASH0_OAUTH_CLIENT_ID }}
+          OAUTH_REFRESH_TOKEN: ${{ secrets.DASH0_OAUTH_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.dash0-oauth"
+          cat > "${HOME}/.dash0-oauth/profiles.json" <<JSON
+          {
+            "profiles": [
+              {
+                "name": "ci-oauth",
+                "configuration": {
+                  "apiUrl": "${API_URL}",
+                  "otlpUrl": "${OTLP_URL}",
+                  "dataset": "${DATASET}",
+                  "authToken": "",
+                  "oauth": {
+                    "clientId": "${OAUTH_CLIENT_ID}",
+                    "refreshToken": "${OAUTH_REFRESH_TOKEN}",
+                    "expiresAt": "2000-01-01T00:00:00Z"
+                  }
+                }
+              }
+            ]
+          }
+          JSON
+          printf 'ci-oauth' > "${HOME}/.dash0-oauth/activeProfile"
+          chmod 700 "${HOME}/.dash0-oauth"
+          chmod 600 "${HOME}/.dash0-oauth/profiles.json"
+          echo "DASH0_CONFIG_DIR=${HOME}/.dash0-oauth" >> "$GITHUB_ENV"
+          # Verify the profile is wired correctly and the refresh token works.
+          ./build/dash0 config show
+
+      - name: Run ${{ matrix.test }} (static token)
+        if: matrix.token_kind == 'static' && env.skip != 'true'
         env:
           DASH0_API_URL: ${{ secrets.DASH0_API_URL }}
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
           DASH0_OTLP_URL: ${{ secrets.DASH0_OTLP_URL }}
           DASH0_DATASET: ${{ secrets.DASH0_DATASET }}
+        run: bash test/roundtrip/${{ matrix.test }}.sh
+
+      - name: Run ${{ matrix.test }} (OAuth token)
+        # `continue-on-error: true` lets the OAuth matrix run informationally
+        # while the backend extends OAuth scopes to parity with static
+        # tokens. Flip this to `false` once
+        # docs/issues/oauth-access-token-scope-gap.md is resolved server-
+        # side; that will make OAuth roundtrip regressions block merges.
+        if: matrix.token_kind == 'oauth' && env.skip != 'true'
+        continue-on-error: true
         run: bash test/roundtrip/${{ matrix.test }}.sh
