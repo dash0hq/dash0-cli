@@ -308,10 +308,12 @@ dash0 logs query --filter "otel.log.severity.range is_one_of ERROR WARN"
 dash0 logs query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 dash0 logs query -o csv
 dash0 logs query --column time --column service.name --column body
+dash0 logs query --precision disabled --filter "test.id is <id>"
 ```
 
 The `--filter` flag also accepts JSON filter criteria copied from the Dash0 UI.
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
+Pass `--precision disabled` to turn off [adaptive sampling](docs/commands.md#precision-mode-adaptive-sampling) when a narrow filter must always return every match.
 
 ### Tracing
 
@@ -339,9 +341,11 @@ dash0 spans query --filter "otel.span.status.code is ERROR"
 dash0 spans query --filter '[{"key":"service.name","operator":"is","value":"api"}]'
 dash0 spans query -o csv
 dash0 spans query --column otel.span.start_time --column otel.span.duration --column "span name" --column http.request.method
+dash0 spans query --precision disabled --filter "test.id is <id>"
 ```
 
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
+Pass `--precision disabled` to turn off [adaptive sampling](docs/commands.md#precision-mode-adaptive-sampling) for narrow lookups that must always return every match.
 
 #### Getting a trace from Dash0
 
@@ -355,6 +359,8 @@ dash0 traces get <trace-id> --follow-span-links
 dash0 traces get <trace-id> -o json
 dash0 traces get <trace-id> --column otel.span.start_time --column otel.span.duration --column "span name" --column otel.span.status.code
 ```
+
+`dash0 traces get` always disables [adaptive sampling](docs/commands.md#precision-mode-adaptive-sampling) so every span in the trace is returned.
 
 ### Metrics
 

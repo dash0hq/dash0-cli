@@ -695,6 +695,7 @@ They share a common set of characteristics:
 - Column flag: `--column` for customizing table/CSV output (see [custom columns](#custom-columns)).
 - Pagination: `--limit`.
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
+- Sampling flag: `--precision` to disable [adaptive sampling](#precision-mode-adaptive-sampling) on `logs query` and `spans query` (`traces get` always disables it).
 ### `logs query`
 
 Query log records from Dash0.
@@ -713,6 +714,7 @@ dash0 logs query [flags]
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 | `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
+| `--precision` | | Sampling mode for the query: `adaptive` (server default) or `disabled` (return every match). See [Precision Mode](#precision-mode-adaptive-sampling) |
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
@@ -756,6 +758,9 @@ otel.log.time,otel.log.severity.range,otel.log.body
 
 # CSV without header
 $ dash0 logs query -o csv --skip-header
+
+# Disable adaptive sampling so a narrow filter always returns every match
+$ dash0 logs query --precision disabled --filter "test.id is <id>"
 ```
 
 ### `spans query`
@@ -776,6 +781,7 @@ dash0 spans query [flags]
 | `-o` | `table` | Output format: `table`, `json` (OTLP/JSON), or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
 | `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
+| `--precision` | | Sampling mode for the request: `adaptive` (server default) or `disabled` (return every matching span). See [Precision Mode](#precision-mode-adaptive-sampling) |
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
@@ -819,6 +825,9 @@ Common span attribute keys: `service.name`, `otel.span.status.code`, `otel.trace
 
 Retrieve all spans belonging to a trace from Dash0.
 Requires `api-url` and `auth-token`.
+
+`traces get` always disables [adaptive sampling](#precision-mode-adaptive-sampling) so every span in the trace is returned.
+The command does not accept the `--precision` flag.
 
 ```bash
 dash0 traces get <trace-id> [flags]
@@ -992,6 +1001,33 @@ Values containing spaces can be single-quoted: `deployment.environment.name is_o
 
 Common log attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.severity.range`, `otel.log.severity.text`, `otel.log.body`.
 Valid values for `otel.log.severity.range`: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `UNKNOWN`.
+
+### Precision mode (adaptive sampling)
+
+By default the Dash0 API applies [adaptive sampling](https://dash0.com/docs/dash0/miscellaneous/glossary/adaptive-sampling) to log and span queries.
+The sampler intelligently samples telemetry data during query execution to keep queries fast on large datasets, while returning statistically representative results.
+All telemetry data is stored and available; adaptive sampling only affects how queries are executed, not what data is kept.
+
+The representative-but-incomplete trade-off is fine for exploration, but for narrow lookups that expect every match — scripted lookups by trace ID, request ID, or any other near-unique attribute — a single matching log or span can be omitted from the response.
+
+Pass `--precision disabled` to `logs query` or `spans query` to switch the request to **Precision mode**, the API equivalent of the [Precision toggle](https://dash0.com/docs/dash0/miscellaneous/glossary/adaptive-sampling) in the Dash0 UI.
+Precision mode keeps queries deterministic at the cost of higher latency on large windows.
+
+The flag accepts either value of the API's sampling mode:
+
+- `--precision disabled` — disable adaptive sampling and return every match.
+- `--precision adaptive` — explicit form of the default; useful when overriding a profile or environment-set default in scripts.
+
+When the flag is omitted, the request leaves the sampling field unset and the server applies its default (currently `adaptive`).
+
+```bash
+# Narrow lookup: always return every matching log
+dash0 logs query --precision disabled --filter "test.id is <id>"
+```
+
+`traces get` does not accept `--precision` — it always disables adaptive sampling so the complete trace, including any spans that would otherwise be sampled out, is returned.
+
+The flag is not available on `metrics instant`: the Prometheus-compatible API the command uses does not honor the sampling field.
 
 ### Custom columns
 

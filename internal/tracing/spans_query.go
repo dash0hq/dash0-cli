@@ -30,6 +30,7 @@ type queryFlags struct {
 	Limit      int
 	SkipHeader bool
 	Column     []string
+	Precision  string
 }
 
 // queryFormat represents the output format for span queries.
@@ -115,6 +116,9 @@ func newQueryCmd() *cobra.Command {
   # Output as JSON (OTLP/JSON format)
   dash0 spans query -o json --limit 10
 
+  # Disable adaptive sampling so a narrow filter always returns every match
+  dash0 spans query --filter "test.id is <id>" --precision disabled
+
   # Show only specific columns
   dash0 spans query \
       --column timestamp --column duration \
@@ -172,6 +176,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().IntVar(&flags.Limit, "limit", 50, "Maximum number of spans to return")
 	cmd.Flags().BoolVar(&flags.SkipHeader, "skip-header", false, "Omit the header row from table and CSV output")
 	cmd.Flags().StringArrayVar(&flags.Column, "column", nil, "Column to display (alias or attribute key; repeatable; table and CSV only)")
+	cmd.Flags().StringVar(&flags.Precision, "precision", "", query.PrecisionFlagDescription)
 
 	return cmd
 }
@@ -222,16 +227,22 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 		pageSize = totalLimit
 	}
 
+	timeRange := dash0api.TimeReferenceRange{
+		From: query.NormalizeTimestamp(flags.From),
+		To:   query.NormalizeTimestamp(flags.To),
+	}
+	sampling, err := query.ParsePrecision(flags.Precision, timeRange)
+	if err != nil {
+		return err
+	}
 	request := dash0api.GetSpansRequest{
-		TimeRange: dash0api.TimeReferenceRange{
-			From: query.NormalizeTimestamp(flags.From),
-			To:   query.NormalizeTimestamp(flags.To),
-		},
-		Dataset: dataset,
-		Filter:  filters,
+		TimeRange: timeRange,
+		Dataset:   dataset,
+		Filter:    filters,
 		Pagination: &dash0api.CursorPagination{
 			Limit: dash0api.Int64(pageSize),
 		},
+		Sampling: sampling,
 	}
 
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)

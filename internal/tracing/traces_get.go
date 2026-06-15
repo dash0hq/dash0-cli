@@ -206,7 +206,12 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 		To:   query.NormalizeTimestamp(flags.To),
 	}
 
-	allResourceSpans, err := fetchTraceSpans(ctx, apiClient, traceID, timeRange, dataset)
+	sampling := &dash0api.Sampling{
+		Mode:      dash0api.SamplingModeDisabled,
+		TimeRange: timeRange,
+	}
+
+	allResourceSpans, err := fetchTraceSpans(ctx, apiClient, traceID, timeRange, dataset, sampling)
 	if err != nil {
 		return err
 	}
@@ -223,6 +228,10 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 			From: "now-" + followRange,
 			To:   "now",
 		}
+		followSampling := &dash0api.Sampling{
+			Mode:      dash0api.SamplingModeDisabled,
+			TimeRange: followTimeRange,
+		}
 
 		seen := map[string]bool{traceID: true}
 		queue := extractLinkedTraceIDs(allResourceSpans, seen)
@@ -231,7 +240,7 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 			nextTraceID := queue[0]
 			queue = queue[1:]
 
-			linkedSpans, err := fetchTraceSpans(ctx, apiClient, nextTraceID, followTimeRange, dataset)
+			linkedSpans, err := fetchTraceSpans(ctx, apiClient, nextTraceID, followTimeRange, dataset, followSampling)
 			if err != nil {
 				return fmt.Errorf("failed to fetch linked trace %s: %w", nextTraceID, err)
 			}
@@ -268,7 +277,7 @@ func resolveTraceColumns(columns []string) ([]query.ColumnDef, error) {
 	return query.ResolveColumns(specs, traceKnownColumns), nil
 }
 
-func fetchTraceSpans(ctx context.Context, apiClient dash0api.Client, traceID string, timeRange dash0api.TimeReferenceRange, dataset *string) ([]dash0api.ResourceSpans, error) {
+func fetchTraceSpans(ctx context.Context, apiClient dash0api.Client, traceID string, timeRange dash0api.TimeReferenceRange, dataset *string, sampling *dash0api.Sampling) ([]dash0api.ResourceSpans, error) {
 	filter := dash0api.FilterCriteria{
 		{
 			Key:      "otel.trace.id",
@@ -286,6 +295,7 @@ func fetchTraceSpans(ctx context.Context, apiClient dash0api.Client, traceID str
 		Dataset:    dataset,
 		Filter:     &filter,
 		Pagination: &dash0api.CursorPagination{Limit: dash0api.Int64(100)},
+		Sampling:   sampling,
 	}
 
 	iter := apiClient.GetSpansIter(ctx, &request)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -148,6 +149,32 @@ func TestGetTrace_EmptyResult(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "No spans found for this trace.")
+}
+
+func TestGetTrace_AlwaysSendsPrecisionDisabled(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTracesCmd()
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
+		"--api-url", server.URL, "--auth-token", testTracesAuthToken})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	last := server.LastRequest()
+	require.NotNil(t, last)
+
+	var req dash0api.GetSpansRequest
+	require.NoError(t, json.Unmarshal(last.Body, &req))
+	require.NotNil(t, req.Sampling, "traces get must always set the sampling field")
+	assert.Equal(t, dash0api.SamplingModeDisabled, req.Sampling.Mode)
 }
 
 func TestGetTrace_BackwardCompatWithExperimentalFlag(t *testing.T) {
