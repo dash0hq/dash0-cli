@@ -6,6 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.14.0
+
+
+### New Components
+
+
+- `auth`: Add `dash0 login` and `dash0 logout` for browser-based OAuth 2.0 + PKCE authentication (#27)
+  Profiles now have an explicit auth mode: static (long-lived `auth_*` token) or OAuth (browser flow).
+  Mark a new profile as OAuth at creation time with `dash0 config profiles create <name> --oauth --api-url <url>`,
+  then run `dash0 login` to obtain access and refresh tokens.
+  Access tokens are refreshed transparently before they expire; `dash0 logout` revokes them best-effort
+  and clears the tokens from the profile while keeping the profile shell for re-login.
+  Switch a profile between static and OAuth at any time with `dash0 config profiles update <name> --oauth[=true|=false]`
+  (the transition is destructive and prompts for confirmation unless `--force` is passed).
+  `dash0 config profiles list` gains an `AUTH` column showing the auth mode and remaining token lifetime,
+  and `dash0 config show` annotates the `Auth Token:` line with OAuth state.
+  `dash0 login` requires an interactive terminal — agent mode and non-TTY environments still use static tokens
+  via `DASH0_AUTH_TOKEN` or `dash0 config profiles create --auth-token`.
+  `dash0 logout` requires `--force` when invoked in agent mode (or when auto-detected via env vars like
+  `CLAUDE_CODE`), so an AI agent cannot silently revoke a profile's refresh token.
+  Telemetry send commands (`dash0 logs send`, `dash0 spans send`) refuse upfront when the active profile
+  is OAuth-typed, because the Dash0 OTLP ingress does not (yet) accept OAuth access tokens — only static
+  `auth_*` tokens. The error names the workarounds: pass `--auth-token auth_<...>` for the invocation,
+  set `DASH0_AUTH_TOKEN`, or convert the profile with `dash0 config profiles update <name> --oauth=false`.
+  Older `dash0` CLI binaries from before OAuth support shipped (e.g. v1.12.0) do not understand
+  OAuth-typed profiles. `dash0 config show` and `dash0 config profiles list` silently render the
+  access token as if it were a static one (no `(OAuth, ...)` annotation), and any command that calls
+  the API fails with `auth token must start with 'auth_'` when the api-client library rejects the
+  `dash0_at_*` prefix. If you have multiple `dash0` binaries installed (for example a homebrew-installed
+  `dash0` alongside a development build) make sure every binary reading the profile is from this
+  release or later. Static-token profiles are unaffected.
+  
+
+- `otlp`: Add `dash0 otlp proxy`, a long-running local OTLP forwarder that accepts OTLP/HTTP and OTLP/gRPC traffic and forwards every batch to Dash0 using the active profile's credentials. (#159)
+  The proxy binds 127.0.0.1:4318 (OTLP/HTTP) and 127.0.0.1:4317 (OTLP/gRPC) by default — an OpenTelemetry SDK at default endpoint configuration connects with no environment variable change.
+  It is gated behind `-X` (experimental) and is not intended as a replacement for the OpenTelemetry Collector.
+  See `docs/commands.md` for the full reference including the agent-mode event schema and failure-mode classification.
+  
+
+
+### Enhancements
+
+
+- `logs, spans, traces`: Add `--precision <adaptive|disabled>` to `logs query` and `spans query` to select the API sampling mode for the request. `traces get` always disables adaptive sampling so the complete trace is returned. (#167)
+  Without the flag the API defaults to adaptive sampling, which samples telemetry data during query execution to keep queries fast on large datasets while returning statistically representative results.
+  Pass `--precision disabled` for the API equivalent of the Precision toggle in the Dash0 UI: every matching record is returned, at the cost of higher query latency on wide time ranges.
+  Use this for narrow lookups (e.g. `test.id is <uuid>`, `trace.id is <hex>`) that must be deterministic.
+  `traces get` always disables adaptive sampling — retrieving a trace must return every span in the trace regardless of query window, so the flag is not exposed on that command.
+  
+
+- `homebrew`: Homebrew distribution is moving to a dedicated tap at `dash0hq/homebrew-dash0-cli` and switching from a formula to a cask. (#82, #162)
+  Starting with the next release, new users install with:
+  `brew install --cask dash0hq/dash0-cli/dash0` — no `brew tap`, no `brew trust`.
+  Existing tap users will see a deprecation warning on `brew upgrade dash0`
+  pointing at the new install path. The formula-to-cask switch follows
+  Homebrew's convention for pre-built binary CLIs and aligns with
+  goreleaser's deprecation of its `brews:` configuration. See
+  `docs/brew-tap-migration-2026-06.md` for the full migration guide.
+  
+
 ## 1.13.1
 
 
