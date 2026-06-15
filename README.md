@@ -15,28 +15,15 @@ Structured and parseable output formats (`--output json`, `--output yaml`, `--ou
 
 ### Homebrew (macOS and Linux)
 
-Tap the formula repository:
-
 ```bash
-brew tap dash0hq/dash0-cli https://github.com/dash0hq/dash0-cli
+brew install --cask dash0hq/dash0-cli/dash0
 ```
 
-Trust the tap.
-[Homebrew 6.0](https://brew.sh/2026/06/11/homebrew-6.0.0/) enforces tap trust by default for non-official taps; without this step, `brew install` and `brew upgrade` will refuse to load the formula.
-
-```bash
-brew trust dash0hq/dash0-cli
-```
-
-Install the CLI:
-
-```bash
-brew install dash0
-```
+No `brew tap`, no `brew trust`, no extra ceremony.
+The qualified install path taps the [`dash0hq/homebrew-dash0-cli`](https://github.com/dash0hq/homebrew-dash0-cli) repository on first use.
 
 > [!NOTE]
-> If you tapped before Homebrew 6.0 and `brew upgrade dash0` now fails with a tap-trust warning, run `brew trust dash0hq/dash0-cli` once and re-try.
-> The transitional `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` escape hatch is documented as temporary and will be removed.
+> If you previously installed `dash0` from the legacy formula (`brew install dash0` after `brew tap dash0hq/dash0-cli <URL>`), see the [Homebrew tap migration notes](docs/brew-tap-migration-2026-06.md) for the one-time switch to the new cask.
 
 ### GitHub Releases
 
