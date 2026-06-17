@@ -29,11 +29,23 @@ func DetectSpamFilterAPIVersion(data []byte) (string, error) {
 	if err := sigsyaml.Unmarshal(data, &disc); err != nil {
 		return "", fmt.Errorf("failed to detect spam filter apiVersion: %w", err)
 	}
-	switch disc.ApiVersion {
+	normalized, ok := dash0api.NormalizeDash0ApiVersion(disc.ApiVersion)
+	if !ok {
+		quoted := make([]string, len(SpamFilterSupportedAPIVersions))
+		for i, v := range SpamFilterSupportedAPIVersions {
+			quoted[i] = fmt.Sprintf("%q", v)
+		}
+		return "", fmt.Errorf(
+			"unsupported spam filter apiVersion %q (supported: %s)",
+			disc.ApiVersion,
+			strings.Join(quoted, ", "),
+		)
+	}
+	switch normalized {
 	case "", string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
 		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), nil
 	case string(dash0api.V1alpha2):
-		return string(dash0api.V1alpha2), nil
+		return normalized, nil
 	default:
 		quoted := make([]string, len(SpamFilterSupportedAPIVersions))
 		for i, v := range SpamFilterSupportedAPIVersions {

@@ -49,17 +49,25 @@ func objectMetadata(obj dash0api.SpamFilterObject) dash0api.SpamFilterMetadata {
 // For v1alpha1 the field is optional on the wire, so an absent value is
 // reported as v1alpha1 — the version the type itself represents.
 func objectAPIVersion(obj dash0api.SpamFilterObject) string {
+	var raw string
 	switch v := obj.(type) {
 	case *dash0api.SpamFilter:
 		if v.ApiVersion != nil {
-			return string(*v.ApiVersion)
+			raw = string(*v.ApiVersion)
 		}
-		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1)
 	case *dash0api.SpamFilterV1Alpha2:
-		return string(v.ApiVersion)
+		raw = string(v.ApiVersion)
 	default:
 		return ""
 	}
+	if raw == "" {
+		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1)
+	}
+	normalized, ok := dash0api.NormalizeDash0ApiVersion(raw)
+	if !ok {
+		return raw
+	}
+	return normalized
 }
 
 // objectKind returns the metadata.kind on a spam filter object as a string.
