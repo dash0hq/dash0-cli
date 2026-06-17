@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.14.1
+
+
+### Bug Fixes
+
+
+- `spam-filters`: Accept group-prefixed apiVersion values (e.g. `operator.dash0.com/v1alpha1`, `dash0.com/v1alpha1`) in spam filter YAML input (#169)
+  The CLI rejected spam filter documents exported from the Dash0 Kubernetes operator because they
+  carry a group-prefixed apiVersion. The CLI now normalizes these to the bare version before
+  dispatching, so operator-exported and canonical-form YAML files work with create, update, and apply.
+  
+
 ## 1.14.0
 
 
