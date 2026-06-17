@@ -683,6 +683,34 @@ Aliases: `remove`
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 
+### Asset identifiers and idempotent upsert
+
+Every asset type accepts a user-defined identifier in its YAML/JSON document.
+When the identifier is present, both `create` and `apply` perform an **upsert** (PUT) against that identifier: the asset is created on the first call and replaced on every subsequent call.
+When the identifier is absent, both commands perform a plain create (POST) and the server assigns a fresh ID on each invocation — repeated runs produce duplicate assets.
+
+Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent, which is what GitOps and CI/CD workflows need.
+
+The identifier field location varies by asset kind:
+
+| Kind | Identifier field | Notes |
+|------|------------------|-------|
+| `Dashboard` | `metadata.dash0Extensions.id` | |
+| `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
+| `CheckRule` | top-level `id` | |
+| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | The CRD-level label is applied to every alerting rule converted from the CRD, so a CRD with multiple alerts shares one identifier — pin a unique label per CRD, or split multi-alert CRDs into one CRD per alert |
+| `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
+| `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
+| `View` | `metadata.labels["dash0.com/id"]` | |
+| `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT |
+| `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
+
+The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`).
+The CLI strips `dash0.com/origin` from outbound payloads for the asset types where the server treats origin as provenance metadata (dashboards, views, check rules, synthetic checks), so do not use origin as the upsert key for those kinds.
+Notification channels and spam filters are the two exceptions: their server APIs key on origin, and the CLI preserves it accordingly.
+
+When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
+
 ### `apply`
 
 Apply asset definitions from a file, directory, or stdin.
@@ -765,10 +793,16 @@ Dashboard:
 kind: Dashboard
 metadata:
   name: a1b2c3d4-5678-90ab-cdef-1234567890ab
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
 spec:
   display:
     name: Production Overview
 ```
+
+The user-defined identifier lives in `metadata.dash0Extensions.id` (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
+`metadata.name` is the CRD-style metadata name and is independent of `spec.display.name`, which is the title shown in the UI.
+Omitting `dash0Extensions.id` causes every `create` / `apply` to allocate a new server-assigned ID, breaking idempotency.
 
 PersesDashboard (Perses CRD, converted to a Dashboard on import):
 
@@ -777,12 +811,16 @@ apiVersion: perses.dev/v1alpha1
 kind: PersesDashboard
 metadata:
   name: my-perses-dashboard
+  labels:
+    dash0.com/id: a1b2c3d4-5678-90ab-cdef-1234567890ab
 spec:
   display:
     name: My Perses Dashboard
   duration: 5m
   panels: {}
 ```
+
+For PersesDashboards the user-defined identifier is the `dash0.com/id` metadata label (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
 
 Check rule:
 
