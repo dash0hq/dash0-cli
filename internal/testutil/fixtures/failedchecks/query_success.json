@@ -14,7 +14,7 @@
         "id": "482a551a-ca38-4f22-b8c0-2a69276a7169",
         "modes": [],
         "name": "BLOCK DEPLOYMENTS - please update reason in summary when enabling!",
-        "summaryTemplate": "BLOCK DEPLOYMENTS: SRE offsite until 26th",
+        "summaryTemplate": "BLOCK DEPLOYMENTS due to XYZ",
         "version": 34
       },
       "description": "Deliberately block deployments",
