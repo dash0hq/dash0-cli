@@ -14,6 +14,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
+	"github.com/dash0hq/dash0-cli/internal/failedchecks"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
@@ -72,6 +73,7 @@ func init() {
 	rootCmd.AddCommand(apply.NewApplyCmd())
 	rootCmd.AddCommand(rawapi.NewAPICmd())
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
+	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
