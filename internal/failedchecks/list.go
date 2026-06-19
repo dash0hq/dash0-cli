@@ -140,7 +140,7 @@ func newQueryCmd() *cobra.Command {
   # List all active issues regardless of priority
   dash0 failed-checks query --active
 
-  # Filter by status
+  # Filter by status (critical, degraded, healthy, inactive, pending)
   dash0 failed-checks query --status critical,degraded
 
   # List P1 issues from the last hour (active and resolved)
@@ -164,7 +164,7 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset identifier (overrides active profile) (env: DASH0_DATASET)")
 	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table (default), json, csv")
 	cmd.Flags().StringSliceVar(&flags.Priority, "priority", nil, "Filter by priority label: comma-separated list (e.g. --priority p1,p2)")
-	cmd.Flags().StringSliceVar(&flags.Status, "status", nil, "Filter by instance status: comma-separated list of resolved, degraded, critical")
+	cmd.Flags().StringSliceVar(&flags.Status, "status", nil, "Filter by instance status: comma-separated list of critical, degraded, healthy, inactive, pending")
 	cmd.Flags().BoolVar(&flags.Active, "active", false, "Only show currently active (unresolved) issues")
 	cmd.Flags().StringArrayVar(&flags.Filter, "filter", nil, "Filter expression: key [operator] value (repeatable); accepts JSON from the Dash0 UI")
 	cmd.Flags().StringVar(&flags.From, "from", "now-15m", "Start of time range (relative or ISO 8601)")
@@ -290,7 +290,7 @@ func buildFilters(flags *queryFlags) (dash0api.FilterCriteria, error) {
 	}
 
 	if len(flags.Status) > 0 {
-		f, err := query.ParseFilter("instanceStatus is_one_of " + strings.Join(flags.Status, " "))
+		f, err := query.ParseFilter("dash0.issue.status is_one_of " + strings.Join(flags.Status, " "))
 		if err != nil {
 			return nil, fmt.Errorf("invalid --status value: %w", err)
 		}
@@ -336,7 +336,7 @@ func sprintStatus(status string, width int) string {
 		return o.String(padded).Foreground(o.Color("1")).String() // red
 	case "degraded":
 		return o.String(padded).Foreground(o.Color("3")).String() // yellow
-	case "resolved":
+	case "healthy":
 		return o.String(padded).Foreground(o.Color("2")).String() // green
 	default:
 		return padded
