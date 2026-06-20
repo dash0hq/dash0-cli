@@ -1,0 +1,42 @@
+name: Nix
+
+# Keeps the Nix packaging green: builds the flake package and runs the flake
+# checks (the Home Manager module's assertion and seed-merge unit tests).
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/nix.yml"
+  pull_request:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/nix.yml"
+  workflow_dispatch:
+
+jobs:
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Build the CLI package
+        run: nix build .#dash0 --print-build-logs
+
+      - name: Run flake checks
+        run: nix flake check --print-build-logs
