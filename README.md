@@ -106,6 +106,47 @@ docker run ghcr.io/dash0hq/cli:latest [command]
 
 Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to GitHub Container Registry.
 
+### Nix / NixOS
+
+The repository is a Nix flake that builds the CLI with `buildGoModule` and installs shell completions for Bash, Zsh, and Fish.
+
+Run the CLI without installing it:
+
+```bash
+nix run github:dash0hq/dash0-cli -- dashboards list
+```
+
+Install it into your profile:
+
+```bash
+nix profile install github:dash0hq/dash0-cli
+```
+
+Add it to a NixOS or Home Manager configuration by consuming the flake's `overlays.default`, which exposes the package as `pkgs.dash0`:
+
+```nix
+{
+  inputs.dash0-cli.url = "github:dash0hq/dash0-cli";
+  # nixpkgs.overlays = [ dash0-cli.overlays.default ];
+  # environment.systemPackages = [ pkgs.dash0 ];
+}
+```
+
+Build from a local checkout — `nix build` for flake users, or `nix-build` on systems without flakes enabled:
+
+```bash
+nix build .#dash0
+```
+
+A development shell with the Go toolchain and the project's lint and changelog tooling is available via `nix develop` (or `nix-shell`):
+
+```bash
+nix develop
+```
+
+> [!NOTE]
+> After changing `go.mod` or `go.sum`, refresh `vendorHash` in [`nix/package.nix`](nix/package.nix): set it to `sha256-AAAA…` (or `lib.fakeHash`), run the build once, and copy the `got:` hash from the resulting error into the field.
+
 ### From Source
 
 Requires Go 1.22 or higher.
