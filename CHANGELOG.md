@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.15.1
+
+
+### Bug Fixes
+
+
+- `homebrew`: Fix `brew install --cask dash0hq/dash0-cli/dash0` failing on Linux (#172)
+  The generated Homebrew cask ran an unconditional `postflight` hook invoking the
+  macOS-only `/usr/bin/xattr` to strip the Gatekeeper quarantine attribute. On Linux
+  that tool does not exist, so the install aborted at the postflight step even though
+  the cask shipped correct Linux binaries. The hook is now guarded with `if OS.mac?`.
+  
+
 ## 1.15.0
 
 
