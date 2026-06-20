@@ -44,6 +44,13 @@
           program = "${dash0}/bin/dash0";
         };
 
+        # `nix flake check` — unit tests for the Home Manager module's pure
+        # logic (profile assertions and the seed-merge jq program).
+        checks = {
+          hm-assertions = pkgs.callPackage ./nix/tests/assertions.nix { };
+          hm-merge = pkgs.callPackage ./nix/tests/merge.nix { };
+        };
+
         # `nix develop` — a shell with the Go toolchain and the project's
         # lint/changelog tooling, matching what the Makefile expects.
         devShells.default = pkgs.mkShell {

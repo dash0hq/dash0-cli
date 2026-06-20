@@ -135,15 +135,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    assertions =
-      (lib.mapAttrsToList (name: p: {
-        assertion = !(p.auth == "oauth" && p.authTokenFile != null);
-        message = "programs.dash0.profiles.${name}: authTokenFile cannot be set when auth = \"oauth\".";
-      }) cfg.profiles)
-      ++ (lib.mapAttrsToList (name: p: {
-        assertion = (p.auth != "oauth") || (p.apiUrl != null && p.apiUrl != "");
-        message = "programs.dash0.profiles.${name}: apiUrl is required when auth = \"oauth\" (needed by `dash0 login`).";
-      }) cfg.profiles);
+    assertions = import ./assertions.nix lib cfg;
 
     home.packages = [ cfg.package ];
 
