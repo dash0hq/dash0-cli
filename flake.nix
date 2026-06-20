@@ -65,5 +65,10 @@
       overlays.default = final: _prev: {
         dash0 = final.callPackage ./nix/package.nix { };
       };
+
+      # Home Manager module for declarative per-user profiles:
+      #   imports = [ dash0-cli.homeManagerModules.default ];
+      homeManagerModules.default = import ./nix/hm-module.nix { inherit self; };
+      homeManagerModules.dash0 = self.homeManagerModules.default;
     };
 }

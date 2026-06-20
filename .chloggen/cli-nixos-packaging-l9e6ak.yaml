@@ -17,7 +17,10 @@ subtext: |
   The flake builds the CLI with `buildGoModule`, installs Bash, Zsh, and Fish
   completions, and exposes `nix run`, `nix profile install`, an `overlays.default`
   for NixOS and Home Manager, and a `nix develop` shell. Non-flake `default.nix`
-  and `shell.nix` shims are provided for systems without flakes enabled.
+  and `shell.nix` shims are provided for systems without flakes enabled. A
+  `homeManagerModules.default` declares profiles under `~/.dash0`: static tokens
+  are read from `authTokenFile` at activation time and OAuth profiles are seeded
+  for `dash0 login`, with runtime-acquired tokens preserved across rebuilds.
 
 # If your change doesn't affect end users or the exported elements of any package,
 # you should instead start your pull request title with "chore" or use the "Skip Changelog" label.

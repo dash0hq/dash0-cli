@@ -144,6 +144,39 @@ A development shell with the Go toolchain and the project's lint and changelog t
 nix develop
 ```
 
+#### Declarative profiles with Home Manager
+
+The flake ships a Home Manager module at `homeManagerModules.default` that declares Dash0 profiles under `~/.dash0` so they live alongside the rest of your dotfiles.
+
+```nix
+{
+  inputs.dash0-cli.url = "github:dash0hq/dash0-cli";
+
+  # In your Home Manager configuration:
+  imports = [ dash0-cli.homeManagerModules.default ];
+
+  programs.dash0 = {
+    enable = true;
+    activeProfile = "prod";
+    profiles.prod = {
+      apiUrl  = "https://api.eu-west-1.aws.dash0.com";
+      otlpUrl = "https://ingress.eu-west-1.aws.dash0.com";
+      dataset = "default";
+      auth    = "oauth";   # run `dash0 login --profile prod` once
+    };
+    profiles.ci = {
+      apiUrl        = "https://api.us-west-2.aws.dash0.com";
+      auth          = "static";
+      authTokenFile = "/run/secrets/dash0-ci-token";   # e.g. an agenix/sops-nix secret
+    };
+  };
+}
+```
+
+The module never writes auth tokens into the world-readable Nix store: static tokens are read from `authTokenFile` at activation time, and OAuth tokens are obtained by `dash0 login` at runtime.
+Because the CLI rewrites `profiles.json` on OAuth refresh and login, the module merges declared profiles into the live file rather than overwriting it, so logging in once survives every subsequent `home-manager switch`.
+Set `programs.dash0.pruneUndeclared = true` to make the module the sole authority over `profiles.json` and remove profiles that are not declared.
+
 > [!NOTE]
 > After changing `go.mod` or `go.sum`, refresh `vendorHash` in [`nix/package.nix`](nix/package.nix): set it to `sha256-AAAA…` (or `lib.fakeHash`), run the build once, and copy the `got:` hash from the resulting error into the field.
 
