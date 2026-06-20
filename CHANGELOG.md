@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.15.0
+
+
+### New Components
+
+
+- `failed-checks`: Add `dash0 failed-checks query` command to query active and historical alerting issues (#92)
+  Supports filtering by `--status critical,degraded`, `--active` (unresolved only),
+  and generic `--filter` expressions using the same syntax as `logs query` and `spans query`.
+  Output formats: table (with semantic coloring for status), json, csv.
+  Customize the displayed columns with `--column`; any issue label (such as `priority` or `owner`)
+  can be used directly as a column name.
+  The `list` and `ls` aliases are available for backwards compatibility.
+  
+
 ## 1.14.1
 
 
