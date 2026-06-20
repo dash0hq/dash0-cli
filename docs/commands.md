@@ -14,7 +14,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
-| [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant` | Time range, filters |
+| [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
@@ -971,14 +971,14 @@ expression: up == 0
 
 ## Query commands
 
-Query commands search and retrieve telemetry signals from Dash0.
+Query commands search and retrieve telemetry signals and alerting issues from Dash0.
 They share a common set of characteristics:
 - Time range flags: `--from` and `--to` (relative expressions like `now-1h` or absolute ISO 8601 timestamps).
 - Filter flag: `--filter` with the standard `key [operator] value` syntax (see [filter syntax](#filter-syntax)).
 - Column flag: `--column` for customizing table/CSV output (see [custom columns](#custom-columns)).
 - Pagination: `--limit`.
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
-- Sampling flag: `--precision` to disable [adaptive sampling](#precision-mode-adaptive-sampling) on `logs query` and `spans query` (`traces get` always disables it).
+- Sampling flag: `--precision` to disable [adaptive sampling](#precision-mode-adaptive-sampling) on `logs query` and `spans query` (`traces get` always disables it; `metrics instant` and `failed-checks query` do not honor it).
 
 ### `logs query`
 
@@ -1325,6 +1325,103 @@ Output as JSON:
 dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o json
 ```
 
+### `failed-checks query`
+
+Query failed check instances (active or recently resolved issues raised by check rules) from Dash0 alerting.
+Requires `api-url` and `auth-token`.
+
+```bash
+dash0 failed-checks query [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from` | `now-15m` | Start of time range |
+| `--to` | `now` | End of time range |
+| `--limit` | 50 | Maximum number of failed checks |
+| `--filter` | | Filter expression (repeatable); accepts text (`key [operator] value`) or JSON from the Dash0 UI |
+| `--status` | | Filter by instance status: comma-separated list of `critical`, `degraded`, `healthy`, `inactive`, `pending` |
+| `--active` | `false` | Only show currently active (unresolved) issues |
+| `-o` | `table` | Output format: `table`, `json`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table` and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only); see [custom columns](#custom-columns) |
+
+The `--status` and `--active` flags are convenience shortcuts that translate into the equivalent `--filter` expressions on the well-known issue attributes the alerting API exposes (`dash0.issue.status` and `dash0.issue.end_time`).
+Custom labels — for example a team-defined `priority` or `owner` label — must be filtered through `--filter`.
+
+Aliases: `list`, `ls`.
+
+List currently active (unresolved) issues:
+
+```bash
+$ dash0 failed-checks query --active
+CHECK RULE                                     STATUS      STARTED              SUMMARY
+BLOCK DEPLOYMENTS - please update reason ...   critical    2026-06-19 13:10:54  BLOCK DEPLOYMENTS due to XYZ
+...
+```
+
+Filter by instance status:
+
+```bash
+dash0 failed-checks query --status critical,degraded
+```
+
+Filter by an arbitrary issue label (`priority`, `owner`, or any other label set on the originating check rule):
+
+```bash
+dash0 failed-checks query --filter "priority is_one_of p1 p2" --active
+```
+
+Issues from the last hour (active and resolved):
+
+```bash
+dash0 failed-checks query --filter "priority is p1" --from now-1h
+```
+
+Use JSON filter criteria copied from the Dash0 UI:
+
+```bash
+dash0 failed-checks query \
+    --filter '[{"key":"priority","operator":"is","value":"p1"}]'
+```
+
+Output as JSON:
+
+```bash
+dash0 failed-checks query --active -o json
+```
+
+Output as CSV:
+
+```bash
+$ dash0 failed-checks query --status critical --active -o csv
+dash0.issue.check_rule_name,dash0.issue.status,dash0.issue.start_time,dash0.issue.summary
+BLOCK DEPLOYMENTS - please update reason ...,critical,2026-06-19 13:10:54,BLOCK DEPLOYMENTS due to XYZ
+...
+```
+
+Show only specific columns:
+
+```bash
+dash0 failed-checks query \
+    --column "check rule" --column status --column summary
+```
+
+Any issue label key (for example `priority` or `owner`) can be used directly as a column name.
+Add a `PRIORITY` column derived from the `priority` issue label:
+
+```bash
+$ dash0 failed-checks query --active --column "check rule" --column priority --column status --column summary
+CHECK RULE                                     priority  STATUS      SUMMARY
+BLOCK DEPLOYMENTS - please update reason ...   p1        critical    BLOCK DEPLOYMENTS due to XYZ
+...
+```
+
+The header for a label-based column defaults to the label key as-is.
+To override it, combine `--column` with `--skip-header` and render the header separately, or use the JSON output and post-process.
+
+Column aliases (case-insensitive): `check rule`/`rule` → `dash0.issue.check_rule_name`, `status` → `dash0.issue.status`, `started`/`start` → `dash0.issue.start_time`, `ended`/`end` → `dash0.issue.end_time`, `summary` → `dash0.issue.summary`, `description` → `dash0.issue.description`, `id` → `dash0.issue.id`, `identifier` → `dash0.issue.identifier`, `check rule id`/`rule id` → `dash0.issue.check_rule_id`.
+
 ### Filter syntax
 
 The `--filter` flag accepts expressions in the form `key [operator] value`.
@@ -1457,6 +1554,23 @@ Any OTLP attribute key (resource, scope, or record/span level) can also be used 
 | `span links`, `links` | `otel.span.links` |
 
 **Trace get aliases** share the span query aliases.
+
+**Failed-checks query aliases:**
+
+| Alias | Attribute key |
+|-------|---------------|
+| `check rule`, `rule` | `dash0.issue.check_rule_name` |
+| `status` | `dash0.issue.status` |
+| `started`, `start`, `start time` | `dash0.issue.start_time` |
+| `ended`, `end`, `end time` | `dash0.issue.end_time` |
+| `summary` | `dash0.issue.summary` |
+| `description` | `dash0.issue.description` |
+| `id` | `dash0.issue.id` |
+| `identifier` | `dash0.issue.identifier` |
+| `check rule id`, `rule id` | `dash0.issue.check_rule_id` |
+
+Any issue label key (e.g. `priority`, `owner`, or any custom label set on the originating check rule) can be used directly as a column name.
+For example, `--column priority` renders a column whose values come from the `priority` issue label.
 
 Aliases that contain spaces must be quoted: `--column "start time"`.
 

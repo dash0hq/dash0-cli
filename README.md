@@ -479,6 +479,45 @@ dash0 metrics instant --filter 'service.name is my-service'
 dash0 metrics instant --promql 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))' -o csv --column value --column service_name
 ```
 
+### Alerting
+
+#### Querying failed checks
+
+> [!NOTE]
+> The `dash0 failed-checks query` command requires an API URL and auth token configured in the active profile, or via flags or environment variables.
+
+List all currently active (unresolved) issues:
+
+```bash
+dash0 failed-checks query --active
+```
+
+Filter by status:
+
+```bash
+dash0 failed-checks query --status critical,degraded
+```
+
+Filter by an arbitrary issue label (priority, owner, …):
+
+```bash
+dash0 failed-checks query --filter "priority is_one_of p1 p2" --active
+```
+
+Add the `priority` issue label as a column:
+
+```bash
+dash0 failed-checks query --active --column "check rule" --column priority --column status --column summary
+```
+
+JSON output for pipelines:
+
+```bash
+dash0 failed-checks query --active -o json
+```
+
+See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
+
 ### Teams (experimental)
 
 ```bash

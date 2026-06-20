@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -15,11 +16,11 @@ import (
 )
 
 const (
-	apiPathFailedChecks     = "/api/alerting/failed-checks"
-	fixtureQuerySuccess     = "failedchecks/query_success.json"
-	fixtureQueryEmpty       = "failedchecks/query_empty.json"
-	fixtureUnauthorized     = "dashboards/error_unauthorized.json"
-	testFailedChecksToken   = "auth_test_token"
+	apiPathFailedChecks   = "/api/alerting/failed-checks"
+	fixtureQuerySuccess   = "failedchecks/query_success.json"
+	fixtureQueryEmpty     = "failedchecks/query_empty.json"
+	fixtureUnauthorized   = "dashboards/error_unauthorized.json"
+	testFailedChecksToken = "auth_test_token"
 )
 
 func newFailedChecksCmd() *cobra.Command {
@@ -48,10 +49,8 @@ func TestQueryFailedChecks_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "CHECK RULE")
-	assert.Contains(t, output, "PRIORITY")
 	assert.Contains(t, output, "STATUS")
 	assert.Contains(t, output, "BLOCK DEPLOYMENTS")
-	assert.Contains(t, output, "p1")
 	assert.Contains(t, output, "critical")
 }
 
@@ -99,7 +98,7 @@ func TestQueryFailedChecks_Empty(t *testing.T) {
 	assert.Contains(t, output, "No failed checks found.")
 }
 
-func TestQueryFailedChecks_WithPriority(t *testing.T) {
+func TestQueryFailedChecks_WithStatus(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -110,7 +109,7 @@ func TestQueryFailedChecks_WithPriority(t *testing.T) {
 	})
 
 	cmd := newFailedChecksCmd()
-	cmd.SetArgs([]string{"failed-checks", "query", "--priority", "p1,p2", "--api-url", server.URL, "--auth-token", testFailedChecksToken})
+	cmd.SetArgs([]string{"failed-checks", "query", "--status", "critical,degraded", "--api-url", server.URL, "--auth-token", testFailedChecksToken})
 
 	var err error
 	testutil.CaptureStdout(t, func() {
@@ -120,10 +119,11 @@ func TestQueryFailedChecks_WithPriority(t *testing.T) {
 
 	reqs := server.Requests()
 	require.Len(t, reqs, 1)
-	var body failedChecksRequest
+	var body dash0api.GetFailedChecksRequest
 	require.NoError(t, json.Unmarshal(reqs[0].Body, &body))
-	require.Len(t, body.Filter, 1, "expected exactly one filter (priority)")
-	assert.Equal(t, "priority", string(body.Filter[0].Key))
+	require.NotNil(t, body.Filter)
+	require.Len(t, *body.Filter, 1, "expected exactly one filter (status)")
+	assert.Equal(t, "dash0.issue.status", string((*body.Filter)[0].Key))
 }
 
 func TestQueryFailedChecks_WithActive(t *testing.T) {
@@ -137,7 +137,7 @@ func TestQueryFailedChecks_WithActive(t *testing.T) {
 	})
 
 	cmd := newFailedChecksCmd()
-	cmd.SetArgs([]string{"failed-checks", "query", "--priority", "p1", "--active", "--api-url", server.URL, "--auth-token", testFailedChecksToken})
+	cmd.SetArgs([]string{"failed-checks", "query", "--status", "critical", "--active", "--api-url", server.URL, "--auth-token", testFailedChecksToken})
 
 	var err error
 	testutil.CaptureStdout(t, func() {
@@ -147,11 +147,12 @@ func TestQueryFailedChecks_WithActive(t *testing.T) {
 
 	reqs := server.Requests()
 	require.Len(t, reqs, 1)
-	var body failedChecksRequest
+	var body dash0api.GetFailedChecksRequest
 	require.NoError(t, json.Unmarshal(reqs[0].Body, &body))
-	require.Len(t, body.Filter, 2, "expected priority + active filters")
-	assert.Equal(t, "priority", string(body.Filter[0].Key))
-	assert.Equal(t, "dash0.issue.end_time", string(body.Filter[1].Key))
+	require.NotNil(t, body.Filter)
+	require.Len(t, *body.Filter, 2, "expected status + active filters")
+	assert.Equal(t, "dash0.issue.status", string((*body.Filter)[0].Key))
+	assert.Equal(t, "dash0.issue.end_time", string((*body.Filter)[1].Key))
 }
 
 func TestQueryFailedChecks_JSON(t *testing.T) {
@@ -196,7 +197,7 @@ func TestQueryFailedChecks_CSV(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "check_rule,priority,status,started,summary,id")
+	assert.Contains(t, output, "dash0.issue.check_rule_name,dash0.issue.status,dash0.issue.start_time,dash0.issue.summary")
 	assert.Contains(t, output, "BLOCK DEPLOYMENTS")
 }
 
@@ -218,5 +219,9 @@ func TestQueryFailedChecks_Unauthorized(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "authentication failed")
+	errMsg := strings.ToLower(err.Error())
+	assert.True(t,
+		strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "401"),
+		"expected auth/401-related error, got: %s", err.Error(),
+	)
 }

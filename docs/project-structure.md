@@ -11,6 +11,7 @@
 - `/internal/confirmation`: Confirmation prompt for destructive operations (respects `--force` and agent mode)
 - `/internal/config`: Configuration management (profiles, resolution)
 - `/internal/experimental`: Gate for commands behind the `--experimental` (`-X`) flag
+- `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)
 - `/internal/login`: The `login` and `logout` commands — OAuth 2.0 + PKCE browser-based authentication, refresh-token revocation, callback listener
