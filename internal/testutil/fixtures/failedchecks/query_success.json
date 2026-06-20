@@ -1,0 +1,54 @@
+{
+  "cursors": {
+    "before": "before-13208543997169216472"
+  },
+  "executionTime": "2026-06-19T17:38:09.330356322Z",
+  "issues": [
+    {
+      "affectedResourceSummaries": [
+        {}
+      ],
+      "annotations": [],
+      "checkRule": {
+        "descriptionTemplate": "Deliberately block deployments",
+        "id": "482a551a-ca38-4f22-b8c0-2a69276a7169",
+        "modes": [],
+        "name": "BLOCK DEPLOYMENTS - please update reason in summary when enabling!",
+        "summaryTemplate": "BLOCK DEPLOYMENTS due to XYZ",
+        "version": 34
+      },
+      "description": "Deliberately block deployments",
+      "earliestEvaluatedTime": "2026-06-19T13:10:54.68453466Z",
+      "end": "1970-01-01T00:00:00Z",
+      "id": "03bd9db7-5ce1-4d7d-a9ad-5fc22bc27601",
+      "instanceStatus": "critical",
+      "issueIdentifier": "13208543997169216472",
+      "labels": [
+        {
+          "key": "dash0.resource.type",
+          "value": {
+            "stringValue": "synthetic"
+          }
+        },
+        {
+          "key": "owner",
+          "value": {
+            "stringValue": "sre"
+          }
+        },
+        {
+          "key": "priority",
+          "value": {
+            "stringValue": "p1"
+          }
+        }
+      ],
+      "start": "2026-06-19T13:10:54.68453466Z",
+      "summary": "BLOCK DEPLOYMENTS due to XYZ"
+    }
+  ],
+  "timeRange": {
+    "from": "2026-06-19T17:23:09.330356322Z",
+    "to": "2026-06-19T17:38:09.330356322Z"
+  }
+}

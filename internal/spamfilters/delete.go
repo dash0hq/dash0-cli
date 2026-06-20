@@ -2,8 +2,12 @@ package spamfilters
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -57,7 +61,8 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 		return err
 	}
 
-	err = apiClient.DeleteSpamFilter(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	err = deleteWithVersionConflictRetry(ctx, apiClient, id, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "spam filter",
@@ -67,4 +72,44 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 
 	fmt.Printf("Spam filter %q deleted\n", id)
 	return nil
+}
+
+// deleteWithVersionConflictRetry retries the delete on 409 "dataset version conflict" responses.
+// The spam filter API uses ClickHouse MVCC and can return a transient version conflict
+// immediately after an upsert; the server explicitly asks callers to retry in that case.
+func deleteWithVersionConflictRetry(ctx context.Context, apiClient dash0api.Client, id string, dataset *string) error {
+	const maxAttempts = 4
+	const baseWait = 500 * time.Millisecond
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(baseWait * time.Duration(attempt)):
+			}
+		}
+
+		lastErr = apiClient.DeleteSpamFilter(ctx, id, dataset)
+		if lastErr == nil {
+			return nil
+		}
+		if !isVersionConflict(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func isVersionConflict(err error) bool {
+	if !dash0api.IsConflict(err) {
+		return false
+	}
+	var apiErr *dash0api.APIError
+	if errors.As(err, &apiErr) {
+		return strings.Contains(strings.ToLower(apiErr.Message), "version conflict") ||
+			strings.Contains(strings.ToLower(apiErr.Body), "version conflict")
+	}
+	return false
 }
