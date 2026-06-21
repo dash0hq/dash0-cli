@@ -9,7 +9,7 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/config/configgrpc v0.154.0

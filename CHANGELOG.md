@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.15.2
+
+
+### Bug Fixes
+
+
+- `homebrew`: Resume publishing the Homebrew cask to the dedicated tap on every release (#175)
+  Tagged releases failed to update `Casks/dash0.rb` in `dash0hq/homebrew-dash0-cli`
+  because the release pipeline could not write to the tap repository, leaving cask
+  users pinned to a stale version. The cask is now published again on each release,
+  so `brew upgrade --cask dash0` tracks the latest version.
+  
+
+## 1.15.1
+
+
+### Bug Fixes
+
+
+- `homebrew`: Fix `brew install --cask dash0hq/dash0-cli/dash0` failing on Linux (#172)
+  The generated Homebrew cask ran an unconditional `postflight` hook invoking the
+  macOS-only `/usr/bin/xattr` to strip the Gatekeeper quarantine attribute. On Linux
+  that tool does not exist, so the install aborted at the postflight step even though
+  the cask shipped correct Linux binaries. The hook is now guarded with `if OS.mac?`.
+  
+
 ## 1.15.0
 
 

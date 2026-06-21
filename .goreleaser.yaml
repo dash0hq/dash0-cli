@@ -142,4 +142,11 @@ homebrew_casks:
       fish: completions/dash0.fish
     hooks:
       post:
-        install: 'system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", staged_path]'
+        # Strip the macOS Gatekeeper quarantine attribute, but only on macOS.
+        # `/usr/bin/xattr` and `com.apple.quarantine` are macOS-only; running
+        # the hook unconditionally breaks `brew install --cask` on Linux,
+        # where the binary has no such tool or attribute.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", staged_path]
+          end
