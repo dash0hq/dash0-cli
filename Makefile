@@ -1,4 +1,4 @@
-.PHONY: all build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update
+.PHONY: all build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update update-vendor-hash
 
 all: lint test
 
@@ -30,6 +30,11 @@ test-roundtrip: build
 
 install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
+
+# Recompute the Nix buildGoModule vendorHash after a go.mod/go.sum change.
+# Requires Nix with flakes enabled.
+update-vendor-hash:
+	./nix/update-vendor-hash.sh
 
 lint: lint-go lint-sh
 

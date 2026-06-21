@@ -106,6 +106,96 @@ docker run ghcr.io/dash0hq/cli:latest [command]
 
 Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to GitHub Container Registry.
 
+### Nix / NixOS
+
+The repository is a Nix flake that builds the CLI with `buildGoModule` and installs shell completions for Bash, Zsh, and Fish.
+
+Run the CLI without installing it:
+
+```bash
+nix run github:dash0hq/dash0-cli -- dashboards list
+```
+
+Install it into your profile:
+
+```bash
+nix profile install github:dash0hq/dash0-cli
+```
+
+Add it to a NixOS or Home Manager configuration by consuming the flake's `overlays.default`, which exposes the package as `pkgs.dash0`:
+
+```nix
+{
+  inputs.dash0-cli.url = "github:dash0hq/dash0-cli";
+  # nixpkgs.overlays = [ dash0-cli.overlays.default ];
+  # environment.systemPackages = [ pkgs.dash0 ];
+}
+```
+
+This flake's `dash0` package builds from source.
+A pre-built binary is published separately to the Dash0 Nix User Repository (NUR) at [`dash0hq/nur`](https://github.com/dash0hq/nur) — the Nix counterpart to the Homebrew cask — which skips compilation and is useful on small or non-`x86_64` machines:
+
+```bash
+nix profile install github:dash0hq/nur#dash0
+```
+
+Build from a local checkout — `nix build` for flake users, or `nix-build` on systems without flakes enabled:
+
+```bash
+nix build .#dash0
+```
+
+A development shell with the Go toolchain and the project's lint and changelog tooling is available via `nix develop` (or `nix-shell`):
+
+```bash
+nix develop
+```
+
+#### Declarative profiles with Home Manager
+
+The flake ships a Home Manager module at `homeManagerModules.default` that declares Dash0 profiles under `~/.dash0` so they live alongside the rest of your dotfiles.
+
+```nix
+{
+  inputs.dash0-cli.url = "github:dash0hq/dash0-cli";
+
+  # In your Home Manager configuration:
+  imports = [ dash0-cli.homeManagerModules.default ];
+
+  programs.dash0 = {
+    enable = true;
+    activeProfile = "prod";
+    profiles.prod = {
+      apiUrl  = "https://api.eu-west-1.aws.dash0.com";
+      otlpUrl = "https://ingress.eu-west-1.aws.dash0.com";
+      dataset = "default";
+      auth    = "oauth";   # run `dash0 login --profile prod` once
+    };
+    profiles.ci = {
+      apiUrl        = "https://api.us-west-2.aws.dash0.com";
+      auth          = "static";
+      authTokenFile = "/run/secrets/dash0-ci-token";   # e.g. an agenix/sops-nix secret
+    };
+  };
+}
+```
+
+The module never writes auth tokens into the world-readable Nix store: static tokens are read from `authTokenFile` at activation time, and OAuth tokens are obtained by `dash0 login` at runtime.
+Because the CLI rewrites `profiles.json` on OAuth refresh and login, the module merges declared profiles into the live file rather than overwriting it, so logging in once survives every subsequent `home-manager switch`.
+Set `programs.dash0.pruneUndeclared = true` to make the module the sole authority over `profiles.json` and remove profiles that are not declared.
+When pruning is enabled, `activeProfile` is checked at evaluation time and must name a declared profile, so a typo fails the build instead of leaving the CLI pointed at a profile that was pruned away.
+
+The module installs the source-built `dash0` by default.
+To avoid compiling — for example on a small VM — point it at the pre-built binary from the [`dash0hq/nur`](https://github.com/dash0hq/nur) flake (add it as an input):
+
+```nix
+programs.dash0.package = inputs.dash0-nur.packages.${pkgs.stdenv.hostPlatform.system}.dash0;
+```
+
+To try the module — either by activating it for your user inside an existing NixOS machine or VM, or on a fresh throwaway NixOS guest — see the [`nix/examples/home-manager-vm`](nix/examples/home-manager-vm) example.
+
+Maintainers: see [CONTRIBUTING.md](CONTRIBUTING.md#nix-packaging) for how the Nix packaging is structured and how to refresh the `vendorHash`.
+
 ### From Source
 
 Requires Go 1.22 or higher.
