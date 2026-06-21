@@ -196,11 +196,7 @@ programs.dash0.package = dash0-cli.packages.${pkgs.stdenv.hostPlatform.system}.d
 
 To try the module — either by activating it for your user inside an existing NixOS machine or VM, or on a fresh throwaway NixOS guest — see the [`nix/examples/home-manager-vm`](nix/examples/home-manager-vm) example.
 
-> [!NOTE]
-> The `dash0` (source) package pins a `vendorHash` in [`nix/package.nix`](nix/package.nix) that must be refreshed whenever `go.mod`/`go.sum` changes.
-> Run `make update-vendor-hash` (or `./nix/update-vendor-hash.sh`) to recompute it.
-> On pull requests this is automated: the [`Nix vendorHash`](.github/workflows/nix-vendor-hash.yml) workflow recomputes and commits the hash, so Dependabot and other dependency PRs fix themselves.
-> The `dash0-bin` package has no `vendorHash` and is unaffected.
+Maintainers: see [CONTRIBUTING.md](CONTRIBUTING.md#nix-packaging) for how the Nix packaging is structured and how to refresh the `vendorHash`.
 
 ### From Source
 
