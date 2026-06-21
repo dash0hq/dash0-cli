@@ -132,14 +132,12 @@ Add it to a NixOS or Home Manager configuration by consuming the flake's `overla
 }
 ```
 
-Two package variants are available: `dash0` builds from source with `buildGoModule` (the default), and `dash0-bin` repackages the pre-built release binary from GitHub Releases.
-The binary variant skips compilation entirely, which is useful on small or non-`x86_64` machines and in CI:
+This flake's `dash0` package builds from source.
+A pre-built binary is published separately to the Dash0 Nix User Repository (NUR) at [`dash0hq/nur`](https://github.com/dash0hq/nur) — the Nix counterpart to the Homebrew cask — which skips compilation and is useful on small or non-`x86_64` machines:
 
 ```bash
-nix run github:dash0hq/dash0-cli#dash0-bin -- version
+nix profile install github:dash0hq/nur#dash0
 ```
-
-The overlay exposes both as `pkgs.dash0` and `pkgs.dash0-bin`.
 
 Build from a local checkout — `nix build` for flake users, or `nix-build` on systems without flakes enabled:
 
@@ -188,10 +186,10 @@ Set `programs.dash0.pruneUndeclared = true` to make the module the sole authorit
 When pruning is enabled, `activeProfile` is checked at evaluation time and must name a declared profile, so a typo fails the build instead of leaving the CLI pointed at a profile that was pruned away.
 
 The module installs the source-built `dash0` by default.
-To avoid compiling — for example on a small VM — point it at the pre-built binary:
+To avoid compiling — for example on a small VM — point it at the pre-built binary from the [`dash0hq/nur`](https://github.com/dash0hq/nur) flake (add it as an input):
 
 ```nix
-programs.dash0.package = dash0-cli.packages.${pkgs.stdenv.hostPlatform.system}.dash0-bin;
+programs.dash0.package = inputs.dash0-nur.packages.${pkgs.stdenv.hostPlatform.system}.dash0;
 ```
 
 To try the module — either by activating it for your user inside an existing NixOS machine or VM, or on a fresh throwaway NixOS guest — see the [`nix/examples/home-manager-vm`](nix/examples/home-manager-vm) example.

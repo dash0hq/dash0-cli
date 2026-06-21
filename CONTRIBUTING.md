@@ -30,8 +30,7 @@ End-user instructions live in the [README](README.md#nix--nixos); this section i
 ### Flake outputs
 
 - `packages.<system>.dash0` (also `.default`) — the CLI built from source with `buildGoModule` ([`nix/package.nix`](nix/package.nix)). This is canonical: it builds the current tree, so it validates the repo under Nix, supports unreleased revisions, and is the form a future nixpkgs submission would take.
-- `packages.<system>.dash0-bin` — the pre-built GoReleaser release binary repackaged from GitHub Releases ([`nix/package-bin.nix`](nix/package-bin.nix)). Compile-free, useful on small or non-`x86_64` machines.
-- `overlays.default` — exposes both as `pkgs.dash0` and `pkgs.dash0-bin`.
+- `overlays.default` — exposes the source package as `pkgs.dash0`.
 - `homeManagerModules.default` — declarative `programs.dash0` profiles (see below).
 - `checks.<system>.{hm-assertions,hm-merge}` — unit tests for the module logic, run by `nix flake check`.
 - `devShells.<system>.default` — Go toolchain plus the lint and changelog tooling.
@@ -50,20 +49,31 @@ make update-vendor-hash
 
 On pull requests this is automated: the [`Nix vendorHash`](.github/workflows/nix-vendor-hash.yml) workflow recomputes the hash and commits the fix back to the branch, so Dependabot and other dependency PRs heal themselves.
 Note that CI builds the PR's *merge commit*, so a dependency bump landing on `main` can make an unrelated open PR's Nix build go red until its branch is updated.
-The `dash0-bin` package has no `vendorHash` and is unaffected.
 
-### Binary package
+### Binary distribution (NUR)
 
-[`nix/package-bin.nix`](nix/package-bin.nix) pins a release `version` and the SRI hash of each platform's release tarball.
-These are refreshed automatically on release (see [Releasing](#releasing)); to do it by hand for version `X.Y.Z`:
+The pre-built binary is **not** packaged in this repository.
+A binary derivation that pins release artifact hashes cannot live in the source tree: the hashes depend on artifacts built *from* a tag, so the tagged commit could never contain the correct hashes for its own release (the same reason the Homebrew cask lives in its own repo).
 
-```bash
-make update-bin-hashes VERSION=X.Y.Z
+Instead, the GoReleaser `nix` publisher (see [`.goreleaser.yaml`](.goreleaser.yaml)) writes `pkgs/dash0/default.nix` to a separate Nix User Repository, [`dash0hq/nur`](https://github.com/dash0hq/nur), after each release — the direct counterpart to the `homebrew_casks` publisher.
+Because the manifest is generated post-build in its own repo, every released version is exactly reproducible, with no per-tag lag and no in-source hash upkeep.
+The release binary is built `CGO_ENABLED=0` (see [`.goreleaser.yaml`](.goreleaser.yaml)), so it is statically linked and runs on NixOS without `autoPatchelfHook`.
+
+**One-time setup of the NUR repo.** Create `dash0hq/nur` with a `flake.nix` that exposes packages from `pkgs/*`, for example:
+
+```nix
+{
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+  outputs = { nixpkgs, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (system: {
+      packages.dash0 = nixpkgs.legacyPackages.${system}.callPackage ./pkgs/dash0/default.nix { };
+    });
+}
 ```
 
-This downloads the four published release tarballs, so it only works once the release artifacts exist.
-The release binary is built `CGO_ENABLED=0` (see [`.goreleaser.yaml`](.goreleaser.yaml)), so it is statically linked and runs on NixOS without `autoPatchelfHook`.
-The asset naming (`macos` for darwin builds) mirrors the GoReleaser archive template.
+The GoReleaser `GITHUB_TOKEN` (`REPOSITORY_FULL_ACCESS_GITHUB_TOKEN`) must have write access to that repo.
+Until the repo exists and a release has run, `github:dash0hq/nur#dash0` is not yet available.
 
 ### Home Manager module
 
@@ -106,7 +116,7 @@ Releases are fully automated via GitHub Actions.
 
 1. Go to [Actions > Prepare Release](../../actions/workflows/prepare-release.yml).
 2. Click "Run workflow".
-3. Enter the version number (without `v` prefix, e.g., `1.0.0`).
+3. Choose the version bump type (`major`, `minor`, or `patch`); the next version is computed from the highest existing tag.
 4. Click "Run workflow".
 
 The workflow automatically:
@@ -115,10 +125,10 @@ The workflow automatically:
 3. Bumps the `version` in [`flake.nix`](flake.nix) (the source Nix package).
 4. Commits the changes to `main`.
 5. Creates and pushes the version tag.
-6. Triggers the Release workflow, which builds and publishes the release, then refreshes [`nix/package-bin.nix`](nix/package-bin.nix) (version + tarball hashes) and commits it to `main`.
+6. Triggers the Release workflow, which builds and publishes the release (GitHub Release, Docker images, Homebrew cask, and the NUR binary package).
 
 The `flake.nix` bump lands in the tagged commit, so `nix build github:dash0hq/dash0-cli/v<version>` reports the right version.
-The `dash0-bin` hashes are updated only after the artifacts are published, so they land in a follow-up commit on `main`; `dash0-bin` therefore tracks the latest release on `main` rather than on each tag.
+The binary package is published by GoReleaser to [`dash0hq/nur`](https://github.com/dash0hq/nur) (see [Binary distribution](#binary-distribution-nur)).
 
 ### Version numbering
 

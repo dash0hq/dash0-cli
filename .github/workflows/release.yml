@@ -51,37 +51,3 @@ jobs:
           args: release --clean --release-notes release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
-
-  # Point the dash0-bin Nix package at the just-published release. This runs
-  # after publishing because it hashes the uploaded release tarballs, which do
-  # not exist until GoReleaser has finished. It commits to main, so the tagged
-  # commit still references the previous release's binary hashes until main is
-  # released again — dash0-bin tracks "latest released" on main.
-  update-bin-package:
-    name: Update dash0-bin hashes
-    needs: goreleaser
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: main
-          token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
-
-      - name: Refresh dash0-bin hashes for the released version
-        run: ./nix/update-bin-hashes.sh "${GITHUB_REF_NAME#v}"
-
-      - name: Commit and push if changed
-        run: |
-          if git diff --quiet -- nix/package-bin.nix; then
-            echo "package-bin.nix already up to date; nothing to do."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add nix/package-bin.nix
-          git commit -m "chore(nix): update dash0-bin to ${GITHUB_REF_NAME}"
-          git push origin HEAD:main

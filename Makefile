@@ -36,11 +36,6 @@ install: build
 update-vendor-hash:
 	./nix/update-vendor-hash.sh
 
-# Point the dash0-bin package at a published release (run after the release
-# artifacts exist): make update-bin-hashes VERSION=1.16.0. Requires Nix.
-update-bin-hashes:
-	./nix/update-bin-hashes.sh $(VERSION)
-
 lint: lint-go lint-sh
 
 lint-install: lint-go-install lint-sh-install

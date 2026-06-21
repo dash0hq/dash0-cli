@@ -150,3 +150,33 @@ homebrew_casks:
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", staged_path]
           end
+
+nix:
+  # Pre-built binary published to the Dash0 Nix User Repository (NUR) — the Nix
+  # counterpart to the Homebrew cask above. After publishing, GoReleaser writes
+  # pkgs/dash0/default.nix (a fetchurl-based derivation pinning the release
+  # tarball hashes) to the separate dash0hq/nur repo. Because the manifest is
+  # written post-build to its own repo, every released version is exactly
+  # reproducible — no in-source vendorHash-style upkeep and no per-tag lag.
+  #
+  # Users install with: nix profile install github:dash0hq/nur#dash0
+  #
+  # Prerequisite: the dash0hq/nur repo must exist with a flake.nix exposing
+  # packages from pkgs/* (see CONTRIBUTING.md "Nix packaging"). The push reuses
+  # the GoReleaser GITHUB_TOKEN (REPOSITORY_FULL_ACCESS_GITHUB_TOKEN), which
+  # must have write access to that repo.
+  - name: dash0
+    repository:
+      owner: dash0hq
+      name: nur
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "release: dash0/{{ .Version }}"
+    homepage: https://github.com/dash0hq/dash0-cli
+    description: CLI to interact with Dash0
+    license: asl20
+    install: |
+      mkdir -p $out/bin
+      cp -vr ./dash0 $out/bin/dash0
+      installShellCompletion ./completions/*

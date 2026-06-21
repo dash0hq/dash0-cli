@@ -21,8 +21,8 @@ subtext: |
   `homeManagerModules.default` declares profiles under `~/.dash0`: static tokens
   are read from `authTokenFile` at activation time and OAuth profiles are seeded
   for `dash0 login`, with runtime-acquired tokens preserved across rebuilds.
-  A `dash0-bin` package repackages the pre-built release binary for a
-  compile-free install on small or non-x86_64 machines.
+  A pre-built binary is published to a Nix User Repository for a compile-free
+  install on small or non-x86_64 machines.
 
 # If your change doesn't affect end users or the exported elements of any package,
 # you should instead start your pull request title with "chore" or use the "Skip Changelog" label.
