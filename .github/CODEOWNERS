@@ -1,0 +1,11 @@
+# CODEOWNERS
+#
+# This file defines who is requested for review when a pull request changes
+# matching files. See https://docs.github.com/articles/about-code-owners.
+#
+# Note: making code-owner review *required* for merging also needs a branch
+# protection rule (or ruleset) on the default branch with
+# "Require review from Code Owners" enabled.
+
+# Global owner — required reviewer for everything in the repository.
+* @mmanciop
