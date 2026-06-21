@@ -43,6 +43,12 @@ jobs:
       - name: Extract release notes from changelog
         run: .github/scripts/extract-release-notes.sh "${GITHUB_REF_NAME#v}" | tee release-notes.md
 
+      # GoReleaser's `nix` publisher needs `nix-hash` on PATH to compute the
+      # derivation hashes; without Nix it silently skips the nixpkgs pipe
+      # ("pipe skipped: nix-hash is not available") and never pushes to the NUR.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
