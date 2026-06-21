@@ -79,6 +79,12 @@ jobs:
       - name: Update changelog
         run: make chlog-update VERSION=${{ steps.version.outputs.version }}
 
+      - name: Bump flake.nix version
+        run: |
+          sed -i 's/version = "[0-9]*\.[0-9]*\.[0-9]*";/version = "${{ steps.version.outputs.version }}";/' flake.nix
+          # Fail loudly if the literal moved and the sed matched nothing.
+          grep -q 'version = "${{ steps.version.outputs.version }}";' flake.nix
+
       - name: Commit and push changelog
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
@@ -87,8 +93,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           find .chloggen -name "*.yaml" ! -name "config.yaml" ! -name "TEMPLATE.yaml" -exec git rm -f {} + 2>/dev/null || true
-          git add CHANGELOG.md .chloggen
-          git commit -m "chore: update changelog for v${{ steps.version.outputs.version }}"
+          git add CHANGELOG.md .chloggen flake.nix
+          git commit -m "chore: update changelog and version for v${{ steps.version.outputs.version }}"
           git push origin main
 
       - name: Create and push tag

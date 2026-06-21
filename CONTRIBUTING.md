@@ -55,12 +55,13 @@ The `dash0-bin` package has no `vendorHash` and is unaffected.
 ### Binary package
 
 [`nix/package-bin.nix`](nix/package-bin.nix) pins a release `version` and the SRI hash of each platform's release tarball.
-To bump it, update `version` and refresh the four hashes:
+These are refreshed automatically on release (see [Releasing](#releasing)); to do it by hand for version `X.Y.Z`:
 
 ```bash
-nix store prefetch-file --json https://github.com/dash0hq/dash0-cli/releases/download/v<version>/dash0_<version>_linux_amd64.tar.gz
+make update-bin-hashes VERSION=X.Y.Z
 ```
 
+This downloads the four published release tarballs, so it only works once the release artifacts exist.
 The release binary is built `CGO_ENABLED=0` (see [`.goreleaser.yaml`](.goreleaser.yaml)), so it is statically linked and runs on NixOS without `autoPatchelfHook`.
 The asset naming (`macos` for darwin builds) mirrors the GoReleaser archive template.
 
@@ -80,7 +81,7 @@ The `nix flake check` warning `unknown flake output 'homeManagerModules'` is ben
 ### Versioning
 
 The source package version is pinned in [`flake.nix`](flake.nix) (the `version` binding) and feeds the `-X main.version` ldflag.
-Keep it in step with releases, the same way `.goreleaser.yaml` and the Homebrew cask are.
+The release automation keeps it in step (see [Releasing](#releasing)) — you do not bump it by hand.
 
 ## Changelog
 
@@ -111,9 +112,13 @@ Releases are fully automated via GitHub Actions.
 The workflow automatically:
 1. Updates `CHANGELOG.md` with entries from `.chloggen/`.
 2. Removes the processed `.chloggen/*.yaml` files.
-3. Commits the changes to `main`.
-4. Creates and pushes the version tag.
-5. Triggers the Release workflow, which builds and publishes the release.
+3. Bumps the `version` in [`flake.nix`](flake.nix) (the source Nix package).
+4. Commits the changes to `main`.
+5. Creates and pushes the version tag.
+6. Triggers the Release workflow, which builds and publishes the release, then refreshes [`nix/package-bin.nix`](nix/package-bin.nix) (version + tarball hashes) and commits it to `main`.
+
+The `flake.nix` bump lands in the tagged commit, so `nix build github:dash0hq/dash0-cli/v<version>` reports the right version.
+The `dash0-bin` hashes are updated only after the artifacts are published, so they land in a follow-up commit on `main`; `dash0-bin` therefore tracks the latest release on `main` rather than on each tag.
 
 ### Version numbering
 
