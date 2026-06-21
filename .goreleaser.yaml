@@ -161,10 +161,10 @@ nix:
   #
   # Users install with: nix profile install github:dash0hq/nur#dash0
   #
-  # Prerequisite: the dash0hq/nur repo must exist with a flake.nix exposing
-  # packages from pkgs/* (see CONTRIBUTING.md "Nix packaging"). The push reuses
-  # the GoReleaser GITHUB_TOKEN (REPOSITORY_FULL_ACCESS_GITHUB_TOKEN), which
-  # must have write access to that repo.
+  # The dash0hq/nur repo is set up (flake.nix + a placeholder pkgs/dash0; see
+  # CONTRIBUTING.md "Nix packaging"). The push reuses the GoReleaser
+  # GITHUB_TOKEN (REPOSITORY_FULL_ACCESS_GITHUB_TOKEN), which must have write
+  # access to that repo.
   - name: dash0
     repository:
       owner: dash0hq

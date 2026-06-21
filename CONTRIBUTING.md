@@ -59,7 +59,7 @@ Instead, the GoReleaser `nix` publisher (see [`.goreleaser.yaml`](.goreleaser.ya
 Because the manifest is generated post-build in its own repo, every released version is exactly reproducible, with no per-tag lag and no in-source hash upkeep.
 The release binary is built `CGO_ENABLED=0` (see [`.goreleaser.yaml`](.goreleaser.yaml)), so it is statically linked and runs on NixOS without `autoPatchelfHook`.
 
-**One-time setup of the NUR repo.** Create `dash0hq/nur` with a `flake.nix` that exposes packages from `pkgs/*`, for example:
+The [`dash0hq/nur`](https://github.com/dash0hq/nur) repo is already set up: it holds a hand-maintained `flake.nix` that exposes packages from `pkgs/*`, and a committed placeholder `pkgs/dash0/default.nix` that GoReleaser overwrites on each release. Its `flake.nix` looks like:
 
 ```nix
 {
@@ -73,7 +73,7 @@ The release binary is built `CGO_ENABLED=0` (see [`.goreleaser.yaml`](.gorelease
 ```
 
 The GoReleaser `GITHUB_TOKEN` (`REPOSITORY_FULL_ACCESS_GITHUB_TOKEN`) must have write access to that repo.
-Until the repo exists and a release has run, `github:dash0hq/nur#dash0` is not yet available.
+Until the first release publishes through the `nix` block, `github:dash0hq/nur#dash0` builds the committed placeholder, which prints a "no release published yet" message and exits non-zero; the first release replaces it with the real binary.
 
 ### Home Manager module
 
