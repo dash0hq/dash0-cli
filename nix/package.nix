@@ -58,9 +58,15 @@ buildGoModule (finalAttrs: {
     "-X main.date=${date}"
   ];
 
-  # The unit test suite is hermetic (the network-dependent integration and
-  # roundtrip suites are gated behind the `integration` build tag and shell
-  # scripts, neither of which run here).
+  # Run the hermetic Go unit tests via buildGoModule's native `go test`.
+  #
+  # This must NEVER be wired to `make test` / `make test-roundtrip`: the
+  # roundtrip suite (test/roundtrip/*.sh) talks to a live Dash0 environment and
+  # needs DASH0_API_URL + DASH0_AUTH_TOKEN, which a sandboxed, offline Nix build
+  # cannot and must not provide. It is safe by construction here — the roundtrip
+  # suite is shell-only (no Go test files), so `go test` cannot reach it, and
+  # the credential-requiring integration tests are gated behind the
+  # `integration` build tag, which the default `go test` does not set.
   doCheck = true;
 
   nativeBuildInputs = [ installShellFiles ];
