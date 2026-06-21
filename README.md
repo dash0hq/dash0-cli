@@ -132,6 +132,15 @@ Add it to a NixOS or Home Manager configuration by consuming the flake's `overla
 }
 ```
 
+Two package variants are available: `dash0` builds from source with `buildGoModule` (the default), and `dash0-bin` repackages the pre-built release binary from GitHub Releases.
+The binary variant skips compilation entirely, which is useful on small or non-`x86_64` machines and in CI:
+
+```bash
+nix run github:dash0hq/dash0-cli#dash0-bin -- version
+```
+
+The overlay exposes both as `pkgs.dash0` and `pkgs.dash0-bin`.
+
 Build from a local checkout — `nix build` for flake users, or `nix-build` on systems without flakes enabled:
 
 ```bash
@@ -178,10 +187,20 @@ Because the CLI rewrites `profiles.json` on OAuth refresh and login, the module 
 Set `programs.dash0.pruneUndeclared = true` to make the module the sole authority over `profiles.json` and remove profiles that are not declared.
 When pruning is enabled, `activeProfile` is checked at evaluation time and must name a declared profile, so a typo fails the build instead of leaving the CLI pointed at a profile that was pruned away.
 
+The module installs the source-built `dash0` by default.
+To avoid compiling — for example on a small VM — point it at the pre-built binary:
+
+```nix
+programs.dash0.package = dash0-cli.packages.${pkgs.stdenv.hostPlatform.system}.dash0-bin;
+```
+
 To try the module — either by activating it for your user inside an existing NixOS machine or VM, or on a fresh throwaway NixOS guest — see the [`nix/examples/home-manager-vm`](nix/examples/home-manager-vm) example.
 
 > [!NOTE]
-> After changing `go.mod` or `go.sum`, refresh `vendorHash` in [`nix/package.nix`](nix/package.nix): set it to `sha256-AAAA…` (or `lib.fakeHash`), run the build once, and copy the `got:` hash from the resulting error into the field.
+> The `dash0` (source) package pins a `vendorHash` in [`nix/package.nix`](nix/package.nix) that must be refreshed whenever `go.mod`/`go.sum` changes.
+> Run `make update-vendor-hash` (or `./nix/update-vendor-hash.sh`) to recompute it.
+> On pull requests this is automated: the [`Nix vendorHash`](.github/workflows/nix-vendor-hash.yml) workflow recomputes and commits the hash, so Dependabot and other dependency PRs fix themselves.
+> The `dash0-bin` package has no `vendorHash` and is unaffected.
 
 ### From Source
 

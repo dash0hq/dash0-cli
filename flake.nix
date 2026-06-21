@@ -32,11 +32,13 @@
         dash0 = pkgs.callPackage ./nix/package.nix {
           inherit version date;
         };
+        dash0-bin = pkgs.callPackage ./nix/package-bin.nix { };
       in
       {
         packages = {
           default = dash0;
           dash0 = dash0;
+          dash0-bin = dash0-bin;
         };
 
         apps.default = {
@@ -71,6 +73,7 @@
       #   nixpkgs.overlays = [ dash0-cli.overlays.default ];
       overlays.default = final: _prev: {
         dash0 = final.callPackage ./nix/package.nix { };
+        dash0-bin = final.callPackage ./nix/package-bin.nix { };
       };
 
       # Home Manager module for declarative per-user profiles:
