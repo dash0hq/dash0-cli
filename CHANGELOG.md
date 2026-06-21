@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.15.3
+
+
+### Enhancements
+
+
+- `build`: Add Nix flake packaging so the CLI can be installed and run on Nix and NixOS (#174)
+  The flake builds the CLI with `buildGoModule`, installs Bash, Zsh, and Fish
+  completions, and exposes `nix run`, `nix profile install`, an `overlays.default`
+  for NixOS and Home Manager, and a `nix develop` shell. Non-flake `default.nix`
+  and `shell.nix` shims are provided for systems without flakes enabled. A
+  `homeManagerModules.default` declares profiles under `~/.dash0`: static tokens
+  are read from `authTokenFile` at activation time and OAuth profiles are seeded
+  for `dash0 login`, with runtime-acquired tokens preserved across rebuilds.
+  A pre-built binary is published to a Nix User Repository for a compile-free
+  install on small or non-x86_64 machines.
+  
+
 ## 1.15.2
 
 
