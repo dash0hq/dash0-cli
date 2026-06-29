@@ -592,7 +592,8 @@ Dashboard "My Perses Dashboard" created
 ```
 
 `check-rules create` also accepts PrometheusRule CRD files.
-Each alerting rule in the CRD is created as a separate check rule (recording rules are skipped):
+Each alerting rule in the CRD is created as a separate check rule (recording rules are skipped).
+The check rule name is composed as `<group name> - <alert name>`, matching the name produced by the Dash0 Kubernetes operator and the Terraform provider for the same CRD:
 
 ```bash
 $ dash0 check-rules create -f prometheus-rules.yaml
@@ -740,7 +741,7 @@ For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema
 An unknown value fails validation up front, before any document is applied.
 
 For `PrometheusRule`, `apply` inspects each rule entry and dispatches by type.
-Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as one check rule per alert.
+Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as one check rule per alert, named `<group name> - <alert name>` to match the Dash0 Kubernetes operator and the Terraform provider.
 Recording rules (entries with `record:`) are sent to the recording-rule endpoint as a single PrometheusRule CRD with the alerting rules removed.
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
