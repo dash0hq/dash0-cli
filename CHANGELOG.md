@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.15.4
+
+
+### Enhancements
+
+
+- `check-rules`: Name check rules imported from a PrometheusRule CRD as `<group name> - <alert name>`, matching the Dash0 Kubernetes operator and Terraform provider (#182)
+  Previously the CLI named such check rules after the alert only, so the same CRD produced a different name than the operator and Terraform provider.
+  This affects `check-rules create`, `check-rules update`, and `apply`.
+  Check rule identity for upsert is the `dash0.com/id` / `id`, not the name, so for definitions that pin an identifier this is a non-destructive in-place rename surfaced as a one-line diff on the next `apply`.
+  
+
 ## 1.15.3
 
 
