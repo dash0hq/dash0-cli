@@ -11,25 +11,29 @@ TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 ALERT_NAME=$(yq '.spec.groups[0].rules[0].alert' "$FIXTURE")
+GROUP_NAME=$(yq '.spec.groups[0].name' "$FIXTURE")
+# The CLI names check rules imported from a PrometheusRule CRD as
+# "<group name> - <alert name>", matching the operator and Terraform provider.
+EXPECTED_NAME="${GROUP_NAME} - ${ALERT_NAME}"
 
 echo "=== PrometheusRule CRD round-trip test ==="
-echo "Alert name: $ALERT_NAME"
+echo "Expected check rule name: $EXPECTED_NAME"
 
 # Step 1: Create via apply (PrometheusRule CRD).
 echo "--- Step 1: Apply PrometheusRule CRD ---"
 APPLY_OUTPUT=$("$DASH0" apply -f "$FIXTURE")
 echo "$APPLY_OUTPUT"
-if ! echo "$APPLY_OUTPUT" | grep -q "$ALERT_NAME"; then
-  echo "FAIL: apply output does not mention alert name '$ALERT_NAME'"
+if ! echo "$APPLY_OUTPUT" | grep -qF "$EXPECTED_NAME"; then
+  echo "FAIL: apply output does not mention check rule name '$EXPECTED_NAME'"
   exit 1
 fi
 
 # Step 2: List check rules and find the created rule by name.
 echo "--- Step 2: List check rules and find created rule ---"
 LIST_JSON=$("$DASH0" check-rules list --all -o json)
-ID=$(echo "$LIST_JSON" | jq -r --arg name "$ALERT_NAME" '[.[] | select(.name == $name)][0].id // empty')
+ID=$(echo "$LIST_JSON" | jq -r --arg name "$EXPECTED_NAME" '[.[] | select(.name == $name)][0].id // empty')
 if [ -z "$ID" ]; then
-  echo "FAIL: Could not find created check rule '$ALERT_NAME' in list"
+  echo "FAIL: Could not find created check rule '$EXPECTED_NAME' in list"
   exit 1
 fi
 echo "Created check rule ID: $ID"
@@ -40,8 +44,8 @@ GET_JSON=$("$DASH0" check-rules get "$ID" -o json)
 echo "$GET_JSON"
 
 ACTUAL_NAME=$(echo "$GET_JSON" | jq -r '.name')
-if [ "$ACTUAL_NAME" != "$ALERT_NAME" ]; then
-  echo "FAIL: expected name '$ALERT_NAME', got '$ACTUAL_NAME'"
+if [ "$ACTUAL_NAME" != "$EXPECTED_NAME" ]; then
+  echo "FAIL: expected name '$EXPECTED_NAME', got '$ACTUAL_NAME'"
   exit 1
 fi
 
@@ -74,8 +78,8 @@ echo "$UPDATE_OUTPUT"
 echo "--- Step 5a: Verify check rule content after update ---"
 POST_UPDATE_JSON=$("$DASH0" check-rules get "$ID" -o json)
 POST_UPDATE_NAME=$(echo "$POST_UPDATE_JSON" | jq -r '.name')
-if [ "$POST_UPDATE_NAME" != "$ALERT_NAME" ]; then
-  echo "FAIL: after update, expected name '$ALERT_NAME', got '$POST_UPDATE_NAME'"
+if [ "$POST_UPDATE_NAME" != "$EXPECTED_NAME" ]; then
+  echo "FAIL: after update, expected name '$EXPECTED_NAME', got '$POST_UPDATE_NAME'"
   echo "      (this indicates the PrometheusRule CRD was not converted before sending to the API)"
   exit 1
 fi
@@ -94,8 +98,8 @@ UPDATE_OUTPUT2=$("$DASH0" check-rules update -f "${TMPDIR}/prom-rule-with-id.yam
 echo "$UPDATE_OUTPUT2"
 
 POST_UPDATE_NAME2=$("$DASH0" check-rules get "$ID" -o json | jq -r '.name')
-if [ "$POST_UPDATE_NAME2" != "$ALERT_NAME" ]; then
-  echo "FAIL: after update (ID from file), expected name '$ALERT_NAME', got '$POST_UPDATE_NAME2'"
+if [ "$POST_UPDATE_NAME2" != "$EXPECTED_NAME" ]; then
+  echo "FAIL: after update (ID from file), expected name '$EXPECTED_NAME', got '$POST_UPDATE_NAME2'"
   exit 1
 fi
 echo "Name after update (ID from file): $POST_UPDATE_NAME2"
@@ -104,14 +108,14 @@ echo "Name after update (ID from file): $POST_UPDATE_NAME2"
 echo "--- Step 6: Create via check-rules create (parity check) ---"
 CREATE_OUTPUT=$("$DASH0" check-rules create -f "$FIXTURE")
 echo "$CREATE_OUTPUT"
-if ! echo "$CREATE_OUTPUT" | grep -q "$ALERT_NAME"; then
-  echo "FAIL: check-rules create output does not mention alert name '$ALERT_NAME'"
+if ! echo "$CREATE_OUTPUT" | grep -qF "$EXPECTED_NAME"; then
+  echo "FAIL: check-rules create output does not mention check rule name '$EXPECTED_NAME'"
   exit 1
 fi
 
 # Find the second copy and clean it up.
 LIST_JSON2=$("$DASH0" check-rules list --all -o json)
-ID2=$(echo "$LIST_JSON2" | jq -r --arg name "$ALERT_NAME" --arg id "$ID" '[.[] | select(.name == $name and .id != $id)][0].id // empty')
+ID2=$(echo "$LIST_JSON2" | jq -r --arg name "$EXPECTED_NAME" --arg id "$ID" '[.[] | select(.name == $name and .id != $id)][0].id // empty')
 
 # Cleanup.
 echo "--- Cleanup ---"

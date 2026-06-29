@@ -587,6 +587,14 @@ spec:
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "created")
+
+	// The check-rule name sent to the API must be "<group name> - <alert name>",
+	// matching the Dash0 operator and Terraform provider (not the alert name alone).
+	postReq := findRequest(server.Requests(), http.MethodPost, "/api/alerting/check-rules")
+	require.NotNil(t, postReq, "expected a POST request for check rule")
+	var rule dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal(postReq.Body, &rule))
+	assert.Equal(t, "test-group - HighErrorRate", rule.Name)
 }
 
 func TestApply_PersesDashboard_Created(t *testing.T) {

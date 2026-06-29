@@ -674,7 +674,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 // the rule kinds and dispatches to the check-rule or recording-rule endpoint
 // (or both, when the CRD is mixed).
 func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
-	rules, err := dash0yaml.ParseAsPrometheusAlertRules(doc.raw)
+	rules, err := asset.ParseCheckRules(doc.raw)
 	if err != nil {
 		return nil, err
 	}
