@@ -5,8 +5,9 @@
 # correct the file is left unchanged.
 #
 # Run from the repository root (or via `make update-vendor-hash`). Requires Nix
-# with flakes enabled. Used by .github/workflows/nix-vendor-hash.yml to keep
-# dependency-bump PRs (Dependabot or human) green automatically.
+# with flakes enabled. Used by the `update-vendor-hash` job in
+# .github/workflows/nix.yml to self-heal a stale vendorHash on push to main
+# after a dependency bump merges.
 set -euo pipefail
 
 pkg="nix/package.nix"

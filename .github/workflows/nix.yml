@@ -2,6 +2,19 @@ name: Nix
 
 # Keeps the Nix packaging green: builds the flake package and runs the flake
 # checks (the Home Manager module's assertion and seed-merge unit tests).
+#
+# vendorHash upkeep: a dependency bump changes go.mod / go.sum, which makes the
+# buildGoModule vendorHash in nix/package.nix go stale and the build fail. We do
+# NOT auto-fix that on the PR branch: doing so would require a write-scoped PAT
+# in a job that runs untrusted branch code (a poisoned dependency could then
+# exfiltrate the token). Instead:
+#   - the `nix` build is skipped on Dependabot PRs (github.actor guard), so the
+#     bump can merge without a red check; and
+#   - the `update-vendor-hash` job recomputes and commits the fix on push to
+#     main, where the code is trusted and the PAT is safe to use.
+# Cost: main's nix build is briefly red between the merge and the fix commit.
+# Releases are cut manually (workflow_dispatch -> tag), so that window can't
+# silently ship a broken package.
 on:
   push:
     branches:
@@ -25,8 +38,16 @@ on:
       - ".github/workflows/nix.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   nix:
+    # Skip on Dependabot PRs: the vendorHash is stale until the bump merges and
+    # `update-vendor-hash` heals it on main. A job-level skip reports a `skipped`
+    # conclusion, which branch protection treats as passing. Human dependency
+    # changes still get the full build.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -40,3 +61,38 @@ jobs:
 
       - name: Run flake checks
         run: nix flake check --print-build-logs
+
+  update-vendor-hash:
+    # On merge to main, self-heal a stale vendorHash left by a dependency bump
+    # (Dependabot PRs skip the build above, so the fix lands here). This runs on
+    # trusted main code, so holding a write-scoped PAT is safe.
+    #
+    # We reuse REPOSITORY_FULL_ACCESS_GITHUB_TOKEN (also used by the release
+    # workflows); using a PAT rather than the default GITHUB_TOKEN also lets the
+    # follow-up commit re-trigger this workflow, which then finds the hash
+    # correct and no-ops.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Recompute vendorHash
+        run: ./nix/update-vendor-hash.sh
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet -- nix/package.nix; then
+            echo "vendorHash already correct; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nix/package.nix
+          git commit -m "chore(nix): update vendorHash for dependency change"
+          git push origin "HEAD:main"
