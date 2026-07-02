@@ -47,7 +47,8 @@ When `go.mod`/`go.sum` change, refresh it:
 make update-vendor-hash
 ```
 
-On pull requests this is automated: the [`Nix vendorHash`](.github/workflows/nix-vendor-hash.yml) workflow recomputes the hash and commits the fix back to the branch, so Dependabot and other dependency PRs heal themselves.
+On `main` this is automated: the `update-vendor-hash` job in the [`Nix`](.github/workflows/nix.yml) workflow recomputes the hash and commits the fix after a dependency bump merges.
+The Nix build is skipped on Dependabot PRs (the hash is stale until the bump lands), so those PRs merge without a red check and `main` self-heals right after; human dependency PRs should refresh the hash locally with `make update-vendor-hash` before pushing.
 Note that CI builds the PR's *merge commit*, so a dependency bump landing on `main` can make an unrelated open PR's Nix build go red until its branch is updated.
 
 ### Binary distribution (NUR)
