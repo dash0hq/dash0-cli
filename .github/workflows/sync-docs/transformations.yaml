@@ -36,6 +36,11 @@ files:
     title: Installation
     description: Install the Dash0 CLI via Homebrew, GitHub Releases, Docker, Nix, or from source.
 
+  - source: docs/quickstart.md
+    target: dash0-cli/quickstart.md
+    title: Quickstart
+    description: A five-minute walkthrough — log in, list assets, query telemetry, and send a deployment event.
+
   - source: docs/commands.md
     target: dash0-cli/commands.md
     title: Command Reference
