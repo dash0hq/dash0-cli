@@ -17,6 +17,24 @@ The valid values for `otel.log.severity.range` are: TRACE, DEBUG, INFO, WARN, ER
 
 For metrics commands, note that PromQL examples use Prometheus-style names (underscores, e.g., `service_name`, `http_server_request_duration_seconds`), while `--filter` examples use OTel-style names (dots, e.g., `service.name`) which are normalized to Prometheus labels automatically.
 
+## Docs synced to dash0.com/docs
+
+The `sync-docs-to-website` workflow (`.github/workflows/sync-docs-to-website.yaml`) copies a subset of the user-facing docs into `dash0hq/dash0-website` on every release.
+Sources are declared in `.github/workflows/sync-docs/transformations.yaml`.
+
+Currently synced: `docs/about.md`, `docs/installation.md`, `docs/commands.md`, `docs/github-actions.md`, `docs/brew-tap-migration-2026-06.md`.
+
+### Keep `docs/about.md` and `docs/installation.md` in sync with @README.md
+
+`docs/about.md` and `docs/installation.md` overlap with @README.md on purpose: the README stays the canonical GitHub landing page, and these two docs are what dash0.com/docs actually renders under the CLI section.
+
+- Changes to the top of @README.md (the description and the "An ergonomic CLI for agentic AI" section) must be mirrored into `docs/about.md`.
+- Changes to @README.md's Installation section (adding or dropping an install channel, updating versions, updating example commands) must be mirrored into `docs/installation.md`.
+- The reverse also holds: any change to `docs/about.md` or `docs/installation.md` that is not purely website-specific should be reflected in @README.md.
+
+The two docs are intentionally leaner than @README.md.
+Details that only matter to contributors reading the repo (for example the full Home Manager module example, `nix develop`, or the `make install` recipe) stay in @README.md and are linked out from `docs/installation.md` rather than duplicated.
+
 ## Environment Variables Reference Table
 The README contains an "Environment Variables" table listing all supported env vars.
 When adding a new environment variable (e.g., for a new config field), add a row to this table.

@@ -34,9 +34,9 @@ on:
         description: Fine-grained PAT with contents+pull-requests write on dash0hq/dash0-website. Only required when dry-run is false.
         required: false
 
-# sync-docs-action v0.1.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.1.0
+# sync-docs-action v0.2.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.2.0
 env:
-  SYNC_DOCS_ACTION_REF: 143e4f35aa2dc2a75c968f78631b85a1b36d3c77
+  SYNC_DOCS_ACTION_REF: 9c3d55819e9b8143e695f8f7d4b6e00189ba40a3
 
 jobs:
   sync-docs:
@@ -49,13 +49,13 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       # Full-sync path: hand off to the shared composite action, which transforms the docs, checks
-      # out the target repository, and opens (or force-updates) a pull request.
+      # out the target repository, and opens (or force-updates) a pull request. `source-root` and
+      # `transformations-file` inherit their defaults (`.` and
+      # `.github/workflows/sync-docs/transformations.yaml`).
       - name: sync docs to dash0.com/docs
         if: ${{ ! inputs.dry-run }}
-        uses: dash0hq/sync-docs-action@143e4f35aa2dc2a75c968f78631b85a1b36d3c77 # v0.1.0
+        uses: dash0hq/sync-docs-action@9c3d55819e9b8143e695f8f7d4b6e00189ba40a3 # v0.2.0
         with:
-          source-root: .github/workflows/sync-docs
-          transformations-file: transformations.yaml
           target-github-token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
           pr-branch: sync-dash0-cli-docs
           pr-title: 'docs: synchronize dash0-cli documentation'
@@ -97,7 +97,7 @@ jobs:
         if: ${{ inputs.dry-run }}
         run: |
           node .sync-docs-action/packages/transformation-engine/src/apply-transformations.ts \
-            .github/workflows/sync-docs \
+            . \
             .github/workflows/sync-docs/transformations.yaml \
             "${RUNNER_TEMP}/transformed-docs"
 

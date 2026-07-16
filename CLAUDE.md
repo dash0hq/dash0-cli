@@ -32,6 +32,9 @@ Detailed guidelines are split into focused documents:
 - **Adding support for an asset type (or a new schema version of an existing one)  must follow @docs/adding-commands.md and @docs/cli-naming-conventions.md in full.**
   That document is the authoritative checklist: every numbered step and every requirement are required, not optional.
 
+- **When editing @README.md's top-of-file positioning or its Installation section, mirror the changes into @docs/about.md or @docs/installation.md respectively (and vice versa).**
+  Both docs are synced to dash0.com/docs on every release — drift ships as stale website content. See the "Docs synced to dash0.com/docs" section of @docs/documentation.md for the specifics.
+
 ## Key Dash0 API concepts
 
 ### Origin vs ID
