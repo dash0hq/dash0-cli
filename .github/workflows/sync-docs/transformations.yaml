@@ -26,32 +26,6 @@ nav:
   title: Tooling
 
 files:
-  - source: README.md
-    target: dash0-cli/overview.md
-    title: Overview
-    description: The Dash0 CLI is a command-line interface for humans, agentic AIs, and CI/CD to interact with the Dash0 observability platform.
-    transformations:
-      - description: rewrite the setup action link to a stable GitHub URL
-        type: replace-regex
-        find: '\]\(\.github/actions/setup/action\.yaml\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/setup/action.yaml)'
-      - description: rewrite the send-log-event action link to a stable GitHub URL
-        type: replace-regex
-        find: '\]\(\.github/actions/send-log-event/action\.yaml\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/send-log-event/action.yaml)'
-      - description: rewrite CONTRIBUTING.md links to a stable GitHub URL (page is not synced)
-        type: replace-regex
-        find: '\]\(CONTRIBUTING\.md(#[^)]*)?\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/CONTRIBUTING.md\1)'
-      - description: rewrite the brew-tap-migration doc link to a stable GitHub URL (page is not synced)
-        type: replace-regex
-        find: '\]\(docs/brew-tap-migration-2026-06\.md\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/docs/brew-tap-migration-2026-06.md)'
-      - description: rewrite the nix examples link to a stable GitHub URL
-        type: replace-regex
-        find: '\]\(nix/examples/home-manager-vm\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/tree/main/nix/examples/home-manager-vm)'
-
   - source: docs/commands.md
     target: dash0-cli/commands.md
     title: Command Reference
@@ -61,3 +35,27 @@ files:
         type: replace-regex
         find: '\]\(documentation\.md#code-blocks\)'
         replace: '](https://github.com/dash0hq/dash0-cli/blob/main/docs/documentation.md#code-blocks)'
+
+  - source: docs/github-actions.md
+    target: dash0-cli/github-actions.md
+    title: GitHub Actions
+    description: How to use the dash0 CLI from GitHub Actions workflows via the setup and send-log-event composite actions shipped in this repository.
+    transformations:
+      - description: rewrite the setup action link to a stable GitHub URL
+        type: replace-regex
+        find: '\]\(\.github/actions/setup/action\.yaml\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/setup/action.yaml)'
+      - description: rewrite the send-log-event action link to a stable GitHub URL
+        type: replace-regex
+        find: '\]\(\.github/actions/send-log-event/action\.yaml\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/send-log-event/action.yaml)'
+
+  - source: docs/brew-tap-migration-2026-06.md
+    target: dash0-cli/brew-tap-migration-2026-06.md
+    title: Homebrew Tap Migration (June 2026)
+    description: One-time migration notice for users who installed the Dash0 CLI from the legacy Homebrew formula before it moved to the qualified dash0hq/dash0-cli/dash0 cask.
+    transformations:
+      - description: rewrite the setup action README link to a stable GitHub URL
+        type: replace-regex
+        find: '\]\(\.\./\.github/actions/setup/README\.md\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/setup/README.md)'
