@@ -1,0 +1,108 @@
+name: Synchronize docs to dash0.com/docs
+
+# Copies the user-facing dash0-cli documentation into the site that powers https://www.dash0.com/docs,
+# applying the transformations declared in `.github/workflows/sync-docs/transformations.yaml`, and
+# opens a pull request against the target repository (dash0hq/dash0-website).
+#
+# Two modes:
+#
+#   - dry-run (workflow_dispatch default): verify that the transformations still apply cleanly
+#     against the current docs. No secrets required. Useful as a drift guard from CI on every PR.
+#     Only steps 1-4 of the sync-docs-action composite (checkout, install, transform) are executed;
+#     the target-repo checkout and PR steps are skipped.
+#
+#   - full sync (workflow_call from a release workflow, or workflow_dispatch with dry-run unchecked):
+#     runs the sync-docs-action end-to-end and opens/updates a PR on dash0hq/dash0-website.
+#     Requires the REPOSITORY_FULL_ACCESS_GITHUB_TOKEN secret — a fine-grained PAT with
+#     `contents:write` and `pull-requests:write` on the target documentation repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only verify the transformations still apply cleanly; do not open a pull request.
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      dry-run:
+        description: Only verify the transformations still apply cleanly; do not open a pull request.
+        type: boolean
+        default: false
+    secrets:
+      REPOSITORY_FULL_ACCESS_GITHUB_TOKEN:
+        description: Fine-grained PAT with contents+pull-requests write on dash0hq/dash0-website. Only required when dry-run is false.
+        required: false
+
+# sync-docs-action v0.1.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.1.0
+env:
+  SYNC_DOCS_ACTION_REF: 143e4f35aa2dc2a75c968f78631b85a1b36d3c77
+
+jobs:
+  sync-docs:
+    name: Synchronize dash0-cli docs with dash0.com/docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: checkout dash0-cli
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # Full-sync path: hand off to the shared composite action, which transforms the docs, checks
+      # out the target repository, and opens (or force-updates) a pull request.
+      - name: sync docs to dash0.com/docs
+        if: ${{ ! inputs.dry-run }}
+        uses: dash0hq/sync-docs-action@143e4f35aa2dc2a75c968f78631b85a1b36d3c77 # v0.1.0
+        with:
+          source-root: .github/workflows/sync-docs
+          transformations-file: transformations.yaml
+          target-github-token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+          pr-branch: sync-dash0-cli-docs
+          pr-title: 'docs: synchronize dash0-cli documentation'
+          pr-body: |
+            This PR synchronizes the content of the [dash0-cli](https://github.com/dash0hq/dash0-cli) documentation into the documentation on https://www.dash0.com/docs.
+
+      # Dry-run path: replicate the transformation-engine invocation from the composite action
+      # (steps 1-4) so drift between the docs and transformations.yaml surfaces on every PR without
+      # requiring the docs-website PAT. Kept intentionally close to the composite action's own
+      # steps so the two stay behaviourally equivalent.
+
+      - name: check out sync-docs-action (dry-run)
+        if: ${{ inputs.dry-run }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: dash0hq/sync-docs-action
+          ref: ${{ env.SYNC_DOCS_ACTION_REF }}
+          path: .sync-docs-action
+
+      - name: set up Node.js (dry-run)
+        if: ${{ inputs.dry-run }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .sync-docs-action/.nvmrc
+
+      - name: set up pnpm (dry-run)
+        if: ${{ inputs.dry-run }}
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        with:
+          package_json_file: .sync-docs-action/package.json
+          run_install: false
+
+      - name: install sync-docs-action dependencies (dry-run)
+        if: ${{ inputs.dry-run }}
+        working-directory: .sync-docs-action
+        run: pnpm install --frozen-lockfile
+
+      - name: apply doc transformations (dry-run)
+        if: ${{ inputs.dry-run }}
+        run: |
+          node .sync-docs-action/packages/transformation-engine/src/apply-transformations.ts \
+            .github/workflows/sync-docs \
+            .github/workflows/sync-docs/transformations.yaml \
+            "${RUNNER_TEMP}/transformed-docs"
+
+      - name: list transformed docs (dry-run)
+        if: ${{ inputs.dry-run }}
+        run: |
+          echo "Transformed documents:"
+          find "${RUNNER_TEMP}/transformed-docs" -type f | sort
