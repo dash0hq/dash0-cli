@@ -1,24 +1,26 @@
 name: Nix vendorHash
 
-# Keep dependency-bump PRs green automatically: when go.mod / go.sum change, the
-# buildGoModule vendorHash in nix/package.nix goes stale and the Nix build
-# fails. This recomputes it and commits the fix back to the PR branch, so
-# Dependabot (and human) dependency PRs fix their own vendorHash.
+# Keep dependency-bump branches green automatically: when go.mod / go.sum
+# change, the buildGoModule vendorHash in nix/package.nix goes stale and the
+# Nix build fails. This recomputes it and commits the fix back to the branch,
+# so Dependabot (and human) dependency branches fix their own vendorHash.
 #
 # Pushing back requires a token with write access. We reuse
 # REPOSITORY_FULL_ACCESS_GITHUB_TOKEN (already used by release.yml); using a PAT
 # rather than the default GITHUB_TOKEN also makes the follow-up commit
 # re-trigger the Nix build workflow.
 #
-# Why `pull_request_target` rather than `pull_request`: GitHub withholds Actions
-# secrets from `pull_request` runs triggered by Dependabot, so the PAT resolves
-# empty and `actions/checkout` fails with "Input required and not supplied:
-# token" (see PR #188). `pull_request_target` grants Actions secrets to
-# Dependabot runs and evaluates the workflow file from the base branch, so a PR
-# cannot alter what runs here. The tradeoff is that a change to this file on a
-# PR branch cannot be tested by that PR — it only takes effect after merge.
+# Why `push` rather than `pull_request` / `pull_request_target`:
+#   - `pull_request` withholds Actions secrets from Dependabot-triggered runs,
+#     so the PAT resolves empty and `actions/checkout` fails (see PR #188).
+#   - `pull_request_target` grants secrets but also fires on fork PRs, where we
+#     cannot push back anyway. `push` events fire only for branches in this
+#     repository (a fork's push never reaches us), so the same-repo restriction
+#     is enforced by the trigger itself — no `if:` guard needed.
 on:
-  pull_request_target:
+  push:
+    branches-ignore:
+      - main
     paths:
       - "go.mod"
       - "go.sum"
@@ -30,18 +32,11 @@ permissions:
 
 jobs:
   update-vendor-hash:
-    # Only same-repo branches (we can't push to a fork's branch). Dependabot
-    # branches always live in this repo, so this covers both Dependabot and
-    # human dependency PRs.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR branch
+      - name: Checkout branch
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
 
       - name: Install Nix
@@ -60,4 +55,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add nix/package.nix
           git commit -m "chore(nix): update vendorHash for dependency change"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
