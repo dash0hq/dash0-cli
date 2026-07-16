@@ -1,6 +1,6 @@
 # About the Dash0 CLI
 
-The Dash0 CLI (`dash0`) is a command-line interface for the [Dash0](https://www.dash0.com) observability platform.
+The Dash0 CLI (`dash0`) is the command-line interface for Dash0.
 It exposes the same primitives as the web UI — dashboards, views, check rules, synthetic checks, teams, notification channels — plus telemetry queries and OTLP send operations, as commands that humans, agentic AIs, and CI/CD workflows can drive.
 
 ## Who it's for
@@ -36,5 +36,6 @@ It exposes the same primitives as the web UI — dashboards, views, check rules,
 ## Next steps
 
 - [Installation](installation.md) — install via Homebrew, Docker, Nix, or from source.
+- [Quickstart](quickstart.md) — a five-minute walkthrough: log in, list assets, query telemetry, and send a deployment event.
 - [Command Reference](commands.md) — full syntax and examples for every command.
 - [GitHub Actions](github-actions.md) — use the CLI from your workflows.
