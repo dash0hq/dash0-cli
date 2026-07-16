@@ -26,6 +26,16 @@ nav:
   title: Tooling
 
 files:
+  - source: docs/about.md
+    target: dash0-cli/about.md
+    title: About the Dash0 CLI
+    description: Introduction to the Dash0 CLI — what it is, who it's for, and the design principles that shape its ergonomics for humans, AI agents, and CI/CD.
+
+  - source: docs/installation.md
+    target: dash0-cli/installation.md
+    title: Installation
+    description: Install the Dash0 CLI via Homebrew, GitHub Releases, Docker, Nix, or from source.
+
   - source: docs/commands.md
     target: dash0-cli/commands.md
     title: Command Reference
