@@ -57,3 +57,12 @@ jobs:
           args: release --clean --release-notes release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+
+  sync-docs-to-website:
+    name: Synchronize docs with dash0.com/docs
+    needs: goreleaser
+    uses: ./.github/workflows/sync-docs-to-website.yaml
+    with:
+      dry-run: false
+    secrets:
+      REPOSITORY_FULL_ACCESS_GITHUB_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}

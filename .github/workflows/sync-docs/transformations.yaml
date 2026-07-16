@@ -1,0 +1,53 @@
+# Transformations applied to the dash0-cli docs before they are copied into the Dash0 documentation
+# repository. See ../sync-docs-to-website.yaml for the workflow that consumes this file.
+#
+# This directory doubles as the `source-root` passed to `dash0hq/sync-docs-action`. It intentionally
+# does not contain a `docs/` subdirectory, so the action's "every docs/*.md must be declared"
+# invariant is not triggered by this repo's development-facing docs under /docs. The `source` paths
+# below therefore reach out of this directory with `../../../` to point at the user-facing files at
+# the repository root and under /docs.
+#
+# See https://github.com/dash0hq/sync-docs-action for the transformation-engine reference.
+
+common:
+  - description: strip the leading top-level heading (the frontmatter title replaces it)
+    type: replace-regex
+    find: '^# [^\n]*\n'
+    replace: ''
+
+files:
+  - source: ../../../README.md
+    target: dash0-cli/overview.md
+    title: Overview
+    description: The Dash0 CLI is a command-line interface for humans, agentic AIs, and CI/CD to interact with the Dash0 observability platform.
+    transformations:
+      - description: rewrite the setup action link to a stable GitHub URL
+        type: replace-regex
+        find: '\]\(\.github/actions/setup/action\.yaml\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/setup/action.yaml)'
+      - description: rewrite the send-log-event action link to a stable GitHub URL
+        type: replace-regex
+        find: '\]\(\.github/actions/send-log-event/action\.yaml\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/send-log-event/action.yaml)'
+      - description: rewrite CONTRIBUTING.md links to a stable GitHub URL (page is not synced)
+        type: replace-regex
+        find: '\]\(CONTRIBUTING\.md(#[^)]*)?\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/CONTRIBUTING.md\1)'
+      - description: rewrite the brew-tap-migration doc link to a stable GitHub URL (page is not synced)
+        type: replace-regex
+        find: '\]\(docs/brew-tap-migration-2026-06\.md\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/docs/brew-tap-migration-2026-06.md)'
+      - description: rewrite the nix examples link to a stable GitHub URL
+        type: replace-regex
+        find: '\]\(nix/examples/home-manager-vm\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/tree/main/nix/examples/home-manager-vm)'
+
+  - source: ../../../docs/commands.md
+    target: dash0-cli/commands.md
+    title: Command reference
+    description: Full reference for every dash0 CLI command, with syntax, flags, expected outputs, and examples for AI agents and automation workflows.
+    transformations:
+      - description: rewrite the cross-reference to documentation.md (page is not synced)
+        type: replace-regex
+        find: '\]\(documentation\.md#code-blocks\)'
+        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/docs/documentation.md#code-blocks)'
