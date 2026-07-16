@@ -2,41 +2,66 @@ name: Nix vendorHash
 
 # Keep dependency-bump branches green automatically: when go.mod / go.sum
 # change, the buildGoModule vendorHash in nix/package.nix goes stale and the
-# Nix build fails. This recomputes it and commits the fix back to the branch,
-# so Dependabot (and human) dependency branches fix their own vendorHash.
+# `Nix` build fails. This workflow reacts to that failure, recomputes the
+# hash, and pushes the fix back to the branch.
+#
+# Why `workflow_run` rather than `push` / `pull_request` / `pull_request_target`:
+# GitHub restricts events triggered directly by Dependabot to a read-only
+# `GITHUB_TOKEN` with no access to Actions secrets, so the write-scoped PAT we
+# need for the push-back resolves empty (see PR #188). `workflow_run` fires
+# after another workflow completes, and the run itself starts from the base
+# repo on the default branch — it is not "triggered by Dependabot" in the same
+# way, so Actions secrets are available.
 #
 # Pushing back requires a token with write access. We reuse
-# REPOSITORY_FULL_ACCESS_GITHUB_TOKEN (already used by release.yml); using a PAT
-# rather than the default GITHUB_TOKEN also makes the follow-up commit
-# re-trigger the Nix build workflow.
-#
-# Why `push` rather than `pull_request` / `pull_request_target`:
-#   - `pull_request` withholds Actions secrets from Dependabot-triggered runs,
-#     so the PAT resolves empty and `actions/checkout` fails (see PR #188).
-#   - `pull_request_target` grants secrets but also fires on fork PRs, where we
-#     cannot push back anyway. `push` events fire only for branches in this
-#     repository (a fork's push never reaches us), so the same-repo restriction
-#     is enforced by the trigger itself — no `if:` guard needed.
+# REPOSITORY_FULL_ACCESS_GITHUB_TOKEN (already used by release.yml); using a
+# PAT rather than the default GITHUB_TOKEN also makes the follow-up commit
+# re-trigger the Nix build, which either goes green or triggers this workflow
+# again to converge on a no-op.
 on:
-  push:
-    branches-ignore:
-      - main
-    paths:
-      - "go.mod"
-      - "go.sum"
-      - "nix/package.nix"
+  workflow_run:
+    workflows: ["Nix"]
+    types: [completed]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to recompute the vendorHash on
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   update-vendor-hash:
+    # Only heal a branch when the upstream Nix build actually failed. Skip when
+    # the upstream ran on `main` (fixes belong on PR branches; pushing to
+    # `main` from here could loop), and when it ran against a fork (we can't
+    # push back to a fork's branch anyway).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_branch != 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve target branch
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_BRANCH: ${{ inputs.branch }}
+          WORKFLOW_RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "branch=${DISPATCH_BRANCH}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${WORKFLOW_RUN_BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout branch
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ steps.target.outputs.branch }}
           token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
 
       - name: Install Nix
@@ -46,6 +71,8 @@ jobs:
         run: ./nix/update-vendor-hash.sh
 
       - name: Commit and push if changed
+        env:
+          BRANCH: ${{ steps.target.outputs.branch }}
         run: |
           if git diff --quiet -- nix/package.nix; then
             echo "vendorHash already correct; nothing to do."
@@ -55,4 +82,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add nix/package.nix
           git commit -m "chore(nix): update vendorHash for dependency change"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${BRANCH}"
