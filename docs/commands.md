@@ -741,12 +741,12 @@ For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema
 An unknown value fails validation up front, before any document is applied.
 
 For `PrometheusRule`, `apply` inspects each rule entry and dispatches by type.
-Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as one check rule per alert, named `<group name> - <alert name>` to match the Dash0 Kubernetes operator and the Terraform provider.
-Recording rules (entries with `record:`) are sent to the recording-rule endpoint as a single PrometheusRule CRD with the alerting rules removed.
+Alerting rules (entries with `alert:`) are sent to the [check-rule endpoint](https://api-docs.dash0.com/reference/post_api-alerting-check-rules) as one check rule per alert, named `<group name> - <alert name>` to match the Dash0 Kubernetes operator and the Terraform provider.
+Recording rules (entries with `record:`) are sent to the [recording-rule endpoint](https://api-docs.dash0.com/reference/post_api-recording-rules) as a single PrometheusRule CRD with the alerting rules removed.
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
 
-`Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
+`Dash0NotificationChannel` documents are dispatched to the organization-level [notification-channels endpoint](https://api-docs.dash0.com/reference/post_api-notification-channels) and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
 
 > [!NOTE]
@@ -912,7 +912,7 @@ spec:
 ```
 
 The CLI detects the apiVersion from the document and routes to the corresponding endpoint.
-The `list` endpoint returns v1alpha1 definitions only; use `spam-filters get <id>` to retrieve a filter in its native apiVersion.
+The [`list` endpoint](https://api-docs.dash0.com/reference/get_api-spam-filters) returns v1alpha1 definitions only; use `spam-filters get <id>` to retrieve a filter in its native apiVersion.
 The `delete` endpoint is version-agnostic.
 
 Notification channel (organization-level, no `--dataset`):
@@ -952,7 +952,7 @@ spec:
           expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
 ```
 
-The alerting rule is created as a check rule under `/api/alerting/check-rules`, and a recording-rule CRD with only the recording rule is created under `/api/recording-rules`.
+The alerting rule is created as a check rule under [`/api/alerting/check-rules`](https://api-docs.dash0.com/reference/post_api-alerting-check-rules), and a recording-rule CRD with only the recording rule is created under [`/api/recording-rules`](https://api-docs.dash0.com/reference/post_api-recording-rules).
 
 Multi-document file (separated by `---`):
 
