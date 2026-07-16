@@ -34,9 +34,9 @@ on:
         description: Fine-grained PAT with contents+pull-requests write on dash0hq/dash0-website. Only required when dry-run is false.
         required: false
 
-# sync-docs-action v0.2.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.2.0
+# sync-docs-action v0.3.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.3.0
 env:
-  SYNC_DOCS_ACTION_REF: 9c3d55819e9b8143e695f8f7d4b6e00189ba40a3
+  SYNC_DOCS_ACTION_REF: de42352c0e212c770c6e91cf85993c7e76f5a8b9
 
 jobs:
   sync-docs:
@@ -54,7 +54,7 @@ jobs:
       # `.github/workflows/sync-docs/transformations.yaml`).
       - name: sync docs to dash0.com/docs
         if: ${{ ! inputs.dry-run }}
-        uses: dash0hq/sync-docs-action@9c3d55819e9b8143e695f8f7d4b6e00189ba40a3 # v0.2.0
+        uses: dash0hq/sync-docs-action@de42352c0e212c770c6e91cf85993c7e76f5a8b9 # v0.3.0
         with:
           target-github-token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
           pr-branch: sync-dash0-cli-docs

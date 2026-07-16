@@ -4,11 +4,12 @@
 # `files:` is the sole opt-in list — the sync ignores anything in the source repo that is not
 # declared here (docs-coverage enforcement was removed in sync-docs-action v0.2.0).
 #
-# The `nav:` block emits a matching nav.json alongside the synced pages. sync-docs-action's nav
-# generator only produces the flat "one group, N file leaves" shape today, so a target tree of the
-# form `Miscellaneous → Tooling → Dash0 CLI → files` collapses to a single group. We name the group
-# "Tooling" so the CLI docs slot into whichever "Tooling" umbrella dash0-website already exposes
-# (or grows), rather than living under a standalone "Dash0 CLI" section.
+# The `nav:` block emits a matching nav.json alongside the synced pages. sync-docs-action v0.3.0
+# derives the nav tree from the on-disk hierarchy of the `target` paths: files that share the
+# common directory prefix appear as top-level leaves under `items[0]`, and files that sit in a
+# deeper subdirectory (`github-actions/` here) are nested inside a `{ title, children }` group
+# whose title is looked up in `groupTitles`. The `dash0/miscellaneous/tooling/dash0-cli/` prefix in
+# every `target` matches the layout `dash0hq/dash0-website` renders under Miscellaneous → Tooling.
 #
 # See https://github.com/dash0hq/sync-docs-action for the transformation-engine reference.
 
@@ -19,30 +20,32 @@ common:
     replace: ''
 
 nav:
-  target: dash0-cli/nav.json
-  order: 72.5
-  id: tooling
-  parentPath: Miscellaneous
-  title: Tooling
+  target: dash0/miscellaneous/tooling/dash0-cli/nav.json
+  order: 72.6
+  id: dash0-cli
+  parentPath: Tooling
+  title: Dash0 CLI
+  groupTitles:
+    github-actions: GitHub Actions
 
 files:
   - source: docs/about.md
-    target: dash0-cli/about.md
+    target: dash0/miscellaneous/tooling/dash0-cli/about.md
     title: About the Dash0 CLI
     description: Introduction to the Dash0 CLI — what it is, who it's for, and the design principles that shape its ergonomics for humans, AI agents, and CI/CD.
 
   - source: docs/installation.md
-    target: dash0-cli/installation.md
+    target: dash0/miscellaneous/tooling/dash0-cli/installation.md
     title: Installation
     description: Install the Dash0 CLI via Homebrew, GitHub Releases, Docker, Nix, or from source.
 
   - source: docs/quickstart.md
-    target: dash0-cli/quickstart.md
+    target: dash0/miscellaneous/tooling/dash0-cli/quickstart.md
     title: Quickstart
     description: A five-minute walkthrough — log in, list assets, query telemetry, and send a deployment event.
 
   - source: docs/commands.md
-    target: dash0-cli/commands.md
+    target: dash0/miscellaneous/tooling/dash0-cli/commands.md
     title: Command Reference
     description: Full reference for every dash0 CLI command, with syntax, flags, expected outputs, and examples for AI agents and automation workflows.
     transformations:
@@ -52,21 +55,27 @@ files:
         replace: '](https://github.com/dash0hq/dash0-cli/blob/main/docs/documentation.md#code-blocks)'
 
   - source: docs/github-actions.md
-    target: dash0-cli/github-actions.md
-    title: GitHub Actions
+    target: dash0/miscellaneous/tooling/dash0-cli/github-actions/about.md
+    title: About GitHub Actions
     description: How to use the dash0 CLI from GitHub Actions workflows via the setup and send-log-event composite actions shipped in this repository.
+
+  - source: .github/actions/setup/README.md
+    target: dash0/miscellaneous/tooling/dash0-cli/github-actions/setup.md
+    title: Setup Dash0 CLI
+    description: Composite GitHub Action that installs and configures the Dash0 CLI in CI workflows.
+
+  - source: .github/actions/send-log-event/README.md
+    target: dash0/miscellaneous/tooling/dash0-cli/github-actions/send-log-event.md
+    title: Send Log Event
+    description: Composite GitHub Action that emits a log event (e.g., a deployment marker) to Dash0 via the CLI.
     transformations:
-      - description: rewrite the setup action link to a stable GitHub URL
+      - description: rewrite the "../setup/README.md" cross-action link to the sibling website page
         type: replace-regex
-        find: '\]\(\.github/actions/setup/action\.yaml\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/setup/action.yaml)'
-      - description: rewrite the send-log-event action link to a stable GitHub URL
-        type: replace-regex
-        find: '\]\(\.github/actions/send-log-event/action\.yaml\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/send-log-event/action.yaml)'
+        find: '\]\(\.\./setup/README\.md\)'
+        replace: '](setup.md)'
 
   - source: docs/brew-tap-migration-2026-06.md
-    target: dash0-cli/brew-tap-migration-2026-06.md
+    target: dash0/miscellaneous/tooling/dash0-cli/brew-tap-migration-2026-06.md
     title: Homebrew Tap Migration (June 2026)
     description: One-time migration notice for users who installed the Dash0 CLI from the legacy Homebrew formula before it moved to the qualified dash0hq/dash0-cli/dash0 cask.
     transformations:
