@@ -59,6 +59,16 @@ jobs:
       - name: Run ShellCheck
         run: make lint-sh
 
+  sync-docs-to-website-dry-run:
+    # Drift guard: verify on every CI build that the transformations declared in
+    # `.github/workflows/sync-docs/transformations.yaml` still apply cleanly against
+    # the current dash0-cli docs. The real sync (dry-run: false) runs from
+    # `release.yml` after a release is published.
+    name: Synchronize docs with dash0.com/docs (dry-run)
+    uses: ./.github/workflows/sync-docs-to-website.yaml
+    with:
+      dry-run: true
+
   discover-roundtrip-tests:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
