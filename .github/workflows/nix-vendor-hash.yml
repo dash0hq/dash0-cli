@@ -10,9 +10,10 @@ name: Nix vendorHash
 # rather than the default GITHUB_TOKEN also makes the follow-up commit
 # re-trigger the Nix build workflow.
 #
-# For this to work on Dependabot PRs, that token must ALSO be registered as a
-# Dependabot secret (Settings -> Secrets and variables -> Dependabot), because
-# GitHub withholds Actions secrets from Dependabot-triggered pull_request runs.
+# Dependabot PRs are handled by the sibling `nix-vendor-hash-dependabot.yml`
+# workflow, which uses `pull_request_target` so Dependabot-triggered runs can
+# access the PAT (GitHub withholds Actions secrets from Dependabot-triggered
+# `pull_request` runs otherwise).
 on:
   pull_request:
     paths:
@@ -27,9 +28,13 @@ permissions:
 
 jobs:
   update-vendor-hash:
-    # Only same-repo branches (Dependabot branches live in this repo); we can't
-    # push to a fork's branch.
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    # Only same-repo branches (we can't push to a fork's branch). Dependabot
+    # PRs are handled by `nix-vendor-hash-dependabot.yml` — this `pull_request`
+    # workflow can't fetch the PAT under Dependabot's secret restrictions.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
