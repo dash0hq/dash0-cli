@@ -1,11 +1,14 @@
 # Transformations applied to the dash0-cli docs before they are copied into the Dash0 documentation
 # repository. See ../sync-docs-to-website.yaml for the workflow that consumes this file.
 #
-# This directory doubles as the `source-root` passed to `dash0hq/sync-docs-action`. It intentionally
-# does not contain a `docs/` subdirectory, so the action's "every docs/*.md must be declared"
-# invariant is not triggered by this repo's development-facing docs under /docs. The `source` paths
-# below therefore reach out of this directory with `../../../` to point at the user-facing files at
-# the repository root and under /docs.
+# `files:` is the sole opt-in list — the sync ignores anything in the source repo that is not
+# declared here (docs-coverage enforcement was removed in sync-docs-action v0.2.0).
+#
+# The `nav:` block emits a matching nav.json alongside the synced pages. sync-docs-action's nav
+# generator only produces the flat "one group, N file leaves" shape today, so a target tree of the
+# form `Miscellaneous → Tooling → Dash0 CLI → files` collapses to a single group. We name the group
+# "Tooling" so the CLI docs slot into whichever "Tooling" umbrella dash0-website already exposes
+# (or grows), rather than living under a standalone "Dash0 CLI" section.
 #
 # See https://github.com/dash0hq/sync-docs-action for the transformation-engine reference.
 
@@ -15,8 +18,15 @@ common:
     find: '^# [^\n]*\n'
     replace: ''
 
+nav:
+  target: dash0-cli/nav.json
+  order: 72.5
+  id: tooling
+  parentPath: Miscellaneous
+  title: Tooling
+
 files:
-  - source: ../../../README.md
+  - source: README.md
     target: dash0-cli/overview.md
     title: Overview
     description: The Dash0 CLI is a command-line interface for humans, agentic AIs, and CI/CD to interact with the Dash0 observability platform.
@@ -42,9 +52,9 @@ files:
         find: '\]\(nix/examples/home-manager-vm\)'
         replace: '](https://github.com/dash0hq/dash0-cli/tree/main/nix/examples/home-manager-vm)'
 
-  - source: ../../../docs/commands.md
+  - source: docs/commands.md
     target: dash0-cli/commands.md
-    title: Command reference
+    title: Command Reference
     description: Full reference for every dash0 CLI command, with syntax, flags, expected outputs, and examples for AI agents and automation workflows.
     transformations:
       - description: rewrite the cross-reference to documentation.md (page is not synced)
