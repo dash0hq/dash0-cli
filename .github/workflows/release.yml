@@ -65,4 +65,4 @@ jobs:
     with:
       dry-run: false
     secrets:
-      REPOSITORY_FULL_ACCESS_GITHUB_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+      DOCS_WEBSITE_PR_TOKEN: ${{ secrets.DOCS_WEBSITE_PR_TOKEN }}
