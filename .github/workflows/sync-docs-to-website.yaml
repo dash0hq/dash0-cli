@@ -13,8 +13,8 @@ name: Synchronize docs to dash0.com/docs
 #
 #   - full sync (workflow_call from a release workflow, or workflow_dispatch with dry-run unchecked):
 #     runs the sync-docs-action end-to-end and opens/updates a PR on dash0hq/dash0-website.
-#     Requires the REPOSITORY_FULL_ACCESS_GITHUB_TOKEN secret — a fine-grained PAT with
-#     `contents:write` and `pull-requests:write` on the target documentation repository.
+#     Requires the DOCS_WEBSITE_PR_TOKEN secret — a fine-grained PAT scoped only to
+#     dash0hq/dash0-website with `contents:write` and `pull-requests:write`.
 
 on:
   workflow_dispatch:
@@ -30,8 +30,8 @@ on:
         type: boolean
         default: false
     secrets:
-      REPOSITORY_FULL_ACCESS_GITHUB_TOKEN:
-        description: Fine-grained PAT with contents+pull-requests write on dash0hq/dash0-website. Only required when dry-run is false.
+      DOCS_WEBSITE_PR_TOKEN:
+        description: Fine-grained PAT scoped to dash0hq/dash0-website with contents+pull-requests write. Only required when dry-run is false.
         required: false
 
 # sync-docs-action v0.3.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.3.0
@@ -56,7 +56,7 @@ jobs:
         if: ${{ ! inputs.dry-run }}
         uses: dash0hq/sync-docs-action@de42352c0e212c770c6e91cf85993c7e76f5a8b9 # v0.3.0
         with:
-          target-github-token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+          target-github-token: ${{ secrets.DOCS_WEBSITE_PR_TOKEN }}
           pr-branch: sync-dash0-cli-docs
           pr-title: 'docs: synchronize dash0-cli documentation'
           pr-body: |
