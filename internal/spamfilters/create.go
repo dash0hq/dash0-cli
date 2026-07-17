@@ -66,7 +66,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
 	switch apiVersion {
-	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
+	case string(dash0api.SpamFilterApiVersionV1Alpha1):
 		filter, err := decodeV1Alpha1(raw)
 		if err != nil {
 			return err

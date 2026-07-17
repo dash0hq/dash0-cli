@@ -18,7 +18,7 @@ func TestDetectAPIVersion(t *testing.T) {
 		{
 			name: "explicit v1alpha1",
 			data: "apiVersion: v1alpha1\nkind: Dash0SpamFilter\n",
-			want: string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1),
+			want: string(dash0api.SpamFilterApiVersionV1Alpha1),
 		},
 		{
 			name: "explicit v1alpha2",
@@ -28,7 +28,7 @@ func TestDetectAPIVersion(t *testing.T) {
 		{
 			name: "missing apiVersion defaults to v1alpha1",
 			data: "kind: Dash0SpamFilter\nmetadata:\n  name: foo\n",
-			want: string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1),
+			want: string(dash0api.SpamFilterApiVersionV1Alpha1),
 		},
 		{
 			name: "JSON input is accepted",
@@ -66,7 +66,7 @@ func TestObjectAccessors_V1Alpha1(t *testing.T) {
 	origin := "my-origin"
 	dataset := "default"
 
-	v1 := dash0api.SpamFilterApiVersionV1Alpha1V1alpha1
+	v1 := dash0api.SpamFilterApiVersionV1Alpha1
 	obj := &dash0api.SpamFilter{
 		ApiVersion: &v1,
 		Kind:       dash0api.SpamFilterDefinitionKindDash0SpamFilter,
@@ -89,7 +89,7 @@ func TestObjectAccessors_V1Alpha1(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), objectAPIVersion(obj))
+	assert.Equal(t, string(dash0api.SpamFilterApiVersionV1Alpha1), objectAPIVersion(obj))
 	assert.Equal(t, "Dash0SpamFilter", objectKind(obj))
 	assert.Equal(t, "drop noisy", objectName(obj))
 	assert.Equal(t, "sf-123", objectID(obj))
@@ -130,7 +130,7 @@ func TestObjectAPIVersion_V1Alpha1_DefaultsWhenAbsent(t *testing.T) {
 	// should report v1alpha1 (the type's own version) instead of "" so the
 	// caller can render a useful string without special-casing.
 	obj := &dash0api.SpamFilter{}
-	assert.Equal(t, string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), objectAPIVersion(obj))
+	assert.Equal(t, string(dash0api.SpamFilterApiVersionV1Alpha1), objectAPIVersion(obj))
 }
 
 func TestResolveUpdateKey(t *testing.T) {

@@ -82,6 +82,13 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		dash0api.StripRecordingRuleServerFields(&r)
 		stripped = &r
+	case *dash0api.TeamDefinitionV1Alpha1:
+		var t dash0api.TeamDefinitionV1Alpha1
+		if err := sigsyaml.Unmarshal(jsonBytes, &t); err != nil {
+			return "", fmt.Errorf("failed to unmarshal team: %w", err)
+		}
+		dash0api.StripTeamServerFields(&t)
+		stripped = &t
 	default:
 		stripped = asset
 	}

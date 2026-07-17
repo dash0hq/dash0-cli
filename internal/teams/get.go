@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -61,7 +62,7 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		return err
 	}
 
-	resp, err := apiClient.GetTeam(ctx, originOrID)
+	team, err := apiClient.GetTeam(ctx, originOrID)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "team",
@@ -71,11 +72,17 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 
 	switch strings.ToLower(flags.Output) {
 	case "json":
+		if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
+			return err
+		}
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		return encoder.Encode(resp)
+		return encoder.Encode(team)
 	case "yaml", "yml":
-		data, err := sigsyaml.Marshal(resp)
+		if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
+			return err
+		}
+		data, err := sigsyaml.Marshal(team)
 		if err != nil {
 			return fmt.Errorf("failed to marshal team as YAML: %w", err)
 		}
@@ -83,21 +90,22 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		return nil
 	case "":
 		if agentmode.Enabled {
+			if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
+				return err
+			}
 			encoder := json.NewEncoder(os.Stdout)
 			encoder.SetIndent("", "  ")
-			return encoder.Encode(resp)
+			return encoder.Encode(team)
 		}
-		return printTeamDetails(resp)
+		return printTeamDetails(ctx, apiClient, team)
 	case "table":
-		return printTeamDetails(resp)
+		return printTeamDetails(ctx, apiClient, team)
 	default:
 		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
 	}
 }
 
-func printTeamDetails(resp *dash0api.GetTeamResponse) error {
-	team := resp.Team
-
+func printTeamDetails(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) error {
 	id := ""
 	if team.Metadata.Labels != nil && team.Metadata.Labels.Dash0Comid != nil {
 		id = *team.Metadata.Labels.Dash0Comid
@@ -109,6 +117,7 @@ func printTeamDetails(resp *dash0api.GetTeamResponse) error {
 
 	fmt.Printf("Kind:    Team\n")
 	fmt.Printf("Name:    %s\n", team.Spec.Display.Name)
+	fmt.Printf("Slug:    %s\n", team.Metadata.Name)
 	if id != "" {
 		fmt.Printf("ID:      %s\n", id)
 	}
@@ -116,13 +125,17 @@ func printTeamDetails(resp *dash0api.GetTeamResponse) error {
 		fmt.Printf("Origin:  %s\n", origin)
 	}
 	fmt.Printf("Color:   %s -> %s\n", team.Spec.Display.Color.From, team.Spec.Display.Color.To)
-	fmt.Printf("Members: %d\n", len(resp.Members))
+	fmt.Printf("Members: %d\n", len(team.Spec.Members))
 
-	if len(resp.Members) > 0 {
+	teamMembers, err := resolveTeamMembers(ctx, apiClient, team)
+	if err != nil {
+		return err
+	}
+	if len(teamMembers) > 0 {
 		fmt.Println()
 		fmt.Println("Team members:")
-		for _, m := range resp.Members {
-			name := members.MemberDisplayName(&m)
+		for _, m := range teamMembers {
+			name := members.MemberDisplayName(m)
 			email := ""
 			if m.Spec.Display.Email != nil {
 				email = *m.Spec.Display.Email
@@ -135,22 +148,5 @@ func printTeamDetails(resp *dash0api.GetTeamResponse) error {
 		}
 	}
 
-	printAccessibleAssets("Dashboards", resp.Dashboards)
-	printAccessibleAssets("Check rules", resp.CheckRules)
-	printAccessibleAssets("Views", resp.Views)
-	printAccessibleAssets("Synthetic checks", resp.SyntheticChecks)
-	printAccessibleAssets("Datasets", resp.Datasets)
-
 	return nil
-}
-
-func printAccessibleAssets(label string, assets []dash0api.AccessibleAsset) {
-	if len(assets) == 0 {
-		return
-	}
-	fmt.Println()
-	fmt.Printf("Accessible %s:\n", label)
-	for _, a := range assets {
-		fmt.Printf("  - %s\n", a.Name)
-	}
 }
