@@ -15,6 +15,8 @@ GROUP_NAME=$(yq '.spec.groups[0].name' "$FIXTURE")
 # The CLI names check rules imported from a PrometheusRule CRD as
 # "<group name> - <alert name>", matching the operator and Terraform provider.
 EXPECTED_NAME="${GROUP_NAME} - ${ALERT_NAME}"
+EXPECTED_SUMMARY=$(yq '.spec.groups[0].rules[0].annotations.summary' "$FIXTURE")
+EXPECTED_DESCRIPTION=$(yq '.spec.groups[0].rules[0].annotations.description' "$FIXTURE")
 
 echo "=== PrometheusRule CRD round-trip test ==="
 echo "Expected check rule name: $EXPECTED_NAME"
@@ -57,17 +59,43 @@ fi
 echo "expression: $ACTUAL_EXPR"
 
 ACTUAL_SUMMARY=$(echo "$GET_JSON" | jq -r '.annotations.summary // empty')
-if [ -z "$ACTUAL_SUMMARY" ]; then
-  echo "FAIL: annotations.summary is empty (should be preserved from PrometheusRule annotations)"
+if [ "$ACTUAL_SUMMARY" != "$EXPECTED_SUMMARY" ]; then
+  echo "FAIL: expected annotations.summary '$EXPECTED_SUMMARY', got '$ACTUAL_SUMMARY'"
   exit 1
 fi
 echo "annotations.summary: $ACTUAL_SUMMARY"
+
+ACTUAL_DESCRIPTION=$(echo "$GET_JSON" | jq -r '.annotations.description // empty')
+if [ "$ACTUAL_DESCRIPTION" != "$EXPECTED_DESCRIPTION" ]; then
+  echo "FAIL: expected annotations.description '$EXPECTED_DESCRIPTION', got '$ACTUAL_DESCRIPTION'"
+  exit 1
+fi
+echo "annotations.description: $ACTUAL_DESCRIPTION"
 
 # Step 4: Export to YAML and re-import via apply (round-trip).
 echo "--- Step 4: Export and re-apply (round-trip) ---"
 "$DASH0" check-rules get "$ID" -o yaml > "${TMPDIR}/exported.yaml"
 REAPPLY_OUTPUT=$("$DASH0" apply -f "${TMPDIR}/exported.yaml")
 echo "$REAPPLY_OUTPUT"
+
+# Step 4a: Verify user-settable annotations survive the round-trip.
+# INS-508 tracks a backend bug where the check-rule PUT silently drops the
+# `sharing` annotation on non-API-managed rules; `summary` and `description`
+# are the fields the CLI can verify against a real backend without needing
+# a valid team id, so they act as the roundtrip guardrail here.
+echo "--- Step 4a: Verify annotations after round-trip ---"
+POST_ROUNDTRIP_JSON=$("$DASH0" check-rules get "$ID" -o json)
+POST_SUMMARY=$(echo "$POST_ROUNDTRIP_JSON" | jq -r '.annotations.summary // empty')
+if [ "$POST_SUMMARY" != "$EXPECTED_SUMMARY" ]; then
+  echo "FAIL: annotations.summary changed after round-trip: expected '$EXPECTED_SUMMARY', got '$POST_SUMMARY'"
+  exit 1
+fi
+POST_DESCRIPTION=$(echo "$POST_ROUNDTRIP_JSON" | jq -r '.annotations.description // empty')
+if [ "$POST_DESCRIPTION" != "$EXPECTED_DESCRIPTION" ]; then
+  echo "FAIL: annotations.description changed after round-trip: expected '$EXPECTED_DESCRIPTION', got '$POST_DESCRIPTION'"
+  exit 1
+fi
+echo "annotations survived round-trip: summary=$POST_SUMMARY, description=$POST_DESCRIPTION"
 
 # Step 5: Update via check-rules update with the CRD file (ID from argument).
 echo "--- Step 5: Update via check-rules update with CRD file (ID from arg) ---"

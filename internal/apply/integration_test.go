@@ -121,6 +121,72 @@ expression: up == 0
 	assert.Equal(t, "47b6ccbe-82ab-47c6-a613-ce0d7f34353e", *rule.Id)
 }
 
+func TestApply_CheckRule_PreservesAnnotations(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	ruleID := "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
+id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+name: test-check-rule
+expression: up == 0
+annotations:
+  summary: Test summary
+  description: Test description
+  sharing: team:team_01abc
+labels:
+  dash0.com/origin: dash0-cli
+  team: platform
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/alerting/check-rules/"+ruleID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+
+	// Verify user-settable annotations reach the server on PUT. The `sharing`
+	// annotation in particular is the payload the CLI ships and the backend is
+	// expected to honor on API-managed check rules — see INS-508 for the
+	// server-side silent-drop bug on UI/Terraform/operator-managed rules.
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathCheckRules)
+	require.NotNil(t, updateReq, "expected an update request for check rule")
+
+	var rule dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal(updateReq.Body, &rule))
+
+	require.NotNil(t, rule.Annotations)
+	require.NotNil(t, rule.Annotations.Sharing)
+	assert.Equal(t, "team:team_01abc", *rule.Annotations.Sharing)
+	require.NotNil(t, rule.Annotations.Summary)
+	assert.Equal(t, "Test summary", *rule.Annotations.Summary)
+	require.NotNil(t, rule.Annotations.Description)
+	assert.Equal(t, "Test description", *rule.Annotations.Description)
+
+	// Server-managed origin label is stripped; user-set labels survive.
+	require.NotNil(t, rule.Labels)
+	_, hasOrigin := (*rule.Labels)["dash0.com/origin"]
+	assert.False(t, hasOrigin, "dash0.com/origin label should be stripped")
+	assert.Equal(t, "platform", (*rule.Labels)["team"], "user-set labels should be preserved")
+
+	require.NotNil(t, rule.Id)
+	assert.Equal(t, ruleID, *rule.Id)
+}
+
 func TestApply_Dashboard_Created(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
