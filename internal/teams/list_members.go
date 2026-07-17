@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -85,7 +84,7 @@ func runListMembers(cmd *cobra.Command, teamID string, flags *listMembersFlags) 
 		return err
 	}
 
-	resp, err := apiClient.GetTeam(ctx, teamID)
+	team, err := apiClient.GetTeam(ctx, teamID)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "team",
@@ -93,9 +92,9 @@ func runListMembers(cmd *cobra.Command, teamID string, flags *listMembersFlags) 
 		})
 	}
 
-	items := make([]*dash0api.MemberDefinition, len(resp.Members))
-	for i := range resp.Members {
-		items[i] = &resp.Members[i]
+	items, err := resolveTeamMembers(ctx, apiClient, team)
+	if err != nil {
+		return fmt.Errorf("failed to fetch team members: %w", err)
 	}
 
 	apiUrl := client.ResolveApiUrl(ctx, flags.ApiUrl)

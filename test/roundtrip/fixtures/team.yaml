@@ -1,0 +1,15 @@
+kind: Dash0Team
+metadata:
+  name: roundtrip-team
+  labels:
+    dash0.com/origin: __ORIGIN__
+spec:
+  display:
+    name: __DISPLAY_NAME__
+    description: Team owned by the CLI round-trip test. Safe to delete.
+    color:
+      from: "#6366F1"
+      to: "#8B5CF6"
+  members:
+    - __MEMBER_EMAIL_1__
+    - __MEMBER_EMAIL_2__

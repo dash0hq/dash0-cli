@@ -24,11 +24,14 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "[experimental] Update a team",
-		Long:  `Update the display settings of a team (name, color).` + internal.CONFIG_HINT,
-		Example: `  # Rename a team
+		Long: `Update the display settings of a team (name, color).
+
+Flags that are not provided leave the corresponding field unchanged; the CLI
+fetches the current display, merges your changes, and PUTs the result.` + internal.CONFIG_HINT,
+		Example: `  # Rename a team, keeping its current color gradient
   dash0 --experimental teams update <id> --name "New Name"
 
-  # Update the team's color gradient
+  # Update the team's color gradient without touching the name
   dash0 --experimental teams update <id> \
       --color-from "#FF0000" --color-to "#00FF00"`,
 		Args: cobra.ExactArgs(1),
@@ -52,20 +55,19 @@ func newUpdateCmd() *cobra.Command {
 func runUpdate(cmd *cobra.Command, originOrID string, flags *updateFlags) error {
 	ctx := cmd.Context()
 
+	if flags.Name == "" && flags.ColorFrom == "" && flags.ColorTo == "" {
+		return fmt.Errorf("nothing to update: pass at least one of --name, --color-from, --color-to")
+	}
+
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	display := &dash0api.TeamDisplay{
-		Name: flags.Name,
-		Color: dash0api.Gradient{
-			From: flags.ColorFrom,
-			To:   flags.ColorTo,
-		},
-	}
-
-	err = apiClient.UpdateTeamDisplay(ctx, originOrID, display)
+	// Fetch current state so unspecified flags round-trip unchanged. The
+	// imperative `.../display` endpoint replaces the full display block, so
+	// partial updates require a client-side merge.
+	current, err := apiClient.GetTeam(ctx, originOrID)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "team",
@@ -73,6 +75,25 @@ func runUpdate(cmd *cobra.Command, originOrID string, flags *updateFlags) error 
 		})
 	}
 
-	fmt.Printf("Team %q updated\n", originOrID)
+	display := current.Spec.Display
+	if flags.Name != "" {
+		display.Name = flags.Name
+	}
+	if flags.ColorFrom != "" {
+		display.Color.From = flags.ColorFrom
+	}
+	if flags.ColorTo != "" {
+		display.Color.To = flags.ColorTo
+	}
+
+	err = apiClient.UpdateTeamDisplay(ctx, originOrID, &display)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "team",
+			AssetID:   originOrID,
+		})
+	}
+
+	fmt.Printf("Team %q updated\n", dash0api.GetTeamID(current))
 	return nil
 }

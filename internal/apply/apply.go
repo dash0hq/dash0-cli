@@ -50,6 +50,7 @@ Supported asset types:
   - View
   - Dash0SpamFilter
   - Dash0NotificationChannel
+  - Dash0Team
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -172,7 +173,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -393,6 +394,21 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			id = dash0api.GetNotificationChannelOrigin(&channel)
 		}
 
+	case "team":
+		var team dash0api.TeamDefinitionV1Alpha1
+		if err := sigsyaml.Unmarshal(data, &team); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetTeamDisplayName(&team)
+		if name == "" {
+			name = dash0api.GetTeamName(&team)
+		}
+		id = dash0api.GetTeamID(&team)
+		if id == "" {
+			// Teams use origin as the upsert key.
+			id = dash0api.GetTeamOrigin(&team)
+		}
+
 	default:
 		var raw map[string]any
 		if err := sigsyaml.Unmarshal(data, &raw); err != nil {
@@ -582,7 +598,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 
 func isValidKind(kind string) bool {
 	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel":
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team":
 		return true
 	default:
 		return false
@@ -663,6 +679,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			})
 		}
 		return []applyResult{{kind: "Dash0NotificationChannel", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "team":
+		var team dash0api.TeamDefinitionV1Alpha1
+		if err := sigsyaml.Unmarshal(doc.raw, &team); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0Team: %w", err)
+		}
+		result, err := asset.ImportTeam(ctx, apiClient, &team)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "team",
+				AssetName: dash0api.GetTeamDisplayName(&team),
+			})
+		}
+		return []applyResult{{kind: "Dash0Team", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
@@ -777,7 +807,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 	}
 
 	switch apiVersion {
-	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
+	case string(dash0api.SpamFilterApiVersionV1Alpha1):
 		var filter dash0api.SpamFilter
 		if err := sigsyaml.Unmarshal(doc.raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)

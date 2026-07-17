@@ -1,0 +1,28 @@
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: enhancement
+
+# The name of the component, or a single word describing the area of concern (e.g. dashboards, config, apply)
+component: teams
+
+# A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: Manage teams declaratively via `teams create -f` and `apply -f` on `Dash0Team` YAML
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: []
+
+# (Optional) One or more lines of additional information to render under the primary note.
+# These lines will be padded with 2 spaces and then inserted directly into the document.
+# Use pipe (|) for multiline entries.
+subtext: |
+  `dash0 --experimental teams create -f <file>` accepts a `TeamDefinitionV1Alpha1` document. When the document carries a `metadata.labels["dash0.com/origin"]` label, the CLI upserts by origin (PUT, idempotent); otherwise it creates a new team (POST) and the server assigns id and origin.
+  `dash0 apply` recognizes `kind: Dash0Team` and routes it through the same upsert path, so team definitions round-trip through the standard export-edit-reapply GitOps workflow alongside other assets.
+  `spec.members` accepts either email addresses or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender. The CLI renders team membership as emails on `teams get`, `teams list-members`, and the `apply` diff so review artifacts stay legible.
+  The existing imperative commands (`teams create <name>`, `teams add-members`, `teams remove-members`, `teams update`) are preserved and now accept emails or ids for member arguments.
+
+# If your change doesn't affect end users or the exported elements of any package,
+# you should instead start your pull request title with "chore" or use the "Skip Changelog" label.
+# Optional: The change log or logs in which this entry should be included.
+# e.g. '[user]' or '[user, api]'
+# Include 'user' if the change is relevant to end users.
+# Default: '[user]'
+change_logs: []

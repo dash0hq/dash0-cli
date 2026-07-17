@@ -2,6 +2,8 @@ module github.com/dash0hq/dash0-cli
 
 go 1.25.1
 
+replace github.com/dash0hq/dash0-api-client-go => ../../../dash0-api-client-go/.iac_maintainer/teams-crd-api
+
 require (
 	github.com/cli/browser v1.3.0
 	github.com/dash0hq/dash0-api-client-go v1.16.0
