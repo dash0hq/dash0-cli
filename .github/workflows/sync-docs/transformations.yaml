@@ -73,11 +73,29 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/about.md
     title: About GitHub Actions
     description: How to use the dash0 CLI from GitHub Actions workflows via the setup and send-log-event composite actions shipped in this repository.
+    transformations:
+      - description: rewrite the cross-repo relative link to the setup action README into a sibling website page link
+        type: replace-regex
+        find: '\]\(\.\./\.github/actions/setup/README\.md\)'
+        replace: '](setup)'
+      - description: rewrite the cross-repo relative link to the send-log-event action README into a sibling website page link
+        type: replace-regex
+        find: '\]\(\.\./\.github/actions/send-log-event/README\.md\)'
+        replace: '](send-log-event)'
 
   - source: .github/actions/setup/README.md
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/setup.md
     title: Setup Dash0 CLI
     description: Composite GitHub Action that installs and configures the Dash0 CLI in CI workflows.
+    transformations:
+      - description: rewrite the "Dash0 CLI" repo-landing link to the About page on the website
+        type: replace-regex
+        find: '\[Dash0 CLI\]\(https://github\.com/dash0hq/dash0-cli\)'
+        replace: '[Dash0 CLI](../about)'
+      - description: rewrite the README "Common settings" link to the Global flags section of the Command Reference
+        type: replace-regex
+        find: '\[CLI documentation\]\(https://github\.com/dash0hq/dash0-cli#common-settings\)'
+        replace: '[Command Reference](../commands#global-flags)'
 
   - source: .github/actions/send-log-event/README.md
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/send-log-event.md
@@ -94,7 +112,7 @@ files:
     title: Homebrew Tap Migration (June 2026)
     description: One-time migration notice for users who installed the Dash0 CLI from the legacy Homebrew formula before it moved to the qualified dash0hq/dash0-cli/dash0 cask.
     transformations:
-      - description: rewrite the setup action README link to a stable GitHub URL
+      - description: rewrite the setup action README link to the sibling website page (github-actions/setup)
         type: replace-regex
         find: '\]\(\.\./\.github/actions/setup/README\.md\)'
-        replace: '](https://github.com/dash0hq/dash0-cli/blob/main/.github/actions/setup/README.md)'
+        replace: '](github-actions/setup)'
