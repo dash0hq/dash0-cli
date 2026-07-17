@@ -33,16 +33,31 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/about.md
     title: About the Dash0 CLI
     description: Introduction to the Dash0 CLI — what it is, who it's for, and the design principles that shape its ergonomics for humans, AI agents, and CI/CD.
+    transformations:
+      - description: rewrite the GitHub Actions link to the nested sub-page (the source path collapses to a directory on the website)
+        type: replace-regex
+        find: '\]\(github-actions\.md\)'
+        replace: '](github-actions/about.md)'
 
   - source: docs/installation.md
     target: dash0/miscellaneous/tooling/dash0-cli/installation.md
     title: Installation
     description: Install the Dash0 CLI via Homebrew, GitHub Releases, Docker, Nix, or from source.
+    transformations:
+      - description: rewrite the GitHub Actions link to the nested sub-page (the source path collapses to a directory on the website)
+        type: replace-regex
+        find: '\]\(github-actions\.md\)'
+        replace: '](github-actions/about.md)'
 
   - source: docs/quickstart.md
     target: dash0/miscellaneous/tooling/dash0-cli/quickstart.md
     title: Quickstart
     description: A five-minute walkthrough — log in, list assets, query telemetry, and send a deployment event.
+    transformations:
+      - description: rewrite the GitHub Actions link to the nested sub-page (the source path collapses to a directory on the website)
+        type: replace-regex
+        find: '\]\(github-actions\.md\)'
+        replace: '](github-actions/about.md)'
 
   - source: docs/commands.md
     target: dash0/miscellaneous/tooling/dash0-cli/commands.md
