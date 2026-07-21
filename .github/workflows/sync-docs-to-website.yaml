@@ -2,19 +2,20 @@ name: Synchronize docs to dash0.com/docs
 
 # Copies the user-facing dash0-cli documentation into the site that powers https://www.dash0.com/docs,
 # applying the transformations declared in `.github/workflows/sync-docs/transformations.yaml`, and
-# opens a pull request against the target repository (dash0hq/dash0-website).
+# opens a pull request against the target repository.
 #
 # Two modes:
 #
-#   - dry-run (workflow_dispatch default): verify that the transformations still apply cleanly
-#     against the current docs. No secrets required. Useful as a drift guard from CI on every PR.
-#     Only steps 1-4 of the sync-docs-action composite (checkout, install, transform) are executed;
-#     the target-repo checkout and PR steps are skipped.
+#   - dry-run (workflow_dispatch default): run the action with `dry-run: 'true'`, which stops after
+#     the transformation step (including the coverage check). No target checkout, no PR. No
+#     target-side secrets required. Useful as a drift guard from CI on every PR.
 #
 #   - full sync (workflow_call from a release workflow, or workflow_dispatch with dry-run unchecked):
-#     runs the sync-docs-action end-to-end and opens/updates a PR on dash0hq/dash0-website.
-#     Requires the DOCS_WEBSITE_PR_TOKEN secret — a fine-grained PAT scoped only to
-#     dash0hq/dash0-website with `contents:write` and `pull-requests:write`.
+#     runs the sync-docs-action end-to-end and opens/updates a PR on the target repository.
+#     Requires the DOCS_WEBSITE_PR_TOKEN secret plus SYNC_DOCUMENTATION_TARGET_REPOSITORY and
+#     SYNC_DOCUMENTATION_TARGET_DIRECTORY. v0.4.0 removed the target-coordinate defaults so that
+#     public callers do not re-publish the target repo's name and internal layout; keep them in
+#     secrets rather than hardcoded in this file.
 
 on:
   workflow_dispatch:
@@ -31,12 +32,14 @@ on:
         default: false
     secrets:
       DOCS_WEBSITE_PR_TOKEN:
-        description: Fine-grained PAT scoped to dash0hq/dash0-website with contents+pull-requests write. Only required when dry-run is false.
+        description: Fine-grained PAT scoped to the target docs repository with contents+pull-requests write. Only required when dry-run is false.
         required: false
-
-# sync-docs-action v0.3.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.3.0
-env:
-  SYNC_DOCS_ACTION_REF: de42352c0e212c770c6e91cf85993c7e76f5a8b9
+      SYNC_DOCUMENTATION_TARGET_REPOSITORY:
+        description: owner/name of the target docs repository. Only required when dry-run is false.
+        required: false
+      SYNC_DOCUMENTATION_TARGET_DIRECTORY:
+        description: Sub-tree inside the target repository where transformed files are written. Only required when dry-run is false.
+        required: false
 
 jobs:
   sync-docs:
@@ -48,61 +51,19 @@ jobs:
       - name: checkout dash0-cli
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # Full-sync path: hand off to the shared composite action, which transforms the docs, checks
-      # out the target repository, and opens (or force-updates) a pull request. `source-root` and
-      # `transformations-file` inherit their defaults (`.` and
-      # `.github/workflows/sync-docs/transformations.yaml`).
+      # sync-docs-action v0.4.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.4.0
+      # `dry-run: 'true'` runs setup and the transformation engine (including the coverage check),
+      # then stops before any target-side operation, so no docs-website PAT or target coordinates
+      # are needed on PR builds. `source-root` and `transformations-file` inherit their defaults
+      # (`.` and `.github/workflows/sync-docs/transformations.yaml`).
       - name: sync docs to dash0.com/docs
-        if: ${{ ! inputs.dry-run }}
-        uses: dash0hq/sync-docs-action@de42352c0e212c770c6e91cf85993c7e76f5a8b9 # v0.3.0
+        uses: dash0hq/sync-docs-action@3fbe55fed800da21ee24d6b6dba1a86435f61565 # v0.4.0
         with:
+          dry-run: ${{ inputs.dry-run }}
+          target-repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+          target-directory: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
           target-github-token: ${{ secrets.DOCS_WEBSITE_PR_TOKEN }}
           pr-branch: sync-dash0-cli-docs
           pr-title: 'docs: synchronize dash0-cli documentation'
           pr-body: |
             This PR synchronizes the content of the [dash0-cli](https://github.com/dash0hq/dash0-cli) documentation into the documentation on https://www.dash0.com/docs.
-
-      # Dry-run path: replicate the transformation-engine invocation from the composite action
-      # (steps 1-4) so drift between the docs and transformations.yaml surfaces on every PR without
-      # requiring the docs-website PAT. Kept intentionally close to the composite action's own
-      # steps so the two stay behaviourally equivalent.
-
-      - name: check out sync-docs-action (dry-run)
-        if: ${{ inputs.dry-run }}
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          repository: dash0hq/sync-docs-action
-          ref: ${{ env.SYNC_DOCS_ACTION_REF }}
-          path: .sync-docs-action
-
-      - name: set up Node.js (dry-run)
-        if: ${{ inputs.dry-run }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .sync-docs-action/.nvmrc
-
-      - name: set up pnpm (dry-run)
-        if: ${{ inputs.dry-run }}
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-        with:
-          package_json_file: .sync-docs-action/package.json
-          run_install: false
-
-      - name: install sync-docs-action dependencies (dry-run)
-        if: ${{ inputs.dry-run }}
-        working-directory: .sync-docs-action
-        run: pnpm install --frozen-lockfile
-
-      - name: apply doc transformations (dry-run)
-        if: ${{ inputs.dry-run }}
-        run: |
-          node .sync-docs-action/packages/transformation-engine/src/apply-transformations.ts \
-            . \
-            .github/workflows/sync-docs/transformations.yaml \
-            "${RUNNER_TEMP}/transformed-docs"
-
-      - name: list transformed docs (dry-run)
-        if: ${{ inputs.dry-run }}
-        run: |
-          echo "Transformed documents:"
-          find "${RUNNER_TEMP}/transformed-docs" -type f | sort
