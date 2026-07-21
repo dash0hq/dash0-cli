@@ -1,6 +1,7 @@
 # Dash0 CLI
 
 A command-line interface designed for humans, agentic AIs and CI/CD to interact with the [Dash0](https://www.dash0.com) observability platform.
+Humans authenticate interactively via OAuth 2.0 with `dash0 login`; CI/CD and agent workflows use static auth tokens — see the [quick start](#quick-start).
 
 ## An ergonomic CLI for agentic AI
 
@@ -10,6 +11,32 @@ Authentication and connection settings can be configured entirely through profil
 Commands use consistent naming conventions and flags.
 Structured and parseable output formats (`--output json`, `--output yaml`, `--output csv`).
 [Agent mode](#agent-mode) makes all of this automatic: JSON output, structured help, JSON errors, no prompts, and no colors — with zero configuration.
+
+## Quick start
+
+Install the CLI — Homebrew shown here, see [Installation](#installation) for all channels:
+
+```bash
+brew install --cask dash0hq/dash0-cli/dash0
+```
+
+Log in — no auth token needed:
+
+```bash
+# Find your api_url here: https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http
+dash0 login --profile default --api-url <api_url>
+```
+
+`dash0 login` creates the profile on first use, opens your browser to complete OAuth 2.0 with PKCE, and refreshes tokens automatically from then on.
+
+Run your first command:
+
+```bash
+dash0 dashboards list
+```
+
+In environments without a browser — CI runners, AI agent sessions — set `DASH0_AUTH_TOKEN` to a static [auth token](https://app.dash0.com/goto/settings/auth-tokens) instead of logging in.
+See the [quickstart walkthrough](docs/quickstart.md) for a five-minute tour from login to sending your first deployment event, and [Profiles](#profiles) for managing multiple environments.
 
 ## Installation
 
@@ -53,6 +80,8 @@ steps:
       DASH0_DATASET: my-dataset # Leave empty for the `default` dataset
     run: dash0 dashboards list
 ```
+
+Static auth tokens are the right fit for non-interactive environments like CI; on a workstation, prefer the browser-based OAuth flow via [`dash0 login`](#quick-start).
 
 #### Send Log Event Action
 
