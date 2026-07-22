@@ -8,4 +8,4 @@
 # "Require review from Code Owners" enabled.
 
 # Global owner — required reviewer for everything in the repository.
-* @mmanciop
+* @dash0hq/engineering-iac
