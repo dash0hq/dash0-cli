@@ -61,7 +61,7 @@ func objectAPIVersion(obj dash0api.SpamFilterObject) string {
 		return ""
 	}
 	if raw == "" {
-		return string(dash0api.SpamFilterApiVersionV1Alpha1)
+		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1)
 	}
 	normalized, ok := dash0api.NormalizeDash0ApiVersion(raw)
 	if !ok {

@@ -174,7 +174,7 @@ func TestGetTrace_AlwaysSendsPrecisionDisabled(t *testing.T) {
 	var req dash0api.GetSpansRequest
 	require.NoError(t, json.Unmarshal(last.Body, &req))
 	require.NotNil(t, req.Sampling, "traces get must always set the sampling field")
-	assert.Equal(t, dash0api.SamplingModeDisabled, req.Sampling.Mode)
+	assert.Equal(t, dash0api.Disabled, req.Sampling.Mode)
 }
 
 func TestGetTrace_BackwardCompatWithExperimentalFlag(t *testing.T) {

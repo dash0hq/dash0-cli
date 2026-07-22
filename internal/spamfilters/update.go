@@ -81,7 +81,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
 	switch apiVersion {
-	case string(dash0api.SpamFilterApiVersionV1Alpha1):
+	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
 		return runUpdateV1Alpha1(ctx, raw, args, apiClient, dataset, flags.DryRun)
 	case string(dash0api.V1alpha2):
 		return runUpdateV1Alpha2(ctx, raw, args, apiClient, dataset, flags.DryRun)
@@ -113,7 +113,7 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 			AssetID:   key,
 		})
 	}
-	warnOnVersionMismatch(key, string(dash0api.SpamFilterApiVersionV1Alpha1), objectAPIVersion(before))
+	warnOnVersionMismatch(key, string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), objectAPIVersion(before))
 
 	if dryRun {
 		return asset.PrintDiff(os.Stdout, "Spam filter", dash0api.GetSpamFilterName(filter), before, filter)
