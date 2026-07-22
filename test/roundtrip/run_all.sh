@@ -27,6 +27,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_dashboard_roundtrip.sh"
   "${SCRIPT_DIR}/test_check_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_synthetic_check_roundtrip.sh"
+  "${SCRIPT_DIR}/test_slo_roundtrip.sh"
   "${SCRIPT_DIR}/test_view_roundtrip.sh"
   "${SCRIPT_DIR}/test_apply_dashboard_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_check_rule_idempotency.sh"
