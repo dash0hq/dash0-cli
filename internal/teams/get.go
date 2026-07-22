@@ -97,15 +97,24 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 			encoder.SetIndent("", "  ")
 			return encoder.Encode(team)
 		}
-		return printTeamDetails(ctx, apiClient, team)
+		return printTeamDetails(ctx, apiClient, originOrID)
 	case "table":
-		return printTeamDetails(ctx, apiClient, team)
+		return printTeamDetails(ctx, apiClient, originOrID)
 	default:
 		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
 	}
 }
 
-func printTeamDetails(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) error {
+func printTeamDetails(ctx context.Context, apiClient dash0api.Client, originOrID string) error {
+	resp, err := apiClient.GetTeamWithAssets(ctx, originOrID)
+	if err != nil {
+		return client.HandleAPIError(err, client.ErrorContext{
+			AssetType: "team",
+			AssetID:   originOrID,
+		})
+	}
+	team := &resp.Team
+
 	id := ""
 	if team.Metadata.Labels != nil && team.Metadata.Labels.Dash0Comid != nil {
 		id = *team.Metadata.Labels.Dash0Comid
@@ -115,27 +124,26 @@ func printTeamDetails(ctx context.Context, apiClient dash0api.Client, team *dash
 		origin = *team.Metadata.Labels.Dash0Comorigin
 	}
 
-	fmt.Printf("Kind:    Team\n")
-	fmt.Printf("Name:    %s\n", team.Spec.Display.Name)
-	fmt.Printf("Slug:    %s\n", team.Metadata.Name)
+	fmt.Printf("Kind:        Team\n")
+	fmt.Printf("Name:        %s\n", team.Spec.Display.Name)
+	fmt.Printf("Slug:        %s\n", team.Metadata.Name)
 	if id != "" {
-		fmt.Printf("ID:      %s\n", id)
+		fmt.Printf("ID:          %s\n", id)
 	}
 	if origin != "" {
-		fmt.Printf("Origin:  %s\n", origin)
+		fmt.Printf("Origin:      %s\n", origin)
 	}
-	fmt.Printf("Color:   %s -> %s\n", team.Spec.Display.Color.From, team.Spec.Display.Color.To)
-	fmt.Printf("Members: %d\n", len(team.Spec.Members))
+	if team.Spec.Display.Description != nil && *team.Spec.Display.Description != "" {
+		fmt.Printf("Description: %s\n", *team.Spec.Display.Description)
+	}
+	fmt.Printf("Color:       %s -> %s\n", team.Spec.Display.Color.From, team.Spec.Display.Color.To)
+	fmt.Printf("Members:     %d\n", len(resp.Members))
 
-	teamMembers, err := resolveTeamMembers(ctx, apiClient, team)
-	if err != nil {
-		return err
-	}
-	if len(teamMembers) > 0 {
+	if len(resp.Members) > 0 {
 		fmt.Println()
 		fmt.Println("Team members:")
-		for _, m := range teamMembers {
-			name := members.MemberDisplayName(m)
+		for _, m := range resp.Members {
+			name := members.MemberDisplayName(&m)
 			email := ""
 			if m.Spec.Display.Email != nil {
 				email = *m.Spec.Display.Email
@@ -148,5 +156,22 @@ func printTeamDetails(ctx context.Context, apiClient dash0api.Client, team *dash
 		}
 	}
 
+	printAccessibleAssets("Dashboards", resp.Dashboards)
+	printAccessibleAssets("Check rules", resp.CheckRules)
+	printAccessibleAssets("Views", resp.Views)
+	printAccessibleAssets("Synthetic checks", resp.SyntheticChecks)
+	printAccessibleAssets("Datasets", resp.Datasets)
+
 	return nil
+}
+
+func printAccessibleAssets(label string, assets []dash0api.AccessibleAsset) {
+	if len(assets) == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Printf("Accessible %s:\n", label)
+	for _, a := range assets {
+		fmt.Printf("  - %s\n", a.Name)
+	}
 }
