@@ -1,0 +1,63 @@
+[
+{
+  "apiVersion": "openslo/v1",
+  "kind": "SLO",
+  "metadata": {
+    "name": "checkout-availability",
+    "labels": {
+      "dash0.com/id": "00000000-0000-0000-0000-000000000001",
+      "dash0.com/version": "1",
+      "dash0.com/dataset": "default"
+    },
+    "annotations": {
+      "dash0.com/display-name": "Checkout availability",
+      "dash0.com/enabled": "true",
+      "dash0.com/created-at": "2026-01-15T10:00:00Z",
+      "dash0.com/updated-at": "2026-01-15T10:00:00Z"
+    }
+  },
+  "spec": {
+    "description": "99 percent of checkout HTTP requests succeed over a rolling 28-day window.",
+    "service": "checkout",
+    "budgetingMethod": "Occurrences",
+    "timeWindow": [
+      {
+        "duration": "28d",
+        "isRolling": true
+      }
+    ],
+    "indicator": {
+      "metadata": {
+        "name": "checkout-success-ratio"
+      },
+      "spec": {
+        "ratioMetric": {
+          "counter": true,
+          "good": {
+            "metricSource": {
+              "type": "Prometheus",
+              "spec": {
+                "query": "http_server_request_duration_seconds_count{service_name=\"checkout\",http_response_status_code!~\"5..\"}"
+              }
+            }
+          },
+          "total": {
+            "metricSource": {
+              "type": "Prometheus",
+              "spec": {
+                "query": "http_server_request_duration_seconds_count{service_name=\"checkout\"}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "objectives": [
+      {
+        "displayName": "99% availability",
+        "target": 0.99
+      }
+    ]
+  }
+}
+]
