@@ -705,7 +705,7 @@ Aliases: `remove`
 | Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
-| SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use the OpenSLO v1 format (`apiVersion: openslo/v1`, `kind: SLO`) |
+| SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use the OpenSLO v1 format (`apiVersion: openslo.com/v1`, `kind: SLO`) |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
@@ -730,7 +730,7 @@ The identifier field location varies by asset kind:
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
 | `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
-| `SLO` | `metadata.labels["dash0.com/id"]` | OpenSLO v1 document (`apiVersion: openslo/v1`) |
+| `SLO` | `metadata.labels["dash0.com/id"]` | OpenSLO v1 document (`apiVersion: openslo.com/v1`) |
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
@@ -1233,7 +1233,7 @@ spec:
 SLO (OpenSLO v1 format):
 
 ```yaml
-apiVersion: openslo/v1
+apiVersion: openslo.com/v1
 kind: SLO
 metadata:
   name: checkout-availability
