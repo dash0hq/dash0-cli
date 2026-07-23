@@ -10,11 +10,13 @@ on:
       - 'Formula/**'
       - 'CHANGELOG.md'
       - .chloggen/**
+      - flake.nix
   pull_request:
     paths-ignore:
       - 'Formula/**'
       - 'CHANGELOG.md'
       - .chloggen/**
+      - flake.nix
   workflow_dispatch:
 
 jobs:
