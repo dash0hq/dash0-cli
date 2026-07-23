@@ -8,10 +8,22 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/skill"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// withAgentMode toggles agentmode.Enabled for the duration of the calling
+// (sub)test and restores it on cleanup. Kept local because agentmode.Init
+// resolves the whole precedence chain (env + flag + auto-detect) and here
+// we want a plain override.
+func withAgentMode(t *testing.T, enabled bool) {
+	t.Helper()
+	prev := agentmode.Enabled
+	agentmode.Enabled = enabled
+	t.Cleanup(func() { agentmode.Enabled = prev })
+}
 
 // TestRootCommandExecution tests the root command execution
 func TestRootCommandExecution(t *testing.T) {
@@ -62,9 +74,12 @@ func TestWithSkillHint(t *testing.T) {
 		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`")
 	})
 
-	t.Run("no-op when the skill is already installed in the current directory", func(t *testing.T) {
+	t.Run("no-op in human mode when the skill is already installed", func(t *testing.T) {
+		// Human user seeing every error grow a "consult the skill" tail
+		// would be noise — they read `dash0 --help` and that's it.
 		os.Args = []string{"dash0"}
 		t.Setenv("DASH0_NO_SKILL_HINT", "")
+		withAgentMode(t, false)
 		dir := t.TempDir()
 		hostDir := filepath.Join(dir, ".claude", "skills", "dash0-cli")
 		require.NoError(t, os.MkdirAll(filepath.Join(hostDir, "references"), 0o755))
@@ -76,6 +91,29 @@ func TestWithSkillHint(t *testing.T) {
 
 		err := withSkillHint(errors.New("boom"))
 		assert.Equal(t, "boom", err.Error())
+	})
+
+	t.Run("agent mode with skill installed hints toward using it", func(t *testing.T) {
+		// The bare "unknown command \"foobar\"" error told an agent nothing
+		// about recovery when the skill was already installed; the hint now
+		// points at the two resources that DO help — `dash0 skill show` and
+		// `dash0 --agent-mode --help`.
+		os.Args = []string{"dash0"}
+		t.Setenv("DASH0_NO_SKILL_HINT", "")
+		withAgentMode(t, true)
+		dir := t.TempDir()
+		hostDir := filepath.Join(dir, ".claude", "skills", "dash0-cli")
+		require.NoError(t, os.MkdirAll(filepath.Join(hostDir, "references"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(hostDir, "SKILL.md"), []byte("x"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(hostDir, skill.Manifest[0].RelPath), []byte("x"), 0o644))
+		t.Chdir(dir)
+
+		err := withSkillHint(errors.New("boom"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "boom")
+		assert.Contains(t, err.Error(), "\nHint: consult the installed dash0-cli Agent Skill")
+		assert.Contains(t, err.Error(), "dash0 skill show")
+		assert.Contains(t, err.Error(), "dash0 --agent-mode --help")
 	})
 
 	t.Run("no-op when suppressed via DASH0_NO_SKILL_HINT", func(t *testing.T) {

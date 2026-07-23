@@ -152,13 +152,25 @@ func printError(err error) {
 	}
 }
 
-// withSkillHint appends a hint pointing at `dash0 skill install` to err when
-// the skill isn't already installed in the current directory and the hint
-// hasn't been suppressed. It's a no-op when err already carries its own
-// "\nHint:" (e.g. the OAuth-empty-profile hint) rather than stacking a
-// second, less specific one, and also a no-op when the detected agent host
-// is not a supported install target — nudging at `dash0 skill install`
-// would only reproduce the same "not a supported install target" error.
+// withSkillHint appends a follow-up hint to err so an AI agent (or a human
+// setting up their AI coding session) has a next-step pointer even when
+// the underlying error message is bare. Two shapes:
+//
+//   - When the skill is NOT installed in the current directory: nudge at
+//     `dash0 skill install`. Fires in both agent and human mode since the
+//     one-time setup benefits humans too.
+//   - When the skill IS installed and agent mode is active: nudge at the
+//     resources an agent can use to recover — `dash0 skill show` reprints
+//     the local bundle and `dash0 --agent-mode --help` returns the current
+//     command surface as structured JSON. Fires only in agent mode because
+//     a human seeing this on every error is noise (they'd read `--help`).
+//
+// No-op when the hint has been suppressed (`--no-skill-hint` /
+// `DASH0_NO_SKILL_HINT`), when err already carries its own `\nHint:`
+// (e.g. the OAuth-empty-profile hint) rather than stacking a second
+// less-specific one, and when the detected agent host is not a supported
+// install target — running `dash0 skill install` under aider/cline/
+// windsurf/mcp would only surface a second, more specific error.
 func withSkillHint(err error) error {
 	if skillHintSuppressed() {
 		return err
@@ -166,9 +178,6 @@ func withSkillHint(err error) error {
 	if strings.Contains(err.Error(), "\nHint:") {
 		return err
 	}
-	// Detected-but-unsupported agents (aider, cline, windsurf, mcp, …) get
-	// no hint here — running `dash0 skill install` under one of those hosts
-	// would only surface a second, more specific error.
 	if slug := agentmode.DetectAgentSlug(); slug != "" && !skill.HostSupported(slug) {
 		return err
 	}
@@ -177,7 +186,10 @@ func withSkillHint(err error) error {
 		return err
 	}
 	if skill.IsInstalled(wd) {
-		return err
+		if !agentmode.Enabled {
+			return err
+		}
+		return fmt.Errorf("%w\nHint: consult the installed dash0-cli Agent Skill — run `dash0 skill show` to reprint it, or `dash0 --agent-mode --help` for the current command surface", err)
 	}
 	return fmt.Errorf("%w\nHint: run `dash0 skill install` to add a local Agent Skills bundle with detailed command references", err)
 }

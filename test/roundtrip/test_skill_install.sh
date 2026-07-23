@@ -237,6 +237,48 @@ test_show_unknown_topic_lists_valid() {
   echo "PASS[show-unknown]: unknown topic error carries the actionable topic list"
 }
 
+test_agent_mode_unknown_command_hints_use_the_skill() {
+  # Reproduces the exact case that motivated the "use it, don't just
+  # install it" side of withSkillHint: skill IS installed AND agent mode
+  # is on AND the agent invokes an unknown command. The JSON error must
+  # carry a hint pointing at `dash0 skill show` and `--agent-mode --help`,
+  # not just report the bare "unknown command" and leave the agent stuck.
+  local scratch="${TMPDIR}/agent-hint"
+  mkdir -p "$scratch"
+  (
+    clear_agent_env
+    export CLAUDE_CODE=1
+    "$DASH0" skill install --dir "$scratch"
+  ) >/dev/null
+
+  local output
+  local rc=0
+  output=$(
+    clear_agent_env
+    export DASH0_AGENT_MODE=1
+    cd "$scratch"
+    "$DASH0" foobar 2>&1
+  ) || rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL[agent-hint]: unknown command unexpectedly succeeded"
+    return 1
+  fi
+  if ! echo "$output" | grep -q "consult the installed dash0-cli Agent Skill"; then
+    echo "FAIL[agent-hint]: expected 'consult the installed dash0-cli Agent Skill' in JSON output, got: $output"
+    return 1
+  fi
+  if ! echo "$output" | grep -q "dash0 skill show"; then
+    echo "FAIL[agent-hint]: expected 'dash0 skill show' in hint, got: $output"
+    return 1
+  fi
+  if ! echo "$output" | grep -q "dash0 --agent-mode --help"; then
+    echo "FAIL[agent-hint]: expected 'dash0 --agent-mode --help' in hint, got: $output"
+    return 1
+  fi
+  echo "PASS[agent-hint]: agent-mode error with installed skill carries the reuse hint"
+}
+
 echo "=== Skill install/show round-trip test ==="
 test_install_all_hosts
 test_idempotent
@@ -244,4 +286,5 @@ test_no_agent_detected
 test_detected_but_unsupported
 test_show_reprints_bundle
 test_show_unknown_topic_lists_valid
+test_agent_mode_unknown_command_hints_use_the_skill
 echo "All skill install/show checks passed."
