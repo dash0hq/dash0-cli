@@ -27,6 +27,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/slos"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
@@ -84,6 +85,7 @@ func init() {
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
 	rootCmd.AddCommand(otlp.NewOtlpCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
+	rootCmd.AddCommand(slos.NewSlosCmd())
 	rootCmd.AddCommand(spamfilters.NewSpamFiltersCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())

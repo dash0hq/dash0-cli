@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`
 - Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`
 - Group related functionality: `config profiles` for profile management
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`) use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`) use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -80,6 +80,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dashboard`                 | Dashboard            |
 | `CheckRule`                 | Check rule           |
 | `SyntheticCheck`            | Synthetic check      |
+| `SLO`                       | SLO                  |
 | `View`                      | View                 |
 | `PrometheusRule`            | PrometheusRule       |
 | `PersesDashboard`           | PersesDashboard      |
