@@ -21,7 +21,7 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
