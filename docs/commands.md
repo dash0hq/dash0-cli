@@ -683,7 +683,7 @@ Aliases: `remove`
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
-| Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. See [Teams CRD walkthrough](teams-crd-walkthrough.md). |
+| Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 ### Asset identifiers and idempotent upsert
 
@@ -755,7 +755,6 @@ The `dash0.com/origin` label is the upsert key when present; otherwise the serve
 The `dash0.com/origin` label is the upsert key when present; otherwise the server creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
-See the [Teams CRD walkthrough](teams-crd-walkthrough.md) for an end-to-end tour.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -936,6 +935,27 @@ spec:
   config:
     url: https://hooks.slack.com/services/T00/B00/XXX
 ```
+
+Team (organization-level, no `--dataset`, requires `--experimental`):
+
+```yaml
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: backend-team
+spec:
+  display:
+    name: Backend Team
+    color:
+      from: "#FF6B6B"
+      to: "#4ECDC4"
+  members:
+    - alice@example.com
+    - bob@example.com
+```
+
+`spec.members` entries can be email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation.
 
 Mixed PrometheusRule (one alerting rule and one recording rule in the same CRD):
 

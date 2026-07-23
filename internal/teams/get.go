@@ -1,7 +1,6 @@
 package teams
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -62,25 +61,30 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		return err
 	}
 
-	team, err := apiClient.GetTeam(ctx, originOrID)
-	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "team",
-			AssetID:   originOrID,
-		})
+	format := strings.ToLower(flags.Output)
+	if format == "" && agentmode.Enabled {
+		format = "json"
 	}
 
-	switch strings.ToLower(flags.Output) {
-	case "json":
+	// Table paths need the members/assets envelope, so fetch the enriched
+	// response once and reuse it. JSON/YAML paths only need the plain
+	// TeamDefinitionV1Alpha1 envelope, so avoid pulling the extra data.
+	switch format {
+	case "json", "yaml", "yml":
+		team, err := apiClient.GetTeam(ctx, originOrID)
+		if err != nil {
+			return client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "team",
+				AssetID:   originOrID,
+			})
+		}
 		if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
 			return err
 		}
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(team)
-	case "yaml", "yml":
-		if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
-			return err
+		if format == "json" {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(team)
 		}
 		data, err := sigsyaml.Marshal(team)
 		if err != nil {
@@ -88,31 +92,21 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		}
 		fmt.Print(string(data))
 		return nil
-	case "":
-		if agentmode.Enabled {
-			if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
-				return err
-			}
-			encoder := json.NewEncoder(os.Stdout)
-			encoder.SetIndent("", "  ")
-			return encoder.Encode(team)
+	case "", "table":
+		resp, err := apiClient.GetTeamWithAssets(ctx, originOrID)
+		if err != nil {
+			return client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "team",
+				AssetID:   originOrID,
+			})
 		}
-		return printTeamDetails(ctx, apiClient, originOrID)
-	case "table":
-		return printTeamDetails(ctx, apiClient, originOrID)
+		return printTeamDetails(resp)
 	default:
 		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
 	}
 }
 
-func printTeamDetails(ctx context.Context, apiClient dash0api.Client, originOrID string) error {
-	resp, err := apiClient.GetTeamWithAssets(ctx, originOrID)
-	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "team",
-			AssetID:   originOrID,
-		})
-	}
+func printTeamDetails(resp *dash0api.GetTeamResponse) error {
 	team := &resp.Team
 
 	id := ""

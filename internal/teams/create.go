@@ -166,9 +166,9 @@ func runCreateImperative(ctx context.Context, name string, flags *createFlags) e
 
 	id := dash0api.GetTeamID(created)
 	if id != "" {
-		fmt.Printf("Team %q created (id: %s)\n", name, id)
+		fmt.Printf("Team %q created (id: %s).\n", name, id)
 	} else {
-		fmt.Printf("Team %q created\n", name)
+		fmt.Printf("Team %q created.\n", name)
 	}
 	return nil
 }
