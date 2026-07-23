@@ -69,9 +69,38 @@ jobs:
     with:
       dry-run: true
 
+  roundtrip-relevant-changes:
+    # Detect whether the changes in this event could affect the roundtrip
+    # matrix. Docs-only or workflow-only changes that don't touch Go sources,
+    # the roundtrip scripts, the module files, or this workflow itself skip
+    # the roundtrip jobs entirely. `workflow_dispatch` and pushes to `main`
+    # always run the matrix.
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.filter.outputs.roundtrip || 'true' }}
+    steps:
+      - name: Checkout repository
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Detect relevant changes
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          filters: |
+            roundtrip:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - 'test/roundtrip/**'
+              - '.github/workflows/ci.yml'
+
   discover-roundtrip-tests:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    needs: roundtrip-relevant-changes
+    if: needs.roundtrip-relevant-changes.outputs.run == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))
     outputs:
       tests: ${{ steps.find.outputs.tests }}
     steps:
@@ -104,8 +133,8 @@ jobs:
     # because the CLI refuses OTLP sends on OAuth profiles upfront — see
     # `checkOAuthOnOtlp` in internal/client/client.go.
     runs-on: ubuntu-latest
-    needs: [build, discover-roundtrip-tests]
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    needs: [build, roundtrip-relevant-changes, discover-roundtrip-tests]
+    if: needs.roundtrip-relevant-changes.outputs.run == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))
     strategy:
       fail-fast: false
       matrix:
