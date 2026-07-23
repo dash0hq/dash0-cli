@@ -1,3 +1,4 @@
+apiVersion: dash0.com/v1alpha1
 kind: Dash0SyntheticCheck
 metadata:
   name: new-synthetic-check

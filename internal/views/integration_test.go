@@ -83,3 +83,66 @@ func TestListViews_YAMLFormat(t *testing.T) {
 	// Multiple documents should be separated by ---
 	assert.Contains(t, output, "---")
 }
+
+// TestGetView_NotFound pins the clean-message contract on 404 GET.
+func TestGetView_NotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewViewsCmd()
+	cmd.SetArgs([]string{"get", "00000000-0000-0000-0000-000000000000", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "view")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestGetView_Unauthorized pins the clean-message contract on 401.
+func TestGetView_Unauthorized(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusUnauthorized,
+		BodyFile:   fixtureUnauthorized,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewViewsCmd()
+	cmd.SetArgs([]string{"get", "00000000-0000-0000-0000-000000000000", "--api-url", server.URL, "--auth-token", "auth_invalid"})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication failed")
+}
+
+// TestDeleteView_NotFound covers the imperative delete path when the server
+// returns 404.
+func TestDeleteView_NotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewViewsCmd()
+	cmd.SetArgs([]string{"delete", "00000000-0000-0000-0000-000000000000", "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "view")
+	assert.Contains(t, err.Error(), "not found")
+}
