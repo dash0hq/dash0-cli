@@ -72,6 +72,11 @@ dash0 logs send "Deployment v1.0 completed" \
     --log-attribute deployment.status=succeeded
 ```
 
+> [!NOTE]
+> `dash0 logs send` — like every OTLP send command — needs a static `auth_*` token; the Dash0 OTLP ingress does not accept OAuth access tokens.
+> If you logged in with `dash0 login`, get an [auth token](https://app.dash0.com/goto/settings/auth-tokens) and either pass `--auth-token auth_<...>` for this call or set `DASH0_AUTH_TOKEN=auth_<...>` in your environment.
+> See [Send commands](commands.md#send-commands) for the full story.
+
 The event surfaces in the Dash0 UI's deployment stream and can be correlated with the traces and logs that follow it.
 
 ## Where to next
