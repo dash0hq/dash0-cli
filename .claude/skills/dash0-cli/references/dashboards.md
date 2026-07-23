@@ -13,6 +13,7 @@
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
+| Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 Dashboard:
 

@@ -21,7 +21,7 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -35,6 +35,11 @@ A CRD that contains no alerting and no recording rules fails validation up front
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
+
+`Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
+The `dash0.com/origin` label is the upsert key when present; otherwise the server creates a new team on every apply.
+`spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
+Requires `--experimental`.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
