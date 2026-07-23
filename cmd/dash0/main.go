@@ -27,6 +27,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/skill"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
@@ -84,6 +85,7 @@ func init() {
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
 	rootCmd.AddCommand(otlp.NewOtlpCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
+	rootCmd.AddCommand(skill.NewSkillCmd())
 	rootCmd.AddCommand(spamfilters.NewSpamFiltersCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())
@@ -100,6 +102,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
 	rootCmd.PersistentFlags().String("profile", "", "Profile to use for this invocation; overrides the active profile on disk (env: DASH0_PROFILE)")
 	rootCmd.PersistentFlags().String("max-retries", "", "Maximum number of retries for failed API requests (0-5; default: 3; env: DASH0_MAX_RETRIES)")
+	rootCmd.PersistentFlags().Bool("no-skill-hint", false, "Suppress the agent-mode error hint pointing at dash0 skill install (env: DASH0_NO_SKILL_HINT)")
 }
 
 // newVersionCmd creates a new version command
@@ -121,7 +124,7 @@ func newVersionCmd() *cobra.Command {
 // Colors are only used when stderr is a TTY (not piped).
 func printError(err error) {
 	if agentmode.Enabled {
-		agentmode.PrintJSONError(os.Stderr, err)
+		agentmode.PrintJSONError(os.Stderr, withSkillHint(err))
 		return
 	}
 
@@ -145,6 +148,40 @@ func printError(err error) {
 		fmt.Fprint(os.Stderr, errorPrefix)
 		fmt.Fprintln(os.Stderr, errStr)
 	}
+}
+
+// withSkillHint appends a hint pointing at `dash0 skill install` to err when
+// running in agent mode, the skill isn't already installed in the current
+// directory, and the hint hasn't been suppressed. It's a no-op when err
+// already carries its own "\nHint:" (e.g. the OAuth-empty-profile hint)
+// rather than stacking a second, less specific one.
+func withSkillHint(err error) error {
+	if skillHintSuppressed() {
+		return err
+	}
+	if strings.Contains(err.Error(), "\nHint:") {
+		return err
+	}
+	wd, wdErr := os.Getwd()
+	if wdErr != nil {
+		return err
+	}
+	if skill.IsInstalled(wd) {
+		return err
+	}
+	return fmt.Errorf("%w\nHint: run `dash0 skill install` to add a local Agent Skills bundle with detailed command references", err)
+}
+
+// skillHintSuppressed reports whether the --no-skill-hint flag or
+// DASH0_NO_SKILL_HINT env var is set. Flags are not yet parsed when
+// printError may be called, so this scans os.Args directly, the same
+// approach used for --agent-mode and --profile above.
+func skillHintSuppressed() bool {
+	if hasFlag(os.Args[1:], "--no-skill-hint") {
+		return true
+	}
+	v := strings.ToLower(os.Getenv("DASH0_NO_SKILL_HINT"))
+	return v == "1" || v == "true"
 }
 
 // loadConfig attempts to resolve the CLI configuration (active profile +

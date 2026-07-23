@@ -2,9 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRootCommandExecution tests the root command execution
@@ -37,6 +42,64 @@ func TestRootCommandExecution(t *testing.T) {
 	if !bytes.Contains(buf.Bytes(), []byte("Command line interface for interacting with Dash0 services")) {
 		t.Errorf("Help output did not contain expected content")
 	}
+}
+
+// TestWithSkillHint covers the agent-mode error hint pointing at
+// `dash0 skill install`, added centrally in printError.
+func TestWithSkillHint(t *testing.T) {
+	origArgs := os.Args
+	t.Cleanup(func() { os.Args = origArgs })
+
+	t.Run("adds hint when skill is not installed and not suppressed", func(t *testing.T) {
+		os.Args = []string{"dash0"}
+		t.Setenv("DASH0_NO_SKILL_HINT", "")
+		t.Chdir(t.TempDir())
+
+		err := withSkillHint(errors.New("boom"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "boom")
+		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`")
+	})
+
+	t.Run("no-op when the skill is already installed in the current directory", func(t *testing.T) {
+		os.Args = []string{"dash0"}
+		t.Setenv("DASH0_NO_SKILL_HINT", "")
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, ".claude", "skills", "dash0-cli"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".claude", "skills", "dash0-cli", "SKILL.md"), []byte("x"), 0o644))
+		t.Chdir(dir)
+
+		err := withSkillHint(errors.New("boom"))
+		assert.Equal(t, "boom", err.Error())
+	})
+
+	t.Run("no-op when suppressed via DASH0_NO_SKILL_HINT", func(t *testing.T) {
+		os.Args = []string{"dash0"}
+		t.Setenv("DASH0_NO_SKILL_HINT", "1")
+		t.Chdir(t.TempDir())
+
+		err := withSkillHint(errors.New("boom"))
+		assert.Equal(t, "boom", err.Error())
+	})
+
+	t.Run("no-op when suppressed via --no-skill-hint flag", func(t *testing.T) {
+		os.Args = []string{"dash0", "--no-skill-hint", "dashboards", "list"}
+		t.Setenv("DASH0_NO_SKILL_HINT", "")
+		t.Chdir(t.TempDir())
+
+		err := withSkillHint(errors.New("boom"))
+		assert.Equal(t, "boom", err.Error())
+	})
+
+	t.Run("does not stack a second hint onto an error that already has one", func(t *testing.T) {
+		os.Args = []string{"dash0"}
+		t.Setenv("DASH0_NO_SKILL_HINT", "")
+		t.Chdir(t.TempDir())
+
+		original := errors.New("profile is OAuth-typed but not authenticated.\nHint: run `dash0 login`")
+		err := withSkillHint(original)
+		assert.Equal(t, original.Error(), err.Error())
+	})
 }
 
 // TestFlagValue covers the manual flag scanning used before cobra parses flags.

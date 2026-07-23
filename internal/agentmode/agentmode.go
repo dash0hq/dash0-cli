@@ -69,7 +69,7 @@ func Init(flagValue bool) {
 		return
 	}
 
-	slug := detectAgentSlug()
+	slug := DetectAgentSlug()
 
 	// --agent-mode flag.
 	if flagValue {
@@ -96,7 +96,14 @@ func Init(flagValue bool) {
 	Detected = ""
 }
 
-func detectAgentSlug() string {
+// DetectAgentSlug scans the environment for known AI-agent markers and
+// returns the canonical slug of the first match (e.g. "claude-code",
+// "cursor", "codex"), or "" if none is found. Unlike Detected, this is not
+// affected by DASH0_AGENT_MODE — it reports which agent host the process is
+// running under regardless of whether agent-mode output is enabled, which
+// is what callers like internal/skill need for picking a host-specific
+// directory.
+func DetectAgentSlug() string {
 	for _, m := range agentMatchers {
 		if os.Getenv(m.envVar) != "" {
 			return m.slug

@@ -6,7 +6,7 @@ For every command, this reference lists the exact syntax, all flags, expected ou
 
 ## Command taxonomy
 
-Every command falls into one of seven categories.
+Every command falls into one of eight categories.
 Each category has distinct patterns for flags, output, and behavior.
 
 | Category | Commands | Characteristics |
@@ -19,6 +19,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
+| [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
 **Authentication commands** populate or revoke the OAuth tokens of a profile.
 A profile can be in one of three auth states: **static** (holds a long-lived `auth_*` token), **OAuth-active** (holds a `dash0_at_*` access token and a refresh token; auto-refreshes), or **OAuth-empty** (marked as OAuth but not yet logged in).
@@ -43,6 +44,10 @@ Notification channels are an exception: they use file-based input (`-f`) and sup
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
 It is experimental.
+
+**Agent tooling commands** (`skill install`, `skill show`) distribute the dash0-cli Agent Skill — a bundle that teaches AI coding agents this CLI's command surface without spending turns on `--help` exploration.
+They never call the Dash0 API, so they take no `--api-url`, `--auth-token`, or `--dataset`, and they are not gated behind `--experimental` since the entire point is frictionless discovery.
+Unlike every other command, their output is always plain markdown, in both human and agent mode — see [Agent tooling commands](#agent-tooling-commands) for why.
 
 ## Prerequisites
 
@@ -82,6 +87,7 @@ These flags are available on every command:
 | `--experimental` | `-X` | | Enable experimental commands |
 | | | `DASH0_CONFIG_DIR` | Override config directory (default: `~/.dash0`) |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Maximum number of retries for failed API requests (default: `3`, max: `5`; set to `0` to disable retries) |
+| `--no-skill-hint` | | `DASH0_NO_SKILL_HINT` | Suppress the agent-mode error hint pointing at `dash0 skill install` (see [Agent tooling commands](#agent-tooling-commands)) |
 
 ### Agent mode
 
@@ -2541,6 +2547,93 @@ Debug a failing request:
 
 ```bash
 dash0 -X api POST /api/signal-to-metrics/configs -f config.json -v
+```
+
+## Agent tooling commands
+
+Agent tooling commands distribute the dash0-cli Agent Skill — a `SKILL.md` plus reference docs following the open [Agent Skills specification](https://github.com/anthropics/skills) — so AI coding agents (Claude Code, Cursor, Codex, GitHub Copilot, and others) can discover this CLI's command surface without spending turns on `--help` exploration.
+
+They differ from every other command category:
+
+- No `--api-url`, `--auth-token`, or `--dataset` — they never call the Dash0 API.
+- Not gated behind `--experimental` — the whole point is frictionless discovery, so requiring a flag agents don't yet know about would be circular.
+- No `-o`/`--output` flag, in either human or agent mode. A skill's content is markdown prose meant to be read directly; JSON-wrapping it would only force an agent to unescape it back into the prose it already reads natively, with no compensating structure gained. Errors from these commands still get the standard `hint`-carrying JSON treatment in agent mode (see [Agent mode](#agent-mode)), since that's a mechanism independent of a command's own `-o` flag.
+
+### `skill install`
+
+Detect which supported AI coding agent (Claude Code, Codex, Cursor, or GitHub Copilot) is driving the current session, and install the dash0-cli Agent Skill into that agent's conventional skills directory in the current project.
+
+```bash
+dash0 skill install [--dir <path>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dir` | current directory | Directory to install into |
+
+Detection is environment-variable based (the same markers [Agent mode](#agent-mode) auto-detects), and maps to one directory per host, relative to the target directory:
+
+| Host | Directory |
+|------|-----------|
+| Claude Code | `.claude/skills/dash0-cli` |
+| Codex | `.agents/skills/dash0-cli` |
+| Cursor | `.cursor/skills/dash0-cli` |
+| GitHub Copilot | `.github/skills/dash0-cli` (the project-level convention; `~/.copilot/skills/` is for personal, home-directory-level skills) |
+
+`install` writes only to the one directory matching the detected host — it does not spray files into every known convention.
+Re-running it always overwrites, since the bundle is regenerable, CLI-managed content, not user data.
+
+If no supported host can be detected, `install` fails rather than guessing, and points at the standards-based alternative:
+
+```bash
+$ dash0 skill install
+Error: could not detect a supported agent host in this environment (checked: Claude Code, Codex, Cursor, GitHub Copilot)
+Hint: install the dash0-cli skill instead with `npx skills add dash0hq/dash0-cli` or `gh skill install dash0hq/dash0-cli`
+```
+
+Install the skill for the detected agent host:
+
+```bash
+$ dash0 skill install
+Installed dash0-cli skill (20 files) to .claude/skills/dash0-cli (detected: claude-code)
+```
+
+Install into a different directory than the current one:
+
+```bash
+dash0 skill install --dir ./my-project
+```
+
+### `skill show`
+
+Print the dash0-cli Agent Skill bundle to stdout without writing any files — the disk-free path for CI or ephemeral agent sessions, or for environments where the agent host can't be auto-detected.
+
+```bash
+dash0 skill show [topic]
+```
+
+With no argument, prints `SKILL.md`, the entry point, which includes an index of every available topic.
+With a topic argument, prints that topic's reference content raw.
+Topics match the actual top-level `dash0 <command>` name (`dashboards`, `logs`, `teams`, and so on), not an internal taxonomy category.
+
+Print the entry-point `SKILL.md`, including the topic index:
+
+```bash
+dash0 skill show
+```
+
+Print a specific topic's reference content:
+
+```bash
+dash0 skill show dashboards
+```
+
+An unknown topic fails with an error listing the valid topic names, so an agent can self-correct in one more call:
+
+```bash
+$ dash0 skill show bogus-topic
+Error: unknown skill topic "bogus-topic"
+Hint: valid topics are: apply, api, check-rules, config, dashboards, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, traces, views
 ```
 
 ## Common workflows for AI agents

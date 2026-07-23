@@ -26,6 +26,7 @@ Detailed guidelines are split into focused documents:
 - @docs/testing.md — test strategies, integration tests, fixtures, mock server, roundtrip tests
 - @docs/github-actions-maintenance.md — keeping the setup and send-log-event composite actions in sync with CLI changes, plus how the setup action is tested
 - @docs/changelog-maintenance.md — when and how to create changelog entries
+- @docs/agent-skill-maintenance.md — keeping the dash0-cli Agent Skill bundle (`internal/skill/`) in sync with `docs/commands.md`
 
 ## Hard rules
 

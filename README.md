@@ -11,6 +11,7 @@ Authentication and connection settings can be configured entirely through profil
 Commands use consistent naming conventions and flags.
 Structured and parseable output formats (`--output json`, `--output yaml`, `--output csv`).
 [Agent mode](#agent-mode) makes all of this automatic: JSON output, structured help, JSON errors, no prompts, and no colors — with zero configuration.
+Run `dash0 skill install` in a project to add a local [Agent Skill](docs/commands.md#agent-tooling-commands) — a `SKILL.md` plus reference docs — so any Claude Code, Cursor, Codex, or GitHub Copilot session there discovers this command surface without spending turns on `--help` exploration.
 
 ## Quick start
 
