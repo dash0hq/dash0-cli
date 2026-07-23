@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.16.1
+
+
+### New Components
+
+
+- `skill`: Add `dash0 skill install` and `dash0 skill show`, which distribute an Agent Skill teaching AI coding agents (Claude Code, Codex, Cursor, GitHub Copilot) this CLI's command surface without spending turns on `--help` exploration. (#212)
+  `skill install` detects the current agent host (Claude Code, Codex, Cursor, or GitHub Copilot) and installs a
+  SKILL.md plus reference docs into that host's conventional directory in the current project; `skill show [topic]`
+  prints the same content to stdout for CI or ephemeral sessions. Neither command calls the Dash0 API or requires
+  `--experimental`. In agent mode, a failing command now carries a follow-up hint pointing at `dash0 skill install`
+  when the skill isn't installed yet, or at `dash0 skill show` / `dash0 --agent-mode --help` when it is — so an
+  agent that mis-invokes has a concrete next step. Suppress with `--no-skill-hint` or `DASH0_NO_SKILL_HINT=1`;
+  explicit `--no-skill-hint=false` or `DASH0_NO_SKILL_HINT=0` re-enables the hint on demand.
+  
+
 ## 1.16.0
 
 
