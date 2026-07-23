@@ -25,7 +25,7 @@ jobs:
     if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Verify CLI is not installed
         run: |
@@ -52,7 +52,7 @@ jobs:
     if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Dash0 CLI
         uses: ./.github/actions/setup
@@ -84,7 +84,7 @@ jobs:
     if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Dash0 CLI with a dummy token
         uses: ./.github/actions/setup
@@ -112,7 +112,7 @@ jobs:
     name: 'Rejects CLI below minimum version'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Send log event with old CLI version
         id: send
@@ -135,7 +135,7 @@ jobs:
     if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Dash0 CLI
         uses: ./.github/actions/setup
@@ -239,7 +239,7 @@ jobs:
     if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Generate unique marker
         id: marker
@@ -285,7 +285,7 @@ jobs:
     if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Send log event (standalone on arm64)
         uses: ./.github/actions/send-log-event
