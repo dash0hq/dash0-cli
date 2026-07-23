@@ -1,3 +1,4 @@
+apiVersion: v1alpha1
 kind: Dash0SpamFilter
 metadata:
   name: Drop noisy health checks

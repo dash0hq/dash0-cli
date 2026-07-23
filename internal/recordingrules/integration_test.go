@@ -219,6 +219,69 @@ func TestDeleteRecordingRule_Success(t *testing.T) {
 	assert.Contains(t, output, "deleted")
 }
 
+// TestGetRecordingRule_NotFound pins the clean-message contract on 404 GET.
+func TestGetRecordingRule_NotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureRecordingRulesNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewRecordingRulesCmd()
+	cmd.SetArgs([]string{"get", "00000000-0000-0000-0000-000000000000", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "recording rule")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestGetRecordingRule_Unauthorized pins the clean-message contract on 401.
+func TestGetRecordingRule_Unauthorized(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusUnauthorized,
+		BodyFile:   fixtureUnauthorized,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewRecordingRulesCmd()
+	cmd.SetArgs([]string{"get", "00000000-0000-0000-0000-000000000000", "--api-url", server.URL, "--auth-token", "auth_invalid"})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication failed")
+}
+
+// TestDeleteRecordingRule_NotFound covers the imperative delete path when
+// the server returns 404.
+func TestDeleteRecordingRule_NotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureRecordingRulesNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewRecordingRulesCmd()
+	cmd.SetArgs([]string{"delete", "00000000-0000-0000-0000-000000000000", "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "recording rule")
+	assert.Contains(t, err.Error(), "not found")
+}
+
 func TestListRecordingRules_DatasetQueryParam(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

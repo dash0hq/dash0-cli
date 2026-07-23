@@ -18,6 +18,7 @@
 Synthetic check:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: SyntheticCheck
 metadata:
   name: API Health Check

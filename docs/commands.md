@@ -804,6 +804,7 @@ Dry run: 1 document validated
 Dashboard:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: Dashboard
 metadata:
   name: a1b2c3d4-5678-90ab-cdef-1234567890ab
@@ -813,6 +814,8 @@ spec:
   display:
     name: Production Overview
 ```
+
+Pinning `apiVersion` on every user-authored file is a defense against silent migrations: today the server infers the default version when the field is omitted, but the same document with an explicit `apiVersion` will keep the same shape when a future default changes.
 
 The user-defined identifier lives in `metadata.dash0Extensions.id` (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
 `metadata.name` is the CRD-style metadata name and is independent of `spec.display.name`, which is the title shown in the UI.
@@ -839,6 +842,7 @@ For PersesDashboards the user-defined identifier is the `dash0.com/id` metadata 
 Check rule:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: CheckRule
 id: b2c3d4e5-6789-01bc-def0-234567890abc
 name: High Error Rate
@@ -848,6 +852,7 @@ expression: sum(rate(http_requests_total{status=~"5.."}[5m])) > 0.1
 View:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: View
 metadata:
   name: Error Logs
@@ -860,6 +865,7 @@ spec:
 Synthetic check:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: SyntheticCheck
 metadata:
   name: API Health Check
@@ -931,6 +937,7 @@ The `delete` endpoint is version-agnostic.
 Notification channel (organization-level, no `--dataset`):
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: Dash0NotificationChannel
 metadata:
   name: Slack Alerts
@@ -945,6 +952,7 @@ spec:
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: Dash0Team
 metadata:
   name: backend-team
@@ -991,6 +999,7 @@ The alerting rule is created as a check rule under `/api/alerting/check-rules`, 
 Multi-document file (separated by `---`):
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: Dashboard
 metadata:
   name: e1f2a3b4-5678-90e5-6789-abcdef012345
@@ -998,6 +1007,7 @@ spec:
   display:
     name: First Dashboard
 ---
+apiVersion: dash0.com/v1alpha1
 kind: CheckRule
 id: f2a3b4c5-6789-01f6-7890-bcdef0123456
 name: Second Document Rule

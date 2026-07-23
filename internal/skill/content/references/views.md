@@ -18,6 +18,7 @@
 View:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: View
 metadata:
   name: Error Logs

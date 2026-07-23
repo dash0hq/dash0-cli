@@ -18,6 +18,7 @@
 Check rule:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: CheckRule
 id: b2c3d4e5-6789-01bc-def0-234567890abc
 name: High Error Rate

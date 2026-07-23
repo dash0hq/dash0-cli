@@ -18,6 +18,7 @@
 Dashboard:
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: Dashboard
 metadata:
   name: a1b2c3d4-5678-90ab-cdef-1234567890ab
