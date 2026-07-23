@@ -5,7 +5,7 @@
 *.so
 *.dylib
 /dash0
-dash0-*
+/dash0-*
 bin/
 
 # Test binary, built with `go test -c`

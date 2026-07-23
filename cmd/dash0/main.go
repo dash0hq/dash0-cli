@@ -27,6 +27,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/skill"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
@@ -84,6 +85,7 @@ func init() {
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
 	rootCmd.AddCommand(otlp.NewOtlpCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
+	rootCmd.AddCommand(skill.NewSkillCmd())
 	rootCmd.AddCommand(spamfilters.NewSpamFiltersCmd())
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())
@@ -100,6 +102,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
 	rootCmd.PersistentFlags().String("profile", "", "Profile to use for this invocation; overrides the active profile on disk (env: DASH0_PROFILE)")
 	rootCmd.PersistentFlags().String("max-retries", "", "Maximum number of retries for failed API requests (0-5; default: 3; env: DASH0_MAX_RETRIES)")
+	rootCmd.PersistentFlags().Bool("no-skill-hint", false, "Suppress the agent-mode error hint pointing at dash0 skill install (env: DASH0_NO_SKILL_HINT)")
 }
 
 // newVersionCmd creates a new version command
@@ -120,6 +123,8 @@ func newVersionCmd() *cobra.Command {
 // "Error:" is printed in red, "Hint:" is printed in cyan.
 // Colors are only used when stderr is a TTY (not piped).
 func printError(err error) {
+	err = withSkillHint(err)
+
 	if agentmode.Enabled {
 		agentmode.PrintJSONError(os.Stderr, err)
 		return
@@ -145,6 +150,69 @@ func printError(err error) {
 		fmt.Fprint(os.Stderr, errorPrefix)
 		fmt.Fprintln(os.Stderr, errStr)
 	}
+}
+
+// withSkillHint appends a follow-up hint to err so an AI agent (or a human
+// setting up their AI coding session) has a next-step pointer even when
+// the underlying error message is bare. Two shapes:
+//
+//   - When the skill is NOT installed in the current directory: nudge at
+//     `dash0 skill install`. Fires in both agent and human mode since the
+//     one-time setup benefits humans too.
+//   - When the skill IS installed and agent mode is active: nudge at the
+//     resources an agent can use to recover — `dash0 skill show` reprints
+//     the local bundle and `dash0 --agent-mode --help` returns the current
+//     command surface as structured JSON. Fires only in agent mode because
+//     a human seeing this on every error is noise (they'd read `--help`).
+//
+// No-op when the hint has been suppressed (`--no-skill-hint` /
+// `DASH0_NO_SKILL_HINT`), when err already carries its own `\nHint:`
+// (e.g. the OAuth-empty-profile hint) rather than stacking a second
+// less-specific one, and when the detected agent host is not a supported
+// install target — running `dash0 skill install` under aider/cline/
+// windsurf/mcp would only surface a second, more specific error.
+func withSkillHint(err error) error {
+	if skillHintSuppressed() {
+		return err
+	}
+	if strings.Contains(err.Error(), "\nHint:") {
+		return err
+	}
+	if slug := agentmode.DetectAgentSlug(); slug != "" && !skill.HostSupported(slug) {
+		return err
+	}
+	wd, wdErr := os.Getwd()
+	if wdErr != nil {
+		return err
+	}
+	if skill.IsInstalled(wd) {
+		if !agentmode.Enabled {
+			return err
+		}
+		return fmt.Errorf("%w\nHint: consult the installed dash0-cli Agent Skill — run `dash0 skill show` to reprint it, or `dash0 --agent-mode --help` for the current command surface", err)
+	}
+	return fmt.Errorf("%w\nHint: run `dash0 skill install` to add a local Agent Skills bundle with detailed command references", err)
+}
+
+// skillHintSuppressed reports whether the --no-skill-hint flag or
+// DASH0_NO_SKILL_HINT env var is set. Flags are not yet parsed when
+// printError may be called, so this scans os.Args directly.
+//
+// Precedence, highest to lowest:
+//  1. Explicit CLI value (--no-skill-hint=false or =0) — never suppressed.
+//  2. Bareword CLI flag (--no-skill-hint) or --no-skill-hint=true|1 — suppressed.
+//  3. DASH0_NO_SKILL_HINT=0|false — never suppressed (explicit env disable).
+//  4. DASH0_NO_SKILL_HINT=1|true — suppressed.
+//  5. Otherwise — not suppressed.
+func skillHintSuppressed() bool {
+	if v, ok := flagBoolValue(os.Args[1:], "--no-skill-hint"); ok {
+		return v
+	}
+	envVal := strings.ToLower(os.Getenv("DASH0_NO_SKILL_HINT"))
+	if envVal == "0" || envVal == "false" {
+		return false
+	}
+	return envVal == "1" || envVal == "true"
 }
 
 // loadConfig attempts to resolve the CLI configuration (active profile +
@@ -311,17 +379,44 @@ func installJSONHelp(cmd *cobra.Command) {
 	})
 }
 
-// hasFlag checks whether a boolean flag (e.g. "--agent-mode") appears in args.
-// This is used before cobra has parsed flags, so we scan manually.
+// hasFlag reports whether a boolean flag (e.g. "--agent-mode") is set to a
+// truthy value in args. Recognizes the bareword form and every value form
+// cobra itself accepts: --name, --name=true, --name=1 are truthy;
+// --name=false, --name=0 are false. This is used before cobra has parsed
+// flags, so we scan manually.
 func hasFlag(args []string, name string) bool {
+	v, ok := flagBoolValue(args, name)
+	return ok && v
+}
+
+// flagBoolValue returns (value, explicit) for a boolean flag. explicit is
+// true when the flag was passed in any form (bareword, =true, =false, =1,
+// =0); value carries the resolved truthiness. Callers that need to
+// distinguish "flag not passed" from "flag passed explicitly with false"
+// (e.g. to let an explicit --flag=false trump an env-var setting) can
+// branch on explicit. Scanning stops after "--" (end of flags).
+func flagBoolValue(args []string, name string) (bool, bool) {
+	prefix := name + "="
 	for _, arg := range args {
-		if arg == name {
-			return true
-		}
-		// Stop scanning after "--" (end of flags).
 		if arg == "--" {
-			return false
+			return false, false
+		}
+		if arg == name {
+			return true, true
+		}
+		if strings.HasPrefix(arg, prefix) {
+			v := strings.ToLower(arg[len(prefix):])
+			switch v {
+			case "", "true", "1":
+				return true, true
+			case "false", "0":
+				return false, true
+			default:
+				// Unknown value: treat as not-set so the caller falls
+				// through to lower-precedence sources (env var, default).
+				return false, false
+			}
 		}
 	}
-	return false
+	return false, false
 }

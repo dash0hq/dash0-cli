@@ -11,6 +11,7 @@ Authentication and connection settings can be configured entirely through profil
 Commands use consistent naming conventions and flags.
 Structured and parseable output formats (`--output json`, `--output yaml`, `--output csv`).
 [Agent mode](#agent-mode) makes all of this automatic: JSON output, structured help, JSON errors, no prompts, and no colors — with zero configuration.
+Run `dash0 skill install` in a project to add a local [Agent Skill](docs/commands.md#agent-tooling-commands) — a `SKILL.md` plus reference docs — so any Claude Code, Cursor, Codex, or GitHub Copilot session there discovers this command surface without spending turns on `--help` exploration.
 
 ## Quick start
 
@@ -740,6 +741,7 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 | | | `DASH0_OTLP_PROXY_GRPC_PORT` | Override `dash0 otlp proxy --grpc-port` |
 | | | `DASH0_OTLP_PROXY_HTTP_PORT` | Override `dash0 otlp proxy --http-port` |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |
+| `--no-skill-hint` | | `DASH0_NO_SKILL_HINT` | Suppress the agent-mode error hint pointing at `dash0 skill install`. |
 
 ### Output formats
 

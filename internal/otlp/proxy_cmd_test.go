@@ -8,6 +8,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// clearOTELEnv clears the OpenTelemetry exporter env vars parseOTELExporterEnv
+// reads (OTEL_EXPORTER_OTLP_ENDPOINT / _PROTOCOL). Without this, an ambient
+// value from the surrounding shell (Dash0 observability integrations set
+// OTEL_EXPORTER_OTLP_ENDPOINT to a bare URL with no port, for example) leaks
+// into the test process and makes portFromOTELEndpoint fail before any
+// DASH0_OTLP_PROXY_* precedence tier can be checked. Call at the top of any
+// test that exercises resolveEnvOverrides without intentionally setting
+// OTEL_* itself.
+func clearOTELEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(envOTELEndpoint, "")
+	t.Setenv(envOTELProtocol, "")
+}
 
 func TestProxyFlags_Defaults(t *testing.T) {
 	t.Setenv(envHTTPPort, "")
@@ -45,6 +58,7 @@ func TestProxyFlags_FlagOverridesDefault(t *testing.T) {
 }
 
 func TestProxyFlags_EnvOverridesDefault(t *testing.T) {
+	clearOTELEnv(t)
 	t.Setenv(envHTTPPort, "8888")
 	t.Setenv(envGRPCPort, "8889")
 
@@ -66,6 +80,7 @@ func TestProxyFlags_EnvOverridesDefault(t *testing.T) {
 }
 
 func TestProxyFlags_FlagWinsOverEnv(t *testing.T) {
+	clearOTELEnv(t)
 	t.Setenv(envHTTPPort, "8888")
 
 	cmd := newProxyCmd()
@@ -216,6 +231,7 @@ func TestProxyFlags_OTELEnvProtocolUnsetSkipped(t *testing.T) {
 }
 
 func TestProxyFlags_EnvInvalidIntegerErrors(t *testing.T) {
+	clearOTELEnv(t)
 	t.Setenv(envHTTPPort, "not-a-port")
 
 	cmd := newProxyCmd()

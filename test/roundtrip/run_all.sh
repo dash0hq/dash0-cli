@@ -4,23 +4,54 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 
-# Verify that an active profile is configured before running any tests.
+PASSED=0
+FAILED=0
+SKIPPED=0
+FAILURES=()
+
+# Local-only tests exercise commands that don't touch the Dash0 API or OTLP
+# endpoint (`skill install`, `skill show`, and similar). They need no
+# profile and no credentials, so they run before the active-profile guard
+# below — a fresh contributor with no Dash0 account can still run and rely
+# on them.
+LOCAL_TESTS=(
+  "${SCRIPT_DIR}/test_skill_install.sh"
+)
+
+if [ "${#LOCAL_TESTS[@]}" -gt 0 ]; then
+  echo "Running local-only round-trip tests..."
+  echo
+  for script in "${LOCAL_TESTS[@]}"; do
+    name="$(basename "$script" .sh)"
+    echo "========================================"
+    echo "Running: $name"
+    echo "========================================"
+    if bash "$script"; then
+      PASSED=$((PASSED + 1))
+    else
+      FAILED=$((FAILED + 1))
+      FAILURES+=("$name")
+    fi
+    echo
+  done
+fi
+
+# Verify that an active profile is configured before running any API tests.
 if ! "$DASH0" config show >/dev/null 2>&1; then
   echo "Error: no active profile configured."
   echo "Create one with: dash0 config profiles create <name> --api-url <url> --auth-token <token>"
+  if [ "$FAILED" -gt 0 ]; then
+    echo "Local-only tests already failed above."
+    exit 1
+  fi
   exit 1
 fi
 
 echo "Active profile:"
 "$DASH0" config show
 echo
-echo "Running all round-trip tests..."
+echo "Running API round-trip tests..."
 echo
-
-PASSED=0
-FAILED=0
-SKIPPED=0
-FAILURES=()
 
 # API-side round-trip tests only need DASH0_API_URL + DASH0_AUTH_TOKEN.
 API_TESTS=(

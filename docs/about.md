@@ -27,6 +27,7 @@ Humans authenticate interactively via OAuth 2.0 with `dash0 login`; CI/CD and ag
 
 - **Ergonomic for agents by default.**
   Structured JSON output, JSON help, JSON errors, no interactive prompts, no colored output — all triggered automatically when the CLI is invoked by a known AI coding agent.
+  `dash0 skill install` adds a local [Agent Skill](commands.md#agent-tooling-commands) to a project — a `SKILL.md` plus reference docs — so Claude Code, Cursor, Codex, and GitHub Copilot sessions there discover the command surface without spending turns on `--help` exploration.
 - **Consistent surface across asset types.**
   Every asset kind uses the same five subcommands (`list`, `get`, `create`, `update`, `delete`), the same output formats (`table`, `wide`, `json`, `yaml`, `csv`), and the same idempotent-upsert semantics.
 - **Idempotent by design.**

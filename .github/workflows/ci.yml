@@ -59,6 +59,25 @@ jobs:
       - name: Run ShellCheck
         run: make lint-sh
 
+  lint-skill:
+    # Fails the build if the dash0-cli Agent Skill bundle is out of sync with
+    # docs/commands.md, or if the root-level publish copies under
+    # .claude/skills/dash0-cli and .agents/skills/dash0-cli drifted from
+    # internal/skill/content. Locally this is part of `make lint`; running it
+    # as its own CI job means a PR that edits docs/commands.md without
+    # regenerating the bundle fails here rather than shipping stale content.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Validate Agent Skill bundle
+        run: make skill-validate
+
   sync-docs-to-website-dry-run:
     # Drift guard: verify on every CI build that the transformations declared in
     # `.github/workflows/sync-docs/transformations.yaml` still apply cleanly against

@@ -5,7 +5,7 @@ It consolidates references to conventions and patterns documented elsewhere.
 
 ## 1. Determine the command type
 
-Every command falls into one of four types.
+Every command falls into one of five types.
 See the [command taxonomy](commands.md#command-taxonomy) in @docs/commands.md for the user-facing specification, and the [reference implementations](code-style.md#reference-implementations) for the package to use as a template.
 
 | Type | When to use | Reference package |
@@ -14,9 +14,14 @@ See the [command taxonomy](commands.md#command-taxonomy) in @docs/commands.md fo
 | Query | Searches or retrieves telemetry data (logs, spans, metrics) | `internal/logging/query.go` |
 | Send | Sends telemetry data via OTLP | `internal/logging/send.go` |
 | Organizational | Manages organization-level entities (not dataset-scoped) | `internal/teams/` |
+| Agent tooling | Local-only tooling with no Dash0 API calls (currently just `skill install`/`skill show`) | `internal/skill/` |
 
 If the command does not fit any type, gate it behind `--experimental` (`-X`) so the interface can evolve, and discuss the pattern with the team before implementing.
 When a command is ready for general use, follow the [promoting commands to stable](promoting-commands-to-stable.md) guide to remove the experimental gate.
+
+**Agent tooling is a deliberate exception to the gating default above.**
+`skill install`/`skill show` are not gated behind `--experimental`, and have no `-o`/`--output` flag at all (see the [agent-mode output-format exception](code-style.md#output-format-default)) — both would work against the commands' entire purpose of frictionless, zero-prior-knowledge discovery.
+Don't extend either exception to a new command without the same rationale applying: no Dash0 API calls, and content that is inherently prose rather than structured data.
 
 ## 2. Create the package
 
@@ -126,6 +131,8 @@ Do not duplicate shared logic — see @docs/project-structure.md for where share
 
 - Add the command to @docs/commands.md under the appropriate [taxonomy category](commands.md#command-taxonomy), with flags, outputs, and examples.
 - For Asset CRUD commands, add the new `kind` (and any CRD aliases) to the list of supported kinds in the `apply` section of @docs/commands.md, and add a YAML example under "Asset YAML formats".
+- **For a new command or asset kind, also add an entry to `internal/skill/gen`'s topic map** (and, for asset kinds, its `assetYAMLLabels`/`includeQuickRef` source) so the dash0-cli Agent Skill covers it — see @docs/agent-skill-maintenance.md.
+  Run `make skill-bundle` afterward and commit the regenerated `internal/skill/content/references/*.md` (plus the root-level `.claude/skills/dash0-cli/` and `.agents/skills/dash0-cli/` copies); `make skill-validate` (part of `make lint`) fails the build if this is forgotten.
 - Update @README.md if the command adds new user-facing functionality.
 - Add to @docs/cli-naming-conventions.md if introducing new subcommand patterns.
 - Create a changelog entry — see @docs/changelog-maintenance.md.
