@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.16.0
+
+
+### Breaking Changes
+
+
+- `teams`: `teams get -o json` and `teams get -o yaml` now emit the `TeamDefinitionV1Alpha1` envelope only, without the enriched `members` / `dashboards` / `checkRules` / `syntheticChecks` / `views` / `datasets` arrays (#200)
+  Prior versions emitted the enriched `GetTeamResponse` wrapper (`{team, members, dashboards, ...}`). The new output is the CRD envelope directly (`{apiVersion, kind, metadata, spec}`), so `dash0 apply -f` can round-trip the exported document without post-processing. `spec.members` renders as email addresses rather than internal user ids.
+  Scripts that read `.team.metadata.labels["dash0.com/id"]` or `.team.spec.display.name` need to drop the `.team.` prefix — e.g. `.metadata.labels["dash0.com/id"]`, `.spec.display.name`. Scripts that consumed the enriched arrays (`.dashboards[]`, `.members[].spec.display.email`, etc.) should use `dash0 teams get <id>` (the default table output) for a human-readable view, or `dash0 teams list-members <id>` for programmatic access to the member list.
+  The `dash0 teams *` command tree is gated behind `--experimental` and does not carry a stability guarantee, but this shape change is nevertheless disruptive enough to warrant an explicit callout.
+  
+
+
+### Enhancements
+
+
+- `teams`: Manage teams declaratively via `teams create -f` and `apply -f` on `Dash0Team` YAML (#200)
+  `dash0 --experimental teams create -f <file>` accepts a `TeamDefinitionV1Alpha1` document. When the document carries a `metadata.labels["dash0.com/origin"]` label, the CLI upserts by origin (PUT, idempotent); otherwise it creates a new team (POST) and the server assigns id and origin.
+  `dash0 apply` recognizes `kind: Dash0Team` and routes it through the same upsert path, so team definitions round-trip through the standard export-edit-reapply GitOps workflow alongside other assets.
+  `spec.members` accepts either email addresses or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender. The CLI renders team membership as emails on `teams get`, `teams list-members`, and the `apply` diff so review artifacts stay legible.
+  The existing imperative commands (`teams create <name>`, `teams add-members`, `teams remove-members`, `teams update`) are preserved and now accept emails or ids for member arguments.
+  
+
 ## 1.15.4
 
 

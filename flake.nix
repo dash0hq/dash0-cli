@@ -15,7 +15,7 @@
     let
       # Keep this in sync with the latest release tag. It feeds the `-X
       # main.version` ldflag so `dash0 version` reports the right number.
-      version = "1.15.4";
+      version = "1.16.0";
 
       # A reproducible build date derived from the flake's last-modified time
       # (when built from a clean tree) so the output is deterministic.
