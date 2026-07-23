@@ -1,5 +1,5 @@
 {
-  "apiVersion": "openslo/v1",
+  "apiVersion": "openslo.com/v1",
   "kind": "SLO",
   "metadata": {
     "name": "checkout-availability",

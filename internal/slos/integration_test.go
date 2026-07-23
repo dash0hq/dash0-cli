@@ -52,7 +52,7 @@ func TestListSLOs_JSONFormat(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, `"kind": "SLO"`)
-	assert.Contains(t, output, `"apiVersion": "openslo/v1"`)
+	assert.Contains(t, output, `"apiVersion": "openslo.com/v1"`)
 	assert.Contains(t, output, `"metadata"`)
 	assert.Contains(t, output, `"spec"`)
 }
@@ -77,7 +77,7 @@ func TestListSLOs_YAMLFormat(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "kind: SLO")
-	assert.Contains(t, output, "apiVersion: openslo/v1")
+	assert.Contains(t, output, "apiVersion: openslo.com/v1")
 	assert.Contains(t, output, "metadata:")
 	assert.Contains(t, output, "spec:")
 }
@@ -217,7 +217,7 @@ func TestGetSLO_YAMLFormat(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "kind: SLO")
-	assert.Contains(t, output, "apiVersion: openslo/v1")
+	assert.Contains(t, output, "apiVersion: openslo.com/v1")
 }
 
 func TestGetSLO_DefaultFormat(t *testing.T) {
@@ -331,7 +331,7 @@ func TestUpdateSLO_DatasetQueryParam(t *testing.T) {
 	// The outbound body must be a valid OpenSLO v1 document.
 	var sent dash0api.SloDefinition
 	require.NoError(t, json.Unmarshal(req.Body, &sent))
-	assert.Equal(t, dash0api.Openslov1, sent.ApiVersion)
+	assert.Equal(t, "openslo.com/v1", string(sent.ApiVersion))
 	assert.Equal(t, dash0api.SLO, sent.Kind)
 }
 
@@ -357,7 +357,7 @@ func TestDeleteSLO_Success(t *testing.T) {
 	assert.Contains(t, output, "deleted")
 }
 
-const sloCreateYAML = `apiVersion: openslo/v1
+const sloCreateYAML = `apiVersion: openslo.com/v1
 kind: SLO
 metadata:
   name: checkout-availability
@@ -392,7 +392,7 @@ spec:
       target: 0.99
 `
 
-const sloUpdateYAML = `apiVersion: openslo/v1
+const sloUpdateYAML = `apiVersion: openslo.com/v1
 kind: SLO
 metadata:
   name: checkout-availability

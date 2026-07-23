@@ -679,7 +679,7 @@ Aliases: `remove`
 | Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
-| SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use the OpenSLO v1 format (`apiVersion: openslo/v1`, `kind: SLO`) |
+| SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use the OpenSLO v1 format (`apiVersion: openslo.com/v1`, `kind: SLO`) |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
@@ -703,7 +703,7 @@ The identifier field location varies by asset kind:
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | The CRD-level label is applied to every alerting rule converted from the CRD, so a CRD with multiple alerts shares one identifier — pin a unique label per CRD, or split multi-alert CRDs into one CRD per alert |
 | `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
-| `SLO` | `metadata.labels["dash0.com/id"]` | OpenSLO v1 document (`apiVersion: openslo/v1`) |
+| `SLO` | `metadata.labels["dash0.com/id"]` | OpenSLO v1 document (`apiVersion: openslo.com/v1`) |
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
@@ -862,7 +862,7 @@ spec:
 SLO (OpenSLO v1 format):
 
 ```yaml
-apiVersion: openslo/v1
+apiVersion: openslo.com/v1
 kind: SLO
 metadata:
   name: checkout-availability
