@@ -55,7 +55,7 @@ echo "Created team ID: $TEAM_ID"
 # Step 3: Get team details
 echo "--- Step 3: Get team details ---"
 GET_JSON=$("$DASH0" -X teams get "$TEAM_ID" -o json)
-GOT_NAME=$(echo "$GET_JSON" | jq -r '.team.spec.display.name // empty')
+GOT_NAME=$(echo "$GET_JSON" | jq -r '.spec.display.name // empty')
 if [ "$GOT_NAME" != "$TEAM_NAME" ]; then
   echo "FAIL: expected team name '$TEAM_NAME', got '$GOT_NAME'"
   exit 1

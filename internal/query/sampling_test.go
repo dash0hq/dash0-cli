@@ -27,7 +27,7 @@ func TestParsePrecision(t *testing.T) {
 		s, err := ParsePrecision("adaptive", timeRange)
 		require.NoError(t, err)
 		require.NotNil(t, s)
-		assert.Equal(t, dash0api.SamplingModeAdaptive, s.Mode)
+		assert.Equal(t, dash0api.Adaptive, s.Mode)
 		assert.Equal(t, timeRange, s.TimeRange)
 	})
 
@@ -35,7 +35,7 @@ func TestParsePrecision(t *testing.T) {
 		s, err := ParsePrecision("disabled", timeRange)
 		require.NoError(t, err)
 		require.NotNil(t, s)
-		assert.Equal(t, dash0api.SamplingModeDisabled, s.Mode)
+		assert.Equal(t, dash0api.Disabled, s.Mode)
 		assert.Equal(t, timeRange, s.TimeRange)
 	})
 
@@ -43,7 +43,7 @@ func TestParsePrecision(t *testing.T) {
 		s, err := ParsePrecision("DISABLED", timeRange)
 		require.NoError(t, err)
 		require.NotNil(t, s)
-		assert.Equal(t, dash0api.SamplingModeDisabled, s.Mode)
+		assert.Equal(t, dash0api.Disabled, s.Mode)
 	})
 
 	t.Run("invalid value returns an error", func(t *testing.T) {

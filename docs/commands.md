@@ -683,6 +683,7 @@ Aliases: `remove`
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
+| Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 ### Asset identifiers and idempotent upsert
 
@@ -705,6 +706,7 @@ The identifier field location varies by asset kind:
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
+| `Dash0Team` | `metadata.labels["dash0.com/origin"]` | Organization-level. Same origin-based-upsert semantics as notification channels: a document with `dash0.com/origin` upserts by that origin (PUT), a document without it creates a new team on every apply (POST). `spec.members` accepts email addresses or internal member ids interchangeably |
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`).
 The CLI strips `dash0.com/origin` from outbound payloads for the asset types where the server treats origin as provenance metadata (dashboards, views, check rules, synthetic checks), so do not use origin as the upsert key for those kinds.
@@ -734,7 +736,7 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -748,6 +750,11 @@ A CRD that contains no alerting and no recording rules fails validation up front
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
+
+`Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
+The `dash0.com/origin` label is the upsert key when present; otherwise the server creates a new team on every apply.
+`spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
+Requires `--experimental`.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -928,6 +935,27 @@ spec:
   config:
     url: https://hooks.slack.com/services/T00/B00/XXX
 ```
+
+Team (organization-level, no `--dataset`, requires `--experimental`):
+
+```yaml
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: backend-team
+spec:
+  display:
+    name: Backend Team
+    color:
+      from: "#FF6B6B"
+      to: "#4ECDC4"
+  members:
+    - alice@example.com
+    - bob@example.com
+```
+
+`spec.members` entries can be email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation.
 
 Mixed PrometheusRule (one alerting rule and one recording rule in the same CRD):
 

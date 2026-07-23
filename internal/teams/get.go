@@ -61,34 +61,45 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		return err
 	}
 
-	resp, err := apiClient.GetTeam(ctx, originOrID)
-	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "team",
-			AssetID:   originOrID,
-		})
+	format := strings.ToLower(flags.Output)
+	if format == "" && agentmode.Enabled {
+		format = "json"
 	}
 
-	switch strings.ToLower(flags.Output) {
-	case "json":
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(resp)
-	case "yaml", "yml":
-		data, err := sigsyaml.Marshal(resp)
+	// Table paths need the members/assets envelope, so fetch the enriched
+	// response once and reuse it. JSON/YAML paths only need the plain
+	// TeamDefinitionV1Alpha1 envelope, so avoid pulling the extra data.
+	switch format {
+	case "json", "yaml", "yml":
+		team, err := apiClient.GetTeam(ctx, originOrID)
+		if err != nil {
+			return client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "team",
+				AssetID:   originOrID,
+			})
+		}
+		if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, team); err != nil {
+			return err
+		}
+		if format == "json" {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(team)
+		}
+		data, err := sigsyaml.Marshal(team)
 		if err != nil {
 			return fmt.Errorf("failed to marshal team as YAML: %w", err)
 		}
 		fmt.Print(string(data))
 		return nil
-	case "":
-		if agentmode.Enabled {
-			encoder := json.NewEncoder(os.Stdout)
-			encoder.SetIndent("", "  ")
-			return encoder.Encode(resp)
+	case "", "table":
+		resp, err := apiClient.GetTeamWithAssets(ctx, originOrID)
+		if err != nil {
+			return client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "team",
+				AssetID:   originOrID,
+			})
 		}
-		return printTeamDetails(resp)
-	case "table":
 		return printTeamDetails(resp)
 	default:
 		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
@@ -96,7 +107,7 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 }
 
 func printTeamDetails(resp *dash0api.GetTeamResponse) error {
-	team := resp.Team
+	team := &resp.Team
 
 	id := ""
 	if team.Metadata.Labels != nil && team.Metadata.Labels.Dash0Comid != nil {
@@ -107,16 +118,20 @@ func printTeamDetails(resp *dash0api.GetTeamResponse) error {
 		origin = *team.Metadata.Labels.Dash0Comorigin
 	}
 
-	fmt.Printf("Kind:    Team\n")
-	fmt.Printf("Name:    %s\n", team.Spec.Display.Name)
+	fmt.Printf("Kind:        Team\n")
+	fmt.Printf("Name:        %s\n", team.Spec.Display.Name)
+	fmt.Printf("Slug:        %s\n", team.Metadata.Name)
 	if id != "" {
-		fmt.Printf("ID:      %s\n", id)
+		fmt.Printf("ID:          %s\n", id)
 	}
 	if origin != "" {
-		fmt.Printf("Origin:  %s\n", origin)
+		fmt.Printf("Origin:      %s\n", origin)
 	}
-	fmt.Printf("Color:   %s -> %s\n", team.Spec.Display.Color.From, team.Spec.Display.Color.To)
-	fmt.Printf("Members: %d\n", len(resp.Members))
+	if team.Spec.Display.Description != nil && *team.Spec.Display.Description != "" {
+		fmt.Printf("Description: %s\n", *team.Spec.Display.Description)
+	}
+	fmt.Printf("Color:       %s -> %s\n", team.Spec.Display.Color.From, team.Spec.Display.Color.To)
+	fmt.Printf("Members:     %d\n", len(resp.Members))
 
 	if len(resp.Members) > 0 {
 		fmt.Println()

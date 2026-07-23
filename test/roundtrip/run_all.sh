@@ -45,6 +45,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_spam_filter_roundtrip.sh"
   "${SCRIPT_DIR}/test_spam_filter_v1alpha2_roundtrip.sh"
   "${SCRIPT_DIR}/test_team_roundtrip.sh"
+  "${SCRIPT_DIR}/test_team_declarative_roundtrip.sh"
 )
 
 # OTLP-based round-trip tests additionally need DASH0_OTLP_URL.

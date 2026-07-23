@@ -177,9 +177,9 @@ func TestGetTeam_Success(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "Kind:    Team")
-	assert.Contains(t, output, "Name:    Backend Team")
-	assert.Contains(t, output, "Members: 2")
+	assert.Contains(t, output, "Kind:        Team")
+	assert.Contains(t, output, "Name:        Backend Team")
+	assert.Contains(t, output, "Members:     2")
 	assert.Contains(t, output, "Alice Smith")
 	assert.Contains(t, output, "Bob Jones")
 }
@@ -191,6 +191,12 @@ func TestGetTeam_JSON(t *testing.T) {
 	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/teams/[^/]+$`), testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	// The JSON path resolves member IDs to emails via GET /api/members.
+	server.On(http.MethodGet, "/api/members", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureMembersListSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
 
@@ -205,8 +211,13 @@ func TestGetTeam_JSON(t *testing.T) {
 	require.NoError(t, err)
 	var parsed map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
-	assert.Contains(t, parsed, "team")
-	assert.Contains(t, parsed, "members")
+	// New shape: `teams get -o json` emits the CRD envelope only
+	// (apiVersion/kind/metadata/spec), not the enriched {team, members, ...}
+	// wrapper. See .chloggen/teams-get-json-envelope.yaml.
+	assert.Contains(t, parsed, "kind")
+	assert.Contains(t, parsed, "metadata")
+	assert.Contains(t, parsed, "spec")
+	assert.NotContains(t, parsed, "team")
 }
 
 func TestGetTeam_NotFound(t *testing.T) {
