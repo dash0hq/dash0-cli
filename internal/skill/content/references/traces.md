@@ -7,14 +7,14 @@
 Retrieve all spans belonging to a trace from Dash0.
 Requires `api-url` and `auth-token`.
 
-`traces get` always disables [adaptive sampling](#precision-mode-adaptive-sampling) so every span in the trace is returned.
+`traces get` always disables [adaptive sampling](https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#precision-mode-adaptive-sampling) so every span in the trace is returned.
 The command does not accept the `--precision` flag.
 
 ```bash
 dash0 traces get <trace-id> [flags]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode traces get --help`._
 
 The `<trace-id>` argument must be 32 hex characters.
 

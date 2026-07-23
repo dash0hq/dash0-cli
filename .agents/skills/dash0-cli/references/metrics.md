@@ -18,7 +18,7 @@ With one or more `--filter` expressions (translated to PromQL label matchers):
 dash0 metrics instant --filter <filter> [--from <timestamp>] [--dataset <dataset>] [-o <format>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode metrics instant --help`._
 
 At least one of `--promql` or `--filter` must be specified.
 

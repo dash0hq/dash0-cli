@@ -11,7 +11,7 @@ Opens the system browser, listens on a localhost TCP port for the callback, exch
 dash0 login [--profile <name>] [--api-url <url>] [--port <n>] [--timeout <duration>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode login --help`._
 
 State machine:
 
@@ -64,7 +64,7 @@ The profile shell is kept so a future `dash0 login` can re-fill it.
 dash0 logout [--profile <name>] [--force]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode logout --help`._
 
 Refuses to operate on static-token profiles and points the user at `dash0 config profiles delete` instead.
 Logging out of an OAuth-empty profile is a no-op and exits 0.

@@ -19,7 +19,7 @@ An OpenTelemetry SDK at default endpoint configuration (`OTEL_EXPORTER_OTLP_ENDP
 dash0 -X otlp proxy [flags]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode otlp proxy --help`._
 
 #### Outbound decoration
 

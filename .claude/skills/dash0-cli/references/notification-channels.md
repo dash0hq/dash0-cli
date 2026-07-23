@@ -10,7 +10,7 @@ List all notification channels in the organization.
 dash0 -X notification-channels list [-o <format>] [--skip-header] [--column <col>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode notification-channels list --help`._
 
 Example:
 
@@ -73,7 +73,7 @@ Otherwise, a new channel is created (POST) and the server assigns an ID.
 dash0 -X notification-channels create -f <file> [--dry-run]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode notification-channels create --help`._
 
 Create from a YAML file:
 

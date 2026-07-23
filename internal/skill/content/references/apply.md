@@ -11,7 +11,7 @@ If an asset already exists (matched by ID), it is updated; otherwise it is creat
 dash0 apply -f <file|directory> [--dry-run]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode apply --help`._
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.

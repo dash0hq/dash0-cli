@@ -24,52 +24,86 @@ type ManifestEntry struct {
 	Topic string
 	// RelPath is the file's path relative to content/, e.g. "references/dashboards.md".
 	RelPath string
-	// Description is a one-line summary shown in SKILL.md's topic index.
-	Description string
 }
 
 // Manifest lists every reference topic bundled with the skill, one per
 // top-level dash0 command (excluding `version`, which is trivial enough to
 // live only in SKILL.md's own prose).
 var Manifest = []ManifestEntry{
-	{"apply", "references/apply.md", "Create-or-update asset definitions from files, directories, or stdin"},
-	{"api", "references/api.md", "Raw HTTP passthrough to any Dash0 API endpoint"},
-	{"check-rules", "references/check-rules.md", "Check rule (alerting rule) CRUD, including PrometheusRule CRD import"},
-	{"config", "references/config.md", "Profile management (create/update/list/select/delete) and config show"},
-	{"dashboards", "references/dashboards.md", "Dashboard CRUD, including PersesDashboard CRD import"},
-	{"failed-checks", "references/failed-checks.md", "Query active and historical alerting issues"},
-	{"login", "references/login.md", "OAuth 2.0 login/logout and profile authentication states"},
-	{"logs", "references/logs.md", "Query and send log records"},
-	{"members", "references/members.md", "Organization membership management"},
-	{"metrics", "references/metrics.md", "Instant PromQL queries"},
-	{"notification-channels", "references/notification-channels.md", "Notification channel CRUD (organization-level, no dataset)"},
-	{"otlp", "references/otlp.md", "Local OTLP forwarding proxy (otlp proxy)"},
-	{"recording-rules", "references/recording-rules.md", "Recording rule CRUD (PrometheusRule CRD format)"},
-	{"spam-filters", "references/spam-filters.md", "Spam filter CRUD (v1alpha1 and v1alpha2)"},
-	{"spans", "references/spans.md", "Query and send spans"},
-	{"synthetic-checks", "references/synthetic-checks.md", "Synthetic check CRUD"},
-	{"teams", "references/teams.md", "Team management and membership"},
-	{"traces", "references/traces.md", "Retrieve every span belonging to a trace"},
-	{"views", "references/views.md", "View CRUD"},
+	{"apply", "references/apply.md"},
+	{"api", "references/api.md"},
+	{"check-rules", "references/check-rules.md"},
+	{"config", "references/config.md"},
+	{"dashboards", "references/dashboards.md"},
+	{"failed-checks", "references/failed-checks.md"},
+	{"login", "references/login.md"},
+	{"logs", "references/logs.md"},
+	{"members", "references/members.md"},
+	{"metrics", "references/metrics.md"},
+	{"notification-channels", "references/notification-channels.md"},
+	{"otlp", "references/otlp.md"},
+	{"recording-rules", "references/recording-rules.md"},
+	{"spam-filters", "references/spam-filters.md"},
+	{"spans", "references/spans.md"},
+	{"synthetic-checks", "references/synthetic-checks.md"},
+	{"teams", "references/teams.md"},
+	{"traces", "references/traces.md"},
+	{"views", "references/views.md"},
 }
 
-// supportedHosts maps a detected agent slug (see agentmode.DetectAgentSlug)
-// to the directory, relative to a base directory, where that host's Agent
-// Skills convention expects to find the skill. This is the sole place to
-// add a new host later.
-var supportedHosts = map[string]string{
-	"claude-code": ".claude/skills/dash0-cli",
-	"codex":       ".agents/skills/dash0-cli",
-	"cursor":      ".cursor/skills/dash0-cli",
-	// GitHub Copilot CLI's project-level convention is .github/skills/;
-	// ~/.copilot/skills/ is reserved for personal, home-directory-level
-	// skills, not project-scoped ones like this.
-	"copilot": ".github/skills/dash0-cli",
+// supportedHost describes one Agent Skills host that `dash0 skill install`
+// can target: the detected agent slug (see agentmode.DetectAgentSlug), the
+// project-relative directory that host's convention expects, and the
+// human-readable name shown in error messages.
+type supportedHost struct {
+	Slug        string
+	Dir         string
+	DisplayName string
 }
 
-// supportedHostNames lists the supported hosts in a fixed, human-readable
-// order for error messages.
-var supportedHostNames = []string{"Claude Code", "Codex", "Cursor", "GitHub Copilot"}
+// supportedHosts lists every host `dash0 skill install` can install into,
+// in a fixed order used for error messages. This is the sole place to add
+// a new host later — collapse-into-one-slice avoids the parallel
+// map/slice drift trap.
+//
+// GitHub Copilot's project-level convention is .github/skills/;
+// ~/.copilot/skills/ is reserved for personal, home-directory-level
+// skills, not project-scoped ones like this.
+var supportedHosts = []supportedHost{
+	{Slug: "claude-code", Dir: ".claude/skills/dash0-cli", DisplayName: "Claude Code"},
+	{Slug: "codex", Dir: ".agents/skills/dash0-cli", DisplayName: "Codex"},
+	{Slug: "cursor", Dir: ".cursor/skills/dash0-cli", DisplayName: "Cursor"},
+	{Slug: "copilot", Dir: ".github/skills/dash0-cli", DisplayName: "GitHub Copilot"},
+}
+
+// findSupportedHost returns the supportedHost entry for slug, or ok=false
+// when the slug is unknown (typically because the agent host is detected
+// via env vars but not yet a supported install target — e.g. aider, cline,
+// windsurf, mcp).
+func findSupportedHost(slug string) (supportedHost, bool) {
+	for _, h := range supportedHosts {
+		if h.Slug == slug {
+			return h, true
+		}
+	}
+	return supportedHost{}, false
+}
+
+// HostSupported reports whether slug is a supported `skill install` target.
+// Callers use this to decide whether nudging the user toward
+// `dash0 skill install` would actually help.
+func HostSupported(slug string) bool {
+	_, ok := findSupportedHost(slug)
+	return ok
+}
+
+func supportedHostDisplayNames() []string {
+	names := make([]string, len(supportedHosts))
+	for i, h := range supportedHosts {
+		names[i] = h.DisplayName
+	}
+	return names
+}
 
 func findTopic(topic string) (ManifestEntry, bool) {
 	for _, e := range Manifest {
@@ -118,11 +152,27 @@ func TopicContent(topic string) (string, error) {
 // installed under dir, checking every supported host's directory. This is a
 // broader "has this project been set up at all" check, independent of
 // which single host `skill install` would target on any given run.
+//
+// A host is considered installed only when BOTH SKILL.md and the first
+// reference topic exist, so a partially written install (e.g., interrupted
+// by ENOSPC after SKILL.md landed but before the references directory did)
+// does not silently suppress the agent-mode install hint.
 func IsInstalled(dir string) bool {
-	for _, hostDir := range supportedHosts {
-		if _, err := os.Stat(filepath.Join(dir, hostDir, "SKILL.md")); err == nil {
-			return true
+	if len(Manifest) == 0 {
+		return false
+	}
+	// Pick a stable reference topic (first entry in Manifest) as the
+	// "references directory present and populated" probe.
+	sentinelRef := Manifest[0].RelPath
+	for _, h := range supportedHosts {
+		hostRoot := filepath.Join(dir, h.Dir)
+		if _, err := os.Stat(filepath.Join(hostRoot, "SKILL.md")); err != nil {
+			continue
 		}
+		if _, err := os.Stat(filepath.Join(hostRoot, sentinelRef)); err != nil {
+			continue
+		}
+		return true
 	}
 	return false
 }

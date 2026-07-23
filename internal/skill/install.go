@@ -59,32 +59,44 @@ func runInstall(flags *installFlags) error {
 	}
 
 	slug := agentmode.DetectAgentSlug()
-	hostDir, ok := supportedHosts[slug]
+	if slug == "" {
+		return fmt.Errorf(
+			"could not detect an AI coding agent in this environment (checked for: %s)\nHint: install the dash0-cli skill via a standards-based route instead — `npx skills add dash0hq/dash0-cli` or `gh skill install dash0hq/dash0-cli` — or run `dash0 skill show` to print the skill without writing files",
+			strings.Join(supportedHostDisplayNames(), ", "),
+		)
+	}
+	host, ok := findSupportedHost(slug)
 	if !ok {
 		return fmt.Errorf(
-			"could not detect a supported agent host in this environment (checked: %s)\nHint: install the dash0-cli skill instead with `npx skills add dash0hq/dash0-cli` or `gh skill install dash0hq/dash0-cli`",
-			strings.Join(supportedHostNames, ", "),
+			"detected agent host %q, which is not yet a supported install target (supported: %s)\nHint: install the dash0-cli skill via a standards-based route instead — `npx skills add dash0hq/dash0-cli` or `gh skill install dash0hq/dash0-cli` — or run `dash0 skill show` to print the skill without writing files",
+			slug,
+			strings.Join(supportedHostDisplayNames(), ", "),
 		)
 	}
 
-	targetDir := filepath.Join(baseDir, hostDir)
+	targetDir := filepath.Join(baseDir, host.Dir)
 	written, err := writeBundle(targetDir)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Installed dash0-cli skill (%d files) to %s (detected: %s)\n", len(written), hostDir, slug)
+	fmt.Printf("Installed dash0-cli skill (%d files) to %s (detected: %s)\n", len(written), host.Dir, slug)
 	return nil
 }
 
 // writeBundle writes SKILL.md and every reference topic into targetDir,
 // creating directories as needed, and returns the paths written (relative
 // to targetDir).
+//
+// The references/ subdirectory is cleared before writing so that a manifest
+// shrinkage across releases (a topic removed) does not leave orphaned files
+// in an installed bundle. SKILL.md is overwritten in place — losing extra
+// user-added files at the bundle root would be surprising.
 func writeBundle(targetDir string) ([]string, error) {
 	var written []string
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create %s: %w", targetDir, err)
+	if err := ensureDir(targetDir); err != nil {
+		return nil, err
 	}
 
 	skillMD, err := SkillMD()
@@ -97,8 +109,11 @@ func writeBundle(targetDir string) ([]string, error) {
 	written = append(written, "SKILL.md")
 
 	refsDir := filepath.Join(targetDir, "references")
-	if err := os.MkdirAll(refsDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create %s: %w", refsDir, err)
+	if err := os.RemoveAll(refsDir); err != nil {
+		return nil, fmt.Errorf("failed to clear stale references at %s: %w", refsDir, err)
+	}
+	if err := ensureDir(refsDir); err != nil {
+		return nil, err
 	}
 
 	for _, entry := range Manifest {
@@ -114,4 +129,20 @@ func writeBundle(targetDir string) ([]string, error) {
 	}
 
 	return written, nil
+}
+
+// ensureDir creates dir with MkdirAll, but pre-checks for a blocking regular
+// file so the resulting error names the file instead of surfacing the opaque
+// "not a directory" ENOTDIR from MkdirAll.
+func ensureDir(dir string) error {
+	if fi, err := os.Lstat(dir); err == nil && !fi.IsDir() {
+		return fmt.Errorf(
+			"cannot create %s: a file (not a directory) exists at that path. Remove it or pass a different --dir.",
+			dir,
+		)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", dir, err)
+	}
+	return nil
 }

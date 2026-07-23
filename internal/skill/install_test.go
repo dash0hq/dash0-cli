@@ -53,12 +53,12 @@ func TestInstallWritesToDetectedHostDirectoryOnly(t *testing.T) {
 			assert.FileExists(t, filepath.Join(dir, tc.hostDir, "SKILL.md"))
 
 			// No other host's directory should have been written.
-			for otherSlug, otherHostDir := range supportedHosts {
-				if otherHostDir == tc.hostDir {
+			for _, other := range supportedHosts {
+				if other.Dir == tc.hostDir {
 					continue
 				}
-				_, err := os.Stat(filepath.Join(dir, otherHostDir))
-				assert.True(t, os.IsNotExist(err), "unexpected directory written for host %q", otherSlug)
+				_, err := os.Stat(filepath.Join(dir, other.Dir))
+				assert.True(t, os.IsNotExist(err), "unexpected directory written for host %q", other.Slug)
 			}
 		})
 	}
@@ -88,11 +88,47 @@ func TestInstallFailsWithoutSupportedHostAndWritesNoFiles(t *testing.T) {
 	dir := t.TempDir()
 	err := runInstall(&installFlags{Dir: dir})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "could not detect a supported agent host")
+	assert.Contains(t, err.Error(), "could not detect an AI coding agent")
 	assert.Contains(t, err.Error(), "npx skills add dash0hq/dash0-cli")
 	assert.Contains(t, err.Error(), "gh skill install dash0hq/dash0-cli")
+	assert.Contains(t, err.Error(), "dash0 skill show", "no-host hint should offer skill show as the CLI-native fallback")
 
 	entries, readErr := os.ReadDir(dir)
 	require.NoError(t, readErr)
 	assert.Empty(t, entries, "install must not write any files when no host is detected")
+}
+
+// TestInstallFailsForDetectedButUnsupportedHost covers the case where the
+// agent-detection env var is set (e.g. AIDER=1) but the slug is not yet
+// among the supported install targets. The user gets a specific error
+// distinguishing this from the "no agent at all" case, still with actionable
+// hints — and no files are written.
+func TestInstallFailsForDetectedButUnsupportedHost(t *testing.T) {
+	cases := []struct {
+		name    string
+		envVar  string
+		slug    string
+	}{
+		{"aider", "AIDER", "aider"},
+		{"cline", "CLINE", "cline"},
+		{"windsurf", "WINDSURF_AGENT", "windsurf"},
+		{"mcp", "MCP_SESSION_ID", "mcp"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clearAgentEnv(t)
+			t.Setenv(tc.envVar, "1")
+
+			dir := t.TempDir()
+			err := runInstall(&installFlags{Dir: dir})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "not yet a supported install target")
+			assert.Contains(t, err.Error(), tc.slug, "error should name the detected but unsupported slug")
+			assert.Contains(t, err.Error(), "dash0 skill show")
+
+			entries, readErr := os.ReadDir(dir)
+			require.NoError(t, readErr)
+			assert.Empty(t, entries, "install must not write any files when the host is unsupported")
+		})
+	}
 }

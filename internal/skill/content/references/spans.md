@@ -11,7 +11,7 @@ Requires `api-url` and `auth-token`.
 dash0 spans query [flags]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode spans query --help`._
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
@@ -65,7 +65,7 @@ Output as OTLP JSON:
 dash0 spans query -o json --limit 10
 ```
 
-The `--filter` flag uses the same [filter syntax](#filter-syntax) as `logs query`.
+The `--filter` flag uses the same [filter syntax](https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#filter-syntax) as `logs query`.
 Common span attribute keys: `service.name`, `otel.span.status.code`, `otel.trace.id`, `otel.span.name`.
 
 ### `spans send`
@@ -77,7 +77,7 @@ Requires `otlp-url` and `auth-token`.
 dash0 spans send --name <name> [flags]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode spans send --help`._
 
 Send a simple span:
 

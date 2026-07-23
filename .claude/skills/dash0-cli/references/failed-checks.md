@@ -11,7 +11,7 @@ Requires `api-url` and `auth-token`.
 dash0 failed-checks query [flags]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode failed-checks query --help`._
 
 The `--status` and `--active` flags are convenience shortcuts that translate into the equivalent `--filter` expressions on the well-known issue attributes the alerting API exposes (`dash0.issue.status` and `dash0.issue.end_time`).
 Custom labels — for example a team-defined `priority` or `owner` label — must be filtered through `--filter`.

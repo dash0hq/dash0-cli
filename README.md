@@ -741,6 +741,7 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 | | | `DASH0_OTLP_PROXY_GRPC_PORT` | Override `dash0 otlp proxy --grpc-port` |
 | | | `DASH0_OTLP_PROXY_HTTP_PORT` | Override `dash0 otlp proxy --http-port` |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |
+| `--no-skill-hint` | | `DASH0_NO_SKILL_HINT` | Suppress the agent-mode error hint pointing at `dash0 skill install`. |
 
 ### Output formats
 

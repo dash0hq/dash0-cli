@@ -10,7 +10,7 @@ List all teams in the organization.
 dash0 -X teams list [-o <format>] [--skip-header] [--column <col>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode teams list --help`._
 
 Example:
 
@@ -56,7 +56,7 @@ Create a new team.
 dash0 -X teams create <name> [--color-from <hex>] [--color-to <hex>] [--member <id>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode teams create --help`._
 
 Example:
 
@@ -108,7 +108,7 @@ List all members of a team.
 dash0 -X teams list-members <team-id> [-o <format>] [--skip-header] [--column <col>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode teams list-members --help`._
 
 Example:
 

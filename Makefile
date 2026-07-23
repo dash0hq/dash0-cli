@@ -80,6 +80,7 @@ chlog-update: $(CHLOGGEN)
 # `gh skill install dash0hq/dash0-cli` can discover the skill directly from
 # this repository (see docs/agent-skill-maintenance.md).
 skill-bundle:
+	@rm -rf internal/skill/content/references
 	go run ./internal/skill/gen
 	@rm -rf .claude/skills/dash0-cli .agents/skills/dash0-cli
 	@mkdir -p .claude/skills/dash0-cli .agents/skills/dash0-cli
@@ -89,13 +90,16 @@ skill-bundle:
 	cp -r internal/skill/content/references .agents/skills/dash0-cli/references
 
 # Fail if docs/commands.md changed without regenerating the skill bundle, or
-# if the root-level publish copies drifted from internal/skill/content.
+# if the root-level publish copies drifted from internal/skill/content. Uses a
+# per-invocation mktemp directory so shared /tmp on CI hosts stays safe from
+# predictable-path races.
 skill-validate:
-	@rm -rf /tmp/dash0-cli-skill-check
-	@go run ./internal/skill/gen -out /tmp/dash0-cli-skill-check
-	@diff -r internal/skill/content/references /tmp/dash0-cli-skill-check/references || (echo "skill reference content is stale — run 'make skill-bundle'" && exit 1)
-	@diff -q internal/skill/content/SKILL.md .claude/skills/dash0-cli/SKILL.md >/dev/null || (echo ".claude/skills/dash0-cli/SKILL.md is stale — run 'make skill-bundle'" && exit 1)
-	@diff -r internal/skill/content/references .claude/skills/dash0-cli/references || (echo ".claude/skills/dash0-cli/references is stale — run 'make skill-bundle'" && exit 1)
-	@diff -q internal/skill/content/SKILL.md .agents/skills/dash0-cli/SKILL.md >/dev/null || (echo ".agents/skills/dash0-cli/SKILL.md is stale — run 'make skill-bundle'" && exit 1)
-	@diff -r internal/skill/content/references .agents/skills/dash0-cli/references || (echo ".agents/skills/dash0-cli/references is stale — run 'make skill-bundle'" && exit 1)
-	@rm -rf /tmp/dash0-cli-skill-check
+	@set -e; \
+		SKILL_TMP="$$(mktemp -d)"; \
+		trap 'rm -rf "$$SKILL_TMP"' EXIT INT TERM; \
+		go run ./internal/skill/gen -out "$$SKILL_TMP"; \
+		diff -r internal/skill/content/references "$$SKILL_TMP/references" || { echo "skill reference content is stale — run 'make skill-bundle'"; exit 1; }; \
+		diff -q internal/skill/content/SKILL.md .claude/skills/dash0-cli/SKILL.md >/dev/null || { echo ".claude/skills/dash0-cli/SKILL.md is stale — run 'make skill-bundle'"; exit 1; }; \
+		diff -r internal/skill/content/references .claude/skills/dash0-cli/references || { echo ".claude/skills/dash0-cli/references is stale — run 'make skill-bundle'"; exit 1; }; \
+		diff -q internal/skill/content/SKILL.md .agents/skills/dash0-cli/SKILL.md >/dev/null || { echo ".agents/skills/dash0-cli/SKILL.md is stale — run 'make skill-bundle'"; exit 1; }; \
+		diff -r internal/skill/content/references .agents/skills/dash0-cli/references || { echo ".agents/skills/dash0-cli/references is stale — run 'make skill-bundle'"; exit 1; }

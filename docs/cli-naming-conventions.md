@@ -54,6 +54,24 @@ The `members` command manages organization membership:
 | `invite`   | `add`    | Invite members by email              |
 | `remove`   | `delete` | Remove members from the organization |
 
+## Skill Subcommands
+The `skill` command distributes the dash0-cli Agent Skill to AI coding agents.
+Unlike the plural-noun asset commands, `skill` is deliberately singular — there is exactly one skill this CLI ships, and pluralizing it would falsely imply a collection to enumerate.
+
+| Subcommand | Alias | Description                                                             |
+|------------|-------|-------------------------------------------------------------------------|
+| `install`  | -     | Install the skill into the detected agent host's conventional directory |
+| `show`     | -     | Print the skill content (SKILL.md or a topic) to stdout                 |
+
+Neither subcommand has an alias.
+The Agent Tooling command category is a deliberate exception to several conventions elsewhere in this document:
+
+- **Not gated behind `--experimental`.** The whole point is frictionless discovery for agents that have not yet learned about `-X`; requiring the flag first would be circular.
+- **No `-o` / `--output` flag.** Content is markdown prose meant to be read directly, not structured data to reshape.
+- **No `--api-url`, `--auth-token`, `--dataset`.** Neither subcommand talks to the Dash0 API; they read embedded content and, for `install`, write to the local filesystem.
+
+See [docs/adding-commands.md](adding-commands.md#1-determine-the-command-type) for the reference implementation (`internal/skill/`) and [docs/agent-skill-maintenance.md](agent-skill-maintenance.md) for the bundle-generation flow.
+
 ## Authentication Commands
 `login` and `logout` are top-level (not under `config`) so they read like the equivalent commands in `kubectl`, `gh`, and `terraform`:
 

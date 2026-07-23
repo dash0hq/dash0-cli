@@ -2,6 +2,7 @@ package skill
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -26,7 +27,11 @@ content is prose meant to be read directly, not structured data.`,
   # Print a specific topic's reference content
   dash0 skill show dashboards
   dash0 skill show logs`,
-		Args: cobra.MaximumNArgs(1),
+		// Accept any arg count so the arity mistake (`skill show dashboards
+		// extra`) routes through runShow's own error path — cobra's generic
+		// "accepts at most 1 arg(s)" tells an agent nothing about valid
+		// topic names.
+		Args: cobra.ArbitraryArgs,
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runShow(args)
 		},
@@ -43,6 +48,15 @@ func runShow(args []string) error {
 		}
 		fmt.Print(content)
 		return nil
+	}
+
+	if len(args) > 1 {
+		return fmt.Errorf(
+			"expected at most one topic, got %d (%s)\nHint: valid topics are: %s",
+			len(args),
+			strings.Join(args, ", "),
+			strings.Join(TopicNames(), ", "),
+		)
 	}
 
 	content, err := TopicContent(args[0])

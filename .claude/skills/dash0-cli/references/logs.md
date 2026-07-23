@@ -11,7 +11,7 @@ Requires `api-url` and `auth-token`.
 dash0 logs query [flags]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode logs query --help`._
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
@@ -97,7 +97,7 @@ dash0 logs send <body> [flags]
 
 Key flags:
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode logs send --help`._
 
 Simple log message:
 

@@ -123,8 +123,10 @@ func newVersionCmd() *cobra.Command {
 // "Error:" is printed in red, "Hint:" is printed in cyan.
 // Colors are only used when stderr is a TTY (not piped).
 func printError(err error) {
+	err = withSkillHint(err)
+
 	if agentmode.Enabled {
-		agentmode.PrintJSONError(os.Stderr, withSkillHint(err))
+		agentmode.PrintJSONError(os.Stderr, err)
 		return
 	}
 
@@ -151,15 +153,23 @@ func printError(err error) {
 }
 
 // withSkillHint appends a hint pointing at `dash0 skill install` to err when
-// running in agent mode, the skill isn't already installed in the current
-// directory, and the hint hasn't been suppressed. It's a no-op when err
-// already carries its own "\nHint:" (e.g. the OAuth-empty-profile hint)
-// rather than stacking a second, less specific one.
+// the skill isn't already installed in the current directory and the hint
+// hasn't been suppressed. It's a no-op when err already carries its own
+// "\nHint:" (e.g. the OAuth-empty-profile hint) rather than stacking a
+// second, less specific one, and also a no-op when the detected agent host
+// is not a supported install target — nudging at `dash0 skill install`
+// would only reproduce the same "not a supported install target" error.
 func withSkillHint(err error) error {
 	if skillHintSuppressed() {
 		return err
 	}
 	if strings.Contains(err.Error(), "\nHint:") {
+		return err
+	}
+	// Detected-but-unsupported agents (aider, cline, windsurf, mcp, …) get
+	// no hint here — running `dash0 skill install` under one of those hosts
+	// would only surface a second, more specific error.
+	if slug := agentmode.DetectAgentSlug(); slug != "" && !skill.HostSupported(slug) {
 		return err
 	}
 	wd, wdErr := os.Getwd()
@@ -174,14 +184,23 @@ func withSkillHint(err error) error {
 
 // skillHintSuppressed reports whether the --no-skill-hint flag or
 // DASH0_NO_SKILL_HINT env var is set. Flags are not yet parsed when
-// printError may be called, so this scans os.Args directly, the same
-// approach used for --agent-mode and --profile above.
+// printError may be called, so this scans os.Args directly.
+//
+// Precedence, highest to lowest:
+//  1. Explicit CLI value (--no-skill-hint=false or =0) — never suppressed.
+//  2. Bareword CLI flag (--no-skill-hint) or --no-skill-hint=true|1 — suppressed.
+//  3. DASH0_NO_SKILL_HINT=0|false — never suppressed (explicit env disable).
+//  4. DASH0_NO_SKILL_HINT=1|true — suppressed.
+//  5. Otherwise — not suppressed.
 func skillHintSuppressed() bool {
-	if hasFlag(os.Args[1:], "--no-skill-hint") {
-		return true
+	if v, ok := flagBoolValue(os.Args[1:], "--no-skill-hint"); ok {
+		return v
 	}
-	v := strings.ToLower(os.Getenv("DASH0_NO_SKILL_HINT"))
-	return v == "1" || v == "true"
+	envVal := strings.ToLower(os.Getenv("DASH0_NO_SKILL_HINT"))
+	if envVal == "0" || envVal == "false" {
+		return false
+	}
+	return envVal == "1" || envVal == "true"
 }
 
 // loadConfig attempts to resolve the CLI configuration (active profile +
@@ -348,17 +367,44 @@ func installJSONHelp(cmd *cobra.Command) {
 	})
 }
 
-// hasFlag checks whether a boolean flag (e.g. "--agent-mode") appears in args.
-// This is used before cobra has parsed flags, so we scan manually.
+// hasFlag reports whether a boolean flag (e.g. "--agent-mode") is set to a
+// truthy value in args. Recognizes the bareword form and every value form
+// cobra itself accepts: --name, --name=true, --name=1 are truthy;
+// --name=false, --name=0 are false. This is used before cobra has parsed
+// flags, so we scan manually.
 func hasFlag(args []string, name string) bool {
+	v, ok := flagBoolValue(args, name)
+	return ok && v
+}
+
+// flagBoolValue returns (value, explicit) for a boolean flag. explicit is
+// true when the flag was passed in any form (bareword, =true, =false, =1,
+// =0); value carries the resolved truthiness. Callers that need to
+// distinguish "flag not passed" from "flag passed explicitly with false"
+// (e.g. to let an explicit --flag=false trump an env-var setting) can
+// branch on explicit. Scanning stops after "--" (end of flags).
+func flagBoolValue(args []string, name string) (bool, bool) {
+	prefix := name + "="
 	for _, arg := range args {
-		if arg == name {
-			return true
-		}
-		// Stop scanning after "--" (end of flags).
 		if arg == "--" {
-			return false
+			return false, false
+		}
+		if arg == name {
+			return true, true
+		}
+		if strings.HasPrefix(arg, prefix) {
+			v := strings.ToLower(arg[len(prefix):])
+			switch v {
+			case "", "true", "1":
+				return true, true
+			case "false", "0":
+				return false, true
+			default:
+				// Unknown value: treat as not-set so the caller falls
+				// through to lower-precedence sources (env var, default).
+				return false, false
+			}
 		}
 	}
-	return false
+	return false, false
 }

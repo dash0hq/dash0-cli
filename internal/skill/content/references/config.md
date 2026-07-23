@@ -114,7 +114,7 @@ The active profile is marked with `*` in table output and with `"active": true` 
 dash0 config profiles list [-o <format>] [--skip-header]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode config profiles list --help`._
 
 Example output:
 

@@ -10,7 +10,7 @@ List all members of the organization.
 dash0 -X members list [-o <format>] [--skip-header] [--column <col>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode members list --help`._
 
 Example:
 
@@ -34,7 +34,7 @@ Invite one or more members to the organization by email address.
 dash0 -X members invite <email> [<email>...] [--role <role>]
 ```
 
-_For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+_For the exact, always-current flag list, run `dash0 --agent-mode members invite --help`._
 
 Invite a single user:
 
