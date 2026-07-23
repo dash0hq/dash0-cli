@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2030,SC2031
+# Every per-host test runs its `export`+`unset` sequence inside a `(...)`
+# subshell precisely so the env changes stay scoped to that test — the
+# "modification is local to subshell" warning is the intended behavior,
+# not a bug, since we don't read those vars back in the parent shell.
+#
 # Round-trip test for `dash0 skill install` / `dash0 skill show`.
 #
 # These commands are local-only (no Dash0 API, no OTLP), so this script does
