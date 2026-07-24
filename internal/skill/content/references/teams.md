@@ -50,15 +50,40 @@ Members: 2
 
 ### `teams create` (experimental)
 
-Create a new team.
+Create a team. Two modes are supported.
+
+**Declarative** — read a `TeamDefinitionV1Alpha1` YAML/JSON document.
+Origin wins over id when both labels are present, and `dash0.com/origin` upserts via PUT (create-or-replace).
+When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST (cross-org apply spawns a fresh team with a server-assigned id), and any other error surfaces.
+A document with neither label is created via POST and the server assigns id and origin.
+See the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section for the full rationale.
 
 ```bash
-dash0 -X teams create <name> [--color-from <hex>] [--color-to <hex>] [--member <id>]
+dash0 -X teams create -f <file>
+```
+
+**Imperative** — build a minimal team envelope from flags.
+
+```bash
+dash0 -X teams create <name> [--color-from <hex>] [--color-to <hex>] [--member <id-or-email>]
 ```
 
 _For the exact, always-current flag list, run `dash0 --agent-mode teams create --help`._
 
-Example:
+Declarative example — reapply a team YAML downloaded from the Dash0 UI:
+
+```bash
+$ dash0 -X teams create -f team.yaml
+Team "Backend Team" updated (id: team_01k5vpx97efdnrkqan15b41k84)
+```
+
+Declarative from stdin (the `cat | dash0 …` pipeline is a single command):
+
+```bash
+cat team.yaml | dash0 -X teams create -f -
+```
+
+Imperative example:
 
 ```bash
 $ dash0 -X teams create "Backend Team" --color-from "#FF6B6B" --color-to "#4ECDC4"

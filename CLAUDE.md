@@ -48,7 +48,8 @@ Detailed guidelines are split into focused documents:
   The CLI strips it before sending assets to the API (`StripXxxServerFields`), because the CLI should not claim ownership when the asset may be managed by another system.
 
 - **ID** is the user-defined external identifier used for upsert (create-or-replace) operations.
-  When an asset has a user-defined ID, `apply` and the individual import functions always use PUT (which has upsert semantics) instead of POST.
+  When an asset has a user-defined ID, `apply` and the individual import functions route to PUT (which has upsert semantics) instead of POST for most asset types.
+  Teams are the exception: PUT-to-unknown-id returns 404, so the CLI preflights `GET /api/teams/{id}` and falls back to POST on 404 (see the teams entry below).
   The ID field varies by asset type:
   - Check rules: top-level `id` field (`PrometheusAlertRule.Id`)
   - Views: `metadata.labels["dash0.com/id"]` (`ViewLabels.Dash0Comid`)
@@ -58,6 +59,7 @@ Detailed guidelines are split into focused documents:
   - PrometheusRule CRD (alerting and recording rules): `metadata.labels["dash0.com/id"]`
   - Spam filters (v1alpha1 and v1alpha2): `metadata.labels["dash0.com/id"]`, but `metadata.labels["dash0.com/origin"]` takes precedence as the upsert key when both are present
   - Notification channels: no user-settable ID field — `metadata.labels["dash0.com/origin"]` is the upsert key
+  - Teams: `metadata.labels["dash0.com/origin"]` is the primary upsert key; `metadata.labels["dash0.com/id"]` is honored as a fallback when origin is absent. The CLI preflights `GET /api/teams/{id}` and PUTs on hit, POSTs on 404 (cross-org apply), or surfaces other errors.
 
   The user-facing documentation of these fields, including the rationale for idempotent upsert, lives in the [Asset identifiers and idempotent upsert](docs/commands.md#asset-identifiers-and-idempotent-upsert) section of `docs/commands.md`.
 

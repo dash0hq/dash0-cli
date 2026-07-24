@@ -1,0 +1,38 @@
+# Use this changelog template to create an entry for release notes.
+
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: bug_fix
+
+# The name of the component, or a single word describing the area of concern (e.g. dashboards, config, apply)
+component: teams
+
+# A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: "`teams create -f` and `apply` are now idempotent for team YAMLs downloaded from the Dash0 platform UI"
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: [227]
+
+# (Optional) One or more lines of additional information to render under the primary note.
+# These lines will be padded with 2 spaces and then inserted directly into the document.
+# Use pipe (|) for multiline entries.
+subtext: |
+  `ImportTeam` now consults `dash0.com/id` in `metadata.labels` as a fallback
+  upsert key when `dash0.com/origin` is not set — the API accepts either as
+  the `{originOrId}` path segment. UI-downloaded YAMLs carry only id, so
+  before this fix every `create -f` and every `apply` POSTed a new team.
+
+  For the cross-environment case (a YAML downloaded from one org, applied to
+  another), a preflight `GET /api/teams/{id}` gates the routing: on hit the
+  CLI PUTs (idempotent update), on miss it falls back to POST (fresh create,
+  the id in the file becomes advisory). Previously the miss path surfaced as
+  a "Forbidden: The given team does not belong to your organization" 404.
+
+  Origin still wins when both labels are present.
+
+# If your change doesn't affect end users or the exported elements of any package,
+# you should instead start your pull request title with "chore" or use the "Skip Changelog" label.
+# Optional: The change log or logs in which this entry should be included.
+# e.g. '[user]' or '[user, api]'
+# Include 'user' if the change is relevant to end users.
+# Default: '[user]'
+change_logs: []

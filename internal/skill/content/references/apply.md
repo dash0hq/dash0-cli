@@ -37,7 +37,9 @@ A CRD that contains no alerting and no recording rules fails validation up front
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-The `dash0.com/origin` label is the upsert key when present; otherwise the server creates a new team on every apply.
+Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
+When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
+A document with neither label creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
 

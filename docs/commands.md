@@ -727,7 +727,7 @@ The identifier field location varies by asset kind:
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
-| `Dash0Team` | `metadata.labels["dash0.com/origin"]` | Organization-level. Same origin-based-upsert semantics as notification channels: a document with `dash0.com/origin` upserts by that origin (PUT), a document without it creates a new team on every apply (POST). `spec.members` accepts email addresses or internal member ids interchangeably |
+| `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`).
 The CLI strips `dash0.com/origin` from outbound payloads for the asset types where the server treats origin as provenance metadata (dashboards, views, check rules, synthetic checks), so do not use origin as the upsert key for those kinds.
@@ -773,7 +773,9 @@ A CRD that contains no alerting and no recording rules fails validation up front
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-The `dash0.com/origin` label is the upsert key when present; otherwise the server creates a new team on every apply.
+Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
+When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
+A document with neither label creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
 
@@ -2240,19 +2242,45 @@ Members: 2
 
 ### `teams create` (experimental)
 
-Create a new team.
+Create a team. Two modes are supported.
+
+**Declarative** — read a `TeamDefinitionV1Alpha1` YAML/JSON document.
+Origin wins over id when both labels are present, and `dash0.com/origin` upserts via PUT (create-or-replace).
+When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST (cross-org apply spawns a fresh team with a server-assigned id), and any other error surfaces.
+A document with neither label is created via POST and the server assigns id and origin.
+See the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section for the full rationale.
 
 ```bash
-dash0 -X teams create <name> [--color-from <hex>] [--color-to <hex>] [--member <id>]
+dash0 -X teams create -f <file>
+```
+
+**Imperative** — build a minimal team envelope from flags.
+
+```bash
+dash0 -X teams create <name> [--color-from <hex>] [--color-to <hex>] [--member <id-or-email>]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--color-from` | Gradient start color (e.g. `"#FF0000"`) |
-| `--color-to` | Gradient end color (e.g. `"#00FF00"`) |
-| `--member` | Member ID to add to the team (repeatable) |
+| `-f`, `--file` | Path to a YAML or JSON `TeamDefinitionV1Alpha1` document (use `-` for stdin); mutually exclusive with the imperative flags |
+| `--color-from` | Gradient start color (e.g. `"#FF0000"`); imperative form only |
+| `--color-to` | Gradient end color (e.g. `"#00FF00"`); imperative form only |
+| `--member` | Member (id or email) to add to the team, repeatable; imperative form only. Emails are resolved to member ids server-side |
 
-Example:
+Declarative example — reapply a team YAML downloaded from the Dash0 UI:
+
+```bash
+$ dash0 -X teams create -f team.yaml
+Team "Backend Team" updated (id: team_01k5vpx97efdnrkqan15b41k84)
+```
+
+Declarative from stdin (the `cat | dash0 …` pipeline is a single command):
+
+```bash
+cat team.yaml | dash0 -X teams create -f -
+```
+
+Imperative example:
 
 ```bash
 $ dash0 -X teams create "Backend Team" --color-from "#FF6B6B" --color-to "#4ECDC4"
