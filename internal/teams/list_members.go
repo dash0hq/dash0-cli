@@ -85,7 +85,7 @@ func runListMembers(cmd *cobra.Command, teamID string, flags *listMembersFlags) 
 		return err
 	}
 
-	resp, err := apiClient.GetTeam(ctx, teamID)
+	resp, err := apiClient.GetTeamWithAssets(ctx, teamID)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "team",

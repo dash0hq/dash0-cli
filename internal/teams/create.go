@@ -69,7 +69,7 @@ func runCreate(cmd *cobra.Command, name string, flags *createFlags) error {
 		members = []string{}
 	}
 
-	team := &dash0api.TeamDefinition{
+	team := &dash0api.TeamDefinitionV1Alpha1{
 		Kind: dash0api.Dash0Team,
 		Metadata: dash0api.TeamMetadata{
 			Name: slugify(name),

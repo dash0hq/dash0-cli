@@ -61,7 +61,7 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 		return err
 	}
 
-	resp, err := apiClient.GetTeam(ctx, originOrID)
+	resp, err := apiClient.GetTeamWithAssets(ctx, originOrID)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "team",
