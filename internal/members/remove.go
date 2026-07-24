@@ -84,10 +84,15 @@ func runRemove(cmd *cobra.Command, memberIDs []string, flags *removeFlags) error
 	for _, member := range resolved {
 		err = apiClient.DeleteMember(ctx, member.ID)
 		if err != nil {
-			return client.HandleAPIError(err, client.ErrorContext{
+			ectx := client.ErrorContext{
 				AssetType: "member",
 				AssetID:   member.ID,
-			})
+				AssetName: member.DisplayString(),
+			}
+			if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+				continue
+			}
+			return client.HandleAPIError(err, ectx)
 		}
 		fmt.Printf("Member %s removed\n", member.DisplayString())
 	}

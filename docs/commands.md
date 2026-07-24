@@ -687,7 +687,9 @@ $ echo $?
 ```
 
 Without `--force`, a missing asset surfaces as a non-zero exit with a "not found" error.
-The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `teams`) — see also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
+The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `teams`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
+In the multi-target `remove` variants the check runs per member, so one concurrently-removed member does not fail the whole `--force` call — the loop keeps going.
+See also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
 
 Aliases: `remove`
 

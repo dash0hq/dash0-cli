@@ -1,10 +1,8 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +10,7 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -431,24 +430,6 @@ func TestCheckOAuthOnOtlp_FlagOverrideShadowsOAuth(t *testing.T) {
 	}
 }
 
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	oldStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("failed to create pipe: %v", err)
-	}
-	os.Stderr = w
-	fn()
-	w.Close()
-	os.Stderr = oldStderr
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	r.Close()
-	return buf.String()
-}
-
 // TestIsAlreadyDeleted_ForceAnd404 asserts that when force is true and the
 // delete call returned 404, the helper prints a stderr notice and reports
 // the delete as "already handled" so the caller can return nil (exit 0).
@@ -456,7 +437,7 @@ func TestIsAlreadyDeleted_ForceAnd404(t *testing.T) {
 	notFound := &dash0api.APIError{StatusCode: 404, Status: "404 Not Found"}
 
 	var handled bool
-	stderr := captureStderr(t, func() {
+	stderr := testutil.CaptureStderr(t, func() {
 		handled = IsAlreadyDeleted(notFound, true, ErrorContext{
 			AssetType: "team",
 			AssetID:   "team_01FAKE",
@@ -474,7 +455,7 @@ func TestIsAlreadyDeleted_WithoutForceReturnsFalse(t *testing.T) {
 	notFound := &dash0api.APIError{StatusCode: 404}
 
 	var handled bool
-	stderr := captureStderr(t, func() {
+	stderr := testutil.CaptureStderr(t, func() {
 		handled = IsAlreadyDeleted(notFound, false, ErrorContext{
 			AssetType: "dashboard",
 			AssetID:   "abc",
@@ -492,7 +473,7 @@ func TestIsAlreadyDeleted_NonNotFoundReturnsFalse(t *testing.T) {
 	serverErr := &dash0api.APIError{StatusCode: 500}
 
 	var handled bool
-	stderr := captureStderr(t, func() {
+	stderr := testutil.CaptureStderr(t, func() {
 		handled = IsAlreadyDeleted(serverErr, true, ErrorContext{
 			AssetType: "dashboard",
 			AssetID:   "abc",
@@ -517,7 +498,7 @@ func TestIsAlreadyDeleted_NilErrReturnsFalse(t *testing.T) {
 func TestIsAlreadyDeleted_UsesAssetNameWhenAvailable(t *testing.T) {
 	notFound := &dash0api.APIError{StatusCode: 404}
 
-	stderr := captureStderr(t, func() {
+	stderr := testutil.CaptureStderr(t, func() {
 		IsAlreadyDeleted(notFound, true, ErrorContext{
 			AssetType: "dashboard",
 			AssetID:   "abc-123",
