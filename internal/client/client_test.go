@@ -1,8 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -427,6 +429,104 @@ func TestCheckOAuthOnOtlp_FlagOverrideShadowsOAuth(t *testing.T) {
 	if err := checkOAuthOnOtlp(context.Background(), cfg, "auth_flag_override_xxx"); err != nil {
 		t.Errorf("expected --auth-token override to suppress the gate, got %v", err)
 	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stderr = w
+	fn()
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+	return buf.String()
+}
+
+// TestIsAlreadyDeleted_ForceAnd404 asserts that when force is true and the
+// delete call returned 404, the helper prints a stderr notice and reports
+// the delete as "already handled" so the caller can return nil (exit 0).
+func TestIsAlreadyDeleted_ForceAnd404(t *testing.T) {
+	notFound := &dash0api.APIError{StatusCode: 404, Status: "404 Not Found"}
+
+	var handled bool
+	stderr := captureStderr(t, func() {
+		handled = IsAlreadyDeleted(notFound, true, ErrorContext{
+			AssetType: "team",
+			AssetID:   "team_01FAKE",
+		})
+	})
+
+	assert.True(t, handled, "expected force+404 to be treated as already-deleted")
+	assert.Contains(t, stderr, `Team "team_01FAKE" was already deleted`)
+}
+
+// TestIsAlreadyDeleted_WithoutForceReturnsFalse asserts that a 404 without
+// --force falls through to the normal error path so the CLI still exits
+// non-zero for interactive users who did not opt into idempotent deletes.
+func TestIsAlreadyDeleted_WithoutForceReturnsFalse(t *testing.T) {
+	notFound := &dash0api.APIError{StatusCode: 404}
+
+	var handled bool
+	stderr := captureStderr(t, func() {
+		handled = IsAlreadyDeleted(notFound, false, ErrorContext{
+			AssetType: "dashboard",
+			AssetID:   "abc",
+		})
+	})
+
+	assert.False(t, handled)
+	assert.Empty(t, stderr, "no stderr notice expected without --force")
+}
+
+// TestIsAlreadyDeleted_NonNotFoundReturnsFalse asserts that other API errors
+// (e.g. 500) are not swallowed by the idempotent-delete path even with
+// --force.
+func TestIsAlreadyDeleted_NonNotFoundReturnsFalse(t *testing.T) {
+	serverErr := &dash0api.APIError{StatusCode: 500}
+
+	var handled bool
+	stderr := captureStderr(t, func() {
+		handled = IsAlreadyDeleted(serverErr, true, ErrorContext{
+			AssetType: "dashboard",
+			AssetID:   "abc",
+		})
+	})
+
+	assert.False(t, handled)
+	assert.Empty(t, stderr)
+}
+
+// TestIsAlreadyDeleted_NilErrReturnsFalse asserts the helper is a no-op on
+// successful (nil) responses so the caller still prints its normal success
+// message.
+func TestIsAlreadyDeleted_NilErrReturnsFalse(t *testing.T) {
+	handled := IsAlreadyDeleted(nil, true, ErrorContext{AssetType: "team", AssetID: "abc"})
+	assert.False(t, handled)
+}
+
+// TestIsAlreadyDeleted_UsesAssetNameWhenAvailable asserts that the stderr
+// notice prefers the human-readable AssetName over the raw AssetID when
+// both are set — mirrors HandleAPIError's identifier resolution.
+func TestIsAlreadyDeleted_UsesAssetNameWhenAvailable(t *testing.T) {
+	notFound := &dash0api.APIError{StatusCode: 404}
+
+	stderr := captureStderr(t, func() {
+		IsAlreadyDeleted(notFound, true, ErrorContext{
+			AssetType: "dashboard",
+			AssetID:   "abc-123",
+			AssetName: "Production Overview",
+		})
+	})
+
+	assert.Contains(t, stderr, `Dashboard "Production Overview" was already deleted`)
+	assert.NotContains(t, stderr, "abc-123")
 }
 
 // TestCheckOAuthOnOtlp_AgentModeMessage asserts the agent-mode branch

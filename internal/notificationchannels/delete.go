@@ -68,10 +68,11 @@ func runDelete(cmd *cobra.Command, originOrID string, flags *deleteFlags) error 
 
 	err = apiClient.DeleteNotificationChannel(ctx, originOrID)
 	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "notification channel",
-			AssetID:   originOrID,
-		})
+		ectx := client.ErrorContext{AssetType: "notification channel", AssetID: originOrID}
+		if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+			return nil
+		}
+		return client.HandleAPIError(err, ectx)
 	}
 
 	fmt.Printf("Notification channel deleted (id: %s).\n", originOrID)

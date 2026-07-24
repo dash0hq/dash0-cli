@@ -133,6 +133,7 @@ dash0 logs query --from now-1h --filter "otel.log.severity.range is_one_of ERROR
 ### Non-interactive deletion (for automation)
 
 Always pass `--force` to skip the confirmation prompt: `dash0 dashboards delete <id> --force`.
+With `--force`, an already-deleted asset is treated as idempotent success — the command exits 0 and prints a short "already deleted" line to stderr. Without `--force`, a missing asset still surfaces as a non-zero exit with a "not found" error. This is uniform across every `delete` subcommand.
 
 ### Validate assets before applying
 

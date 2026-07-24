@@ -20,6 +20,15 @@ All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `r
 | `update`   | -        | Update an existing asset from a file |
 | `delete`   | `remove` | Delete an asset by ID                |
 
+### Idempotent `delete --force`
+Every `delete` subcommand — including `remove`-shaped variants like `members remove` and `teams remove-members` — must treat a 404 from the server as success when the caller passed `--force`.
+The desired end-state ("asset is gone") already holds regardless of who removed it, so returning a non-zero exit code punishes CI/CD and agent-driven pipelines for concurrency they cannot always avoid.
+Without `--force`, a 404 must surface as a clean "asset not found" error (via `client.HandleAPIError` with an `ErrorContext`), not a raw HTTP dump.
+
+The shared helper is `client.IsAlreadyDeleted(err, force, ectx)` in `internal/client/client.go`.
+Every delete path must call it before falling through to `client.HandleAPIError`; the helper prints an "already deleted" line to stderr and returns `true` when force is set and the error is a 404.
+This is a hard rule, not a guideline — adding a new delete command without this wiring is incomplete work and will be flagged in review.
+
 ## Config Profiles Subcommands
 The `config profiles` command uses:
 

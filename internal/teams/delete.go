@@ -68,10 +68,11 @@ func runDelete(cmd *cobra.Command, originOrID string, flags *deleteFlags) error 
 
 	err = apiClient.DeleteTeam(ctx, originOrID)
 	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "team",
-			AssetID:   originOrID,
-		})
+		ectx := client.ErrorContext{AssetType: "team", AssetID: originOrID}
+		if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+			return nil
+		}
+		return client.HandleAPIError(err, ectx)
 	}
 
 	fmt.Printf("Team %q deleted\n", originOrID)

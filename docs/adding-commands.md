@@ -88,6 +88,10 @@ See @docs/code-style.md [agent mode](code-style.md#agent-mode) for why.
 
 For destructive commands, add `--force` and use `confirmation.ConfirmDestructiveOperation`.
 
+For `delete` subcommands (and `remove`-shaped variants like `members remove` and `teams remove-members`), call `client.IsAlreadyDeleted(err, flags.Force, ectx)` before falling through to `client.HandleAPIError`.
+When it returns `true`, return `nil` — the desired end-state already holds and the helper has already printed an "already deleted" line to stderr.
+See the [Idempotent `delete --force`](cli-naming-conventions.md#idempotent-delete---force) rule in @docs/cli-naming-conventions.md; it is enforced in review.
+
 ## 6. Implement the command logic
 
 - Use `RunE` (not `Run`) and return errors.

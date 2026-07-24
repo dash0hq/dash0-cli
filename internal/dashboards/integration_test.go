@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -376,4 +377,81 @@ func TestListDashboards_RequestRecording(t *testing.T) {
 	assert.Equal(t, apiPathDashboards, req.Path)
 	assert.Contains(t, req.Query, "dataset=my-dataset")
 	assert.True(t, strings.HasPrefix(req.Header.Get("Authorization"), "Bearer "))
+}
+
+// TestDeleteDashboard_Success covers the happy path with --force set.
+func TestDeleteDashboard_Success(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"delete", testDashboardID, "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "deleted")
+}
+
+// TestDeleteDashboard_ForceIdempotentOn404 asserts that `delete --force`
+// treats an already-deleted asset as success (exit 0) and prints an
+// "already deleted" line to stderr. Regression coverage for issue #217.
+func TestDeleteDashboard_ForceIdempotentOn404(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"delete", testDashboardID, "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err, "expected exit 0 with --force on 404")
+	assert.Contains(t, stderr, "was already deleted")
+	assert.Contains(t, stderr, testDashboardID)
+}
+
+// TestDeleteDashboard_WithoutForceReturnsNotFound asserts that without
+// --force, a 404 still surfaces as a non-zero exit with a clean
+// "not found" message. Interactively the user would confirm and then hit
+// the API; the test feeds "y\n" via SetReaderForTest to reach the same
+// error path deterministically.
+func TestDeleteDashboard_WithoutForceReturnsNotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	defer restore()
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"delete", testDashboardID, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+	assert.Contains(t, err.Error(), "dashboard")
 }
