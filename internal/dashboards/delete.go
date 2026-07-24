@@ -55,10 +55,11 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 
 	err = apiClient.DeleteDashboard(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "dashboard",
-			AssetID:   id,
-		})
+		ectx := client.ErrorContext{AssetType: "dashboard", AssetID: id}
+		if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+			return nil
+		}
+		return client.HandleAPIError(err, ectx)
 	}
 
 	fmt.Printf("Dashboard %q deleted\n", id)

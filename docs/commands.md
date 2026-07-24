@@ -676,6 +676,19 @@ $ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
 Dashboard "a1b2c3d4-..." deleted
 ```
 
+With `--force`, an already-deleted asset is treated as success (exit 0) — a short "already deleted" line is printed to stderr and the command returns without error.
+This makes `delete --force` safe to run from CI/CD and agent-driven pipelines where the asset may have been removed concurrently by another actor:
+
+```bash
+$ dash0 dashboards delete a1b2c3d4-5678-90ab-cdef-1234567890ab --force
+Dashboard "a1b2c3d4-5678-90ab-cdef-1234567890ab" was already deleted
+$ echo $?
+0
+```
+
+Without `--force`, a missing asset surfaces as a non-zero exit with a "not found" error.
+The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `teams`) — see also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
+
 Aliases: `remove`
 
 ### Asset type quick reference
@@ -2720,6 +2733,9 @@ Always pass `--force` to skip the confirmation prompt:
 ```bash
 dash0 dashboards delete a1b2c3d4-... --force
 ```
+
+With `--force`, an asset that is already gone is treated as success: the command exits 0 and prints an "already deleted" line to stderr.
+This is safe to invoke from GitOps or agent-driven pipelines even when another actor may have deleted the asset concurrently.
 
 ### Validate assets before applying
 

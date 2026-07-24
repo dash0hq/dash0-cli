@@ -55,10 +55,11 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 
 	err = apiClient.DeleteCheckRule(ctx, id, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "check rule",
-			AssetID:   id,
-		})
+		ectx := client.ErrorContext{AssetType: "check rule", AssetID: id}
+		if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+			return nil
+		}
+		return client.HandleAPIError(err, ectx)
 	}
 
 	fmt.Printf("Check rule %q deleted\n", id)

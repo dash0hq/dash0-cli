@@ -283,6 +283,32 @@ func TestDeleteTeam_Success(t *testing.T) {
 	assert.Contains(t, output, "deleted")
 }
 
+// TestDeleteTeam_ForceIdempotentOn404 asserts that `dash0 teams delete
+// <id> --force` treats a missing team as idempotent success. Regression
+// coverage for issue #217; the reported example is a `teams delete`.
+func TestDeleteTeam_ForceIdempotentOn404(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/teams/[^/]+$`), testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   "teams/error_not_found.json",
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "delete", "team_01FAKE", "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err, "expected exit 0 with --force on 404")
+	assert.Contains(t, stderr, "was already deleted")
+	assert.Contains(t, stderr, "team_01FAKE")
+}
+
 func TestAddMembers_Success(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

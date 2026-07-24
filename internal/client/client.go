@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-api-client-go/profiles"
@@ -432,5 +433,40 @@ func formatAPIError(prefix string, err error) error {
 		return fmt.Errorf("%s", statusLine)
 	}
 	return fmt.Errorf("%s:\n  %s", statusLine, detail)
+}
+
+// IsAlreadyDeleted implements idempotent `delete --force` semantics: when the
+// delete API call returned 404 and force was set, the desired end-state
+// ("asset is gone") already holds, so callers should treat the response as
+// success. As a side effect, a short "was already deleted" line is written to
+// stderr so the operator (or agent) sees that nothing was actually removed.
+// Returns false when the caller should fall through to the normal error path.
+func IsAlreadyDeleted(err error, force bool, ectx ErrorContext) bool {
+	if err == nil || !force || !dash0api.IsNotFound(err) {
+		return false
+	}
+	identifier := ectx.AssetName
+	if identifier == "" {
+		identifier = ectx.AssetID
+	}
+	assetType := capitalizeFirst(ectx.AssetType)
+	if assetType == "" {
+		assetType = "Asset"
+	}
+	if identifier != "" {
+		fmt.Fprintf(os.Stderr, "%s %q was already deleted\n", assetType, identifier)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s was already deleted\n", assetType)
+	}
+	return true
+}
+
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 

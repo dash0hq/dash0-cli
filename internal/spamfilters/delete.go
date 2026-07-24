@@ -64,10 +64,11 @@ func runDelete(ctx context.Context, id string, flags *asset.DeleteFlags) error {
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	err = deleteWithVersionConflictRetry(ctx, apiClient, id, dataset)
 	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
-			AssetType: "spam filter",
-			AssetID:   id,
-		})
+		ectx := client.ErrorContext{AssetType: "spam filter", AssetID: id}
+		if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+			return nil
+		}
+		return client.HandleAPIError(err, ectx)
 	}
 
 	fmt.Printf("Spam filter %q deleted\n", id)
