@@ -5,8 +5,10 @@ package views
 import (
 	"net/http"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -126,7 +128,10 @@ func TestGetView_Unauthorized(t *testing.T) {
 }
 
 // TestDeleteView_NotFound covers the imperative delete path when the server
-// returns 404.
+// returns 404. `--force` is intentionally omitted: with `--force` the CLI
+// treats a 404 as idempotent success (see issue #217), so the error path
+// this test pins only fires when the user confirmed interactively.
+// SetReaderForTest supplies the "y" that would otherwise come from stdin.
 func TestDeleteView_NotFound(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -137,8 +142,11 @@ func TestDeleteView_NotFound(t *testing.T) {
 		Validator:  testutil.RequireHeaders,
 	})
 
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	defer restore()
+
 	cmd := NewViewsCmd()
-	cmd.SetArgs([]string{"delete", "00000000-0000-0000-0000-000000000000", "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+	cmd.SetArgs([]string{"delete", "00000000-0000-0000-0000-000000000000", "--api-url", server.URL, "--auth-token", testAuthToken})
 
 	err := cmd.Execute()
 
