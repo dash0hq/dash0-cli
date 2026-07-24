@@ -510,3 +510,78 @@ func TestRemoveMembers_WithEmail(t *testing.T) {
 	assert.Contains(t, output, "bob@example.com")
 	assert.Contains(t, output, "removed from team")
 }
+
+// TestRemoveMembers_ForceIdempotentOn404 asserts that when the team-member
+// deletion returns 404, `remove-members --force` treats it as idempotent
+// success — the member is already gone from the team. Companion to the
+// members-remove test; issue #217 promises the same behavior on every
+// `delete` and `remove`-shaped path.
+func TestRemoveMembers_ForceIdempotentOn404(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathMembers, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureMembersListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodDelete, regexp.MustCompile(`^/api/teams/[^/]+/members/[^/]+$`), testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "remove-members", "team-1", "user_member1", "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err, "expected exit 0 with --force on 404")
+	assert.Contains(t, stderr, "was already deleted")
+	assert.Contains(t, stderr, "user_member1")
+}
+
+// TestRemoveMembers_ForceContinuesOn404Across asserts that a 404 on one
+// team-member removal does not abort the whole `--force` call — the loop
+// keeps going and the remaining members are still processed.
+func TestRemoveMembers_ForceContinuesOn404Across(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathMembers, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureMembersListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodDelete, "/api/teams/team-1/members/user_member1", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodDelete, "/api/teams/team-1/members/user_member2", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "remove-members", "team-1", "user_member1", "user_member2", "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	var stdout, stderr string
+	stdout = testutil.CaptureStdout(t, func() {
+		stderr = testutil.CaptureStderr(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err, "one 404 must not abort the whole --force call")
+	assert.Contains(t, stderr, "user_member1")
+	assert.Contains(t, stderr, "was already deleted")
+	// user_member2 succeeded — its success line lands on stdout.
+	assert.Contains(t, stdout, "user_member2")
+	assert.Contains(t, stdout, "removed from team")
+}

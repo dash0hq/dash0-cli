@@ -85,10 +85,15 @@ func runRemoveMembers(cmd *cobra.Command, teamID string, memberIDs []string, fla
 	for _, member := range resolved {
 		err = apiClient.RemoveTeamMember(ctx, teamID, member.ID)
 		if err != nil {
-			return client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "team",
-				AssetID:   teamID,
-			})
+			ectx := client.ErrorContext{
+				AssetType: "team member",
+				AssetID:   member.ID,
+				AssetName: member.DisplayString(),
+			}
+			if client.IsAlreadyDeleted(err, flags.Force, ectx) {
+				continue
+			}
+			return client.HandleAPIError(err, ectx)
 		}
 		fmt.Printf("Member %s removed from team %q\n", member.DisplayString(), teamID)
 	}
