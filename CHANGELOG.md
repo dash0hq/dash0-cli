@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.16.2
+
+
+### Bug Fixes
+
+
+- `delete`: `delete --force` now treats an already-deleted asset as idempotent success (#217)
+  Every `delete` subcommand (dashboards, check-rules, synthetic-checks, views,
+  recording-rules, notification-channels, spam-filters, teams) and every
+  `remove`-shaped variant (`members remove`, `teams remove-members`) now
+  exits 0 and prints a short "already deleted" line to stderr when the target
+  is already gone and `--force` was set. The `remove` variants apply the
+  check per member so one concurrently-removed member does not fail the
+  whole `--force` call. Without `--force`, a missing target still surfaces
+  as a non-zero exit with a clean "not found" error. This makes
+  `delete --force` safe to invoke from CI/CD and agent-driven pipelines where
+  the target may have been removed concurrently by another actor.
+  
+
+- `metrics`: `metrics instant` now honors `--profile` and `DASH0_PROFILE` (#221)
+  Previously the command always resolved its API URL, auth token, and dataset
+  from the on-disk active profile, silently ignoring the per-invocation profile
+  selector. It now goes through the same context-carried configuration that
+  every other API-backed command uses.
+  
+
 ## 1.16.1
 
 
