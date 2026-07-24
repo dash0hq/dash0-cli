@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/query"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +75,7 @@ func newInstantCmd() *cobra.Command {
 	return cmd
 }
 
-func runInstant(_ *cobra.Command, flags *instantFlags) error {
+func runInstant(cmd *cobra.Command, flags *instantFlags) error {
 	// Resolve deprecated aliases.
 	if flags.promql == "" && flags.queryAlias != "" {
 		flags.promql = flags.queryAlias
@@ -109,8 +109,10 @@ func runInstant(_ *cobra.Command, flags *instantFlags) error {
 		return err
 	}
 
-	// Resolve configuration.
-	cfg, err := profiles.ResolveConfiguration(flags.apiURL, flags.authToken)
+	// Resolve configuration from the per-invocation profile (--profile /
+	// DASH0_PROFILE) carried on the context, falling back to the active
+	// profile with environment and flag overrides.
+	cfg, err := client.NewRawHTTPConfig(cmd.Context(), flags.apiURL, flags.authToken)
 	if err != nil {
 		return err
 	}
