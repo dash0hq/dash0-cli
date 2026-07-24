@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.16.3
+
+
+### Bug Fixes
+
+
+- `teams`: `teams create -f` and `apply` are now idempotent for team YAMLs downloaded from the Dash0 platform UI (#227)
+  `ImportTeam` now consults `dash0.com/id` in `metadata.labels` as a fallback
+  upsert key when `dash0.com/origin` is not set — the API accepts either as
+  the `{originOrId}` path segment. UI-downloaded YAMLs carry only id, so
+  before this fix every `create -f` and every `apply` POSTed a new team.
+  
+  For the cross-environment case (a YAML downloaded from one org, applied to
+  another), a preflight `GET /api/teams/{id}` gates the routing: on hit the
+  CLI PUTs (idempotent update), on miss it falls back to POST (fresh create,
+  the id in the file becomes advisory). Previously the miss path surfaced as
+  a "Forbidden: The given team does not belong to your organization" 404.
+  
+  Origin still wins when both labels are present.
+  
+
 ## 1.16.2
 
 
