@@ -5,6 +5,8 @@ package teams
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -259,6 +261,253 @@ func TestCreateTeam_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "Team \"New Team\" created")
+}
+
+// assertPUTPath finds a PUT request in the recorded stream that targets the
+// given path. Tolerates a trailing /api/members lookup (invoked when the
+// GetTeam pre-check populates the "before" state for the apply diff).
+func assertPUTPath(t *testing.T, requests []testutil.RecordedRequest, wantPath, msg string) {
+	t.Helper()
+	for _, req := range requests {
+		if req.Method == http.MethodPut && req.Path == wantPath {
+			return
+		}
+	}
+	seen := make([]string, 0, len(requests))
+	for _, req := range requests {
+		seen = append(seen, req.Method+" "+req.Path)
+	}
+	t.Fatalf("%s\nwant: PUT %s\ngot requests: %v", msg, wantPath, seen)
+}
+
+// assertPOSTPath finds a POST request in the recorded stream that targets
+// the given path. Mirrors assertPUTPath for the fall-through-to-create path.
+func assertPOSTPath(t *testing.T, requests []testutil.RecordedRequest, wantPath, msg string) {
+	t.Helper()
+	for _, req := range requests {
+		if req.Method == http.MethodPost && req.Path == wantPath {
+			return
+		}
+	}
+	seen := make([]string, 0, len(requests))
+	for _, req := range requests {
+		seen = append(seen, req.Method+" "+req.Path)
+	}
+	t.Fatalf("%s\nwant: POST %s\ngot requests: %v", msg, wantPath, seen)
+}
+
+// TestCreateTeamFromFile_UpsertByID asserts that a declarative team YAML
+// carrying only a dash0.com/id label (no origin) routes to PUT
+// /api/teams/{id} rather than POST when the team exists in the target env.
+// Regression coverage for the "download team from platform UI, reapply via
+// CLI" idempotency loop: the UI download carries id but not origin, so
+// upsert must fall back to id.
+func TestCreateTeamFromFile_UpsertByID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/team_[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: some-new-team
+  labels:
+    dash0.com/id: `+teamID+`
+    dash0.com/source: ui
+spec:
+  display:
+    color:
+      from: "#fb7185"
+      to: "#be123c"
+    name: Some new team
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), "/api/teams/"+teamID, "expected PUT-by-id, got POST — the id label should route to upsert")
+}
+
+// TestCreateTeamFromFile_UpsertByID_FallsBackToPOSTWhenNotFound asserts that
+// when the id in the input YAML does not exist in the target environment
+// (cross-environment apply — the classic "download from org A, apply to
+// org B" case), the CLI falls back to POST instead of returning a 404 from
+// PUT. Without this, `dash0 apply` is not idempotent across environments
+// and users see a scary "Forbidden" error on what should be a fresh create.
+func TestCreateTeamFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/team_[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// Pre-check GET returns 404 — the id belongs to a different org.
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureTeamsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	// POST fallback returns the freshly-created team.
+	server.On(http.MethodPost, apiPathTeams, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: some-new-team
+  labels:
+    dash0.com/id: `+teamID+`
+    dash0.com/source: ui
+spec:
+  display:
+    color:
+      from: "#fb7185"
+      to: "#be123c"
+    name: Some new team
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err, "cross-env apply must not fail — the id from a different org should trigger POST fallback")
+
+	// No PUT should have been attempted.
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, http.MethodPut, req.Method, "PUT to unknown id would 404; expected POST fallback instead")
+	}
+	assertPOSTPath(t, server.Requests(), apiPathTeams, "expected POST fallback after GET 404")
+}
+
+// TestCreateTeamFromFile_UpsertByOrigin asserts that a declarative team YAML
+// carrying a dash0.com/origin label routes to PUT /api/teams/{origin}.
+func TestCreateTeamFromFile_UpsertByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "my-team-origin"
+	teamsOriginPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsOriginPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, teamsOriginPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: some-new-team
+  labels:
+    dash0.com/origin: `+origin+`
+spec:
+  display:
+    color:
+      from: "#fb7185"
+      to: "#be123c"
+    name: Some new team
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "expected PUT to /api/teams/{origin}")
+}
+
+// TestCreateTeamFromFile_OriginWinsOverID asserts that when both origin and
+// id labels are present, origin is the upsert key.
+func TestCreateTeamFromFile_OriginWinsOverID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "my-team-origin"
+	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: some-new-team
+  labels:
+    dash0.com/origin: `+origin+`
+    dash0.com/id: `+teamID+`
+spec:
+  display:
+    color:
+      from: "#fb7185"
+      to: "#be123c"
+    name: Some new team
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "origin must win over id when both are present")
 }
 
 func TestDeleteTeam_Success(t *testing.T) {
