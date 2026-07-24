@@ -49,13 +49,22 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 			before = existing
 		}
 	case id != "":
-		// Only route to PUT if the id actually exists in the target env.
-		// Cross-environment applies must not 404; on miss we fall through
-		// to POST so the file's id becomes advisory rather than fatal.
-		if existing, err := apiClient.GetTeam(ctx, id); err == nil {
+		// The preflight GET's outcome decides the route, so the kind of
+		// error matters. Only a genuine 404 permits POST fallback (cross-
+		// environment apply — the id belongs to another org). Any other
+		// error (5xx, auth failure, network blip) must surface — silently
+		// POSTing would create a duplicate on the very failure mode this
+		// path exists to prevent.
+		existing, err := apiClient.GetTeam(ctx, id)
+		switch {
+		case err == nil:
 			upsertKey = id
 			action = ActionUpdated
 			before = existing
+		case dash0api.IsNotFound(err):
+			// Fall through to POST.
+		default:
+			return ImportResult{}, err
 		}
 	}
 

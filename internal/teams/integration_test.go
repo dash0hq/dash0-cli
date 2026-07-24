@@ -410,6 +410,59 @@ spec:
 	assertPOSTPath(t, server.Requests(), apiPathTeams, "expected POST fallback after GET 404")
 }
 
+// TestCreateTeamFromFile_UpsertByID_PropagatesPreflightServerError asserts
+// that when the preflight GET returns a non-404 error (500, 401, network),
+// the command surfaces the error instead of silently falling back to POST.
+// Without this check, a transient backend hiccup would spawn a duplicate
+// team every retry — the exact failure mode the id-fallback path exists
+// to prevent.
+func TestCreateTeamFromFile_UpsertByID_PropagatesPreflightServerError(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	// Disable retries so the test exercises the propagation logic alone,
+	// not the transport's 3-retry backoff on 5xx.
+	t.Setenv("DASH0_MAX_RETRIES", "0")
+
+	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/team_[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// Preflight GET returns 500 — not a "team doesn't exist" signal.
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusInternalServerError,
+		Body:       map[string]any{"error": "backend blew up"},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: some-new-team
+  labels:
+    dash0.com/id: `+teamID+`
+spec:
+  display:
+    color:
+      from: "#fb7185"
+      to: "#be123c"
+    name: Some new team
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.Error(t, err, "non-404 preflight errors must surface, not fall through to POST")
+
+	require.Len(t, server.Requests(), 1, "preflight GET must fire exactly once with retries disabled; POST fallback must not run")
+	assert.Equal(t, http.MethodGet, server.Requests()[0].Method, "only the preflight GET should hit the mock")
+}
+
 // TestCreateTeamFromFile_UpsertByOrigin asserts that a declarative team YAML
 // carrying a dash0.com/origin label routes to PUT /api/teams/{origin}.
 func TestCreateTeamFromFile_UpsertByOrigin(t *testing.T) {
