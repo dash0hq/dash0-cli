@@ -37,9 +37,10 @@ func newCreateCmd() *cobra.Command {
 Two modes are supported:
 
 - Declarative: -f <file> reads a TeamDefinitionV1Alpha1 YAML/JSON document.
-  If the document carries a dash0.com/origin label, the team is created or
-  replaced via PUT (idempotent). Otherwise it is created via POST and the
-  server assigns id and origin.
+  If the document carries a dash0.com/origin or dash0.com/id label, the team
+  is created or replaced via PUT (idempotent) against that identifier — the
+  API accepts either. Origin wins when both are present. Otherwise the team
+  is created via POST and the server assigns id and origin.
 - Imperative: create <name> [--color-from ...] [--color-to ...] [--member ...]
   posts a minimal envelope built from flags. --member accepts an email or an
   internal member id; the server resolves emails.` + internal.CONFIG_HINT,
