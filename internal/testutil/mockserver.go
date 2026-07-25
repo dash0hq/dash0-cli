@@ -253,6 +253,41 @@ func (m *MockServer) Reset() {
 	m.requests = nil
 }
 
+// AssertRequestMade asserts that the recorded request stream contains at
+// least one request with the given method and exact path. Fails the test
+// with a legible summary of every request seen when no match is found.
+//
+// Prefer this over `LastRequest()` when the code under test issues a
+// follow-up call (for example a members-lookup after a team write) — the
+// last request in that case is unrelated to the write the assertion is
+// checking.
+func AssertRequestMade(t *testing.T, requests []RecordedRequest, method, path, msg string) {
+	t.Helper()
+	for _, req := range requests {
+		if req.Method == method && req.Path == path {
+			return
+		}
+	}
+	seen := make([]string, 0, len(requests))
+	for _, req := range requests {
+		seen = append(seen, req.Method+" "+req.Path)
+	}
+	t.Fatalf("%s\nwant: %s %s\ngot requests: %v", msg, method, path, seen)
+}
+
+// AssertNoRequestWithMethod asserts that no request in the recorded stream
+// used the given HTTP method. Useful for the "we should not have written
+// anything on this code path" assertion — for example when a preflight
+// error must propagate rather than fall through to POST.
+func AssertNoRequestWithMethod(t *testing.T, requests []RecordedRequest, method, msg string) {
+	t.Helper()
+	for _, req := range requests {
+		if req.Method == method {
+			t.Fatalf("%s\ndid not expect %s but saw %s %s", msg, method, req.Method, req.Path)
+		}
+	}
+}
+
 func (m *MockServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Record the request
 	body, _ := io.ReadAll(r.Body)
