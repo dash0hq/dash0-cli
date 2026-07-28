@@ -72,6 +72,7 @@ func TestWithSkillHint(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "boom")
 		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`")
+		assert.Contains(t, err.Error(), "dash0 skill show [topic]")
 	})
 
 	t.Run("no-op in human mode when the skill is already installed", func(t *testing.T) {
@@ -112,7 +113,9 @@ func TestWithSkillHint(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "boom")
 		assert.Contains(t, err.Error(), "\nHint: consult the installed dash0-cli Agent Skill")
-		assert.Contains(t, err.Error(), "dash0 skill show")
+		// The `[topic]` placeholder signals to an agent that the command
+		// accepts an optional topic argument for a focused reference.
+		assert.Contains(t, err.Error(), "dash0 skill show [topic]")
 		assert.Contains(t, err.Error(), "dash0 --agent-mode --help")
 	})
 

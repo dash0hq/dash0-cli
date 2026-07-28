@@ -87,7 +87,7 @@ These flags are available on every command:
 | `--experimental` | `-X` | | Enable experimental commands |
 | | | `DASH0_CONFIG_DIR` | Override config directory (default: `~/.dash0`) |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Maximum number of retries for failed API requests (default: `3`, max: `5`; set to `0` to disable retries) |
-| `--no-skill-hint` | | `DASH0_NO_SKILL_HINT` | Suppress the agent-mode error hint pointing at `dash0 skill install` (see [Agent tooling commands](#agent-tooling-commands)) |
+| `--no-skill-hint` | | `DASH0_NO_SKILL_HINT` | Suppress the agent-mode error hint pointing at `dash0 skill install` / `dash0 skill show` (see [Agent tooling commands](#agent-tooling-commands)) |
 
 ### Agent mode
 
