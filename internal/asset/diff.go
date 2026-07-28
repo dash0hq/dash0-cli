@@ -91,6 +91,21 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		dash0api.StripTeamServerFields(&t)
 		stripped = &t
+	case *dash0api.SloDefinition:
+		var s dash0api.SloDefinition
+		if err := sigsyaml.Unmarshal(jsonBytes, &s); err != nil {
+			return "", fmt.Errorf("failed to unmarshal SLO: %w", err)
+		}
+		// Without this the SLO fell through to the default branch and neither
+		// side of the diff was normalized. Both `before` (from GetSLO) and
+		// `after` (the PUT response) carry server-managed metadata, and the
+		// server bumps dash0.com/updated-at (and dash0.com/version) on every
+		// PUT — even for a byte-identical body. Re-applying an unchanged
+		// document therefore rendered a spurious updated-at/version diff
+		// instead of "no changes". Stripping both sides makes the comparison
+		// reflect only the user-authored document.
+		dash0api.StripSLOServerFields(&s)
+		stripped = &s
 	default:
 		stripped = asset
 	}

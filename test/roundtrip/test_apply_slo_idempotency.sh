@@ -16,6 +16,34 @@ trap 'rm -rf "$TMPDIR"' EXIT
 ORIGIN="cli-roundtrip-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 YAML_FILE="${TMPDIR}/slo.yaml"
 
+# Count the SLOs carrying our injected origin, polling until the expected count
+# is reached. A single-shot assertion is flaky: writes are not immediately
+# visible to list queries on the dev tenant. Observed in CI, `slos get "$ORIGIN"`
+# succeeded while `slos list --all` still returned 0 for the same origin ~0.6s
+# after the restore PUT. The log and span roundtrips already poll for the same
+# reason.
+wait_for_origin_count() {
+  local expected="$1"
+  local max_attempts=6
+  local delay=2
+  local attempt count
+  for attempt in $(seq 1 "$max_attempts"); do
+    count=$("$DASH0" slos list --all -o json \
+      | jq --arg o "$ORIGIN" '[.[] | select(.metadata.labels["dash0.com/origin"] == $o)] | length')
+    if [ "$count" = "$expected" ]; then
+      echo "Matching SLOs: $count (attempt $attempt)"
+      return 0
+    fi
+    if [ "$attempt" -eq "$max_attempts" ]; then
+      echo "FAIL: expected exactly $expected SLO(s) with origin '$ORIGIN', found $count after $max_attempts attempts"
+      return 1
+    fi
+    echo "Attempt $attempt/$max_attempts: found $count, expected $expected — retrying in ${delay}s..."
+    sleep "$delay"
+    delay=$((delay * 2))
+  done
+}
+
 echo "=== SLO apply idempotency test ==="
 echo "Origin: $ORIGIN"
 
@@ -32,14 +60,34 @@ if ! echo "$APPLY1" | grep -qE 'created[[:space:]]*$'; then
   exit 1
 fi
 
-# Step 2: Apply the same file again — should update, not create a duplicate.
-echo "--- Step 2: Second apply (expect: no duplicate created) ---"
+# Step 2: Apply the same file again. This is the real idempotency assertion:
+# re-applying an unchanged document must be a no-op, which `apply` reports as
+# "no changes". Asserting only the absence of a second "created" would prove no
+# duplicate was made, not that the apply changed nothing.
+#
+# `apply` renders a before/after diff whenever it upserts an existing asset, and
+# prints "no changes" when that diff is empty. Both sides are normalized through
+# StripSLOServerFields, so the dash0.com/updated-at and dash0.com/version values
+# the server bumps on every PUT — even for a byte-identical body — do not count
+# as changes.
+echo "--- Step 2: Second apply (expect: no changes) ---"
 APPLY2=$("$DASH0" apply -f "$YAML_FILE")
 echo "$APPLY2"
+if ! echo "$APPLY2" | grep -q 'no changes'; then
+  echo "FAIL: second apply did not report 'no changes' — re-applying an unchanged SLO is not a no-op"
+  exit 1
+fi
 # Match the "created" action word at end of line only — not the
-# "dash0.com/created-at:" annotation that appears in the update diff.
+# "dash0.com/created-at:" annotation that appears in a diff.
 if echo "$APPLY2" | grep -qE 'created[[:space:]]*$'; then
   echo "FAIL: unexpected 'created' on second apply — duplicate was created"
+  exit 1
+fi
+# Likewise anchored: an "updated" action word would mean a diff was rendered
+# rather than the no-op path. Anchoring matters because "dash0.com/updated-at"
+# appears in diff text and would false-match an unanchored grep.
+if echo "$APPLY2" | grep -qE 'updated[[:space:]]*$'; then
+  echo "FAIL: second apply reported 'updated' — expected a no-op reporting 'no changes'"
   exit 1
 fi
 
@@ -50,10 +98,8 @@ if ! "$DASH0" slos get "$ORIGIN" > /dev/null; then
   echo "FAIL: slos get '$ORIGIN' failed after second apply"
   exit 1
 fi
-COUNT=$("$DASH0" slos list --all -o json | jq --arg o "$ORIGIN" '[.[] | select(.metadata.labels["dash0.com/origin"] == $o)] | length')
-echo "Matching SLOs: $COUNT"
-if [ "$COUNT" != "1" ]; then
-  echo "FAIL: expected exactly 1 SLO with origin '$ORIGIN', found $COUNT (duplicate created)"
+if ! wait_for_origin_count 1; then
+  echo "FAIL: expected exactly 1 SLO with origin '$ORIGIN' after the second apply (duplicate created)"
   exit 1
 fi
 
@@ -78,9 +124,8 @@ if ! "$DASH0" slos get "$ORIGIN" > /dev/null; then
   echo "FAIL: slos get '$ORIGIN' failed after re-apply"
   exit 1
 fi
-COUNT=$("$DASH0" slos list --all -o json | jq --arg o "$ORIGIN" '[.[] | select(.metadata.labels["dash0.com/origin"] == $o)] | length')
-if [ "$COUNT" != "1" ]; then
-  echo "FAIL: expected exactly 1 SLO with origin '$ORIGIN' after re-apply, found $COUNT"
+if ! wait_for_origin_count 1; then
+  echo "FAIL: expected exactly 1 SLO with origin '$ORIGIN' after re-apply"
   exit 1
 fi
 
