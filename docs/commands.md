@@ -730,7 +730,7 @@ The identifier field location varies by asset kind:
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | The CRD-level label is applied to every alerting rule converted from the CRD, so a CRD with multiple alerts shares one identifier — pin a unique label per CRD, or split multi-alert CRDs into one CRD per alert |
 | `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
-| `SLO` | `metadata.labels["dash0.com/id"]` | OpenSLO v1 document (`apiVersion: openslo.com/v1`) |
+| `SLO` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | OpenSLO v1 document (`apiVersion: openslo.com/v1`). SLO IDs are server-assigned (`slo_<ulid>`), so `dash0.com/origin` is the only client-settable upsert key and the recommended one. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/slos/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new SLO on every apply |
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
@@ -738,7 +738,8 @@ The identifier field location varies by asset kind:
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`).
 The CLI strips `dash0.com/origin` from outbound payloads for the asset types where the server treats origin as provenance metadata (dashboards, views, check rules, synthetic checks), so do not use origin as the upsert key for those kinds.
-Notification channels and spam filters are the two exceptions: their server APIs key on origin, and the CLI preserves it accordingly.
+Notification channels, spam filters, SLOs, and teams are the exceptions: their server APIs key on origin, so the CLI reads the origin label off the document and uses it as the upsert key in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/teams/{origin}`).
+For SLOs origin is not merely accepted, it is the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
 
@@ -782,6 +783,13 @@ The `dash0.com/origin` label is the upsert key when present; otherwise the serve
 Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
+
+`SLO` documents use the same upsert-key selection as `Dash0Team`, and for SLOs `dash0.com/origin` is the recommended key rather than merely the preferred one.
+SLO IDs are assigned by the server (`slo_<ulid>`), so `dash0.com/id` cannot be chosen up front — only `dash0.com/origin` can.
+`dash0.com/origin` wins when present and PUTs unconditionally (create-or-replace at that origin).
+When only `dash0.com/id` is present the CLI preflights the SLO with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
+On that POST fallback the foreign `dash0.com/id` is removed from the request body, since the server assigns the ID.
+A document with neither label creates a new SLO on every apply.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -904,7 +912,8 @@ spec:
   interval: 60s
 ```
 
-SLO (OpenSLO v1 format):
+SLO (OpenSLO v1 format).
+The upsert key is `dash0.com/origin`, not `dash0.com/id` — SLO IDs are server-assigned, so `dash0.com/origin` is the label to pin in version control:
 
 ```yaml
 apiVersion: openslo.com/v1
@@ -912,7 +921,7 @@ kind: SLO
 metadata:
   name: checkout-availability
   labels:
-    dash0.com/id: f6a7b8c9-0123-45f0-1234-67890abcdef0
+    dash0.com/origin: checkout-availability
   annotations:
     dash0.com/display-name: Checkout availability
 spec:

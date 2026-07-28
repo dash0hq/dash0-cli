@@ -2143,6 +2143,33 @@ spec:
       target: 0.99
 `
 
+// TestApply_SLO_DryRunShowsOriginAsIdentifier pins that the dry-run listing
+// shows an identifier for the recommended SLO document form. SLO ids are
+// server-assigned, so an origin-only document is the form users write — and
+// without an origin fallback the dry run printed the name with no identifier at
+// all. Mirrors the notification-channel and team fallbacks.
+func TestApply_SLO_DryRunShowsOriginAsIdentifier(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloYAMLWithOrigin), 0644))
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Dry run")
+	assert.Contains(t, output, "Checkout availability")
+	assert.Contains(t, output, "cli-roundtrip-origin",
+		"an origin-only SLO must show its origin as the identifier — origin is the upsert key")
+}
+
 // TestApply_SLO_SecondApplyReportsNoChanges pins actual idempotency for SLOs,
 // matching the contract every sibling asset already meets (see
 // TestApply_Dashboard_* above): re-applying an unchanged document must report

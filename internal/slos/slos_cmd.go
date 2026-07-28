@@ -1,6 +1,9 @@
 package slos
 
-import "github.com/spf13/cobra"
+import (
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/spf13/cobra"
+)
 
 // NewSlosCmd creates the slos parent command
 func NewSlosCmd() *cobra.Command {
@@ -17,4 +20,16 @@ func NewSlosCmd() *cobra.Command {
 	cmd.AddCommand(newDeleteCmd())
 
 	return cmd
+}
+
+// sloOrigin returns the dash0.com/origin label of an SLO, or "" when absent.
+// The API client ships GetSLOID but no GetSLOOrigin, so the label is read
+// directly — the same thing asset.ImportSLO does. Origin matters for output
+// because it is the SLO upsert key: SLO ids are server-assigned, so origin is
+// the identifier users pin in version control and script against.
+func sloOrigin(slo *dash0api.SloDefinition) string {
+	if slo == nil || slo.Metadata.Labels == nil || slo.Metadata.Labels.Dash0Comorigin == nil {
+		return ""
+	}
+	return *slo.Metadata.Labels.Dash0Comorigin
 }

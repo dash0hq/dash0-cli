@@ -1,13 +1,13 @@
 ---
 name: dash0-cli
-description: Use when working with Dash0 observability data or configuration via the dash0 CLI (the `dash0` binary) — querying logs, spans, traces, metrics, or failed checks; managing dashboards, views, check rules, synthetic checks, recording rules, notification channels, or spam filters; sending OTLP telemetry or deployment events; or managing teams, members, and profiles. Trigger on "Dash0", "dash0 CLI", or any of these operations.
+description: Use when working with Dash0 observability data or configuration via the dash0 CLI (the `dash0` binary) — querying logs, spans, traces, metrics, or failed checks; managing dashboards, views, check rules, synthetic checks, SLOs, recording rules, notification channels, or spam filters; sending OTLP telemetry or deployment events; or managing teams, members, and profiles. Trigger on "Dash0", "dash0 CLI", or any of these operations.
 ---
 
 <!-- This file is packaged with the dash0-cli distribution. Installed copies are overwritten by `dash0 skill install` / `make skill-bundle`; edit the hand-curated source at internal/skill/content/SKILL.md in the dash0hq/dash0-cli repository instead. -->
 
 # dash0-cli
 
-`dash0` is a command-line interface for the [Dash0](https://www.dash0.com) observability platform. It manages Dash0 assets (dashboards, views, check rules, synthetic checks, recording rules, notification channels, spam filters), queries telemetry (logs, spans, traces, metrics, failed checks), sends telemetry via OTLP, and manages organization entities (teams, members, profiles).
+`dash0` is a command-line interface for the [Dash0](https://www.dash0.com) observability platform. It manages Dash0 assets (dashboards, views, check rules, synthetic checks, SLOs, recording rules, notification channels, spam filters), queries telemetry (logs, spans, traces, metrics, failed checks), sends telemetry via OTLP, and manages organization entities (teams, members, profiles).
 
 **Prefer `dash0 --agent-mode <command> --help` over guessing flags.** Every command's exact, always-current flag list, aliases, and examples are available as structured JSON via `--agent-mode <command> --help` (e.g. `dash0 --agent-mode dashboards list --help`). This bundle deliberately does not duplicate flag tables — they'd go stale the moment a flag is added or renamed. Use the topics below for concepts, YAML formats, and workflows that `--help` output can't express; use `--agent-mode <command> --help` for the exact flags to pass.
 
@@ -17,7 +17,7 @@ description: Use when working with Dash0 observability data or configuration via
 |----------|----------|-----------------|
 | Authentication | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | Configuration | `config profiles`, `config show` | Profile management, no API calls |
-| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -39,7 +39,7 @@ Agent mode optimizes the CLI for AI agents: JSON output by default, structured `
 
 ## How asset commands work
 
-All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
+All eight asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
 
 `dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command — see the `apply` topic.
 
@@ -55,10 +55,12 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `PrometheusRule` (alerting or recording) | `metadata.labels["dash0.com/id"]` |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` |
 | `View` | `metadata.labels["dash0.com/id"]` |
+| `SLO` | `metadata.labels["dash0.com/origin"]` — SLO IDs are server-assigned (`slo_<ulid>`), so origin is the only client-settable key; `metadata.labels["dash0.com/id"]` is used only when origin is absent |
 | `Dash0SpamFilter` | `metadata.labels["dash0.com/id"]` (`dash0.com/origin` takes precedence when both are present) |
 | `Dash0NotificationChannel` | no ID field — `metadata.labels["dash0.com/origin"]` is the upsert key |
+| `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) |
 
-**Origin vs ID — do not conflate them.** *Origin* (`dash0.com/origin` label) identifies which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`) — it's provenance metadata, not a lookup key, and the CLI strips it before sending most asset types to the API so it doesn't claim ownership of assets managed elsewhere. *ID* is the user-defined external identifier used for upsert, described above. Notification channels and spam filters are the two exceptions where origin (not ID) is the upsert key.
+**Origin vs ID — do not conflate them.** *Origin* (`dash0.com/origin` label) identifies which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`) — it's provenance metadata, not a lookup key, and the CLI strips it before sending most asset types to the API so it doesn't claim ownership of assets managed elsewhere. *ID* is the user-defined external identifier used for upsert, described above. Notification channels, spam filters, SLOs, and teams are the exceptions where origin (not ID) is the upsert key — for those kinds the CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so an export → edit → `apply` (or `update`) round-trips through the identifier automatically.
 
@@ -160,6 +162,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `notification-channels` | Notification channel CRUD (organization-level, no dataset) |
 | `otlp` | Local OTLP forwarding proxy (`otlp proxy`) |
 | `recording-rules` | Recording rule CRUD (PrometheusRule CRD format) |
+| `slos` | SLO CRUD (OpenSLO v1 documents; `dash0.com/origin` is the upsert key) |
 | `spam-filters` | Spam filter CRUD (v1alpha1 and v1alpha2) |
 | `spans` | Query and send spans |
 | `synthetic-checks` | Synthetic check CRUD |
