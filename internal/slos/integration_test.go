@@ -21,6 +21,7 @@ const (
 	apiPathSLOs          = "/api/slos"
 	testAuthToken        = "auth_test_token"
 	testSLOID            = "00000000-0000-0000-0000-000000000001"
+	testSLOID2           = "00000000-0000-0000-0000-000000000002"
 	fixtureListSuccess   = "slos/list_success.json"
 	fixtureListEmpty     = "slos/list_empty.json"
 	fixtureGetSuccess    = "slos/get_success.json"
@@ -43,7 +44,8 @@ func TestListSLOs_JSONFormat(t *testing.T) {
 	})
 
 	cmd := NewSlosCmd()
-	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "json", "--limit", "2"})
+	// The fixture carries two SLOs; --limit 1 must truncate to the first.
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "json", "--limit", "1"})
 
 	var err error
 	output := testutil.CaptureStdout(t, func() {
@@ -55,6 +57,9 @@ func TestListSLOs_JSONFormat(t *testing.T) {
 	assert.Contains(t, output, `"apiVersion": "openslo.com/v1"`)
 	assert.Contains(t, output, `"metadata"`)
 	assert.Contains(t, output, `"spec"`)
+	// --limit 1 truncates: only the first SLO is emitted, not the second.
+	assert.Contains(t, output, testSLOID)
+	assert.NotContains(t, output, testSLOID2)
 }
 
 func TestListSLOs_YAMLFormat(t *testing.T) {
@@ -357,6 +362,141 @@ func TestDeleteSLO_Success(t *testing.T) {
 	assert.Contains(t, output, "deleted")
 }
 
+// TestDeleteSLO_ForceIdempotentOn404 asserts that `delete --force` treats an
+// already-deleted SLO as success (exit 0) and prints an "already deleted" line
+// to stderr. Regression coverage matching CHANGELOG 1.16.2 / issue #217.
+func TestDeleteSLO_ForceIdempotentOn404(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"delete", testSLOID, "--force", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err, "expected exit 0 with --force on 404")
+	assert.Contains(t, stderr, "was already deleted")
+	assert.Contains(t, stderr, testSLOID)
+}
+
+// TestUpdateSLO_StripsServerFields pins the strip contract: an input that
+// still carries server-managed fields (as an exported `slos get -o yaml`
+// would) must not send dash0.com/version, dash0.com/origin, or the
+// created-at/updated-at timestamps back on the wire.
+func TestUpdateSLO_StripsServerFields(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloUpdateWithServerFieldsYAML), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	req := server.LastRequest()
+	require.NotNil(t, req)
+	assert.Equal(t, http.MethodPut, req.Method)
+
+	// Decode the wire body and assert the server-managed fields are absent.
+	var sent dash0api.SloDefinition
+	require.NoError(t, json.Unmarshal(req.Body, &sent))
+	require.NotNil(t, sent.Metadata.Labels)
+	assert.Nil(t, sent.Metadata.Labels.Dash0Comversion, "dash0.com/version must be stripped")
+	assert.Nil(t, sent.Metadata.Labels.Dash0Comorigin, "dash0.com/origin must be stripped")
+	if sent.Metadata.Annotations != nil {
+		_, hasCreatedAt := sent.Metadata.Annotations.Get("dash0.com/created-at")
+		assert.False(t, hasCreatedAt, "dash0.com/created-at must be stripped")
+	}
+	// Belt-and-suspenders: the raw body must not carry the stripped keys.
+	body := string(req.Body)
+	assert.NotContains(t, body, "dash0.com/version")
+	assert.NotContains(t, body, "dash0.com/created-at")
+	assert.NotContains(t, body, "dash0.com/origin")
+}
+
+// TestCreateSLO_DryRun asserts that `create --dry-run` validates without
+// touching the API.
+func TestCreateSLO_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloCreateYAML), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken, "--dry-run"})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Dry run")
+	// No API call must have been made.
+	assert.Nil(t, server.LastRequest())
+}
+
+// TestUpdateSLO_DryRun asserts that `update --dry-run` fetches the current
+// state for the diff but never issues the PUT.
+func TestUpdateSLO_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloUpdateYAML), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken, "--dry-run"})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	// The only request must be the GET used to build the diff — never a PUT.
+	req := server.LastRequest()
+	require.NotNil(t, req)
+	assert.Equal(t, http.MethodGet, req.Method)
+}
+
 const sloCreateYAML = `apiVersion: openslo.com/v1
 kind: SLO
 metadata:
@@ -427,4 +567,50 @@ spec:
   objectives:
     - displayName: 99.5% availability
       target: 0.995
+`
+
+// sloUpdateWithServerFieldsYAML mirrors the shape of an exported
+// `slos get -o yaml`: it carries the server-managed dash0.com/version,
+// dash0.com/dataset, and dash0.com/origin labels plus the created-at/updated-at
+// annotations. The update path must strip all of these before the PUT.
+const sloUpdateWithServerFieldsYAML = `apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-availability
+  labels:
+    dash0.com/id: 00000000-0000-0000-0000-000000000001
+    dash0.com/version: "1"
+    dash0.com/dataset: default
+    dash0.com/origin: terraform
+  annotations:
+    dash0.com/display-name: Checkout availability
+    dash0.com/enabled: "true"
+    dash0.com/created-at: "2026-01-15T10:00:00Z"
+    dash0.com/updated-at: "2026-01-15T10:00:00Z"
+spec:
+  description: 99 percent of checkout HTTP requests succeed over a rolling 28-day window.
+  service: checkout
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 28d
+      isRolling: true
+  indicator:
+    metadata:
+      name: checkout-success-ratio
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
 `

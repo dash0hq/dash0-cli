@@ -494,8 +494,9 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All eight asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same CRUD subcommands.
-The examples below use `dashboards`, but the same patterns apply to every asset type.
+All nine of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, and the organization-level `teams`) share the same CRUD subcommands.
+The first eight are dataset-scoped assets; `teams` is organization-level (no `--dataset`, no `apply`) but shares the same subcommand shape.
+The examples below use `dashboards`, but the same patterns apply to every command group.
 
 ### `list`
 
