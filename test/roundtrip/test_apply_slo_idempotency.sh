@@ -27,7 +27,7 @@ ORIGIN="$ORIGIN" yq '.metadata.labels."dash0.com/origin" = env(ORIGIN)' "$FIXTUR
 echo "--- Step 1: First apply (expect: created) ---"
 APPLY1=$("$DASH0" apply -f "$YAML_FILE")
 echo "$APPLY1"
-if ! echo "$APPLY1" | grep -q "created"; then
+if ! echo "$APPLY1" | grep -qE 'created[[:space:]]*$'; then
   echo "FAIL: expected 'created' in first apply output"
   exit 1
 fi
@@ -36,7 +36,9 @@ fi
 echo "--- Step 2: Second apply (expect: no duplicate created) ---"
 APPLY2=$("$DASH0" apply -f "$YAML_FILE")
 echo "$APPLY2"
-if echo "$APPLY2" | grep -q "created"; then
+# Match the "created" action word at end of line only — not the
+# "dash0.com/created-at:" annotation that appears in the update diff.
+if echo "$APPLY2" | grep -qE 'created[[:space:]]*$'; then
   echo "FAIL: unexpected 'created' on second apply — duplicate was created"
   exit 1
 fi
@@ -59,7 +61,7 @@ fi
 echo "--- Step 4: Delete ---"
 DELETE4=$("$DASH0" slos delete "$ORIGIN" --force)
 echo "$DELETE4"
-if ! echo "$DELETE4" | grep -q "deleted"; then
+if ! echo "$DELETE4" | grep -qE 'deleted[[:space:]]*$'; then
   echo "FAIL: expected 'deleted' in delete output"
   exit 1
 fi
@@ -85,7 +87,7 @@ fi
 # Cleanup.
 CLEANUP=$("$DASH0" slos delete "$ORIGIN" --force)
 echo "$CLEANUP"
-if ! echo "$CLEANUP" | grep -q "deleted"; then
+if ! echo "$CLEANUP" | grep -qE 'deleted[[:space:]]*$'; then
   echo "FAIL: expected 'deleted' in cleanup output"
   exit 1
 fi
