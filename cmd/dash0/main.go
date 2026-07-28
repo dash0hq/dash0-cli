@@ -154,21 +154,22 @@ func printError(err error) {
 
 // withSkillHint appends a follow-up hint to err so an AI agent (or a human
 // setting up their AI coding session) has a next-step pointer even when
-// the underlying error message is bare. Two shapes:
+// the underlying error message is bare. Two shapes, both leading with
+// `dash0 skill show` (no arg) — the invocation that prints the entry point
+// with the full topic index, which is what an agent needs to discover what
+// topics even exist before it can pass one:
 //
 //   - When the skill is NOT installed in the current directory: nudge at
-//     `dash0 skill install` (persistent, one-time setup) and at
-//     `dash0 skill show [topic]` (disk-free, immediate — useful for
-//     ephemeral or read-only agent sessions where writing files isn't
-//     an option). Fires in both agent and human mode since the setup
-//     benefits humans too.
-//   - When the skill IS installed and agent mode is active: nudge at the
-//     resources an agent can use to recover — `dash0 skill show [topic]`
-//     reprints the local bundle (pass a topic like `dashboards` or `logs`
-//     for a focused reference) and `dash0 --agent-mode --help` returns
-//     the current command surface as structured JSON. Fires only in
-//     agent mode because a human seeing this on every error is noise
-//     (they'd read `--help`).
+//     `dash0 skill show` (disk-free, immediate — the discovery workflow
+//     for ephemeral or read-only agent sessions) and, secondarily, at
+//     `dash0 skill install` (persistent, one-time setup). Fires in both
+//     agent and human mode since the setup benefits humans too.
+//   - When the skill IS installed and agent mode is active: nudge at
+//     `dash0 skill show` for the topic index, plus `dash0 skill show
+//     <topic>` for a focused reference, and `dash0 --agent-mode --help`
+//     as a fallback for the current flag surface. Fires only in agent
+//     mode because a human seeing this on every error is noise (they'd
+//     read `--help`).
 //
 // No-op when the hint has been suppressed (`--no-skill-hint` /
 // `DASH0_NO_SKILL_HINT`), when err already carries its own `\nHint:`
@@ -194,9 +195,9 @@ func withSkillHint(err error) error {
 		if !agentmode.Enabled {
 			return err
 		}
-		return fmt.Errorf("%w\nHint: consult the installed dash0-cli Agent Skill — run `dash0 skill show [topic]` to reprint the entry point (or pass a topic like `dashboards` or `logs` for a focused reference), or `dash0 --agent-mode --help` for the current command surface", err)
+		return fmt.Errorf("%w\nHint: consult the installed dash0-cli Agent Skill — start with `dash0 skill show` (no arg) to reprint the entry point, which lists every available topic, then `dash0 skill show <topic>` (e.g. `dash0 skill show dashboards`) for a focused reference; or `dash0 --agent-mode --help` for the current flag surface", err)
 	}
-	return fmt.Errorf("%w\nHint: run `dash0 skill install` to add a local Agent Skills bundle with detailed command references, or `dash0 skill show [topic]` to print it without writing files (pass a topic like `dashboards` or `logs` for a focused reference)", err)
+	return fmt.Errorf("%w\nHint: start with `dash0 skill show` (no arg) to print the entry point, which lists every available topic, then `dash0 skill show <topic>` (e.g. `dash0 skill show dashboards`) for a focused reference — no files are written; or run `dash0 skill install` to add a persistent Agent Skills bundle to this project", err)
 }
 
 // skillHintSuppressed reports whether the --no-skill-hint flag or

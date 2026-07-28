@@ -31,7 +31,7 @@ Every command that talks to the Dash0 API or OTLP endpoint needs credentials, re
 
 ## Global flags
 
-`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`, `--profile`, `--agent-mode` (env: `DASH0_AGENT_MODE`), `--color` (`semantic` or `none`), `--experimental`/`-X`, `--max-retries`, `--no-skill-hint` (env: `DASH0_NO_SKILL_HINT` — suppress the "run `dash0 skill install` or `dash0 skill show [topic]`" hint stitched onto errors; `install` writes this bundle into the project, `show` prints it to stdout for ephemeral or read-only sessions). Run `dash0 --agent-mode --help` for the full, current list.
+`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`, `--profile`, `--agent-mode` (env: `DASH0_AGENT_MODE`), `--color` (`semantic` or `none`), `--experimental`/`-X`, `--max-retries`, `--no-skill-hint` (env: `DASH0_NO_SKILL_HINT` — suppress the "start with `dash0 skill show` … or run `dash0 skill install`" hint stitched onto errors; `dash0 skill show` (no arg) prints the entry point with a full topic index, `dash0 skill show <topic>` drills into one topic without writing files, and `dash0 skill install` adds a persistent bundle to the project). Run `dash0 --agent-mode --help` for the full, current list.
 
 ### Agent mode
 
