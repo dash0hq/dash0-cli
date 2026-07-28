@@ -111,6 +111,9 @@ func printSLOTable(f *output.Formatter, items []*dash0api.SloDefinition, format 
 			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item any) string {
 				return dash0api.GetSLODataset(item.(*dash0api.SloDefinition))
 			}},
+			output.Column{Header: internal.HEADER_ORIGIN, Width: 20, Value: func(item any) string {
+				return sloOrigin(item.(*dash0api.SloDefinition))
+			}},
 			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item any) string {
 				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSLO, dash0api.GetSLOID(item.(*dash0api.SloDefinition)), dataset)
 			}},

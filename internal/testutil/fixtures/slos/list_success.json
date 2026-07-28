@@ -6,6 +6,7 @@
     "name": "checkout-availability",
     "labels": {
       "dash0.com/id": "00000000-0000-0000-0000-000000000001",
+      "dash0.com/origin": "checkout-origin",
       "dash0.com/version": "1",
       "dash0.com/dataset": "default"
     },

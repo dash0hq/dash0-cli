@@ -18,10 +18,13 @@ import (
 )
 
 const (
-	apiPathSLOs          = "/api/slos"
-	testAuthToken        = "auth_test_token"
-	testSLOID            = "00000000-0000-0000-0000-000000000001"
-	testSLOID2           = "00000000-0000-0000-0000-000000000002"
+	apiPathSLOs   = "/api/slos"
+	testAuthToken = "auth_test_token"
+	testSLOID     = "00000000-0000-0000-0000-000000000001"
+	testSLOID2    = "00000000-0000-0000-0000-000000000002"
+	// testSLOOrigin is the dash0.com/origin label carried by the first SLO in
+	// slos/list_success.json and by slos/get_success.json.
+	testSLOOrigin        = "checkout-origin"
 	fixtureListSuccess   = "slos/list_success.json"
 	fixtureListEmpty     = "slos/list_empty.json"
 	fixtureGetSuccess    = "slos/get_success.json"
@@ -31,8 +34,8 @@ const (
 	// dash0.com/updated-at bumped — what the server really returns for a PUT
 	// whose body did not change anything.
 	fixtureUpdateUnchanged = "slos/update_unchanged.json"
-	fixtureNotFound      = "slos/error_not_found.json"
-	fixtureUnauthorized  = "dashboards/error_unauthorized.json"
+	fixtureNotFound        = "slos/error_not_found.json"
+	fixtureUnauthorized    = "dashboards/error_unauthorized.json"
 )
 
 var sloIDPattern = regexp.MustCompile(`^/api/slos/[^/]+$`)
@@ -135,10 +138,43 @@ func TestListSLOs_CSVFormat(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	// CSV/wide output adds a URL deep-link column.
+	// CSV/wide output adds DATASET, ORIGIN, and URL columns — the shared
+	// contract documented in docs/commands.md. Origin matters most here: it is
+	// the SLO upsert key, so it is the field scripts need.
+	assert.Contains(t, output, "dataset")
+	assert.Contains(t, output, "origin")
 	assert.Contains(t, output, "url")
+	assert.Contains(t, output, testSLOOrigin)
 	assert.Contains(t, output, "slo_id="+testSLOID)
 	assert.Contains(t, output, "Checkout availability")
+}
+
+// TestListSLOs_WideFormat pins the shared wide-format contract: `-o wide` adds
+// DATASET, ORIGIN, and URL. ORIGIN was missing, which mattered because origin
+// is the SLO upsert key and therefore the column users script against.
+func TestListSLOs_WideFormat(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathSLOs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "wide"})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "DATASET")
+	assert.Contains(t, output, "ORIGIN")
+	assert.Contains(t, output, "URL")
+	assert.Contains(t, output, testSLOOrigin)
 }
 
 func TestListSLOs_Empty(t *testing.T) {
@@ -251,6 +287,36 @@ func TestGetSLO_DefaultFormat(t *testing.T) {
 	assert.Contains(t, output, "Kind: SLO")
 	assert.Contains(t, output, "Name: Checkout availability")
 	assert.Contains(t, output, "Service: checkout")
+	// Origin is the SLO upsert key, so the table has to show it.
+	assert.Contains(t, output, "Origin: "+testSLOOrigin)
+}
+
+// TestGetSLO_ByOrigin_DeeplinkUsesResponseID pins that `slos get <origin>`
+// builds the deep link from the id on the response, not from the argument.
+// `GET /api/slos/{originOrId}` accepts either, so passing an origin used to
+// produce a URL with the origin embedded — a link that does not resolve.
+func TestGetSLO_ByOrigin_DeeplinkUsesResponseID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"get", testSLOOrigin, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "slo_id="+testSLOID, "the deep link must use the id from the response")
+	assert.NotContains(t, output, "slo_id="+testSLOOrigin, "a deep link built from an origin does not resolve")
+	assert.Contains(t, output, "Origin: "+testSLOOrigin)
 }
 
 func TestGetSLO_NotFound(t *testing.T) {
@@ -698,6 +764,32 @@ func TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) 
 
 	assertNoMethod(t, server.Requests(), http.MethodPut, "PUT to an unknown id would 404; expected POST fallback instead")
 	assertPOSTPath(t, server.Requests(), apiPathSLOs, "expected POST fallback after GET 404")
+
+	// The POST body must not carry the source organization's id. SLO ids are
+	// assigned by the server on create, and StripSLOServerFields does not clear
+	// dash0.com/id (only version, origin, dataset, source, and timestamps), so
+	// ImportSLO calls ClearSLOID explicitly on this path.
+	post := findRecordedRequest(server.Requests(), http.MethodPost, apiPathSLOs)
+	require.NotNil(t, post, "expected a recorded POST to %s", apiPathSLOs)
+	var body struct {
+		Metadata struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+	}
+	require.NoError(t, json.Unmarshal(post.Body, &body))
+	assert.NotContains(t, body.Metadata.Labels, "dash0.com/id",
+		"the POST fallback must not send the source organization's dash0.com/id — the server assigns it")
+}
+
+// findRecordedRequest returns the first recorded request matching method and
+// path, or nil when there is none.
+func findRecordedRequest(requests []testutil.RecordedRequest, method, path string) *testutil.RecordedRequest {
+	for i := range requests {
+		if requests[i].Method == method && requests[i].Path == path {
+			return &requests[i]
+		}
+	}
+	return nil
 }
 
 // TestCreateSLOFromFile_OriginWinsOverID asserts that when both origin and id
