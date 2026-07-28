@@ -93,9 +93,11 @@ for _, k := range keys {
 **What this rule does *not* cover:** marshalling a struct or a `map[string]interface{}` through `encoding/json`, `sigs.k8s.io/yaml`, or `gopkg.in/yaml.v3` is already deterministic — all three sort object/map keys internally before writing them out, so `formatter.PrintYAML`/`PrintJSON` and `sigsyaml.Marshal` (used throughout `internal/asset/diff.go` and every asset command) never need a manual sort.
 The risk is exclusively in hand-written loops that touch a map *before* the data reaches one of those marshallers.
 
-**What this rule cannot fix:** array/slice fields are never reordered by a marshaller — a JSON array's element order is preserved verbatim.
+**What this rule cannot fix by itself:** array/slice fields are never reordered by a marshaller — a JSON array's element order is preserved verbatim.
 When the Dash0 API itself returns a semantically-unordered field as an array (e.g. `spec.permissions`, dashboard `spec.panels`) in an order that varies between requests, no client-side sort of *map* keys addresses that, because there's no map to sort — the instability lives in the server response.
-If the CLI ever needs to normalize such a field for a clean diff, the fix is an explicit sort of the decoded slice by a stable key (e.g. panel ID) inserted into `internal/asset/diff.go`'s `marshalForDiff`, not a change to the marshalling call itself.
+When such a field has a natural, stable sort key, normalize it explicitly at the point of display/diff (not in the marshalling call itself).
+`spec.permissions` on views and synthetic checks is the worked example: each entry carries exactly one of `role`/`teamId`/`userId`, so `internal/asset/permissions.go`'s `SortViewPermissions`/`SortSyntheticCheckPermissions` sort lexicographically on whichever is set (mirroring the `dash0.com/sharing` annotation's `role:`/`team:`/`user:` prefixes) and are called from `internal/asset/diff.go`'s `marshalForDiff` (so `create`/`update`/`apply` diffs are stable) and from `views`/`synthetic-checks` `get`/`list` (so exported YAML/JSON is stable too).
+Dashboard `spec.panels` remains unaddressed — panels have no single field that's an obvious, product-agreed identity key, so sorting it needs a design decision rather than a mechanical fix; if one is made, follow the same pattern (a small `Sort*` helper in `internal/asset/`, called from both the diff path and the `get`/`list` export paths).
 
 ## Reference implementations
 

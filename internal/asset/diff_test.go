@@ -189,6 +189,43 @@ func TestPrintDiff_StripsServerFields_View(t *testing.T) {
 	assert.Contains(t, buf.String(), `View "Error Logs": no changes`)
 }
 
+// TestPrintDiff_View_PermissionOrderIsNotAChange guards against issue #231:
+// the server does not guarantee a stable order for spec.permissions, so a
+// before/after pair that only differs in permission order must not render as
+// a change.
+func TestPrintDiff_View_PermissionOrderIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Permissions: &[]dash0api.ViewPermission{
+				{Role: strPtr("basic_member")},
+				{Role: strPtr("admin")},
+			},
+		},
+	}
+	after := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Permissions: &[]dash0api.ViewPermission{
+				{Role: strPtr("admin")},
+				{Role: strPtr("basic_member")},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := PrintDiff(&buf, "View", "Error Logs", before, after)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), `View "Error Logs": no changes`)
+}
+
 func TestPrintDiff_ColorOutput(t *testing.T) {
 	dashcolor.NoColor = false
 	t.Setenv("CLICOLOR_FORCE", "1")

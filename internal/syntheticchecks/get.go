@@ -55,6 +55,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	}
 
 	dash0api.SetSyntheticCheckIDIfAbsent(check, id)
+	asset.SortSyntheticCheckPermissions(check)
 
 	format, err := output.ParseFormat(flags.Output)
 	if err != nil {
