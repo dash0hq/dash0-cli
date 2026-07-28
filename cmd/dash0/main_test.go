@@ -71,7 +71,14 @@ func TestWithSkillHint(t *testing.T) {
 		err := withSkillHint(errors.New("boom"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "boom")
-		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`")
+		// The hint leads with `dash0 skill show` (no arg) so an agent has
+		// an immediate path to the topic index, then hands off to
+		// `dash0 skill show <topic>` for a focused reference, and finally
+		// mentions `dash0 skill install` for persistent setup.
+		assert.Contains(t, err.Error(), "\nHint: start with `dash0 skill show` (no arg)")
+		assert.Contains(t, err.Error(), "lists every available topic")
+		assert.Contains(t, err.Error(), "dash0 skill show <topic>")
+		assert.Contains(t, err.Error(), "dash0 skill install")
 	})
 
 	t.Run("no-op in human mode when the skill is already installed", func(t *testing.T) {
@@ -112,7 +119,12 @@ func TestWithSkillHint(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "boom")
 		assert.Contains(t, err.Error(), "\nHint: consult the installed dash0-cli Agent Skill")
-		assert.Contains(t, err.Error(), "dash0 skill show")
+		// The hint spells out the discovery workflow: `dash0 skill show`
+		// (no arg) surfaces the topic index the agent needs to see before
+		// it can pass a topic name to `dash0 skill show <topic>`.
+		assert.Contains(t, err.Error(), "dash0 skill show` (no arg)")
+		assert.Contains(t, err.Error(), "lists every available topic")
+		assert.Contains(t, err.Error(), "dash0 skill show <topic>")
 		assert.Contains(t, err.Error(), "dash0 --agent-mode --help")
 	})
 
@@ -140,7 +152,7 @@ func TestWithSkillHint(t *testing.T) {
 		t.Chdir(t.TempDir())
 
 		err := withSkillHint(errors.New("boom"))
-		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`")
+		assert.Contains(t, err.Error(), "\nHint: start with `dash0 skill show`")
 	})
 
 	t.Run("no-op when suppressed via --no-skill-hint flag", func(t *testing.T) {
@@ -176,7 +188,7 @@ func TestWithSkillHint(t *testing.T) {
 		t.Chdir(t.TempDir())
 
 		err := withSkillHint(errors.New("boom"))
-		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`",
+		assert.Contains(t, err.Error(), "\nHint: start with `dash0 skill show`",
 			"explicit CLI --flag=false must trump an env-var suppression")
 	})
 
@@ -186,7 +198,7 @@ func TestWithSkillHint(t *testing.T) {
 		t.Chdir(t.TempDir())
 
 		err := withSkillHint(errors.New("boom"))
-		assert.Contains(t, err.Error(), "\nHint: run `dash0 skill install`")
+		assert.Contains(t, err.Error(), "\nHint: start with `dash0 skill show`")
 	})
 
 	t.Run("does not stack a second hint onto an error that already has one", func(t *testing.T) {

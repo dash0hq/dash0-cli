@@ -35,6 +35,10 @@ func PrintJSONHelp(w io.Writer, cmd *cobra.Command) error {
 	h := buildHelp(cmd)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	// Keep angle brackets and ampersands literal — the default encoder's
+	// HTML escaping turns things like `<topic>` in usage strings into
+	// `<topic>`, which is noise for terminal and agent consumers.
+	enc.SetEscapeHTML(false)
 	if err := enc.Encode(h); err != nil {
 		return fmt.Errorf("failed to encode help as JSON: %w", err)
 	}
