@@ -8,25 +8,32 @@ import (
 
 // ImportSLO creates or upserts an SLO via the standard CRUD APIs.
 //
-// Upsert key selection mirrors ImportTeam. The SLO API routes GET, PUT, and
-// DELETE by origin-or-id (unlike dashboards, views, check rules, and synthetic
-// checks, where the server treats dash0.com/origin as provenance metadata and
-// it must not be used as an upsert key). So:
+// Upsert key selection mirrors ImportTeam (origin-first, preflight-driven):
 //
-//   - Prefer the stable dash0.com/id when present.
-//   - Fall back to dash0.com/origin when there is no id. An origin-only
-//     document (e.g. a UI CR download) must upsert via PUT on that origin
-//     rather than POST a fresh duplicate on every apply — the #227 team bug.
-//   - Only POST (server assigns id and origin) when neither is present.
+//   - If the input has a user-defined origin (label `dash0.com/origin`), a
+//     preflight GetSLO runs against that origin. On hit, PUT is used to update
+//     in place. On miss, PUT is still used — the API treats an origin PUT as
+//     create-or-replace, so the SLO materializes at the requested origin.
+//   - If the input has a user-defined ID (label `dash0.com/id`) but no origin,
+//     a preflight GetSLO gates the choice: on hit, PUT (idempotent update); on
+//     a genuine 404, POST (create fresh with a server-assigned id). The miss
+//     path matters for cross-environment apply: a YAML downloaded from one
+//     Dash0 org carries an id that does not exist in a different org's backend,
+//     and PUT-to-unknown-id returns 404. Falling back to POST keeps `apply`
+//     idempotent — the identifier in the file becomes advisory when it cannot
+//     be honored. Any other preflight error (5xx, auth failure, network blip)
+//     is surfaced rather than silently POSTed, so a transient hiccup never
+//     spawns a duplicate.
+//   - Otherwise, POST is used and the server assigns both id and origin.
 //
 // PUT is create-or-replace, so upserting on either key is idempotent across
-// repeated applies. The origin label is captured before StripSLOServerFields
-// runs because that helper clears dash0.com/origin along with the other
-// server-managed labels.
+// repeated applies. The origin and id labels are captured before
+// StripSLOServerFields runs because that helper clears both dash0.com/origin
+// and (indirectly, via the id-bearing labels) the server-managed labels.
 func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportResult, error) {
 	// Capture identifiers before stripping — StripSLOServerFields clears the
-	// dash0.com/origin label, so origin-based routing must observe the input
-	// first.
+	// dash0.com/origin label, so origin- and id-based routing must observe the
+	// input first.
 	origin := ""
 	if slo.Metadata.Labels != nil && slo.Metadata.Labels.Dash0Comorigin != nil {
 		origin = *slo.Metadata.Labels.Dash0Comorigin
@@ -34,21 +41,32 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 	id := dash0api.GetSLOID(slo)
 	dash0api.StripSLOServerFields(slo)
 
-	var upsertKey string
-	switch {
-	case id != "":
-		upsertKey = id
-	case origin != "":
-		upsertKey = origin
-	}
-
 	action := ActionCreated
 	var before any
-	if upsertKey != "" {
-		existing, err := apiClient.GetSLO(ctx, upsertKey, dataset)
-		if err == nil {
+	var upsertKey string
+	switch {
+	case origin != "":
+		upsertKey = origin
+		if existing, err := apiClient.GetSLO(ctx, origin, dataset); err == nil {
 			action = ActionUpdated
 			before = existing
+		}
+	case id != "":
+		// The preflight GET's outcome decides the route, so the kind of error
+		// matters. Only a genuine 404 permits POST fallback (cross-environment
+		// apply — the id belongs to another org). Any other error (5xx, auth
+		// failure, network blip) must surface — silently POSTing would create a
+		// duplicate on the very failure mode this path exists to prevent.
+		existing, err := apiClient.GetSLO(ctx, id, dataset)
+		switch {
+		case err == nil:
+			upsertKey = id
+			action = ActionUpdated
+			before = existing
+		case dash0api.IsNotFound(err):
+			// Fall through to POST.
+		default:
+			return ImportResult{}, err
 		}
 	}
 
