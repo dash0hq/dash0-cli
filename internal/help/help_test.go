@@ -50,3 +50,24 @@ func TestPrintJSONHelp(t *testing.T) {
 	require.Len(t, result.Subcommands[0].Flags, 1)
 	assert.Equal(t, "force", result.Subcommands[0].Flags[0].Name)
 }
+
+// Usage strings routinely contain `<placeholder>` fragments (e.g.
+// `dash0 skill show <topic>`). Agent-mode help is terminal/agent output,
+// not HTML, so the JSON encoder must not turn those into `<topic>`.
+func TestPrintJSONHelpDoesNotHTMLEscape(t *testing.T) {
+	root := &cobra.Command{
+		Use:     "show <topic>",
+		Short:   "Prints entry for a <topic> — & other bits",
+		Example: "  dash0 skill show <topic>",
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, PrintJSONHelp(&buf, root))
+
+	raw := buf.String()
+	assert.NotContains(t, raw, "\\u003c", "encoder should not HTML-escape `<`")
+	assert.NotContains(t, raw, "\\u003e", "encoder should not HTML-escape `>`")
+	assert.NotContains(t, raw, "\\u0026", "encoder should not HTML-escape `&`")
+	assert.Contains(t, raw, "<topic>")
+	assert.Contains(t, raw, "& other bits")
+}
