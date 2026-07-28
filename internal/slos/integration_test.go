@@ -27,6 +27,10 @@ const (
 	fixtureGetSuccess    = "slos/get_success.json"
 	fixtureCreateSuccess = "slos/create_success.json"
 	fixtureUpdateSuccess = "slos/update_success.json"
+	// Same spec as get_success.json, with only dash0.com/version and
+	// dash0.com/updated-at bumped — what the server really returns for a PUT
+	// whose body did not change anything.
+	fixtureUpdateUnchanged = "slos/update_unchanged.json"
 	fixtureNotFound      = "slos/error_not_found.json"
 	fixtureUnauthorized  = "dashboards/error_unauthorized.json"
 )
@@ -850,3 +854,56 @@ spec:
     - displayName: 99% availability
       target: 0.99
 `
+
+// TestUpdateSLO_UnchangedDocumentReportsNoChanges pins actual idempotency: a
+// re-apply of an unchanged SLO document must be a no-op from the user's point
+// of view, reported as "no changes" — not merely "no duplicate was created".
+//
+// The mock reproduces the server behavior that made this fail: the PUT response
+// (update_unchanged.json) is byte-for-byte the GET response (get_success.json)
+// except that the server bumped dash0.com/version 1 -> 2 and dash0.com/updated-at
+// 10:00 -> 12:00. Because asset.marshalForDiff had no *dash0api.SloDefinition
+// case, neither side of the diff was normalized and the CLI printed a spurious
+// two-line version/updated-at diff on every re-apply. This test fails without
+// the strip and needs no live API, which matters because the roundtrip scripts
+// are gated on org entitlement in some environments.
+func TestUpdateSLO_UnchangedDocumentReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateUnchanged,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	// The same document an export produces — identical spec, server-managed
+	// metadata still attached.
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloUpdateWithServerFieldsYAML), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, output, `SLO "Checkout availability": no changes`,
+		"re-applying an unchanged SLO must report no changes")
+	// The whole point: no server-managed field may leak into the diff.
+	assert.NotContains(t, output, "dash0.com/updated-at",
+		"a server-bumped updated-at must not surface as a change")
+	assert.NotContains(t, output, "dash0.com/version",
+		"a server-bumped version must not surface as a change")
+	assert.NotContains(t, output, "dash0.com/created-at")
+	assert.NotContains(t, output, "(before)", "no unified diff header should be printed at all")
+}

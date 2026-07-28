@@ -27,6 +27,15 @@ const (
 	apiPathSyntheticChecks      = "/api/synthetic-checks"
 	apiPathRecordingRules       = "/api/recording-rules"
 	apiPathNotificationChannels = "/api/notification-channels"
+	apiPathSLOs                 = "/api/slos"
+
+	fixtureSLOsGetSuccess    = "slos/get_success.json"
+	fixtureSLOsCreateSuccess = "slos/create_success.json"
+	fixtureSLOsNotFound      = "slos/error_not_found.json"
+	// Same spec as slos/get_success.json with only dash0.com/version and
+	// dash0.com/updated-at bumped — what the server really returns for a PUT
+	// whose body changed nothing.
+	fixtureSLOsUpdateUnchanged = "slos/update_unchanged.json"
 )
 
 var (
@@ -36,6 +45,7 @@ var (
 	syntheticCheckIDPattern      = regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`)
 	recordingRuleIDPattern       = regexp.MustCompile(`^/api/recording-rules/[^/]+$`)
 	notificationChannelIDPattern = regexp.MustCompile(`^/api/notification-channels/[^/]+$`)
+	sloIDPattern                 = regexp.MustCompile(`^/api/slos/[^/]+$`)
 )
 
 func TestApply_CheckRule_Created(t *testing.T) {
@@ -2091,4 +2101,136 @@ spec:
 	assert.Contains(t, output, "Notification channel")
 	assert.Contains(t, output, "Slack Alerts")
 	assert.Contains(t, output, "abc-123")
+}
+
+// sloYAMLWithOrigin is an SLO document carrying only dash0.com/origin (the
+// client-settable upsert key). Its spec is identical to slos/get_success.json so
+// that a re-apply is a genuine no-op.
+const sloYAMLWithOrigin = `apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-availability
+  labels:
+    dash0.com/origin: cli-roundtrip-origin
+  annotations:
+    dash0.com/display-name: Checkout availability
+    dash0.com/enabled: "true"
+spec:
+  description: 99 percent of checkout HTTP requests succeed over a rolling 28-day window.
+  service: checkout
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 28d
+      isRolling: true
+  indicator:
+    metadata:
+      name: checkout-success-ratio
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
+`
+
+// TestApply_SLO_SecondApplyReportsNoChanges pins actual idempotency for SLOs,
+// matching the contract every sibling asset already meets (see
+// TestApply_Dashboard_* above): re-applying an unchanged document must report
+// "no changes", not merely avoid creating a duplicate.
+//
+// The second apply reproduces the exact server behavior observed in CI: the PUT
+// response is the GET response with dash0.com/updated-at and dash0.com/version
+// bumped, and nothing else changed. SLO was the only asset missing a case in
+// asset.marshalForDiff, so neither side of the diff was normalized and apply
+// printed a spurious two-line version/updated-at diff on every re-apply. This
+// test needs no live API, which matters because the roundtrip scripts only run
+// on the `static` CI shard.
+func TestApply_SLO_SecondApplyReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "cli-roundtrip-origin"
+	getPath := apiPathSLOs + "/" + origin
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloYAMLWithOrigin), 0644))
+
+	// --- First apply: the SLO does not exist yet. Origin PUT is
+	// create-or-replace, so apply PUTs and reports "created". ---
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureSLOsNotFound,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureSLOsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd1 := NewApplyCmd()
+	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err1 error
+	output1 := testutil.CaptureStdout(t, func() {
+		err1 = cmd1.Execute()
+	})
+	require.NoError(t, err1)
+	assert.Contains(t, output1, "created")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, getPath),
+		"origin-only input must upsert via PUT /api/slos/{origin}")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSLOs),
+		"origin-only input must never POST a duplicate")
+
+	// --- Second apply: the SLO now exists under the same origin, and the
+	// server bumps updated-at/version on the PUT even though the body is
+	// unchanged. A fresh mock server is used rather than Reset(), because
+	// Reset() only clears recorded requests: OnPattern appends and the first
+	// matching route wins, so the 404 GET above would otherwise still answer. ---
+	server = testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureSLOsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureSLOsUpdateUnchanged,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd2 := NewApplyCmd()
+	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err2 error
+	output2 := testutil.CaptureStdout(t, func() {
+		err2 = cmd2.Execute()
+	})
+	require.NoError(t, err2)
+
+	assert.NotContains(t, output2, "created", "a second apply must not create a duplicate")
+	assert.Contains(t, output2, "no changes", "re-applying an unchanged SLO must report no changes")
+	// The regression itself: server-managed fields must not surface as a diff.
+	assert.NotContains(t, output2, "dash0.com/updated-at",
+		"a server-bumped updated-at must not render as a change")
+	assert.NotContains(t, output2, "dash0.com/version",
+		"a server-bumped version must not render as a change")
+	assert.NotContains(t, output2, "SLO (before)", "no unified diff should be printed at all")
+
+	// Idempotency is an upsert, not a create: the second apply still PUTs by origin.
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, getPath),
+		"second apply must upsert by origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSLOs),
+		"second apply must never POST")
 }
