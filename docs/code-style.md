@@ -94,10 +94,15 @@ for _, k := range keys {
 The risk is exclusively in hand-written loops that touch a map *before* the data reaches one of those marshallers.
 
 **What this rule cannot fix by itself:** array/slice fields are never reordered by a marshaller — a JSON array's element order is preserved verbatim.
-When the Dash0 API itself returns a semantically-unordered field as an array (e.g. `spec.permissions`, dashboard `spec.panels`) in an order that varies between requests, no client-side sort of *map* keys addresses that, because there's no map to sort — the instability lives in the server response.
+When the Dash0 API itself returns a semantically-unordered field as an *array* in an order that varies between requests, no client-side sort of *map* keys addresses that, because there's no map to sort — the instability lives in the server response.
 When such a field has a natural, stable sort key, normalize it explicitly at the point of display/diff (not in the marshalling call itself).
 `spec.permissions` on views and synthetic checks is the worked example: each entry carries exactly one of `role`/`teamId`/`userId`, so `internal/asset/permissions.go`'s `SortViewPermissions`/`SortSyntheticCheckPermissions` sort lexicographically on whichever is set (mirroring the `dash0.com/sharing` annotation's `role:`/`team:`/`user:` prefixes) and are called from `internal/asset/diff.go`'s `marshalForDiff` (so `create`/`update`/`apply` diffs are stable) and from `views`/`synthetic-checks` `get`/`list` (so exported YAML/JSON is stable too).
-Dashboard `spec.panels` remains unaddressed — panels have no single field that's an obvious, product-agreed identity key, so sorting it needs a design decision rather than a mechanical fix; if one is made, follow the same pattern (a small `Sort*` helper in `internal/asset/`, called from both the diff path and the `get`/`list` export paths).
+
+Dashboard `spec.panels` looked like the same problem at first glance but isn't: despite the name, `panels` is a JSON *object* keyed by panel ID (`{"<uuid>": {"kind": "Panel", ...}, ...}`), not an array — Dashboard's `Spec` field is `map[string]interface{}`, so `panels` decodes as a nested `map[string]interface{}` too.
+That means it already falls under the "does not cover" paragraph above: `encoding/json` (and therefore `sigs.k8s.io/yaml`, used by every dashboard output path) sorts its keys on every marshal, regardless of what order the server originally sent them in.
+No `Sort*` helper is needed or possible here — there's no array to sort, and the map is already deterministic.
+`TestPrintDiff_Dashboard_PanelKeyOrderIsNotAChange` in `internal/asset/diff_test.go` pins this down as a regression test.
+Before assuming a given API field needs an explicit sort, check whether it's actually a JSON array (needs one, if unordered) or a JSON object (already handled) — the field name alone (`panels`, `permissions`) doesn't tell you which.
 
 ## Reference implementations
 
