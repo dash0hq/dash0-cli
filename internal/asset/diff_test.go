@@ -2,6 +2,7 @@ package asset
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -38,6 +39,47 @@ func TestPrintDiff_NoChanges(t *testing.T) {
 	err := PrintDiff(&buf, "Dashboard", "My Dashboard", dashboard, same)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), `Dashboard "My Dashboard": no changes`)
+}
+
+// TestPrintDiff_Dashboard_PanelKeyOrderIsNotAChange guards against issue #231.
+// spec.panels is a JSON object keyed by panel ID, not an array, so unlike
+// spec.permissions it needs no explicit sort: encoding/json (used by
+// sigs.k8s.io/yaml under marshalForDiff) already sorts map keys on every
+// marshal, regardless of what order the two source documents' panel keys
+// were in.
+func TestPrintDiff_Dashboard_PanelKeyOrderIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	beforeJSON := `{
+		"kind": "Dashboard",
+		"metadata": {"name": "test"},
+		"spec": {
+			"panels": {
+				"zzz-panel": {"kind": "Panel", "spec": {"display": {"name": "Z"}}},
+				"aaa-panel": {"kind": "Panel", "spec": {"display": {"name": "A"}}}
+			}
+		}
+	}`
+	afterJSON := `{
+		"kind": "Dashboard",
+		"metadata": {"name": "test"},
+		"spec": {
+			"panels": {
+				"aaa-panel": {"kind": "Panel", "spec": {"display": {"name": "A"}}},
+				"zzz-panel": {"kind": "Panel", "spec": {"display": {"name": "Z"}}}
+			}
+		}
+	}`
+
+	var before, after dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal([]byte(beforeJSON), &before))
+	require.NoError(t, json.Unmarshal([]byte(afterJSON), &after))
+
+	var buf bytes.Buffer
+	err := PrintDiff(&buf, "Dashboard", "test", &before, &after)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), `Dashboard "test": no changes`)
 }
 
 func TestPrintDiff_WithChanges(t *testing.T) {
@@ -180,6 +222,43 @@ func TestPrintDiff_StripsServerFields_View(t *testing.T) {
 		},
 		Spec: dash0api.ViewSpec{
 			Display: dash0api.ViewDisplay{},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := PrintDiff(&buf, "View", "Error Logs", before, after)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), `View "Error Logs": no changes`)
+}
+
+// TestPrintDiff_View_PermissionOrderIsNotAChange guards against issue #231:
+// the server does not guarantee a stable order for spec.permissions, so a
+// before/after pair that only differs in permission order must not render as
+// a change.
+func TestPrintDiff_View_PermissionOrderIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Permissions: &[]dash0api.ViewPermission{
+				{Role: strPtr("basic_member")},
+				{Role: strPtr("admin")},
+			},
+		},
+	}
+	after := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Permissions: &[]dash0api.ViewPermission{
+				{Role: strPtr("admin")},
+				{Role: strPtr("basic_member")},
+			},
 		},
 	}
 

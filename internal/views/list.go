@@ -112,6 +112,7 @@ func fetchFullViews(
 			return nil, fmt.Errorf("failed to fetch view %q: %w", item.Id, err)
 		}
 		dash0api.SetViewIDIfAbsent(view, item.Id)
+		asset.SortViewPermissions(view)
 		definitions = append(definitions, view)
 	}
 	return definitions, nil

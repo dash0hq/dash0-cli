@@ -112,6 +112,7 @@ func fetchFullSyntheticChecks(
 			return nil, fmt.Errorf("failed to fetch synthetic check %q: %w", item.Id, err)
 		}
 		dash0api.SetSyntheticCheckIDIfAbsent(check, item.Id)
+		asset.SortSyntheticCheckPermissions(check)
 		definitions = append(definitions, check)
 	}
 	return definitions, nil

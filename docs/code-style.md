@@ -67,6 +67,43 @@ All lint issues must be resolved before merging.
 - When asserting on request bodies in integration tests, parse the body into the appropriate typed struct (e.g., `dash0api.DashboardDefinition`, `dash0api.PrometheusAlertRule`, `dash0api.ViewDefinition`, `dash0api.SyntheticCheckDefinition`) and assert on the struct fields.
   Do not use `assert.Contains` on the raw JSON string — substring matching is fragile and can match unrelated fields or partial values.
 
+## Deterministic output ordering
+
+Go randomizes map iteration order on every process run.
+Any code that builds user-facing output (table rows, hand-assembled strings, CSV cells, or a struct that later gets marshalled) by doing `for k, v := range someMap { ... }` and printing/appending as it goes will therefore emit the same logical data in a different order from one invocation to the next, even with byte-identical input.
+This is invisible in a single manual test run and shows up as flaky diffs, flaky golden-file tests, or (per [issue #231](https://github.com/dash0hq/dash0-cli/issues/231)) noisy `apply`/`get` round-trips once a user or CI script starts comparing output across runs.
+
+**The rule:** never range over a map directly to build output.
+Collect its keys into a slice, `sort.Strings` (or the appropriate typed sort) it, then range the sorted slice:
+
+```go
+keys := make([]string, 0, len(m))
+for k := range m {
+    keys = append(keys, k)
+}
+sort.Strings(keys)
+for _, k := range keys {
+    fmt.Printf("  %s: %s\n", k, m[k])
+}
+```
+
+`internal/otlp/proxy_tail.go` (`writeAttributes`, `renderMap`) and `internal/rawapi/api_cmd.go` (`writeHeaders`) already follow this pattern — copy them rather than reinventing it.
+`internal/metrics/shared.go`'s `renderInstantTable` verbose format was the one place that didn't, ranging directly over a `map[string]string` of Prometheus labels; it was fixed as part of closing issue #231 and is a good before/after reference if you need one.
+
+**What this rule does *not* cover:** marshalling a struct or a `map[string]interface{}` through `encoding/json`, `sigs.k8s.io/yaml`, or `gopkg.in/yaml.v3` is already deterministic — all three sort object/map keys internally before writing them out, so `formatter.PrintYAML`/`PrintJSON` and `sigsyaml.Marshal` (used throughout `internal/asset/diff.go` and every asset command) never need a manual sort.
+The risk is exclusively in hand-written loops that touch a map *before* the data reaches one of those marshallers.
+
+**What this rule cannot fix by itself:** array/slice fields are never reordered by a marshaller — a JSON array's element order is preserved verbatim.
+When the Dash0 API itself returns a semantically-unordered field as an *array* in an order that varies between requests, no client-side sort of *map* keys addresses that, because there's no map to sort — the instability lives in the server response.
+When such a field has a natural, stable sort key, normalize it explicitly at the point of display/diff (not in the marshalling call itself).
+`spec.permissions` on views and synthetic checks is the worked example: each entry carries exactly one of `role`/`teamId`/`userId`, so `internal/asset/permissions.go`'s `SortViewPermissions`/`SortSyntheticCheckPermissions` sort lexicographically on whichever is set (mirroring the `dash0.com/sharing` annotation's `role:`/`team:`/`user:` prefixes) and are called from `internal/asset/diff.go`'s `marshalForDiff` (so `create`/`update`/`apply` diffs are stable) and from `views`/`synthetic-checks` `get`/`list` (so exported YAML/JSON is stable too).
+
+Dashboard `spec.panels` looked like the same problem at first glance but isn't: despite the name, `panels` is a JSON *object* keyed by panel ID (`{"<uuid>": {"kind": "Panel", ...}, ...}`), not an array — Dashboard's `Spec` field is `map[string]interface{}`, so `panels` decodes as a nested `map[string]interface{}` too.
+That means it already falls under the "does not cover" paragraph above: `encoding/json` (and therefore `sigs.k8s.io/yaml`, used by every dashboard output path) sorts its keys on every marshal, regardless of what order the server originally sent them in.
+No `Sort*` helper is needed or possible here — there's no array to sort, and the map is already deterministic.
+`TestPrintDiff_Dashboard_PanelKeyOrderIsNotAChange` in `internal/asset/diff_test.go` pins this down as a regression test.
+Before assuming a given API field needs an explicit sort, check whether it's actually a JSON array (needs one, if unordered) or a JSON object (already handled) — the field name alone (`panels`, `permissions`) doesn't tell you which.
+
 ## Reference implementations
 
 When implementing a new command, use the following packages as templates for each command type:

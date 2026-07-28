@@ -43,6 +43,7 @@ func marshalForDiff(asset any) (string, error) {
 			return "", fmt.Errorf("failed to unmarshal view: %w", err)
 		}
 		dash0api.StripViewServerFields(&v)
+		SortViewPermissions(&v)
 		stripped = &v
 	case *dash0api.SyntheticCheckDefinition:
 		var c dash0api.SyntheticCheckDefinition
@@ -50,6 +51,7 @@ func marshalForDiff(asset any) (string, error) {
 			return "", fmt.Errorf("failed to unmarshal synthetic check: %w", err)
 		}
 		dash0api.StripSyntheticCheckServerFields(&c)
+		SortSyntheticCheckPermissions(&c)
 		stripped = &c
 	case *dash0api.SpamFilter:
 		var s dash0api.SpamFilter
