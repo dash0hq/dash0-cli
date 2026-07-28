@@ -242,8 +242,13 @@ func renderInstantTable(response *QueryInstantResponse, cols []query.ColumnDef, 
 	// Verbose label-per-line format (backwards compatible with the original metrics instant output).
 	for _, result := range response.Data.Result {
 		fmt.Println("Metric:")
-		for k, v := range result.Metric {
-			fmt.Printf("  %s: %s\n", k, v)
+		keys := make([]string, 0, len(result.Metric))
+		for k := range result.Metric {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Printf("  %s: %s\n", k, result.Metric[k])
 		}
 		if len(result.Value) >= 2 {
 			fmt.Printf("Value: %v\n", result.Value[1])

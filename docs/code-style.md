@@ -67,6 +67,36 @@ All lint issues must be resolved before merging.
 - When asserting on request bodies in integration tests, parse the body into the appropriate typed struct (e.g., `dash0api.DashboardDefinition`, `dash0api.PrometheusAlertRule`, `dash0api.ViewDefinition`, `dash0api.SyntheticCheckDefinition`) and assert on the struct fields.
   Do not use `assert.Contains` on the raw JSON string — substring matching is fragile and can match unrelated fields or partial values.
 
+## Deterministic output ordering
+
+Go randomizes map iteration order on every process run.
+Any code that builds user-facing output (table rows, hand-assembled strings, CSV cells, or a struct that later gets marshalled) by doing `for k, v := range someMap { ... }` and printing/appending as it goes will therefore emit the same logical data in a different order from one invocation to the next, even with byte-identical input.
+This is invisible in a single manual test run and shows up as flaky diffs, flaky golden-file tests, or (per [issue #231](https://github.com/dash0hq/dash0-cli/issues/231)) noisy `apply`/`get` round-trips once a user or CI script starts comparing output across runs.
+
+**The rule:** never range over a map directly to build output.
+Collect its keys into a slice, `sort.Strings` (or the appropriate typed sort) it, then range the sorted slice:
+
+```go
+keys := make([]string, 0, len(m))
+for k := range m {
+    keys = append(keys, k)
+}
+sort.Strings(keys)
+for _, k := range keys {
+    fmt.Printf("  %s: %s\n", k, m[k])
+}
+```
+
+`internal/otlp/proxy_tail.go` (`writeAttributes`, `renderMap`) and `internal/rawapi/api_cmd.go` (`writeHeaders`) already follow this pattern — copy them rather than reinventing it.
+`internal/metrics/shared.go`'s `renderInstantTable` verbose format was the one place that didn't, ranging directly over a `map[string]string` of Prometheus labels; it was fixed as part of closing issue #231 and is a good before/after reference if you need one.
+
+**What this rule does *not* cover:** marshalling a struct or a `map[string]interface{}` through `encoding/json`, `sigs.k8s.io/yaml`, or `gopkg.in/yaml.v3` is already deterministic — all three sort object/map keys internally before writing them out, so `formatter.PrintYAML`/`PrintJSON` and `sigsyaml.Marshal` (used throughout `internal/asset/diff.go` and every asset command) never need a manual sort.
+The risk is exclusively in hand-written loops that touch a map *before* the data reaches one of those marshallers.
+
+**What this rule cannot fix:** array/slice fields are never reordered by a marshaller — a JSON array's element order is preserved verbatim.
+When the Dash0 API itself returns a semantically-unordered field as an array (e.g. `spec.permissions`, dashboard `spec.panels`) in an order that varies between requests, no client-side sort of *map* keys addresses that, because there's no map to sort — the instability lives in the server response.
+If the CLI ever needs to normalize such a field for a clean diff, the fix is an explicit sort of the decoded slice by a stable key (e.g. panel ID) inserted into `internal/asset/diff.go`'s `marshalForDiff`, not a change to the marshalling call itself.
+
 ## Reference implementations
 
 When implementing a new command, use the following packages as templates for each command type:
