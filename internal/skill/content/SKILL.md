@@ -1,6 +1,6 @@
 ---
 name: dash0-cli
-description: Use when working with Dash0 observability data or configuration via the dash0 CLI (the `dash0` binary) — querying logs, spans, traces, metrics, or failed checks; managing dashboards, views, check rules, synthetic checks, SLOs, recording rules, notification channels, or spam filters; sending OTLP telemetry or deployment events; or managing teams, members, and profiles. Trigger on "Dash0", "dash0 CLI", or any of these operations.
+description: Use when working with Dash0 observability data or configuration via the dash0 CLI (the `dash0` binary) — querying logs, spans, traces, metrics, or failed checks; managing dashboards, views, check rules, synthetic checks, service level objectives (SLOs), recording rules, notification channels, or spam filters; sending OTLP telemetry or deployment events; or managing teams, members, and profiles. Trigger on "Dash0", "dash0 CLI", or any of these operations.
 ---
 
 <!-- This file is packaged with the dash0-cli distribution. Installed copies are overwritten by `dash0 skill install` / `make skill-bundle`; edit the hand-curated source at internal/skill/content/SKILL.md in the dash0hq/dash0-cli repository instead. -->
@@ -60,7 +60,11 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `Dash0NotificationChannel` | no ID field — `metadata.labels["dash0.com/origin"]` is the upsert key |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) |
 
-**Origin vs ID — do not conflate them.** *Origin* (`dash0.com/origin` label) identifies which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`) — it's provenance metadata, not a lookup key, and the CLI strips it before sending most asset types to the API so it doesn't claim ownership of assets managed elsewhere. *ID* is the user-defined external identifier used for upsert, described above. Notification channels, spam filters, SLOs, and teams are the exceptions where origin (not ID) is the upsert key — for those kinds the CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent.
+**Origin vs ID — do not conflate them.** *ID* is the user-defined external identifier described above. *Origin* (`dash0.com/origin` label) records which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`, `operator`). Which of the two is the upsert key depends on the kind, and the split follows the shape of the underlying API rather than being a list of exceptions:
+
+- **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, and teams. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent.
+- **ID is the upsert key, and origin is provenance only** for views, check rules, recording rules, and synthetic checks. The CLI strips `dash0.com/origin` before sending these documents, so an `apply` never claims ownership of an asset managed by Terraform or the Kubernetes operator.
+- **Dashboards** use `metadata.dash0Extensions.id`; the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never upsert a dashboard by origin.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so an export → edit → `apply` (or `update`) round-trips through the identifier automatically.
 
@@ -162,7 +166,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `notification-channels` | Notification channel CRUD (organization-level, no dataset) |
 | `otlp` | Local OTLP forwarding proxy (`otlp proxy`) |
 | `recording-rules` | Recording rule CRUD (PrometheusRule CRD format) |
-| `slos` | SLO CRUD (OpenSLO v1 documents; `dash0.com/origin` is the upsert key) |
+| `slos` | SLO CRUD (`apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1, not upstream-identical; `dash0.com/origin` is the upsert key) |
 | `spam-filters` | Spam filter CRUD (v1alpha1 and v1alpha2) |
 | `spans` | Query and send spans |
 | `synthetic-checks` | Synthetic check CRUD |
