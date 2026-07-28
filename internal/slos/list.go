@@ -83,7 +83,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		definitions := make([]interface{}, 0, len(items))
+		definitions := make([]any, 0, len(items))
 		for _, slo := range items {
 			definitions = append(definitions, slo)
 		}
@@ -98,20 +98,20 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 
 func printSLOTable(f *output.Formatter, items []*dash0api.SloDefinition, format output.Format, apiUrl string, dataset *string) error {
 	columns := []output.Column{
-		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
+		{Header: internal.HEADER_NAME, Width: 40, Value: func(item any) string {
 			return dash0api.GetSLOName(item.(*dash0api.SloDefinition))
 		}},
-		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
+		{Header: internal.HEADER_ID, Width: 36, Value: func(item any) string {
 			return dash0api.GetSLOID(item.(*dash0api.SloDefinition))
 		}},
 	}
 
 	if format == output.FormatWide || format == output.FormatCSV {
 		columns = append(columns,
-			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_DATASET, Width: 15, Value: func(item any) string {
 				return dash0api.GetSLODataset(item.(*dash0api.SloDefinition))
 			}},
-			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string {
+			output.Column{Header: internal.HEADER_URL, Width: 70, Value: func(item any) string {
 				return dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeSLO, dash0api.GetSLOID(item.(*dash0api.SloDefinition)), dataset)
 			}},
 		)
@@ -122,7 +122,7 @@ func printSLOTable(f *output.Formatter, items []*dash0api.SloDefinition, format 
 		return nil
 	}
 
-	data := make([]interface{}, len(items))
+	data := make([]any, len(items))
 	for i, s := range items {
 		data[i] = s
 	}

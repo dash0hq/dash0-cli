@@ -76,6 +76,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	// Strip server-managed fields before diffing or sending the body back. An
+	// exported SLO (e.g. via `dash0 slos get -o yaml`) carries dash0.com/origin
+	// plus version, dataset, source, and created/updated timestamps, which the
+	// server rejects or echoes back as spurious diff noise (the same class of
+	// "origin does not match" 400 that bit views). The apply code path
+	// (asset.ImportSLO) does the same strip; without it, `apply -f` and
+	// `update -f` diverge on the same exported file.
+	dash0api.StripSLOServerFields(&slo)
+
 	if flags.DryRun {
 		return asset.PrintDiff(os.Stdout, "SLO", slo.Metadata.Name, before, &slo)
 	}
