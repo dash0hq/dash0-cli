@@ -887,3 +887,498 @@ func TestRemoveMembers_ForceContinuesOn404Across(t *testing.T) {
 	assert.Contains(t, stdout, "user_member2")
 	assert.Contains(t, stdout, "removed from team")
 }
+
+// countRequests returns the number of recorded requests matching the given
+// method and path.
+func countRequests(requests []testutil.RecordedRequest, method, path string) int {
+	n := 0
+	for _, req := range requests {
+		if req.Method == method && req.Path == path {
+			n++
+		}
+	}
+	return n
+}
+
+// TestUpdateTeam_Imperative_Name backfills coverage for the pre-existing
+// imperative code path (--name). The flag is deprecated but still routes
+// through GetTeam → merge display → PUT /display, unchanged from before
+// issue #237.
+func TestUpdateTeam_Imperative_Name(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/teams/[^/]+/display$`), testutil.MockResponse{
+		// Server accepts 200 OK or 204 No Content per the OpenAPI spec.
+		// The generated response parser unconditionally unmarshals the body
+		// into ErrorResponse when Content-Type is JSON — 204 with a stripped
+		// body crashes on "unexpected end of JSON input", so use 200 with
+		// an empty JSON object.
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", teamID, "--name", "New Team Name", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "updated")
+	assert.Equal(t, 1, countRequests(server.Requests(), http.MethodPut, "/api/teams/"+teamID+"/display"),
+		"imperative --name must land on the /display sub-endpoint, not the top-level upsert")
+}
+
+// TestUpdateTeamFromFile_ByID exercises `teams update <id> -f <file>` where
+// the file's dash0.com/id matches the positional argument. Asserts the
+// canonical GET → PUT flow: the fetch validates existence, then the full
+// document lands via UpsertTeam.
+func TestUpdateTeamFromFile_ByID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/id: `+teamID+`
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", teamID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), "/api/teams/"+teamID, "expected PUT-by-id after preflight GET")
+	assert.Equal(t, 1, countRequests(server.Requests(), http.MethodPut, "/api/teams/"+teamID),
+		"file-based update must not hit the /display sub-endpoint")
+	assert.Equal(t, 0, countRequests(server.Requests(), http.MethodPut, "/api/teams/"+teamID+"/display"),
+		"file-based update must not fall through to UpdateTeamDisplay")
+}
+
+// TestUpdateTeamFromFile_ByOrigin covers the case where the file names an
+// origin and the positional argument is the same origin. GET-by-origin then
+// PUT-by-origin, matching the ImportTeam routing.
+func TestUpdateTeamFromFile_ByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "backend-team-origin"
+	teamsPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, teamsPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: `+origin+`
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", origin, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "expected PUT-by-origin")
+}
+
+// TestUpdateTeamFromFile_IDFromFile omits the positional argument and lets
+// the CLI derive the addressor from the file. Origin wins over id, matching
+// asset.ImportTeam.
+func TestUpdateTeamFromFile_IDFromFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "backend-team-origin"
+	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	teamsPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, teamsPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: `+origin+`
+    dash0.com/id: `+teamID+`
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "origin must win over id when both are present in the file")
+}
+
+// TestUpdateTeamFromFile_ArgFileMismatch pins the safety check that stops
+// an operator from applying a file to the wrong team by mistake. The mock
+// server records nothing — the failure is client-side, before any API call.
+func TestUpdateTeamFromFile_ArgFileMismatch(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/id: file-id-1111-2222-3333-444444444444
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", "arg-id-aaaa-bbbb-cccc-dddddddddddd", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not match")
+	assert.Contains(t, err.Error(), "arg-id-aaaa-bbbb-cccc-dddddddddddd")
+	assert.Contains(t, err.Error(), "file-id-1111-2222-3333-444444444444")
+	assert.Empty(t, server.Requests(), "mismatch must fail before any API call")
+}
+
+// TestUpdateTeamFromFile_NoIDAnywhere pins the empty-addressor case.
+func TestUpdateTeamFromFile_NoIDAnywhere(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no team ID provided as argument")
+	assert.Empty(t, server.Requests(), "missing addressor must fail before any API call")
+}
+
+// TestUpdateTeamFromFile_NotFound asserts that `teams update -f` fails
+// cleanly when the team does not exist. This is the semantic that
+// distinguishes `update` from `create`/`apply` — the update endpoint must
+// not create a new team on 404.
+func TestUpdateTeamFromFile_NotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureTeamsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/id: `+teamID+`
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", teamID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	// No PUT must have been attempted.
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, http.MethodPut, req.Method, "update must not PUT after a 404 preflight")
+	}
+}
+
+// TestUpdateTeamFromFile_RejectsImperativeFlags asserts that combining -f
+// with any of the deprecated imperative flags is a usage error.
+func TestUpdateTeamFromFile_RejectsImperativeFlags(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: Renamed Team
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", "-f", yamlFile, "--name", "collision", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot combine -f/--file")
+	assert.Empty(t, server.Requests(), "usage error must fail before any API call")
+}
+
+// TestUpdateTeamFromFile_DryRun asserts that --dry-run prints a diff and
+// does not PUT the team.
+func TestUpdateTeamFromFile_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	// Members list may or may not be called for email resolution; register
+	// a permissive handler so the dry-run path is not blocked on missing routes.
+	server.On(http.MethodGet, apiPathMembers, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureMembersListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/id: `+teamID+`
+spec:
+  display:
+    name: A Completely Different Name
+    color:
+      from: "#111111"
+      to: "#222222"
+  members: []
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", teamID, "-f", yamlFile, "--dry-run", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, output, "A Completely Different Name",
+		"dry-run should surface the incoming display name in the diff")
+
+	// Zero PUTs — dry-run must not mutate.
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, http.MethodPut, req.Method, "dry-run must not PUT")
+	}
+}
+
+// TestUpdateTeamFromFile_Idempotent_NoOpWhenUnchanged is the mock-server
+// analogue of the roundtrip test's Step 4a/4b: reapplying a YAML that
+// matches the server-side state (once server-managed fields are stripped)
+// must print "no changes" — no spurious diff hunks from server-echoed
+// annotations, upsert key hints, or member id/email drift.
+func TestUpdateTeamFromFile_Idempotent_NoOpWhenUnchanged(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	// Mock server returns the same envelope from both GET and PUT, standing
+	// in for the real backend echoing the request body back.
+	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureTeamsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	// PUT echoes the same team back — the envelope-only shape UpsertTeam
+	// expects. This has to match get_success.json's inner .team content so
+	// PrintDiff renders "no changes"; a fresh fixture is needed because
+	// get_success is wrapped in {team, members, ...} and create_success has
+	// different content.
+	server.OnPattern(http.MethodPut, teamsIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   "teams/upsert_echo.json",
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodGet, apiPathMembers, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureMembersListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	// Input mirrors the server's canonical team shape — same display name,
+	// same color, same members — with server-managed annotations that
+	// StripTeamServerFields must drop.
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "team.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/id: `+teamID+`
+    dash0.com/origin: dash0-cli
+  annotations:
+    dash0.com/created-at: "2025-01-01T00:00:00Z"
+    dash0.com/updated-at: "2025-01-02T00:00:00Z"
+spec:
+  display:
+    name: Backend Team
+    color:
+      from: "#FF6B6B"
+      to: "#4ECDC4"
+  members:
+    - m1-0000-0000-0000-000000000001
+    - m2-0000-0000-0000-000000000002
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newExperimentalTeamsCmd()
+	cmd.SetArgs([]string{"-X", "teams", "update", teamID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, output, "no changes",
+		"reapplying an unchanged YAML must render as no-op — server-managed annotations must be stripped and not leak into the diff")
+	assert.NotContains(t, output, "dash0.com/created-at",
+		"server-managed annotations must not appear in the rendered diff")
+	assert.NotContains(t, output, "dash0.com/updated-at",
+		"server-managed annotations must not appear in the rendered diff")
+}

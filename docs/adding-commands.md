@@ -136,7 +136,7 @@ Do not duplicate shared logic — see @docs/project-structure.md for where share
 - Add the command to @docs/commands.md under the appropriate [taxonomy category](commands.md#command-taxonomy), with flags, outputs, and examples.
 - For Asset CRUD commands, add the new `kind` (and any CRD aliases) to the list of supported kinds in the `apply` section of @docs/commands.md, and add a YAML example under "Asset YAML formats".
 - **For a new command or asset kind, also add an entry to `internal/skill/gen`'s topic map** (and, for asset kinds, its `assetYAMLLabels`/`includeQuickRef` source) so the dash0-cli Agent Skill covers it — see @docs/agent-skill-maintenance.md.
-  Run `make skill-bundle` afterward and commit the regenerated `internal/skill/content/references/*.md` (plus the root-level `.claude/skills/dash0-cli/` and `.agents/skills/dash0-cli/` copies); `make skill-validate` (part of `make lint`) fails the build if this is forgotten.
+  Run `make skill-bundle` afterward and commit the regenerated `internal/skill/content/references/*.md`; the two root-level publish paths (`.claude/skills/dash0-cli/` and `.agents/skills/dash0-cli/`) are symlinks to `internal/skill/content/` and pick the change up automatically. `make skill-validate` (part of `make lint`) fails the build if this is forgotten.
 - Update @README.md if the command adds new user-facing functionality.
 - Add to @docs/cli-naming-conventions.md if introducing new subcommand patterns.
 - Create a changelog entry — see @docs/changelog-maintenance.md.
