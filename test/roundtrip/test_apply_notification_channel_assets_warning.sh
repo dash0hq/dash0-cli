@@ -51,6 +51,11 @@ echo "Origin: $ORIGIN"
 
 cleanup() {
   "$DASH0" check-rules delete "$CHECK_RULE_ID" --force > /dev/null 2>&1 || true
+  # Delete by UUID when known (the origin lookup stops working once SIG-228 rewrites the origin
+  # on an update-by-UUID), falling back to the origin for early exits.
+  if [ -n "${CHANNEL_ID:-}" ]; then
+    "$DASH0" -X notification-channels delete "$CHANNEL_ID" --force > /dev/null 2>&1 || true
+  fi
   "$DASH0" -X notification-channels delete "$ORIGIN" --force > /dev/null 2>&1 || true
 }
 trap 'cleanup; rm -rf "$TMPDIR"' EXIT
@@ -145,9 +150,11 @@ if grep -q "$WARNING_PATTERN" "$UPDATE1_STDERR"; then
 fi
 
 # Step 6: update with hand-added assets — expect the warning, and the update still succeeds.
+# Addressed by UUID, not origin: step 5's update-by-UUID currently rewrites the stored origin
+# to the UUID (server bug, SIG-228), so an origin lookup here would 404. The UUID always works.
 echo "--- Step 6: update with hand-added assets (expect: warning) ---"
 UPDATE2_STDERR="${TMPDIR}/update2.stderr"
-if ! "$DASH0" -X notification-channels update "$ORIGIN" -f "$YAML_FILE" > /dev/null 2> "$UPDATE2_STDERR"; then
+if ! "$DASH0" -X notification-channels update "$CHANNEL_ID" -f "$YAML_FILE" > /dev/null 2> "$UPDATE2_STDERR"; then
   cat "$UPDATE2_STDERR"
   echo "FAIL: the update with hand-added assets must succeed"
   exit 1
