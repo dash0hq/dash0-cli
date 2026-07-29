@@ -1,0 +1,23 @@
+{
+  "kind": "Team",
+  "metadata": {
+    "name": "backend-team",
+    "labels": {
+      "dash0.com/id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+      "dash0.com/origin": "dash0-cli"
+    }
+  },
+  "spec": {
+    "display": {
+      "name": "Backend Team",
+      "color": {
+        "from": "#FF6B6B",
+        "to": "#4ECDC4"
+      }
+    },
+    "members": [
+      "m1-0000-0000-0000-000000000001",
+      "m2-0000-0000-0000-000000000002"
+    ]
+  }
+}
