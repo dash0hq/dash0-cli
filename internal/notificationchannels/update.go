@@ -63,6 +63,10 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 
+	if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+	}
+
 	var id string
 	fileID := dash0api.GetNotificationChannelID(&channel)
 	if len(args) == 1 {

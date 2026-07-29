@@ -189,6 +189,16 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			if err := validatePrometheusRule(doc.raw); err != nil {
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 			}
+		} else if normalizeKind(doc.kind) == "notificationchannel" {
+			// Non-fatal: warn when the document carries spec.routing.assets, which the API treats
+			// as read-only and silently ignores on write. The apply proceeds — the rest of the
+			// document is applied as usual.
+			var channel dash0api.NotificationChannelDefinition
+			if err := sigsyaml.Unmarshal(doc.raw, &channel); err == nil {
+				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
+					fmt.Fprintf(os.Stderr, "Warning: %s: %s\n", doc.location(), warning)
+				}
+			}
 		}
 	}
 	if len(validationErrors) > 0 {
