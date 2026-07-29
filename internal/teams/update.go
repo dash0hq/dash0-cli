@@ -113,17 +113,8 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 		// argument must equal one of them. This is the analogue of the check
 		// in `views update` and `dashboards update`, adapted for the fact that
 		// a team YAML can carry two identifiers.
-		if fileOrigin != "" || fileID != "" {
-			if addressor != fileOrigin && addressor != fileID {
-				switch {
-				case fileOrigin != "" && fileID != "":
-					return fmt.Errorf("the ID argument %q does not match dash0.com/origin %q or dash0.com/id %q in the file", addressor, fileOrigin, fileID)
-				case fileOrigin != "":
-					return fmt.Errorf("the ID argument %q does not match dash0.com/origin %q in the file", addressor, fileOrigin)
-				default:
-					return fmt.Errorf("the ID argument %q does not match dash0.com/id %q in the file", addressor, fileID)
-				}
-			}
+		if (fileOrigin != "" || fileID != "") && addressor != fileOrigin && addressor != fileID {
+			return fmt.Errorf("the ID argument %q does not match the dash0.com/origin or dash0.com/id label in the file (origin=%q, id=%q)", addressor, fileOrigin, fileID)
 		}
 	} else {
 		// Origin wins over id, mirroring asset.ImportTeam's routing.
