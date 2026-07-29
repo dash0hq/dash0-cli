@@ -686,17 +686,3 @@ spec:
 	require.Len(t, validationWarnings, 1)
 	assert.Contains(t, validationWarnings[0], "spec.routing.assets is API-managed and ignored on write")
 }
-
-func TestValidateDocuments_NotificationChannelParseError(t *testing.T) {
-	// readMultiDocumentYAML already rejects malformed channel documents during name/id
-	// extraction; this pins the defensive branch in validateDocuments for documents that
-	// reach it directly.
-	docs := []assetDocument{{
-		kind: "Dash0NotificationChannel",
-		raw:  []byte(`{"spec": {"routing": "not an object"}}`),
-	}}
-
-	validationErrors, validationWarnings := validateDocuments(docs)
-	require.Len(t, validationErrors, 1, "a malformed channel document must fail validation up front")
-	assert.Empty(t, validationWarnings)
-}

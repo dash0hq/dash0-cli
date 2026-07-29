@@ -246,16 +246,15 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 			}
 		} else if normalizeKind(doc.kind) == "notificationchannel" {
-			// A malformed channel document becomes an up-front validation error (like the
-			// spamfilter and prometheusrule branches) so a multi-doc apply never partially fails
-			// on the same unmarshal later. A parseable document carrying spec.routing.assets gets
-			// a non-fatal warning — the API treats the field as API-managed and silently ignores
-			// it on write; the apply proceeds as usual.
+			// A document carrying spec.routing.assets gets a non-fatal warning — the API treats
+			// the field as API-managed and silently ignores it on write; the apply proceeds as
+			// usual. Parse errors are already caught during metadata extraction in
+			// readMultiDocumentYAML.
 			var channel dash0api.NotificationChannelDefinition
-			if err := sigsyaml.Unmarshal(doc.raw, &channel); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-			} else if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
-				validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+			if err := sigsyaml.Unmarshal(doc.raw, &channel); err == nil {
+				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
+					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+				}
 			}
 		}
 	}

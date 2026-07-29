@@ -2,7 +2,6 @@ package asset
 
 import (
 	"context"
-	"reflect"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
@@ -22,22 +21,6 @@ func RoutingAssetsWarning(channel *dash0api.NotificationChannelDefinition) strin
 		"are unaffected. To bind a check rule, set the dash0.com/notification-channel-ids " +
 		"annotation on the check rule; to bind a synthetic check, set spec.notifications.channels on " +
 		"the synthetic check."
-}
-
-// RoutingAssetsChangedWarning is the update-path variant of RoutingAssetsWarning: it stays silent
-// when the definition's spec.routing.assets matches what the server already reports for the
-// channel. A get → edit → update roundtrip carries the server's own back-reference verbatim, and
-// warning on it would falsely suggest the bindings are about to be dropped.
-func RoutingAssetsChangedWarning(channel *dash0api.NotificationChannelDefinition, before *dash0api.NotificationChannelDefinition) string {
-	warning := RoutingAssetsWarning(channel)
-	if warning == "" {
-		return ""
-	}
-	if before != nil && before.Spec.Routing != nil &&
-		reflect.DeepEqual(channel.Spec.Routing.Assets, before.Spec.Routing.Assets) {
-		return ""
-	}
-	return warning
 }
 
 // ImportNotificationChannel creates or updates a notification channel via the standard CRUD APIs.
