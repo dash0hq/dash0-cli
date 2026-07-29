@@ -33,13 +33,15 @@ The generator also rewrites the one non-portable link in `docs/commands.md` (`do
 ## When to regenerate
 
 Run `make skill-bundle` whenever `docs/commands.md` changes in a way that affects a topic's extracted sections, or whenever a new command or asset kind is added (see step 10 of `docs/adding-commands.md`).
-It writes to three locations from one generation step:
+The canonical bundle lives at `internal/skill/content/`, in one place:
 
-1. `internal/skill/content/references/*.md` — embedded into the `dash0` binary via `//go:embed`, served by `dash0 skill install`/`dash0 skill show`.
-2. `.claude/skills/dash0-cli/` (repo root) and `.agents/skills/dash0-cli/` (repo root) — checked-in copies of the same content, so `npx skills add dash0hq/dash0-cli` and `gh skill install dash0hq/dash0-cli` can discover the skill directly from this repository for hosts `dash0 skill install` doesn't yet auto-detect, without a separate registry-submission step.
-   These also mean anyone using Claude Code or Codex to work on the dash0-cli source itself gets the skill automatically.
+1. `internal/skill/content/SKILL.md` + `internal/skill/content/references/*.md` — embedded into the `dash0` binary via `//go:embed`, served by `dash0 skill install`/`dash0 skill show`.
+2. `.claude/skills/dash0-cli/` and `.agents/skills/dash0-cli/` (both at the repo root) are checked-in symlinks pointing at `internal/skill/content/`, so `npx skills add dash0hq/dash0-cli` and `gh skill install dash0hq/dash0-cli` (which look at those paths) find the skill directly from this repository for hosts `dash0 skill install` doesn't yet auto-detect, without a separate registry-submission step.
+   The same symlinks mean anyone using Claude Code or Codex to work on the dash0-cli source itself gets the skill automatically.
+   Storing the two publish paths as symlinks — rather than second and third byte-identical copies — keeps every skill-content diff scoped to `internal/skill/content/` alone and makes silent hand-edit drift between the copies impossible.
 
-`make skill-validate` (part of `make lint`) regenerates into a scratch directory and diffs it against all three checked-in locations, failing the build if anything is stale.
+`make skill-validate` (part of `make lint`) regenerates into a scratch directory and diffs it against `internal/skill/content/`, and separately checks that both publish paths are still symlinks pointing at `../../internal/skill/content`.
+It fails the build if the content is stale or if either symlink was replaced with a real directory or retargeted.
 
 ## Adding a new topic
 
