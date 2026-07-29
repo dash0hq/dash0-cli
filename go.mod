@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/cli/browser v1.3.0
-	github.com/dash0hq/dash0-api-client-go v1.18.0
+	github.com/dash0hq/dash0-api-client-go v1.18.1
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
@@ -99,5 +99,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/dash0hq/dash0-api-client-go => ../../../dash0-api-client-go/.iac_maintainer/profile-env-precedence
