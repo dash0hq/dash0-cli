@@ -776,6 +776,7 @@ A CRD that contains no alerting and no recording rules fails validation up front
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
 `spec.routing.assets` is API-managed: the API populates it as a back-reference when a check rule or synthetic check binds to the channel, and ignores any value supplied on write.
+Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
 
@@ -2137,7 +2138,9 @@ spec:
 Create a notification channel from a YAML or JSON definition file.
 If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
 Otherwise, a new channel is created (POST) and the server assigns an ID.
-A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write; existing bindings are unaffected — bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`. On `update`, the warning only fires when the file's assets differ from what the server reports, so a get → edit → update roundtrip stays silent.
+A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write, and existing bindings are unaffected.
+Bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`.
+Exported definitions never carry the field — `get` and `list` omit `spec.routing.assets` from `-o yaml` and `-o json` output — so get → edit → apply/update roundtrips stay warning-free.
 The same warning applies to `notification-channels update` and `apply`.
 
 ```bash

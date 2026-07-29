@@ -68,7 +68,9 @@ spec:
 Create a notification channel from a YAML or JSON definition file.
 If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
 Otherwise, a new channel is created (POST) and the server assigns an ID.
-A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write; existing bindings are unaffected — bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`. On `update`, the warning only fires when the file's assets differ from what the server reports, so a get → edit → update roundtrip stays silent.
+A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write, and existing bindings are unaffected.
+Bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`.
+Exported definitions never carry the field — `get` and `list` omit `spec.routing.assets` from `-o yaml` and `-o json` output — so get → edit → apply/update roundtrips stay warning-free.
 The same warning applies to `notification-channels update` and `apply`.
 
 ```bash
