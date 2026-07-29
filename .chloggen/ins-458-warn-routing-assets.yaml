@@ -1,0 +1,20 @@
+# One of: breaking, deprecation, new_component, enhancement, bug_fix
+change_type: enhancement
+
+# The name of the area of concern in the attributes-registry, (e.g. http, cloud, db)
+component: notification-channels
+
+# A brief description of the change.
+note: "Warn when an applied `Dash0NotificationChannel` carries a non-empty `spec.routing.assets` — the field is read-only (a server-derived back-reference) and ignored on write"
+
+# One or more tracking issues related to the change
+issues: [15826]
+
+# (Optional) One or more lines of additional information to render under the primary note.
+subtext: |
+  `spec.routing.assets` lists the check rules and synthetic checks bound to the channel; the Dash0
+  API populates it as a back-reference and silently ignores any value supplied on write. The CLI
+  now warns on `apply`, `notification-channels create`, and `notification-channels update` when a
+  definition carries non-empty assets, pointing at the supported binding mechanisms (the check
+  rule's `dash0.com/notification-channel-ids` annotation, the synthetic check's
+  `spec.notifications.channels`).
