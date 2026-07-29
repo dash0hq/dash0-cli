@@ -68,6 +68,8 @@ spec:
 Create a notification channel from a YAML or JSON definition file.
 If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
 Otherwise, a new channel is created (POST) and the server assigns an ID.
+A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is read-only (a server-derived back-reference) and ignored on write — bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`.
+The same warning applies to `notification-channels update` and `apply`.
 
 ```bash
 dash0 -X notification-channels create -f <file> [--dry-run]
