@@ -58,6 +58,10 @@ The CLI resolves each individual setting (`api-url`, `otlp-url`, `auth-token`, `
 2. CLI flags (`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`)
 3. The selected profile (see below)
 
+Each setting is resolved independently.
+Setting `DASH0_AUTH_TOKEN` and `DASH0_API_URL` does not discard the rest of the selected profile: `dataset` and `otlp-url` still come from the profile unless `DASH0_DATASET`, `--dataset`, `DASH0_OTLP_URL`, or `--otlp-url` names them explicitly.
+Run `dash0 config show` to see the effective values and where each one came from.
+
 The profile itself is selected in this order (first match wins):
 
 1. `--profile <name>` flag

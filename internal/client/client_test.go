@@ -12,6 +12,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewClientFromContext_WithEnvVars(t *testing.T) {
@@ -198,8 +199,83 @@ func TestResolveDataset_DefaultFlagOverridesConfig(t *testing.T) {
 }
 
 func TestResolveDataset_NilWithoutContext(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+	os.Unsetenv("DASH0_DATASET")
+
 	result := ResolveDataset(context.Background(), "")
 	assert.Nil(t, result)
+}
+
+// TestResolveDataset_FromEnvWithoutContext covers the path where the context
+// carries no configuration -- loadConfig() swallowed an error -- but
+// DASH0_DATASET is set. NewClientFromContext still builds a working client
+// from env vars on that path, so the dataset must not silently vanish.
+func TestResolveDataset_FromEnvWithoutContext(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+	t.Setenv("DASH0_DATASET", "env-dataset")
+
+	result := ResolveDataset(context.Background(), "")
+	require.NotNil(t, result)
+	assert.Equal(t, "env-dataset", *result)
+}
+
+// TestResolveDataset_FromProfileWithoutContext covers the same missing-context
+// path when the dataset comes from the active profile rather than an env var.
+// NewClientFromContext falls back to profiles.ResolveConfiguration here, and
+// ResolveDataset must use the same source or the two disagree.
+func TestResolveDataset_FromProfileWithoutContext(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+	os.Unsetenv("DASH0_DATASET")
+
+	store, err := profiles.NewStore()
+	require.NoError(t, err)
+	require.NoError(t, store.AddProfile(profiles.Profile{
+		Name: "prod",
+		Configuration: profiles.Configuration{
+			ApiUrl:    "https://api.test.dash0.com",
+			AuthToken: "auth_test-token-12345",
+			Dataset:   "production",
+		},
+	}))
+	require.NoError(t, store.SetActiveProfile("prod"))
+
+	result := ResolveDataset(context.Background(), "")
+	require.NotNil(t, result)
+	assert.Equal(t, "production", *result)
+}
+
+// TestResolveDataset_EnvCredentialsKeepProfileDataset is the regression test
+// for the profile-bypass bug: DASH0_AUTH_TOKEN together with DASH0_API_URL used
+// to discard the active profile wholesale, so the profile's dataset never
+// reached the request and the API fell back to the default dataset -- while
+// `dash0 config show` kept reporting the profile's value.
+func TestResolveDataset_EnvCredentialsKeepProfileDataset(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+	os.Unsetenv("DASH0_DATASET")
+
+	store, err := profiles.NewStore()
+	require.NoError(t, err)
+	require.NoError(t, store.AddProfile(profiles.Profile{
+		Name: "prod",
+		Configuration: profiles.Configuration{
+			ApiUrl:    "https://api.profile.dash0.com",
+			AuthToken: "auth_profile-token-12345",
+			Dataset:   "production",
+		},
+	}))
+	require.NoError(t, store.SetActiveProfile("prod"))
+
+	t.Setenv("DASH0_API_URL", "https://api.env.dash0.com")
+	t.Setenv("DASH0_AUTH_TOKEN", "auth_env-token-12345")
+
+	cfg, err := profiles.ResolveConfiguration("", "")
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.env.dash0.com", cfg.ApiUrl)
+	assert.Equal(t, "auth_env-token-12345", cfg.AuthToken)
+
+	result := ResolveDataset(profiles.WithConfiguration(context.Background(), cfg), "")
+	require.NotNil(t, result)
+	assert.Equal(t, "production", *result)
 }
 
 func TestNewRawHTTPConfig_DatasetFromEnvWithoutContext(t *testing.T) {
