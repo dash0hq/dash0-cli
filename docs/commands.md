@@ -771,7 +771,7 @@ A CRD that contains no alerting and no recording rules fails validation up front
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
-`spec.routing.assets` is read-only: the API populates it as a back-reference when a check rule or synthetic check binds to the channel, and ignores any value supplied on write.
+`spec.routing.assets` is API-managed: the API populates it as a back-reference when a check rule or synthetic check binds to the channel, and ignores any value supplied on write.
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
 
@@ -974,11 +974,10 @@ spec:
       - - key: deployment.environment.name
           operator: is
           value: production
-    # spec.routing.assets is read-only and must not be set here: the API derives it from the
+    # spec.routing.assets is API-managed and must not be set here: the API derives it from the
     # check rules and synthetic checks bound to this channel, and ignores it on write. Bind a
     # check rule via its dash0.com/notification-channel-ids annotation, or a synthetic check via
     # its spec.notifications.channels.
-    assets: []
 ```
 
 Team (organization-level, no `--dataset`, requires `--experimental`):
@@ -2134,7 +2133,7 @@ spec:
 Create a notification channel from a YAML or JSON definition file.
 If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
 Otherwise, a new channel is created (POST) and the server assigns an ID.
-A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is read-only (a server-derived back-reference) and ignored on write — bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`.
+A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write; existing bindings are unaffected — bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`. On `update`, the warning only fires when the file's assets differ from what the server reports, so a get → edit → update roundtrip stays silent.
 The same warning applies to `notification-channels update` and `apply`.
 
 ```bash
