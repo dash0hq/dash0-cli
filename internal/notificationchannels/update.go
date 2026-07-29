@@ -63,10 +63,6 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 
-	if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
-	}
-
 	var id string
 	fileID := dash0api.GetNotificationChannelID(&channel)
 	if len(args) == 1 {
@@ -92,6 +88,12 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 			AssetType: "notification channel",
 			AssetID:   id,
 		})
+	}
+
+	// Only warn when the file's spec.routing.assets differs from what the server already reports —
+	// a get → edit → update roundtrip carries the server's own back-reference and must stay silent.
+	if warning := asset.RoutingAssetsChangedWarning(&channel, before); warning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
 	if flags.DryRun {

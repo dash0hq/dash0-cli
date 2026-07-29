@@ -2,24 +2,42 @@ package asset
 
 import (
 	"context"
+	"reflect"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
 // RoutingAssetsWarning returns a user-facing warning when the notification channel definition
 // carries a non-empty spec.routing.assets, and an empty string otherwise. The Dash0 API treats
-// spec.routing.assets as a read-only back-reference (populated when a check rule or synthetic
+// spec.routing.assets as an API-managed back-reference (populated when a check rule or synthetic
 // check binds to the channel) and silently ignores any value supplied on write — without a
-// warning, users believe they attached the channel when nothing happened.
+// warning, users believe they attached the channel when nothing happened. The wording matches the
+// Terraform provider's warnIfRoutingAssetsSet so both IaC clients speak the same language.
 func RoutingAssetsWarning(channel *dash0api.NotificationChannelDefinition) string {
 	if channel == nil || channel.Spec.Routing == nil || len(channel.Spec.Routing.Assets) == 0 {
 		return ""
 	}
-	return "spec.routing.assets is read-only and ignored on write: the Dash0 API populates it as a " +
-		"back-reference when a check rule or synthetic check binds to this channel. The entries you " +
-		"provided will not take effect. To bind a check rule, set the dash0.com/notification-channel-ids " +
+	return "spec.routing.assets is API-managed and ignored on write: the Dash0 API populates it as a " +
+		"back-reference when a check rule or synthetic check binds to this channel. Existing bindings " +
+		"are unaffected. To bind a check rule, set the dash0.com/notification-channel-ids " +
 		"annotation on the check rule; to bind a synthetic check, set spec.notifications.channels on " +
 		"the synthetic check."
+}
+
+// RoutingAssetsChangedWarning is the update-path variant of RoutingAssetsWarning: it stays silent
+// when the definition's spec.routing.assets matches what the server already reports for the
+// channel. A get → edit → update roundtrip carries the server's own back-reference verbatim, and
+// warning on it would falsely suggest the bindings are about to be dropped.
+func RoutingAssetsChangedWarning(channel *dash0api.NotificationChannelDefinition, before *dash0api.NotificationChannelDefinition) string {
+	warning := RoutingAssetsWarning(channel)
+	if warning == "" {
+		return ""
+	}
+	if before != nil && before.Spec.Routing != nil &&
+		reflect.DeepEqual(channel.Spec.Routing.Assets, before.Spec.Routing.Assets) {
+		return ""
+	}
+	return warning
 }
 
 // ImportNotificationChannel creates or updates a notification channel via the standard CRUD APIs.

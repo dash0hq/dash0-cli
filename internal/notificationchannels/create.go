@@ -63,7 +63,7 @@ func runCreate(ctx context.Context, flags *createFlags) error {
 	}
 
 	if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
 	if flags.DryRun {
