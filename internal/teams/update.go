@@ -27,7 +27,7 @@ func newUpdateCmd() *cobra.Command {
 	flags := &updateFlags{}
 
 	cmd := &cobra.Command{
-		Use:   "update [<id>] -f <file>",
+		Use:   "update [id] -f <file>",
 		Short: "[experimental] Update a team",
 		Long: `Update a team from a YAML or JSON TeamDefinitionV1Alpha1 document.
 
