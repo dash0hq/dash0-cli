@@ -117,11 +117,11 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 			if addressor != fileOrigin && addressor != fileID {
 				switch {
 				case fileOrigin != "" && fileID != "":
-					return fmt.Errorf("the id argument %q does not match dash0.com/origin %q or dash0.com/id %q in the file", addressor, fileOrigin, fileID)
+					return fmt.Errorf("the ID argument %q does not match dash0.com/origin %q or dash0.com/id %q in the file", addressor, fileOrigin, fileID)
 				case fileOrigin != "":
-					return fmt.Errorf("the id argument %q does not match dash0.com/origin %q in the file", addressor, fileOrigin)
+					return fmt.Errorf("the ID argument %q does not match dash0.com/origin %q in the file", addressor, fileOrigin)
 				default:
-					return fmt.Errorf("the id argument %q does not match dash0.com/id %q in the file", addressor, fileID)
+					return fmt.Errorf("the ID argument %q does not match dash0.com/id %q in the file", addressor, fileID)
 				}
 			}
 		}
@@ -132,7 +132,7 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 			addressor = fileID
 		}
 		if addressor == "" {
-			return fmt.Errorf("no team id provided as argument, and the file does not contain a dash0.com/origin or dash0.com/id label")
+			return fmt.Errorf("no team ID provided as argument, and the file does not contain a dash0.com/origin or dash0.com/id label")
 		}
 	}
 

@@ -1162,7 +1162,7 @@ spec:
 
 	err = cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no team id provided as argument")
+	assert.Contains(t, err.Error(), "no team ID provided as argument")
 	assert.Empty(t, server.Requests(), "missing addressor must fail before any API call")
 }
 
