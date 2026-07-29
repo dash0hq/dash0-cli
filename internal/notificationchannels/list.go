@@ -144,8 +144,10 @@ func runList(cmd *cobra.Command, flags *listFlags) error {
 
 	switch format {
 	case listFormatJSON:
+		stripRoutingAssetsForExport(items)
 		return renderNotificationChannelsJSON(items)
 	case listFormatYAML:
+		stripRoutingAssetsForExport(items)
 		return renderNotificationChannelsYAML(items)
 	case listFormatTable:
 		return renderNotificationChannelsTable(items, cols, flags.SkipHeader, apiUrl)
@@ -179,6 +181,17 @@ func channelValues(item *dash0api.NotificationChannelDefinition, apiUrl string) 
 		"id":     id,
 		"origin": origin,
 		"url":    dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeNotificationChannel, id, nil),
+	}
+}
+
+// stripRoutingAssetsForExport clears the API-managed spec.routing.assets back-reference from
+// machine-readable output, mirroring `get`: the server ignores the field on write, so omitting it
+// keeps exported definitions re-applyable without warnings.
+func stripRoutingAssetsForExport(items []*dash0api.NotificationChannelDefinition) {
+	for _, item := range items {
+		if item != nil && item.Spec.Routing != nil {
+			item.Spec.Routing.Assets = nil
+		}
 	}
 }
 
