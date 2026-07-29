@@ -88,11 +88,11 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		}
 		return runUpdateFromFile(ctx, args, flags)
 	}
-	if flags.DryRun {
-		return fmt.Errorf("--dry-run is only valid with -f/--file")
-	}
 	if len(args) != 1 {
 		return fmt.Errorf("either -f/--file or a positional <id> argument is required")
+	}
+	if flags.DryRun {
+		return fmt.Errorf("--dry-run is only valid with -f/--file")
 	}
 	return runUpdateImperative(ctx, args[0], flags)
 }
