@@ -782,6 +782,10 @@ func TestResolveConfiguration(t *testing.T) {
 
 	// Test OTLP URL only via env vars (no API URL needed)
 	t.Run("With OTLP URL env var only", func(t *testing.T) {
+		// Isolate the config dir: env vars are layered on top of the active
+		// profile field by field, so without isolation this subtest would read
+		// the developer's real ~/.dash0 and inherit that profile's API URL.
+		_ = setupTestConfigDir(t)
 		os.Unsetenv(profiles.EnvApiUrl)
 		os.Setenv(profiles.EnvOtlpUrl, "https://otlp.example.com")
 		os.Setenv(profiles.EnvAuthToken, "env-token")
