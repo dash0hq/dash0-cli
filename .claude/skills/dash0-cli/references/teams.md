@@ -94,16 +94,71 @@ Aliases: `add`
 
 ### `teams update` (experimental)
 
-Update the display settings of a team (name, color).
+Update a team from a YAML or JSON `TeamDefinitionV1Alpha1` document.
 
 ```bash
-dash0 -X teams update <id> [--name <name>] [--color-from <hex>] [--color-to <hex>]
+dash0 -X teams update [<id>] -f <file> [--dry-run]
 ```
 
-Example:
+The file must have the same shape `teams create -f` accepts and `teams get -o yaml` produces, so the export → edit → reapply loop round-trips cleanly.
+If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/origin` label (preferred) or `dash0.com/id` label — matching the upsert-key precedence in the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section.
+When both a positional `<id>` and one of the labels are present, the argument must match the origin or the id in the file; otherwise the command fails before any API call.
+
+Unlike `teams create -f`, `teams update -f` does not create a new team on 404 — the team must already exist.
+The output is a unified diff of the before and after states, with `spec.members` rendered as email addresses so membership changes are legible.
+
+Use `-f -` to read from stdin.
+The `--dry-run` flag prints the diff without applying the update.
+
+Update a team from a file (id resolved from the file's `dash0.com/origin` or `dash0.com/id`):
+
+```bash
+$ dash0 -X teams update -f team.yaml
+--- Team (before)
++++ Team (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Backend Team
++    name: Backend Team (renamed)
+```
+
+Update using an explicit id (validated against the file's origin/id):
+
+```bash
+dash0 -X teams update <id> -f team.yaml
+```
+
+Update from stdin (the `cat … | dash0 …` pipeline counts as one command):
+
+```bash
+cat team.yaml | dash0 -X teams update -f -
+```
+
+Preview the diff without mutating:
+
+```bash
+dash0 -X teams update -f team.yaml --dry-run
+```
+
+Export → edit → reapply (idempotent when the YAML is unchanged):
+
+```bash
+$ dash0 -X teams get <id> -o yaml > team.yaml
+$ # edit team.yaml, then:
+$ dash0 -X teams update -f team.yaml
+Team "Backend Team": no changes
+```
+
+#### Deprecated: imperative flags
+
+The pre-existing imperative flags — `--name`, `--color-from`, `--color-to` — are deprecated in favor of `-f/--file`, but continue to work for backward compatibility.
+Each use prints a one-line deprecation warning to stderr.
+The imperative form can only mutate the team's display settings; `spec.members` and other fields require `-f`.
 
 ```bash
 $ dash0 -X teams update <id> --name "New Team Name"
+Flag --name has been deprecated, use -f/--file with a TeamDefinitionV1Alpha1 document instead
 Team "<id>" updated
 ```
 
