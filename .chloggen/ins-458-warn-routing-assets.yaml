@@ -1,0 +1,21 @@
+# One of: breaking, deprecation, new_component, enhancement, bug_fix
+change_type: enhancement
+
+# The name of the area of concern in the attributes-registry, (e.g. http, cloud, db)
+component: notification-channels
+
+# A brief description of the change.
+note: "Warn when a `Dash0NotificationChannel` definition carries a non-empty `spec.routing.assets`, and omit the API-managed field from exports"
+
+# One or more tracking issues related to the change
+issues: [15826]
+
+# (Optional) One or more lines of additional information to render under the primary note.
+subtext: |
+  `spec.routing.assets` lists the check rules and synthetic checks bound to the channel; the Dash0
+  API populates it as a back-reference and silently ignores any value supplied on write (existing
+  bindings are unaffected). `apply`, `notification-channels create`, and `notification-channels
+  update` now warn when a definition carries non-empty assets, pointing at the supported binding
+  mechanisms (the check rule's `dash0.com/notification-channel-ids` annotation, the synthetic
+  check's `spec.notifications.channels`). `notification-channels get` and `list` omit the field
+  from `-o yaml`/`-o json` output, so exported definitions re-apply without warnings.

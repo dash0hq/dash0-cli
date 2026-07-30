@@ -63,6 +63,12 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 
+	// Exports never carry spec.routing.assets (get strips it), so a non-empty value here is
+	// hand-added — warn that the API ignores it.
+	if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+	}
+
 	var id string
 	fileID := dash0api.GetNotificationChannelID(&channel)
 	if len(args) == 1 {

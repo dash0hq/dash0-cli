@@ -6,6 +6,23 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
+// RoutingAssetsWarning returns a user-facing warning when the notification channel definition
+// carries a non-empty spec.routing.assets, and an empty string otherwise. The Dash0 API treats
+// spec.routing.assets as an API-managed back-reference (populated when a check rule or synthetic
+// check binds to the channel) and silently ignores any value supplied on write — without a
+// warning, users believe they attached the channel when nothing happened. The wording matches the
+// Terraform provider's warnIfRoutingAssetsSet so both IaC clients speak the same language.
+func RoutingAssetsWarning(channel *dash0api.NotificationChannelDefinition) string {
+	if channel == nil || channel.Spec.Routing == nil || len(channel.Spec.Routing.Assets) == 0 {
+		return ""
+	}
+	return "spec.routing.assets is API-managed and ignored on write: the Dash0 API populates it as a " +
+		"back-reference when a check rule or synthetic check binds to this channel. Existing bindings " +
+		"are unaffected. To bind a check rule, set the dash0.com/notification-channel-ids " +
+		"annotation on the check rule; to bind a synthetic check, set spec.notifications.channels on " +
+		"the synthetic check."
+}
+
 // ImportNotificationChannel creates or updates a notification channel via the standard CRUD APIs.
 // When the input has a user-defined ID (via dash0.com/origin label), UPDATE is always used — PUT has
 // create-or-replace semantics, so this is idempotent regardless of whether the

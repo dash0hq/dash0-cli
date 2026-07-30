@@ -71,6 +71,13 @@ func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 
 	dash0api.SetNotificationChannelIDIfAbsent(channel, originOrID)
 
+	// spec.routing.assets is an API-managed back-reference the server ignores on write. Omitting
+	// it from exports keeps get -> edit -> apply/update roundtrips warning-free; bindings are
+	// managed on the check rule / synthetic check side.
+	if channel.Spec.Routing != nil {
+		channel.Spec.Routing.Assets = nil
+	}
+
 	switch strings.ToLower(flags.Output) {
 	case "json":
 		encoder := json.NewEncoder(os.Stdout)

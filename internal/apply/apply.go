@@ -167,32 +167,12 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return validationError("no documents found in input")
 	}
 
-	// Validate all documents, collecting all errors
-	var validationErrors []string
-	for _, doc := range documents {
-		if doc.kind == "" {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
-		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.location(), doc.kind))
-		} else if normalizeKind(doc.kind) == "spamfilter" {
-			// Catch unknown spam filter apiVersions during validation rather
-			// than after the first PUT, so a partial apply of a multi-doc input
-			// is never triggered by a typo in apiVersion.
-			if _, err := asset.DetectSpamFilterAPIVersion(doc.raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-			}
-		} else if normalizeKind(doc.kind) == "prometheusrule" {
-			// Catch CRDs that contain no usable rules at all up front, before
-			// any API call. ParseAsPrometheusAlertRules already rejects
-			// alert-only-empty CRDs, but a CRD with zero rules of either kind
-			// would otherwise slip through to applyDocument.
-			if err := validatePrometheusRule(doc.raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-			}
-		}
-	}
+	validationErrors, validationWarnings := validateDocuments(documents)
 	if len(validationErrors) > 0 {
 		return validationError(validationErrors...)
+	}
+	for _, warning := range validationWarnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
 	if flags.DryRun {
@@ -238,6 +218,47 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	return nil
+}
+
+// validateDocuments checks all documents up front, collecting all errors so a multi-doc apply is
+// never partially triggered by a problem detectable before the first API call. Non-fatal warnings
+// are collected separately — callers only print them when validation succeeds, since a warning
+// about a document that never gets applied would be noise next to a hard error.
+func validateDocuments(documents []assetDocument) (validationErrors, validationWarnings []string) {
+	for _, doc := range documents {
+		if doc.kind == "" {
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
+		} else if !isValidKind(doc.kind) {
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.location(), doc.kind))
+		} else if normalizeKind(doc.kind) == "spamfilter" {
+			// Catch unknown spam filter apiVersions during validation rather
+			// than after the first PUT, so a partial apply of a multi-doc input
+			// is never triggered by a typo in apiVersion.
+			if _, err := asset.DetectSpamFilterAPIVersion(doc.raw); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
+			}
+		} else if normalizeKind(doc.kind) == "prometheusrule" {
+			// Catch CRDs that contain no usable rules at all up front, before
+			// any API call. ParseAsPrometheusAlertRules already rejects
+			// alert-only-empty CRDs, but a CRD with zero rules of either kind
+			// would otherwise slip through to applyDocument.
+			if err := validatePrometheusRule(doc.raw); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
+			}
+		} else if normalizeKind(doc.kind) == "notificationchannel" {
+			// A document carrying spec.routing.assets gets a non-fatal warning — the API treats
+			// the field as API-managed and silently ignores it on write; the apply proceeds as
+			// usual. Parse errors are already caught during metadata extraction in
+			// readMultiDocumentYAML.
+			var channel dash0api.NotificationChannelDefinition
+			if err := sigsyaml.Unmarshal(doc.raw, &channel); err == nil {
+				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
+					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+				}
+			}
+		}
+	}
+	return validationErrors, validationWarnings
 }
 
 func printDryRun(documents []assetDocument, fromDirectory bool) error {

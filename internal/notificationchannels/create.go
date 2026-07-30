@@ -62,6 +62,10 @@ func runCreate(ctx context.Context, flags *createFlags) error {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 
+	if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+	}
+
 	if flags.DryRun {
 		fmt.Println("Dry run: notification channel definition is valid")
 		return nil
