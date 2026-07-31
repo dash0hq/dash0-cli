@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.16.4
+
+
+### Enhancements
+
+
+- `teams`: `teams update` now accepts `-f <file>` with a TeamDefinitionV1Alpha1 document, enabling the export → edit → reapply workflow every other asset kind already supports. (#237)
+  The imperative `--name`, `--color-from`, and `--color-to` flags keep working for backward compatibility but are now deprecated in favor of `-f`.
+  Unlike `teams create -f`, `teams update -f` does not create a team on 404 — the target must already exist.
+  
+
+
+### Bug Fixes
+
+
+- `config`: Setting `DASH0_AUTH_TOKEN` together with `DASH0_API_URL` or `DASH0_OTLP_URL` no longer discards the rest of the active profile, so the profile's `dataset` reaches the API again. (#240)
+  That combination used to bypass the active profile wholesale, so requests went out with no
+  `dataset` query parameter and the API fell back to `default` — while `dash0 config show` kept
+  reporting the profile's dataset, leaving nothing in the CLI to tell you the two disagreed.
+  Every setting is now resolved on its own, as `docs/commands.md` has always documented: an
+  environment variable overrides only the setting it names, and `otlp-url` and `dataset` keep
+  coming from the profile.
+  `--dataset` and `DASH0_DATASET` are unaffected, and env vars alone still work with no profile
+  configured at all.
+  
+
+- `views, synthetic-checks`: `spec.permissions` on views and synthetic checks is now sorted lexicographically (by role, then team, then user) before being displayed or diffed. (#231)
+  The Dash0 API does not guarantee a stable order for this field, which previously showed up as
+  spurious changes in `views`/`synthetic-checks` `update --dry-run` and `apply` diffs, and as
+  reordered output across repeated `get`/`list -o yaml` calls.
+  
+
+- `metrics`: `metrics instant`'s verbose table output now prints Prometheus labels in a stable, sorted order instead of Go's randomized map iteration order. (#231)
+  Part of an audit into non-deterministic key/array ordering in CLI output (see docs/code-style.md's
+  "Deterministic output ordering" section for the pattern and the guardrail added against recurrence).
+  
+
+- `notification-channels`: Warn when a `Dash0NotificationChannel` definition carries a non-empty `spec.routing.assets`, and omit the API-managed field from exports (#15826)
+  `spec.routing.assets` lists the check rules and synthetic checks bound to the channel; the Dash0
+  API populates it as a back-reference and silently ignores any value supplied on write (existing
+  bindings are unaffected). `apply`, `notification-channels create`, and `notification-channels
+  update` now warn when a definition carries non-empty assets, pointing at the supported binding
+  mechanisms (the check rule's `dash0.com/notification-channel-ids` annotation, the synthetic
+  check's `spec.notifications.channels`). `notification-channels get` and `list` omit the field
+  from `-o yaml`/`-o json` output, so exported definitions re-apply without warnings.
+  
+
 ## 1.16.3
 
 
