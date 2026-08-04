@@ -27,12 +27,12 @@ import (
 //   - Otherwise, POST is used and the server assigns both id and origin.
 //
 // PUT is create-or-replace, so upserting on either key is idempotent across
-// repeated applies. The origin and id labels are captured before
-// StripSLOServerFields runs because that helper clears dash0.com/origin.
+// repeated applies. Both labels are captured before StripSLOServerFields runs,
+// because that helper clears dash0.com/origin and dash0.com/id.
 func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportResult, error) {
-	// Capture identifiers before stripping — StripSLOServerFields clears the
-	// dash0.com/origin label, so origin- and id-based routing must observe the
-	// input first.
+	// Capture identifiers before stripping — StripSLOServerFields clears both
+	// the dash0.com/origin and dash0.com/id labels, so origin- and id-based
+	// routing must observe the input first.
 	origin := ""
 	if slo.Metadata.Labels != nil && slo.Metadata.Labels.Dash0Comorigin != nil {
 		origin = *slo.Metadata.Labels.Dash0Comorigin
@@ -74,12 +74,9 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 	if upsertKey != "" {
 		result, err = apiClient.UpdateSLO(ctx, upsertKey, slo, dataset)
 	} else {
-		// StripSLOServerFields does not touch dash0.com/id, so on the
-		// preflight-404 fallback the body would still carry the id that belongs
-		// to the *source* organization. The server assigns SLO ids on create, so
-		// send the document without one rather than asking it to ignore a
-		// foreign identifier.
-		dash0api.ClearSLOID(slo)
+		// No explicit ClearSLOID here: StripSLOServerFields above already
+		// removed dash0.com/id, so the cross-environment POST fallback cannot
+		// carry an identifier belonging to the source organization.
 		result, err = apiClient.CreateSLO(ctx, slo, dataset)
 	}
 	if err != nil {

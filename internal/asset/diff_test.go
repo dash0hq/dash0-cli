@@ -355,6 +355,60 @@ func TestPrintDiff_SLO_ServerBumpedMetadataIsNotAChange(t *testing.T) {
 	assert.NotContains(t, buf.String(), "dash0.com/version")
 }
 
+// A hand-authored SLO document can only pin dash0.com/origin — ids are
+// server-assigned — so on `slos update -f <origin-only file>` the `before`
+// fetched from the API carries an id that the `after` never will. The id is
+// server-managed metadata, so its absence from the file must not render as a
+// deletion. Regression test for a phantom "-dash0.com/id / +labels: {}" diff.
+func TestPrintDiff_SLO_ServerAssignedIDIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	// before: fetched by origin, so the server filled in id/version/dataset.
+	beforeJSON := `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {
+				"dash0.com/id": "slo_01kyn68gwrf22afc4vc9xjdtg5",
+				"dash0.com/version": "3",
+				"dash0.com/dataset": "default",
+				"dash0.com/origin": "manual-test-checkout-api"
+			},
+			"annotations": {
+				"dash0.com/display-name": "Checkout API availability",
+				"dash0.com/created-at": "2026-01-15T10:00:00Z"
+			}
+		},
+		"spec": {"service": "checkout", "budgetingMethod": "Occurrences"}
+	}`
+	// after: the user's file — origin only, no id, no server metadata. It does
+	// carry the client-settable display-name annotation, as a real authored
+	// document does; that keeps the comparison about the id alone.
+	afterJSON := `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {"dash0.com/origin": "manual-test-checkout-api"},
+			"annotations": {"dash0.com/display-name": "Checkout API availability"}
+		},
+		"spec": {"service": "checkout", "budgetingMethod": "Occurrences"}
+	}`
+
+	var before, after dash0api.SloDefinition
+	require.NoError(t, json.Unmarshal([]byte(beforeJSON), &before))
+	require.NoError(t, json.Unmarshal([]byte(afterJSON), &after))
+
+	var buf bytes.Buffer
+	require.NoError(t, PrintDiff(&buf, "SLO", "checkout-availability", &before, &after))
+
+	assert.Contains(t, buf.String(), `SLO "checkout-availability": no changes`)
+	assert.NotContains(t, buf.String(), "dash0.com/id", "the server-assigned id must not appear as a change")
+	assert.NotContains(t, buf.String(), "labels: {}", "stripping every label must not render an empty-map diff")
+}
+
 // TestPrintDiff_SLO_RealSpecChangeStillDiffs is the counterpart guard: stripping
 // server-managed metadata must not swallow a genuine change to the document.
 func TestPrintDiff_SLO_RealSpecChangeStillDiffs(t *testing.T) {
