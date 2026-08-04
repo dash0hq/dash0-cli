@@ -766,9 +766,10 @@ func TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) 
 	assertPOSTPath(t, server.Requests(), apiPathSLOs, "expected POST fallback after GET 404")
 
 	// The POST body must not carry the source organization's id. SLO ids are
-	// assigned by the server on create, and StripSLOServerFields does not clear
-	// dash0.com/id (only version, origin, dataset, source, and timestamps), so
-	// ImportSLO calls ClearSLOID explicitly on this path.
+	// assigned by the server on create, and StripSLOServerFields clears
+	// dash0.com/id along with version, origin, dataset, source, and the
+	// timestamps — so the cross-environment fallback cannot leak a foreign
+	// identifier. This assertion pins that guarantee at the wire level.
 	post := findRecordedRequest(server.Requests(), http.MethodPost, apiPathSLOs)
 	require.NotNil(t, post, "expected a recorded POST to %s", apiPathSLOs)
 	var body struct {
