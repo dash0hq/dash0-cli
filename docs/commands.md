@@ -1148,6 +1148,11 @@ Do not rely on it, and use check rules for alerting instead.
 Only `metricSource.type: Prometheus` is supported; other types are rejected with a 400.
 `metricSource.spec.query` must be a plain vector selector with label matchers only — no function calls and no aggregations, so no `rate()` and no `sum()` — because Dash0 applies the counter and windowing math itself, driven by `ratioMetric.counter`.
 
+**`spec.service` packs the service namespace and name into one string.**
+The API splits on the first `/`, so `payments/eu` links the SLO to the service named `eu` in the namespace `payments`, and a value with no slash is just a service name.
+If a service name itself contains a `/`, prefix the value with a leading `/` to treat the remainder as a literal name with no namespace: `/payments/eu` resolves to the name `payments/eu`.
+A value matching no service is not an error — the SLO is simply not linked to a service.
+
 **Dash0 extensions live in `metadata`.**
 `metadata.labels` and `metadata.annotations` carry Dash0-specific keys under the `dash0.com/` prefix that upstream OpenSLO does not define, including `dash0.com/origin`, `dash0.com/id`, `dash0.com/dataset`, `dash0.com/display-name`, `dash0.com/enabled`, and `dash0.com/folder-path`.
 SLO evaluation also applies a fixed 5-minute settling delay: at any moment the SLI reflects telemetry that arrived at least 5 minutes ago, so late-arriving signals are counted, at the cost of a small, fixed lag between live behavior and SLO state.
