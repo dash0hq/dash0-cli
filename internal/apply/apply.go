@@ -378,12 +378,6 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		name = dash0api.GetSLOName(&slo)
 		id = dash0api.GetSLOID(&slo)
 		if id == "" && slo.Metadata.Labels != nil && slo.Metadata.Labels.Dash0Comorigin != nil {
-			// SLOs use origin as the upsert key — SLO ids are server-assigned
-			// (`slo_<ulid>`), so origin is the only client-settable key and the
-			// recommended document form carries origin alone. Surface it as the
-			// ID in dry-run/listing output, otherwise that form prints a bare
-			// name with no identifier at all. There is no GetSLOOrigin helper in
-			// the API client, so the label is read directly (as ImportSLO does).
 			id = *slo.Metadata.Labels.Dash0Comorigin
 		}
 
