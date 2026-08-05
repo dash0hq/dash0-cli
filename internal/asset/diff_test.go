@@ -315,7 +315,7 @@ func TestPrintDiff_SLO_ServerBumpedMetadataIsNotAChange(t *testing.T) {
 				"dash0.com/id": "slo_01k5vpx97efdnrkqan15b41k84",
 				"dash0.com/version": "1",
 				"dash0.com/dataset": "default",
-				"dash0.com/origin": "terraform"
+				"dash0.com/origin": "tf_6f2a1c8e-3b47-4d90-a1e5-9c73b0d84f21"
 			},
 			"annotations": {
 				"dash0.com/created-at": "2026-01-15T10:00:00Z",
@@ -333,7 +333,7 @@ func TestPrintDiff_SLO_ServerBumpedMetadataIsNotAChange(t *testing.T) {
 				"dash0.com/id": "slo_01k5vpx97efdnrkqan15b41k84",
 				"dash0.com/version": "2",
 				"dash0.com/dataset": "default",
-				"dash0.com/origin": "terraform"
+				"dash0.com/origin": "tf_6f2a1c8e-3b47-4d90-a1e5-9c73b0d84f21"
 			},
 			"annotations": {
 				"dash0.com/created-at": "2026-01-15T10:00:00Z",

@@ -914,7 +914,7 @@ metadata:
     dash0.com/id: 00000000-0000-0000-0000-000000000001
     dash0.com/version: "1"
     dash0.com/dataset: default
-    dash0.com/origin: terraform
+    dash0.com/origin: tf_6f2a1c8e-3b47-4d90-a1e5-9c73b0d84f21
   annotations:
     dash0.com/display-name: Checkout availability
     dash0.com/enabled: "true"
