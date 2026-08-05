@@ -612,6 +612,12 @@ func assertNoMethod(t *testing.T, requests []testutil.RecordedRequest, method, m
 // sloWithLabels renders an OpenSLO v1 SLO document carrying the given
 // dash0.com labels block, used to drive the upsert-routing tests through the
 // real `dash0 slos create -f <file>` command path.
+// sloWithService returns the standard document with spec.service replaced, and
+// no identifier labels, so `create -f` takes the POST path.
+func sloWithService(service string) string {
+	return strings.Replace(sloWithLabels(""), "service: checkout", "service: "+service, 1)
+}
+
 func sloWithLabels(labels string) string {
 	return `apiVersion: openslo.com/v1
 kind: SLO
@@ -654,6 +660,60 @@ spec:
 // dash0.com/origin label (no id) routes to PUT /api/slos/{origin} rather than
 // POST. Regression coverage for the "download an origin-only CR, reapply via
 // CLI" idempotency loop — origin must upsert in place, never POST a duplicate.
+// TestCreateSLOFromFile_ServiceIdentityIsSentVerbatim pins spec.service as an
+// opaque passthrough. The value packs two resource attributes and the API is
+// what unpacks them: it splits on the first `/`, so `payments/eu` resolves to
+// service.namespace=payments and service.name=eu, a value with no slash is just
+// a service name, and a leading `/` escapes a name that itself contains a slash
+// (`/payments/eu` is the literal name `payments/eu`). None of that is the CLI's
+// business, so the CLI must not split, normalize, or re-encode the value — a
+// well-meaning "clean up the path" change here would silently retarget an SLO
+// at a different service.
+func TestCreateSLOFromFile_ServiceIdentityIsSentVerbatim(t *testing.T) {
+	tests := []struct {
+		name    string
+		service string
+	}{
+		{"namespace and name", "payments/eu"},
+		{"bare name, no namespace", "checkout"},
+		{"leading slash escapes a name containing a slash", "/payments/eu"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodPost, apiPathSLOs, testutil.MockResponse{
+				StatusCode: http.StatusCreated,
+				BodyFile:   fixtureCreateSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			tmpDir := t.TempDir()
+			yamlFile := filepath.Join(tmpDir, "slo.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithService(tt.service)), 0644))
+
+			cmd := NewSlosCmd()
+			cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+			var err error
+			testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+			require.NoError(t, err)
+
+			post := findRecordedRequest(server.Requests(), http.MethodPost, apiPathSLOs)
+			require.NotNil(t, post, "expected a recorded POST to %s", apiPathSLOs)
+
+			var sent dash0api.SloDefinition
+			require.NoError(t, json.Unmarshal(post.Body, &sent))
+			require.NotNil(t, sent.Spec.Service, "spec.service must survive to the wire")
+			assert.Equal(t, tt.service, *sent.Spec.Service,
+				"spec.service must reach the API byte-for-byte; the namespace/name split is server-side")
+		})
+	}
+}
+
 func TestCreateSLOFromFile_UpsertByOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
