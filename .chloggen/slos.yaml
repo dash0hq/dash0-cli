@@ -19,7 +19,7 @@ subtext: |
   SLO documents use the OpenSLO v1 format (`apiVersion: openslo.com/v1`, `kind: SLO`) and are dataset-scoped via `--dataset`.
   The commands support `create`, `list`, `get`, `update`, and `delete`, and SLOs can also be managed through `dash0 apply`.
   SLO IDs are assigned by the server, so `metadata.labels["dash0.com/origin"]` is the upsert key: pin it in version control to make `apply` idempotent.
-  `slos get` accepts an origin or an ID, `slos list -o wide` and `-o csv` expose an `ORIGIN` column, and `slos get` prints `Origin:`.
+  `slos get` and `slos delete` accept an origin or an ID, `slos list -o wide` and `-o csv` expose an `ORIGIN` column, and `slos get` prints `Origin:`.
 
 # If your change doesn't affect end users or the exported elements of any package,
 # you should instead start your pull request title with "chore" or use the "Skip Changelog" label.

@@ -1126,6 +1126,7 @@ The domain-qualified form is a deliberate Dash0 drift from upstream: a Kubernete
 **Only a subset of the specification is supported.**
 A document must declare exactly one objective, an inline `ratioMetric` indicator, `Occurrences` budgeting, and a single rolling `4w`/`28d` time window.
 When `timeWindow` is omitted a rolling 28d window is used, and the evaluation window is currently fixed at 28d regardless of the value provided.
+That default is not materialized on read: an SLO created without `timeWindow` returns `timeWindow: null` rather than an explicit 28d window, so a stored document cannot be used to tell "defaulted to 28d" apart from "unset".
 
 These fields are rejected with a 400:
 

@@ -15,15 +15,15 @@ func newDeleteCmd() *cobra.Command {
 	var flags asset.DeleteFlags
 
 	cmd := &cobra.Command{
-		Use:     "delete <id>",
+		Use:     "delete <id-or-origin>",
 		Aliases: []string{"remove"},
 		Short:   "Delete an SLO",
-		Long:    `Delete an SLO by its ID. Use --force to skip the confirmation prompt.` + internal.CONFIG_HINT,
+		Long:    `Delete an SLO by its ID or its dash0.com/origin label. Use --force to skip the confirmation prompt.` + internal.CONFIG_HINT,
 		Example: `  # Delete with confirmation prompt
-  dash0 slos delete <id>
+  dash0 slos delete <id-or-origin>
 
   # Delete without confirmation (for scripts and automation)
-  dash0 slos delete <id> --force`,
+  dash0 slos delete <id-or-origin> --force`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd.Context(), args[0], &flags)
