@@ -40,8 +40,8 @@ Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
 
-`SLO` documents use the same upsert-key selection as `Dash0Team`, and for SLOs `dash0.com/origin` is the recommended key rather than merely the preferred one.
-SLO IDs are assigned by the server (`slo_<ulid>`), so `dash0.com/id` cannot be chosen up front — only `dash0.com/origin` can.
+`SLO` IDs are assigned by the server (`slo_<ulid>`), so `dash0.com/id` cannot be chosen up front.
+That makes `dash0.com/origin` the only key a hand-authored SLO document can pin, and the recommended one to use.
 `dash0.com/origin` wins when present and PUTs unconditionally (create-or-replace at that origin).
 When only `dash0.com/id` is present the CLI preflights the SLO with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
 On that POST fallback the foreign `dash0.com/id` is removed from the request body, since the server assigns the ID.

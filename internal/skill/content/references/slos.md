@@ -59,7 +59,7 @@ The operator defines an `openslo.com/v1` `SLO` CRD (group `openslo.com`, kind `S
 So one document body can be applied through the CLI, the Terraform provider, or `kubectl apply`.
 That CRD is not released yet ([dash0hq/dash0-operator#1247](https://github.com/dash0hq/dash0-operator/pull/1247)), so treat the `kubectl apply` path as forthcoming rather than available today.
 
-SLO (Dash0's OpenSLO v1 dialect — see the "SLO documents and OpenSLO v1 compatibility" section for how it differs from upstream OpenSLO v1).
+SLO (Dash0's OpenSLO v1 dialect — see the "SLO documents and OpenSLO v1 compatibility" section below for how it differs from upstream OpenSLO v1).
 The upsert key is `dash0.com/origin`, not `dash0.com/id` — SLO IDs are server-assigned, so `dash0.com/origin` is the label to pin in version control:
 
 ```yaml
