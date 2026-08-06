@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -494,8 +494,9 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same CRUD subcommands.
-The examples below use `dashboards`, but the same patterns apply to every asset type.
+All nine of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, and the organization-level `teams`) share the same CRUD subcommands.
+The first eight are dataset-scoped assets; `teams` is organization-level (no `--dataset`, no `apply`) but shares the same subcommand shape.
+The examples below use `dashboards`, but the same patterns apply to every command group.
 
 ### `list`
 
@@ -704,6 +705,7 @@ Aliases: `remove`
 | Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
+| SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
@@ -728,14 +730,21 @@ The identifier field location varies by asset kind:
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | The CRD-level label is applied to every alerting rule converted from the CRD, so a CRD with multiple alerts shares one identifier — pin a unique label per CRD, or split multi-alert CRDs into one CRD per alert |
 | `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
+| `SLO` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | OpenSLO v1 document (`apiVersion: openslo.com/v1`). SLO IDs are server-assigned (`slo_<ulid>`), so `dash0.com/origin` is the only client-settable upsert key and the recommended one. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/slos/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new SLO on every apply |
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
-The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`).
-The CLI strips `dash0.com/origin` from outbound payloads for the asset types where the server treats origin as provenance metadata (dashboards, views, check rules, synthetic checks), so do not use origin as the upsert key for those kinds.
-Notification channels and spam filters are the two exceptions: their server APIs key on origin, and the CLI preserves it accordingly.
+The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
+Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
+
+For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, and teams — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/teams/{origin}`).
+Notification channels have no user-settable ID field at all, and for SLOs origin is not merely accepted but the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
+
+For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
+Stripping origin keeps an `apply` from claiming ownership of an asset that Terraform or the Kubernetes operator manages.
+Dashboards are a third case: they use `metadata.dash0Extensions.id`, and the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never use origin as a dashboard upsert key.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
 
@@ -761,7 +770,7 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -779,6 +788,13 @@ The `dash0.com/origin` label is the upsert key when present; otherwise the serve
 Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
+
+`SLO` IDs are assigned by the server (`slo_<ulid>`), so `dash0.com/id` cannot be chosen up front.
+That makes `dash0.com/origin` the only key a hand-authored SLO document can pin, and the recommended one to use.
+`dash0.com/origin` wins when present and PUTs unconditionally (create-or-replace at that origin).
+When only `dash0.com/id` is present the CLI preflights the SLO with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
+On that POST fallback the foreign `dash0.com/id` is removed from the request body, since the server assigns the ID.
+A document with neither label creates a new SLO on every apply.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -899,6 +915,54 @@ metadata:
 spec:
   url: https://api.example.com/health
   interval: 60s
+```
+
+SLO (Dash0's OpenSLO v1 dialect — see the "SLO documents and OpenSLO v1 compatibility" section below for how it differs from upstream OpenSLO v1).
+The upsert key is `dash0.com/origin`, not `dash0.com/id` — SLO IDs are server-assigned, so `dash0.com/origin` is the label to pin in version control:
+
+```yaml
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-api-availability
+  labels:
+    dash0.com/origin: checkout-api-availability
+  annotations:
+    dash0.com/display-name: Checkout API availability
+spec:
+  description: 99 percent of synthetic checks against the checkout API succeed over a rolling 28-day window.
+  service: checkout-api
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 28d
+      isRolling: true
+  indicator:
+    metadata:
+      name: checkout-api-synthetic-success-ratio
+    spec:
+      # dash0.synthetic_check.runs counts every synthetic check execution, so the
+      # good-over-total ratio over its dash0.synthetic_check.outcome dimension is a
+      # ready-made availability SLI. It is a counter (a Sum), hence counter: true.
+      #
+      # Each query is a bare PromQL vector selector: label matchers only, no
+      # functions and no aggregations, or the API rejects it with a 400. Dash0
+      # applies the counter and windowing math itself, so there is no rate() or
+      # sum() here. The good query is a strict subset of the total query.
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: '{otel_metric_name="dash0.synthetic_check.runs",dash0_check_type="synthetic.http",dash0_check_name="checkout-api-uptime",dash0_synthetic_check_outcome="Healthy"}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: '{otel_metric_name="dash0.synthetic_check.runs",dash0_check_type="synthetic.http",dash0_check_name="checkout-api-uptime"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
 ```
 
 Recording rule (PrometheusRule CRD format):
@@ -1049,6 +1113,55 @@ id: f2a3b4c5-6789-01f6-7890-bcdef0123456
 name: Second Document Rule
 expression: up == 0
 ```
+
+### SLO documents and OpenSLO v1 compatibility
+
+Dash0 SLO documents follow the [OpenSLO](https://openslo.com) v1 document shape, but they are not interchangeable with upstream OpenSLO v1: the `apiVersion` differs, and only a subset of the specification is supported.
+Read this before authoring or generating a document, because everything listed below as unsupported is rejected with a 400 (with a single exception, `spec.alertPolicies`).
+
+**`apiVersion` is `openslo.com/v1`, not upstream's bare `openslo/v1`.**
+The API accepts both spellings on write and canonicalizes to `openslo.com/v1` on read, so `slos list -o yaml` and `slos get -o yaml` always emit the domain-qualified form.
+The domain-qualified form is a deliberate Dash0 drift from upstream: a Kubernetes CustomResourceDefinition API group must contain a dot, so the same document can also be installed as a custom resource.
+
+**Only a subset of the specification is supported.**
+A document must declare exactly one objective, an inline `ratioMetric` indicator, `Occurrences` budgeting, and a single rolling `4w`/`28d` time window.
+When `timeWindow` is omitted a rolling 28d window is used, and the evaluation window is currently fixed at 28d regardless of the value provided.
+That default is not materialized on read: an SLO created without `timeWindow` returns `timeWindow: null` rather than an explicit 28d window, so a stored document cannot be used to tell "defaulted to 28d" apart from "unset".
+
+These fields are rejected with a 400:
+
+| Rejected | Use instead |
+|----------|-------------|
+| `spec.indicator.spec.thresholdMetric` | an inline `ratioMetric` |
+| `spec.indicatorRef` | an inline `spec.indicator` |
+| `metricSource.metricSourceRef` | an inline `metricSource.spec.query` |
+| more than one objective, or composite objectives (`compositeWeight`, per-objective `indicator`/`indicatorRef`) | one objective that uses the SLO's top-level indicator |
+| threshold objective fields (`op`, `value`) | `target` or `targetPercent` |
+| time-slice objective fields (`timeSliceTarget`, `timeSliceWindow`) | `Occurrences` budgeting |
+| `Timeslices` and `RatioTimeslices` budgeting | `budgetingMethod: Occurrences` |
+| calendar-aligned windows (`timeWindow[].calendar`, `isRolling: false`, or a duration other than `4w`/`28d`) | `duration: 28d` with `isRolling: true` |
+
+**`spec.alertPolicies` is the one exception.**
+It is accepted for OpenSLO compatibility but silently ignored: alert policies are not stored, not evaluated, and not returned on read.
+Do not rely on it, and use check rules for alerting instead.
+
+**Queries must be bare PromQL vector selectors.**
+Only `metricSource.type: Prometheus` is supported; other types are rejected with a 400.
+`metricSource.spec.query` must be a plain vector selector with label matchers only — no function calls and no aggregations, so no `rate()` and no `sum()` — because Dash0 applies the counter and windowing math itself, driven by `ratioMetric.counter`.
+
+**`spec.service` packs the service namespace and name into one string.**
+The API splits on the first `/`, so `payments/eu` links the SLO to the service named `eu` in the namespace `payments`, and a value with no slash is just a service name.
+If a service name itself contains a `/`, prefix the value with a leading `/` to treat the remainder as a literal name with no namespace: `/payments/eu` resolves to the name `payments/eu`.
+A value matching no service is not an error — the SLO is simply not linked to a service.
+
+**Dash0 extensions live in `metadata`.**
+`metadata.labels` and `metadata.annotations` carry Dash0-specific keys under the `dash0.com/` prefix that upstream OpenSLO does not define, including `dash0.com/origin`, `dash0.com/id`, `dash0.com/dataset`, `dash0.com/display-name`, `dash0.com/enabled`, and `dash0.com/folder-path`.
+SLO evaluation also applies a fixed 5-minute settling delay: at any moment the SLI reflects telemetry that arrived at least 5 minutes ago, so late-arriving signals are counted, at the cost of a small, fixed lag between live behavior and SLO state.
+
+**The same document body is what the Dash0 operator's SLO custom resource accepts.**
+The operator defines an `openslo.com/v1` `SLO` CRD (group `openslo.com`, kind `SLO`, version `v1`) whose spec is the same supported subset — `description`, `service`, `budgetingMethod`, `timeWindow`, an inline `indicator` with a `ratioMetric` over `good`/`total` Prometheus sources, and `objectives` — and it deliberately omits `alertPolicies` and `indicatorRef`.
+So one document body can be applied through the CLI, the Terraform provider, or `kubectl apply`.
+That CRD is not released yet ([dash0hq/dash0-operator#1247](https://github.com/dash0hq/dash0-operator/pull/1247)), so treat the `kubectl apply` path as forthcoming rather than available today.
 
 ## Query commands
 

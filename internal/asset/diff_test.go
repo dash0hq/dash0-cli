@@ -3,6 +3,7 @@ package asset
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -292,3 +293,146 @@ func TestPrintDiff_ColorOutput(t *testing.T) {
 	assert.Contains(t, output, "\033[")
 }
 
+
+// TestPrintDiff_SLO_ServerBumpedMetadataIsNotAChange pins the normalization that
+// makes `apply`/`update` of an unchanged SLO report "no changes" rather than a
+// spurious diff. The server bumps dash0.com/version and dash0.com/updated-at on
+// every PUT, even for an identical body, so both sides of the diff must be run
+// through StripSLOServerFields. Before the fix, *dash0api.SloDefinition fell
+// through marshalForDiff's default branch and neither side was stripped.
+func TestPrintDiff_SLO_ServerBumpedMetadataIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	// `before` as returned by GetSLO, `after` as returned by the PUT: same
+	// user-authored document, server-managed metadata moved on.
+	beforeJSON := `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {
+				"dash0.com/id": "slo_01k5vpx97efdnrkqan15b41k84",
+				"dash0.com/version": "1",
+				"dash0.com/dataset": "default",
+				"dash0.com/origin": "tf_6f2a1c8e-3b47-4d90-a1e5-9c73b0d84f21"
+			},
+			"annotations": {
+				"dash0.com/created-at": "2026-01-15T10:00:00Z",
+				"dash0.com/updated-at": "2026-01-15T10:00:00Z"
+			}
+		},
+		"spec": {"service": "checkout", "budgetingMethod": "Occurrences"}
+	}`
+	afterJSON := `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {
+				"dash0.com/id": "slo_01k5vpx97efdnrkqan15b41k84",
+				"dash0.com/version": "2",
+				"dash0.com/dataset": "default",
+				"dash0.com/origin": "tf_6f2a1c8e-3b47-4d90-a1e5-9c73b0d84f21"
+			},
+			"annotations": {
+				"dash0.com/created-at": "2026-01-15T10:00:00Z",
+				"dash0.com/updated-at": "2026-01-15T12:00:00Z"
+			}
+		},
+		"spec": {"service": "checkout", "budgetingMethod": "Occurrences"}
+	}`
+
+	var before, after dash0api.SloDefinition
+	require.NoError(t, json.Unmarshal([]byte(beforeJSON), &before))
+	require.NoError(t, json.Unmarshal([]byte(afterJSON), &after))
+
+	var buf bytes.Buffer
+	require.NoError(t, PrintDiff(&buf, "SLO", "checkout-availability", &before, &after))
+
+	assert.Contains(t, buf.String(), `SLO "checkout-availability": no changes`)
+	assert.NotContains(t, buf.String(), "updated-at")
+	assert.NotContains(t, buf.String(), "dash0.com/version")
+}
+
+// A hand-authored SLO document can only pin dash0.com/origin — ids are
+// server-assigned — so on `slos update -f <origin-only file>` the `before`
+// fetched from the API carries an id that the `after` never will. The id is
+// server-managed metadata, so its absence from the file must not render as a
+// deletion. Regression test for a phantom "-dash0.com/id / +labels: {}" diff.
+func TestPrintDiff_SLO_ServerAssignedIDIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	// before: fetched by origin, so the server filled in id/version/dataset.
+	beforeJSON := `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {
+				"dash0.com/id": "slo_01kyn68gwrf22afc4vc9xjdtg5",
+				"dash0.com/version": "3",
+				"dash0.com/dataset": "default",
+				"dash0.com/origin": "manual-test-checkout-api"
+			},
+			"annotations": {
+				"dash0.com/display-name": "Checkout API availability",
+				"dash0.com/created-at": "2026-01-15T10:00:00Z"
+			}
+		},
+		"spec": {"service": "checkout", "budgetingMethod": "Occurrences"}
+	}`
+	// after: the user's file — origin only, no id, no server metadata. It does
+	// carry the client-settable display-name annotation, as a real authored
+	// document does; that keeps the comparison about the id alone.
+	afterJSON := `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {"dash0.com/origin": "manual-test-checkout-api"},
+			"annotations": {"dash0.com/display-name": "Checkout API availability"}
+		},
+		"spec": {"service": "checkout", "budgetingMethod": "Occurrences"}
+	}`
+
+	var before, after dash0api.SloDefinition
+	require.NoError(t, json.Unmarshal([]byte(beforeJSON), &before))
+	require.NoError(t, json.Unmarshal([]byte(afterJSON), &after))
+
+	var buf bytes.Buffer
+	require.NoError(t, PrintDiff(&buf, "SLO", "checkout-availability", &before, &after))
+
+	assert.Contains(t, buf.String(), `SLO "checkout-availability": no changes`)
+	assert.NotContains(t, buf.String(), "dash0.com/id", "the server-assigned id must not appear as a change")
+	assert.NotContains(t, buf.String(), "labels: {}", "stripping every label must not render an empty-map diff")
+}
+
+// TestPrintDiff_SLO_RealSpecChangeStillDiffs is the counterpart guard: stripping
+// server-managed metadata must not swallow a genuine change to the document.
+func TestPrintDiff_SLO_RealSpecChangeStillDiffs(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	const tmpl = `{
+		"apiVersion": "openslo.com/v1",
+		"kind": "SLO",
+		"metadata": {
+			"name": "checkout-availability",
+			"labels": {"dash0.com/version": "%s"},
+			"annotations": {"dash0.com/updated-at": "2026-01-15T1%s:00:00Z"}
+		},
+		"spec": {"service": "%s", "budgetingMethod": "Occurrences"}
+	}`
+
+	var before, after dash0api.SloDefinition
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(tmpl, "1", "0", "checkout")), &before))
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(tmpl, "2", "2", "checkout-v2")), &after))
+
+	var buf bytes.Buffer
+	require.NoError(t, PrintDiff(&buf, "SLO", "checkout-availability", &before, &after))
+
+	assert.NotContains(t, buf.String(), "no changes")
+	assert.Contains(t, buf.String(), "checkout-v2")
+}

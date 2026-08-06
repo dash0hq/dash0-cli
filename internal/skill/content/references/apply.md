@@ -21,7 +21,7 @@ Hidden files and directories (starting with `.`) are skipped.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -39,6 +39,13 @@ The `dash0.com/origin` label is the upsert key when present; otherwise the serve
 Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
+
+`SLO` IDs are assigned by the server (`slo_<ulid>`), so `dash0.com/id` cannot be chosen up front.
+That makes `dash0.com/origin` the only key a hand-authored SLO document can pin, and the recommended one to use.
+`dash0.com/origin` wins when present and PUTs unconditionally (create-or-replace at that origin).
+When only `dash0.com/id` is present the CLI preflights the SLO with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
+On that POST fallback the foreign `dash0.com/id` is removed from the request body, since the server assigns the ID.
+A document with neither label creates a new SLO on every apply.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.

@@ -47,6 +47,7 @@ Supported asset types:
   - CheckRule (or PrometheusRule CRD with alerting rules)
   - PrometheusRule CRD with recording rules
   - SyntheticCheck
+  - SLO
   - View
   - Dash0SpamFilter
   - Dash0NotificationChannel
@@ -229,7 +230,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -368,6 +369,17 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = dash0api.GetSyntheticCheckName(&check)
 		id = dash0api.GetSyntheticCheckID(&check)
+
+	case "slo":
+		var slo dash0api.SloDefinition
+		if err := sigsyaml.Unmarshal(data, &slo); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetSLOName(&slo)
+		id = dash0api.GetSLOID(&slo)
+		if id == "" {
+			id = dash0api.GetSLOOrigin(&slo)
+		}
 
 	case "prometheusrule":
 		// We only need metadata (name + ID) here; the Metadata struct has no
@@ -619,7 +631,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 
 func isValidKind(kind string) bool {
 	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team":
+	case "dashboard", "checkrule", "syntheticcheck", "slo", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team":
 		return true
 	default:
 		return false
@@ -666,6 +678,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "synthetic check",
 				AssetName: check.Metadata.Name,
+			})
+		}
+		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "slo":
+		var slo dash0api.SloDefinition
+		if err := sigsyaml.Unmarshal(doc.raw, &slo); err != nil {
+			return nil, fmt.Errorf("failed to parse SLO: %w", err)
+		}
+		result, err := asset.ImportSLO(ctx, apiClient, &slo, dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "SLO",
+				AssetName: dash0api.GetSLOName(&slo),
 			})
 		}
 		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
