@@ -85,7 +85,7 @@ func runGet(ctx context.Context, originOrID string, flags *asset.GetFlags) error
 		fmt.Printf("Dataset: %s\n", dash0api.GetSLODataset(slo))
 		// Origin is the SLO upsert key, so it is the field users script
 		// against — print it whenever the SLO has one.
-		if origin := sloOrigin(slo); origin != "" {
+		if origin := dash0api.GetSLOOrigin(slo); origin != "" {
 			fmt.Printf("Origin: %s\n", origin)
 		}
 		if slo.Spec.Service != nil && *slo.Spec.Service != "" {

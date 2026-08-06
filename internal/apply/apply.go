@@ -377,8 +377,8 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = dash0api.GetSLOName(&slo)
 		id = dash0api.GetSLOID(&slo)
-		if id == "" && slo.Metadata.Labels != nil && slo.Metadata.Labels.Dash0Comorigin != nil {
-			id = *slo.Metadata.Labels.Dash0Comorigin
+		if id == "" {
+			id = dash0api.GetSLOOrigin(&slo)
 		}
 
 	case "prometheusrule":

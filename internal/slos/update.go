@@ -54,10 +54,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	// pin an origin — without this fallback the `update -f <file>` form this
 	// command advertises is impossible for any SLO that was not first exported.
 	// GET/PUT accept an origin-or-id path segment, so routing on origin works.
-	// There is no GetSLOOrigin helper in the API client, so the label is read
-	// directly (as ImportSLO and apply's parseDocumentHeader do).
-	if fileID == "" && slo.Metadata.Labels != nil && slo.Metadata.Labels.Dash0Comorigin != nil {
-		fileID = *slo.Metadata.Labels.Dash0Comorigin
+	if fileID == "" {
+		fileID = dash0api.GetSLOOrigin(&slo)
 	}
 	if len(args) == 1 {
 		id = args[0]
