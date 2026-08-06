@@ -33,10 +33,7 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 	// Capture identifiers before stripping — StripSLOServerFields clears both
 	// the dash0.com/origin and dash0.com/id labels, so origin- and id-based
 	// routing must observe the input first.
-	origin := ""
-	if slo.Metadata.Labels != nil && slo.Metadata.Labels.Dash0Comorigin != nil {
-		origin = *slo.Metadata.Labels.Dash0Comorigin
-	}
+	origin := dash0api.GetSLOOrigin(slo)
 	id := dash0api.GetSLOID(slo)
 	dash0api.StripSLOServerFields(slo)
 
