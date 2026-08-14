@@ -665,9 +665,9 @@ func TestTranslateConfigError_RevokedRefreshToken(t *testing.T) {
 }
 
 // TestTranslateConfigError_RevokedRefreshToken_AgentMode asserts the
-// agent-mode branch of the same translation drops the `dash0 login`
-// reference (login refuses to run without a TTY) in favor of the
-// DASH0_AUTH_TOKEN / --oauth=false escape hatches.
+// agent-mode branch of the same translation does not tell the caller to
+// run `dash0 login` (it may still explain that login is unavailable) and
+// instead surfaces the DASH0_AUTH_TOKEN / --oauth=false escape hatches.
 func TestTranslateConfigError_RevokedRefreshToken_AgentMode(t *testing.T) {
 	prev := agentmode.Enabled
 	agentmode.Enabled = true
@@ -677,8 +677,8 @@ func TestTranslateConfigError_RevokedRefreshToken_AgentMode(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected a translated error, got nil")
 	}
-	if strings.Contains(err.Error(), "dash0 login") {
-		t.Errorf("agent-mode error must not point at `dash0 login`: %q", err.Error())
+	if strings.Contains(err.Error(), "Run `dash0 login") {
+		t.Errorf("agent-mode error must not instruct the caller to run `dash0 login`: %q", err.Error())
 	}
 	if !strings.Contains(err.Error(), "DASH0_AUTH_TOKEN") {
 		t.Errorf("agent-mode error must surface DASH0_AUTH_TOKEN: %q", err.Error())
