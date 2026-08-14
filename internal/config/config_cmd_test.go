@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -1212,5 +1215,68 @@ func TestUpdateProfileCmdAuthTokenOnOAuthActiveErrors(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(err.Error()), []byte("--oauth=false")) {
 		t.Errorf("expected error to suggest --oauth=false, got: %v", err)
+	}
+}
+
+func TestUpdateProfileCmdOAuthFalseRevokesWithClientID(t *testing.T) {
+	_ = setupTestConfigDir(t)
+
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/revoke" {
+			t.Errorf("unexpected request to %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("failed to parse revoke form: %v", err)
+		}
+		gotForm = r.Form
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store, _ := profiles.NewStore()
+	if err := store.AddProfile(profiles.Profile{
+		Name: "oauth-active",
+		Configuration: profiles.Configuration{
+			ApiUrl:    server.URL,
+			AuthToken: "dash0_at_xxxxxxxxxxxx",
+			OAuth: &profiles.OAuthState{
+				ClientID:     "cli-client-id-abc",
+				RefreshToken: "dash0_rt_yyy",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	rootCmd := &cobra.Command{Use: "dash0"}
+	rootCmd.AddCommand(NewConfigCmd())
+
+	if _, err := executeCommand(rootCmd, "config", "profiles", "update", "oauth-active",
+		"--oauth=false", "--auth-token", "auth_new_xxxxxx", "--force"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotForm == nil {
+		t.Fatalf("expected a revoke request to reach the server")
+	}
+	if got := gotForm.Get("client_id"); got != "cli-client-id-abc" {
+		t.Errorf("expected client_id %q on the revoke request, got %q", "cli-client-id-abc", got)
+	}
+	if got := gotForm.Get("token"); got != "dash0_rt_yyy" {
+		t.Errorf("expected token %q on the revoke request, got %q", "dash0_rt_yyy", got)
+	}
+
+	all, _ := store.GetProfiles()
+	if len(all) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(all))
+	}
+	if all[0].Configuration.AuthToken != "auth_new_xxxxxx" {
+		t.Errorf("expected new AuthToken to be set, got %q", all[0].Configuration.AuthToken)
+	}
+	if all[0].Configuration.OAuth != nil {
+		t.Errorf("expected OAuth block cleared after --oauth=false, got %+v", all[0].Configuration.OAuth)
 	}
 }
