@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -608,6 +609,73 @@ func TestCheckOAuthOnOtlp_AgentModeMessage(t *testing.T) {
 	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken)
 	if err == nil {
 		t.Fatalf("expected an error in agent mode, got nil")
+	}
+	if strings.Contains(err.Error(), "dash0 login") {
+		t.Errorf("agent-mode error must not point at `dash0 login`: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "DASH0_AUTH_TOKEN") {
+		t.Errorf("agent-mode error must surface DASH0_AUTH_TOKEN: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "--oauth=false") {
+		t.Errorf("agent-mode error must surface the profile conversion path: %q", err.Error())
+	}
+}
+
+// revokedRefreshTokenErrorBody is the exact response body observed from the
+// token endpoint when exchanging a refresh token that has already been
+// revoked (e.g. by a prior `dash0 logout`).
+const revokedRefreshTokenErrorBody = `{"error":"invalid_grant","error_description":"The refresh token has already been used. The entire token family has been revoked."}`
+
+// revokedRefreshTokenError decodes revokedRefreshTokenErrorBody the same way
+// the SDK's token-exchange path would, and wraps it the same way
+// NewClientFromContext's OAuth-refresh failure does, so the test starts
+// from the literal bytes the authorization server sends rather than a
+// hand-built struct.
+func revokedRefreshTokenError(t *testing.T) error {
+	t.Helper()
+	var parsed dash0api.OAuthTokenErrorResponse
+	require.NoError(t, json.Unmarshal([]byte(revokedRefreshTokenErrorBody), &parsed))
+	description := ""
+	if parsed.ErrorDescription != nil {
+		description = *parsed.ErrorDescription
+	}
+	oauthErr := &dash0api.OAuthTokenError{
+		StatusCode:  400,
+		Code:        parsed.Error,
+		Description: description,
+	}
+	return fmt.Errorf("failed to refresh OAuth access token: %w", oauthErr)
+}
+
+// TestTranslateConfigError_RevokedRefreshToken asserts that when the
+// authorization server rejects a refresh token as revoked, the CLI
+// surfaces the friendly re-login hint instead of leaking the wrapped SDK
+// error.
+func TestTranslateConfigError_RevokedRefreshToken(t *testing.T) {
+	err := translateConfigError(context.Background(), revokedRefreshTokenError(t))
+	if err == nil {
+		t.Fatalf("expected a translated error, got nil")
+	}
+	if !strings.Contains(err.Error(), "your Dash0 session has expired or was revoked") {
+		t.Errorf("error does not name the root cause: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "dash0 login") {
+		t.Errorf("error does not point at `dash0 login`: %q", err.Error())
+	}
+}
+
+// TestTranslateConfigError_RevokedRefreshToken_AgentMode asserts the
+// agent-mode branch of the same translation drops the `dash0 login`
+// reference (login refuses to run without a TTY) in favor of the
+// DASH0_AUTH_TOKEN / --oauth=false escape hatches.
+func TestTranslateConfigError_RevokedRefreshToken_AgentMode(t *testing.T) {
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	defer func() { agentmode.Enabled = prev }()
+
+	err := translateConfigError(context.Background(), revokedRefreshTokenError(t))
+	if err == nil {
+		t.Fatalf("expected a translated error, got nil")
 	}
 	if strings.Contains(err.Error(), "dash0 login") {
 		t.Errorf("agent-mode error must not point at `dash0 login`: %q", err.Error())
