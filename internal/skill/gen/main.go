@@ -50,16 +50,19 @@ type topicSpec struct {
 }
 
 var topics = []topicSpec{
-	{name: "apply", sections: []string{"apply"}},
+	{name: "apply", sections: []string{"apply", "prometheusrule annotation merge"}},
 	{name: "api", sections: []string{"api"}},
 	{
 		name:            "check-rules",
 		includeQuickRef: true,
+		sections:        []string{"prometheusrule annotation merge"},
 		assetYAMLLabels: []string{"Check rule:"},
 		extraNote: "`check-rules create` also accepts PrometheusRule CRD files. Each alerting rule in the CRD " +
 			"is created as a separate check rule (recording rules are skipped), named `<group name> - <alert name>`, " +
-			"matching the Dash0 Kubernetes operator and the Terraform provider. See the `recording-rules` topic for " +
-			"the recording-rule half of a mixed PrometheusRule CRD.",
+			"matching the Dash0 Kubernetes operator and the Terraform provider. The CRD's top-level " +
+			"`metadata.annotations` are merged into every rule it contains (see " +
+			"[PrometheusRule annotation merge](#prometheusrule-annotation-merge)). See the `recording-rules` topic " +
+			"for the recording-rule half of a mixed PrometheusRule CRD.",
 	},
 	{
 		name: "config",
@@ -135,7 +138,7 @@ var topics = []topicSpec{
 type heading struct {
 	level int
 	title string // raw title text, as written after the leading #'s
-	start int     // line index of the heading line itself
+	start int    // line index of the heading line itself
 }
 
 func main() {
