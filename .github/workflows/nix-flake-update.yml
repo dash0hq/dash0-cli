@@ -1,0 +1,69 @@
+name: Nix flake update
+
+# Keeps flake.lock from going stale. cache.nixos.org only retains binaries for
+# a nixos-unstable revision for a limited window before garbage-collecting
+# them, so an old pin eventually forces `nix build`/`nix run`/`nix profile
+# install` to rebuild the whole dependency closure from source instead of
+# substituting cached binaries -- or fails outright if an upstream source has
+# disappeared.
+#
+# Dependabot does not support the Nix ecosystem, so this workflow fills that
+# gap on its own weekly schedule, decoupled from the release cadence (see
+# prepare-release.yml for the validated release-time update, and
+# nix/update-flake-lock.sh for the shared update+validate logic both use). A
+# nixpkgs/flake-utils bump is its own risk surface -- keeping it on an
+# independent cadence, reviewed and merged like any other dependency PR,
+# avoids conflating "did the release break" with "did nixpkgs break".
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Every Monday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-flake-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Update flake.lock
+        run: ./nix/update-flake-lock.sh
+
+      - name: Open or update pull request
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- flake.lock; then
+            echo "flake.lock already up to date; nothing to do."
+            exit 0
+          fi
+
+          # A single bot-owned branch, force-pushed each run: keeps one open
+          # PR at a time instead of piling up a new one every week.
+          BRANCH="chore/update-flake-lock"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add flake.lock
+          git commit -m "chore(nix): update flake.lock"
+          git push --force origin "$BRANCH"
+
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            echo "Pull request for $BRANCH already open; pushed the new update to it."
+          else
+            gh pr create \
+              --title "chore(nix): update flake.lock" \
+              --body "Updates the nixpkgs and flake-utils revisions pinned in \`flake.lock\`, validated with \`nix build .#dash0\` and \`nix flake check\` (see \`nix/update-flake-lock.sh\`)." \
+              --label dependencies \
+              --label "Skip Changelog" \
+              --base main \
+              --head "$BRANCH"
+          fi

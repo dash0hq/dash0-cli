@@ -1,4 +1,4 @@
-.PHONY: all build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update update-vendor-hash skill-bundle skill-validate
+.PHONY: all build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update update-vendor-hash update-flake-lock skill-bundle skill-validate
 
 all: lint test
 
@@ -35,6 +35,12 @@ install: build
 # Requires Nix with flakes enabled.
 update-vendor-hash:
 	./nix/update-vendor-hash.sh
+
+# Update flake.lock to the latest nixpkgs/flake-utils revisions, validating
+# that dash0 still builds before leaving the update in place. Requires Nix
+# with flakes enabled.
+update-flake-lock:
+	./nix/update-flake-lock.sh
 
 lint: lint-go lint-sh skill-validate
 

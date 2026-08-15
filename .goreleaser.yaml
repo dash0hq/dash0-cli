@@ -109,7 +109,7 @@ brews:
       name: dash0-cli
     commit_author:
       name: github-actions[bot]
-      email: github-actions[bot]@users.noreply.github.com
+      email: 41898282+github-actions[bot]@users.noreply.github.com
     commit_msg_template: "chore: brew formula update for {{ .ProjectName }} version {{ .Tag }}"
     directory: Formula
     homepage: https://github.com/dash0hq/dash0-cli
@@ -131,7 +131,7 @@ homebrew_casks:
       name: homebrew-dash0-cli
     commit_author:
       name: github-actions[bot]
-      email: github-actions[bot]@users.noreply.github.com
+      email: 41898282+github-actions[bot]@users.noreply.github.com
     commit_msg_template: "release: dash0-cli/{{ .Version }}"
     homepage: https://github.com/dash0hq/dash0-cli
     description: CLI to interact with Dash0
@@ -171,7 +171,7 @@ nix:
       name: nur
     commit_author:
       name: github-actions[bot]
-      email: github-actions[bot]@users.noreply.github.com
+      email: 41898282+github-actions[bot]@users.noreply.github.com
     commit_msg_template: "release: dash0/{{ .Version }}"
     homepage: https://github.com/dash0hq/dash0-cli
     description: CLI to interact with Dash0

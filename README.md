@@ -140,6 +140,10 @@ Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to GitHub
 
 The repository is a Nix flake that builds the CLI with `buildGoModule` and installs shell completions for Bash, Zsh, and Fish.
 
+> [!NOTE]
+> `flake.lock` pins the exact `nixpkgs` and `flake-utils` revisions used to build `dash0`.
+> A weekly workflow (`.github/workflows/nix-flake-update.yml`) refreshes that pin automatically, and every release re-validates it once more before shipping, so `nix build`/`nix run`/`nix profile install` keep getting a revision `cache.nixos.org` still has pre-built binaries for, instead of falling back to a from-source rebuild once an old pin ages out of the cache.
+
 Run the CLI without installing it:
 
 ```bash
