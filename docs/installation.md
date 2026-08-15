@@ -30,6 +30,9 @@ Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to the Gi
 
 The repository is published as a Nix flake.
 
+> [!NOTE]
+> `flake.lock`'s `nixpkgs` pin is refreshed automatically on a weekly schedule and re-validated on every release, so `nix build`/`nix run`/`nix profile install` keep resolving to a revision `cache.nixos.org` still has pre-built binaries for.
+
 Run without installing:
 
 ```bash

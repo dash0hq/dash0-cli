@@ -85,15 +85,27 @@ jobs:
           # Fail loudly if the literal moved and the sed matched nothing.
           grep -q 'version = "${{ steps.version.outputs.version }}";' flake.nix
 
+      # Also refresh the nixpkgs/flake-utils pin as part of cutting a release,
+      # so a release is never shipped on a pin older than the last weekly
+      # nix-flake-update.yml run. Self-validating: if the newer revision
+      # fails to build dash0, the script discards the attempt and leaves
+      # flake.lock untouched, so a broken upstream nixpkgs revision never
+      # blocks (or ships in) a release.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Update flake.lock
+        run: ./nix/update-flake-lock.sh
+
       - name: Commit and push changelog
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_FULL_ACCESS_GITHUB_TOKEN }}
         run: |
           gh auth setup-git
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           find .chloggen -name "*.yaml" ! -name "config.yaml" ! -name "TEMPLATE.yaml" -exec git rm -f {} + 2>/dev/null || true
-          git add CHANGELOG.md .chloggen flake.nix
+          git add CHANGELOG.md .chloggen flake.nix flake.lock
           git commit -m "chore: update changelog and version for v${{ steps.version.outputs.version }}"
           git push origin main
 
@@ -103,7 +115,7 @@ jobs:
         run: |
           gh auth setup-git
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag v${{ steps.version.outputs.version }}
           git push origin v${{ steps.version.outputs.version }}
 
