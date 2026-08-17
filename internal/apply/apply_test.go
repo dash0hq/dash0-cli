@@ -110,7 +110,7 @@ spec:
 	docs, err := asset.ReadMultiDocumentYAML("-", strings.NewReader(yaml))
 	require.NoError(t, err)
 
-	validationErrors, validationWarnings := validateDocuments(docs)
+	validationErrors, validationWarnings := asset.ValidateDocuments(docs)
 	assert.Empty(t, validationErrors, "the API-managed assets warning must not become a validation error")
 	require.Len(t, validationWarnings, 1)
 	assert.Contains(t, validationWarnings[0], "spec.routing.assets is API-managed and ignored on write")

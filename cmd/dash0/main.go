@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
+	"github.com/dash0hq/dash0-cli/internal/diff"
 	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
@@ -77,6 +79,7 @@ func init() {
 	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
+	rootCmd.AddCommand(diff.NewDiffCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
 	rootCmd.AddCommand(login.NewLoginCmd())
 	rootCmd.AddCommand(login.NewLogoutCmd())
@@ -298,8 +301,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Determine which command will be executed (best-effort; Traverse may
-	// return the root command when persistent flags like -X come first).
+	// Command.Traverse decides whether a "--name value"-shaped argument is a
+	// flag (consuming the next token) or a bareword by looking up the flag
+	// in c.Flags() — which does NOT include persistent flags registered via
+	// PersistentFlags() until cobra's own (unexported) mergePersistentFlags
+	// runs, which normally happens lazily during Execute, i.e. after this
+	// pre-flight Traverse call. Without this merge, a boolean persistent
+	// flag preceding the subcommand (e.g. `dash0 --experimental diff ...`,
+	// the form used throughout this CLI's own docs and examples) is
+	// wrongly treated as expecting a value, which swallows the subcommand
+	// name as that value and makes Traverse return the root command
+	// instead of the real target. Replicating the merge here first (a
+	// public, idempotent equivalent of cobra's own step) fixes that. See
+	// TestTraverseTargetCommand in main_test.go for a regression test
+	// against an isolated command tree (rootCmd itself is a package-level
+	// singleton that Execute() mutates as a side effect, which would mask
+	// this bug in a test that reused rootCmd after any earlier Execute call).
+	rootCmd.Flags().AddFlagSet(rootCmd.PersistentFlags())
+
+	// Determine which command will be executed (best-effort; Traverse can
+	// still fall back to the root command for shapes it doesn't model,
+	// e.g. an unrecognized flag).
 	targetCmd, _, _ := rootCmd.Traverse(os.Args[1:])
 
 	// Resolve agent mode before any output.
@@ -366,15 +388,43 @@ func main() {
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		printError(err)
-		// Show usage only for flag/argument errors, not for runtime errors.
-		// Commands set SilenceUsage = true once past flag validation.
-		if !agentmode.Enabled && targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
-			fmt.Fprintln(os.Stderr)
-			_ = targetCmd.Usage()
+		cmdName := ""
+		if targetCmd != nil {
+			cmdName = targetCmd.Name()
 		}
-		os.Exit(1)
+
+		// A *diff.PendingDifferencesError is not a failure -- the diff
+		// report was already printed to stdout/stderr by the time it's
+		// returned, so it must never be rendered through the
+		// "Error:"-prefixed path (and usage must not be printed either).
+		if !errors.As(err, new(*diff.PendingDifferencesError)) {
+			printError(err)
+			// Show usage only for flag/argument errors, not for runtime errors.
+			// Commands set SilenceUsage = true once past flag validation.
+			if !agentmode.Enabled && targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
+				fmt.Fprintln(os.Stderr)
+				_ = targetCmd.Usage()
+			}
+		}
+		os.Exit(exitCodeForError(cmdName, err))
 	}
+}
+
+// exitCodeForError determines the process exit code for a command whose
+// RunE returned a non-nil err. Every command exits 1 on error except dash0
+// diff, which uses a three-way exit code (0 clean, 1 differences pending, 2
+// genuine error) instead of this CLI's uniform 0/1 convention -- modeled on
+// `kubectl diff`, so a naive CI step doesn't fail on the routine "changes
+// pending" case, but still fails hard on a genuine error (bad --since ref,
+// API unreachable, and so on).
+func exitCodeForError(cmdName string, err error) int {
+	if errors.As(err, new(*diff.PendingDifferencesError)) {
+		return 1
+	}
+	if cmdName == "diff" {
+		return 2
+	}
+	return 1
 }
 
 // installJSONHelp replaces the default help function on cmd and all

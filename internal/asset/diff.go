@@ -102,6 +102,22 @@ func marshalForDiff(asset any) (string, error) {
 	return string(out), nil
 }
 
+// HasDifference reports whether before and after, once server-managed fields
+// are stripped the same way PrintDiff normalizes them, marshal to different
+// YAML. It lets a caller that needs to count pending changes (e.g. `dash0
+// diff`) do so without re-implementing PrintDiff's normalization.
+func HasDifference(before, after any) (bool, error) {
+	beforeYAML, err := marshalForDiff(before)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal before state: %w", err)
+	}
+	afterYAML, err := marshalForDiff(after)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal after state: %w", err)
+	}
+	return beforeYAML != afterYAML, nil
+}
+
 // PrintDiff computes a unified diff between the before and after states of an
 // asset and writes it to w. If there are no changes, a "no changes" message is
 // printed instead.

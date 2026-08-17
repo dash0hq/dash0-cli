@@ -13,6 +13,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 	"github.com/spf13/cobra"
 	sigsyaml "sigs.k8s.io/yaml"
 )
@@ -64,7 +65,9 @@ A PrometheusRule CRD that mixes alerting and recording rules is dispatched to bo
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.
 
-[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt.` + internal.CONFIG_HINT,
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt.
+
+--dry-run is deprecated in favor of 'dash0 diff', which fetches each asset's current state from Dash0 to accurately distinguish create from update (--dry-run is local-only and cannot tell the two apart) and also supports --since's deletion preview.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -108,7 +111,7 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	}
 
 	cmd.Flags().StringVarP(&flags.File, "file", "f", "", "Path to a file or directory containing asset definitions (use '-' for stdin)")
-	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Validate the file without applying changes")
+	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Deprecated: use 'dash0 diff' instead. Validate the file without applying changes")
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
@@ -145,7 +148,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		// Read from stdin
 		documents, err = asset.ReadMultiDocumentYAML("-", os.Stdin)
 		if err != nil {
-			return validationError(err.Error())
+			return asset.FormatValidationError(err.Error())
 		}
 	} else {
 		info, statErr := os.Stat(flags.File)
@@ -156,29 +159,29 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			fromDirectory = true
 			documents, err = asset.ReadDirectory(flags.File)
 			if err != nil {
-				return validationError(err.Error())
+				return asset.FormatValidationError(err.Error())
 			}
 		} else {
 			documents, err = asset.ReadMultiDocumentYAML(flags.File, nil)
 			if err != nil {
-				return validationError(err.Error())
+				return asset.FormatValidationError(err.Error())
 			}
 		}
 	}
 
 	if len(documents) == 0 {
-		return validationError("no documents found in input")
+		return asset.FormatValidationError("no documents found in input")
 	}
 
-	validationErrors, validationWarnings := validateDocuments(documents)
+	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
 	if len(validationErrors) > 0 {
-		return validationError(validationErrors...)
+		return asset.FormatValidationError(validationErrors...)
 	}
 	for _, warning := range validationWarnings {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
-	var deletionPlan *deletionPlan
+	var deletionPlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
 		plan, err := computeDeletionPlan(ctx, flags)
 		if err != nil {
@@ -188,6 +191,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	if flags.DryRun {
+		fmt.Fprintln(os.Stderr, "warning: --dry-run is deprecated, use `dash0 diff` instead")
 		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
@@ -236,11 +240,11 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		// work) meant a declined or unconfirmable --since ref aborted the
 		// entire apply run, including ordinary creates/updates that have
 		// nothing to do with --since's ancestry check.
-		if deletionPlan.warning != "" {
-			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.warning)
+		if deletionPlan.Warning != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.Warning)
 			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", flags.Force)
 			if confirmErr != nil || !confirmed {
-				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
+				skipped := len(deletionPlan.Plan.ByIdentifier) + len(deletionPlan.Plan.AlertsByName)
 				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")
 				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", asset.Pluralize(skipped, "asset"))
 			}
@@ -255,53 +259,6 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	return nil
-}
-
-// validateDocuments checks all documents up front, collecting all errors so a multi-doc apply is
-// never partially triggered by a problem detectable before the first API call. Non-fatal warnings
-// are collected separately — callers only print them when validation succeeds, since a warning
-// about a document that never gets applied would be noise next to a hard error.
-func validateDocuments(documents []asset.Document) (validationErrors, validationWarnings []string) {
-	for _, doc := range documents {
-		if doc.Kind == "" {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.Location()))
-		} else if !isValidKind(doc.Kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.Location(), doc.Kind))
-		} else if normalizeKind(doc.Kind) == "spamfilter" {
-			// Catch unknown spam filter apiVersions during validation rather
-			// than after the first PUT, so a partial apply of a multi-doc input
-			// is never triggered by a typo in apiVersion.
-			if _, err := asset.DetectSpamFilterAPIVersion(doc.Raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
-			}
-		} else if normalizeKind(doc.Kind) == "prometheusrule" {
-			// Catch CRDs that contain no usable rules at all up front, before
-			// any API call. ParseAsPrometheusAlertRules already rejects
-			// alert-only-empty CRDs, but a CRD with zero rules of either kind
-			// would otherwise slip through to applyDocument.
-			if err := validatePrometheusRule(doc.Raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
-			}
-		} else if normalizeKind(doc.Kind) == "notificationchannel" {
-			// A document carrying spec.routing.assets gets a non-fatal warning — the API treats
-			// the field as API-managed and silently ignores it on write; the apply proceeds as
-			// usual. Parse errors are already caught during metadata extraction in
-			// asset.ReadMultiDocumentYAML.
-			var channel dash0api.NotificationChannelDefinition
-			if err := sigsyaml.Unmarshal(doc.Raw, &channel); err == nil {
-				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
-					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.Location(), warning))
-				}
-			}
-		}
-	}
-	return validationErrors, validationWarnings
-}
-
-// validationError formats one or more validation issues into a consistent
-// "validation failed with N error/errors:" message.
-func validationError(issues ...string) error {
-	return fmt.Errorf("validation failed with %s:\n  %s", asset.Pluralize(len(issues), "error"), strings.Join(issues, "\n  "))
 }
 
 func isValidKind(kind string) bool {
@@ -434,7 +391,7 @@ func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 // recording rules are dispatched to the recording-rule endpoint via a
 // recording-only copy of the CRD.
 func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	crd, err := parsePrometheusRuleCRD(doc.Raw)
+	crd, err := asset.ParsePrometheusRuleCRD(doc.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -469,31 +426,6 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc ass
 	}
 
 	return results, nil
-}
-
-// parsePrometheusRuleCRD parses raw bytes as a PrometheusRule CRD (the typed
-// dash0api.RecordingRule, an alias for the generated PrometheusRule type that
-// captures both Alert and Record per rule).
-func parsePrometheusRuleCRD(data []byte) (*dash0api.RecordingRule, error) {
-	var crd dash0api.RecordingRule
-	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
-		return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
-	}
-	return &crd, nil
-}
-
-// validatePrometheusRule rejects a PrometheusRule CRD that contains no
-// alerting and no recording rules, so the failure surfaces in the validation
-// phase rather than after the first request.
-func validatePrometheusRule(data []byte) error {
-	crd, err := parsePrometheusRuleCRD(data)
-	if err != nil {
-		return err
-	}
-	if !asset.PrometheusRuleHasAlerts(crd) && asset.RecordingOnlyPrometheusRule(crd) == nil {
-		return fmt.Errorf("PrometheusRule contains no alerting or recording rules")
-	}
-	return nil
 }
 
 // applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.

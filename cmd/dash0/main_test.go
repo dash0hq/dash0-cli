@@ -3,13 +3,16 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/diff"
 	"github.com/dash0hq/dash0-cli/internal/skill"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,6 +58,79 @@ func TestRootCommandExecution(t *testing.T) {
 	if !bytes.Contains(buf.Bytes(), []byte("Command line interface for interacting with Dash0 services")) {
 		t.Errorf("Help output did not contain expected content")
 	}
+}
+
+// newIsolatedRootForTraverseTest builds a fresh root+child command tree
+// shaped like the real dash0 root command (a boolean persistent flag plus
+// one subcommand with its own flags), so tests can exercise Traverse
+// without touching the package-level rootCmd singleton. rootCmd is mutated
+// as a side effect by cobra internals the first time anything calls
+// rootCmd.Execute() anywhere in the test binary (e.g.
+// TestRootCommandExecution) -- persistent flags get merged into its local
+// flag set lazily, which would silently fix the exact bug this test exists
+// to catch and make the regression test pass regardless of whether main()
+// still carries the fix.
+func newIsolatedRootForTraverseTest() (*cobra.Command, *cobra.Command) {
+	root := &cobra.Command{Use: "dash0"}
+	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	child := &cobra.Command{Use: "diff"}
+	child.Flags().StringP("file", "f", "", "")
+	root.AddCommand(child)
+	return root, child
+}
+
+// TestTraverseTargetCommand is a regression test for a real cobra pitfall:
+// Command.Traverse decides whether a "--name" token expects a following
+// value by looking up the flag in c.Flags(), which does not include flags
+// registered via PersistentFlags() until cobra's own mergePersistentFlags
+// runs (normally during Execute, i.e. after Traverse). Without pre-merging
+// persistent flags into the root command's own flag set (main()'s fix,
+// right before its own Traverse call), a boolean persistent flag preceding
+// the subcommand -- e.g. `dash0 --experimental diff ...`, the invocation
+// form used throughout this CLI's own docs -- gets wrongly treated as
+// expecting a value, swallowing the subcommand name as that value and
+// making Traverse resolve to the root command instead of the real target.
+// This mattered concretely for `dash0 diff`'s three-way exit code: main()'s
+// exitCodeForError branches on the resolved command's name, so a
+// misresolved target silently fell back to exit 1 instead of exit 2 on a
+// genuine error.
+func TestTraverseTargetCommand(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"persistent bool flag before subcommand", []string{"--experimental", "diff", "-f", "x.yaml"}, "diff"},
+		{"shorthand persistent bool flag before subcommand", []string{"-X", "diff", "-f", "x.yaml"}, "diff"},
+		{"no persistent flag", []string{"diff", "-f", "x.yaml"}, "diff"},
+		{"persistent flag after subcommand", []string{"diff", "--experimental", "-f", "x.yaml"}, "diff"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _ := newIsolatedRootForTraverseTest()
+			// The fix under test: without this, a fresh root command (never
+			// Executed, so cobra's own lazy persistent-flag merge hasn't run
+			// yet) reproduces the bug.
+			root.Flags().AddFlagSet(root.PersistentFlags())
+
+			cmd, _, err := root.Traverse(tc.args)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cmd.Name())
+		})
+	}
+}
+
+// TestTraverseTargetCommand_ReproducesBugWithoutFix proves the fix is load-
+// bearing: the same isolated, never-Executed root command tree without the
+// AddFlagSet pre-merge misresolves a persistent bool flag preceding the
+// subcommand, confirming TestTraverseTargetCommand isn't passing for some
+// unrelated reason.
+func TestTraverseTargetCommand_ReproducesBugWithoutFix(t *testing.T) {
+	root, _ := newIsolatedRootForTraverseTest()
+
+	cmd, _, err := root.Traverse([]string{"--experimental", "diff", "-f", "x.yaml"})
+	require.NoError(t, err)
+	assert.Equal(t, "dash0", cmd.Name(), "without the AddFlagSet pre-merge, Traverse should misresolve to the root command")
 }
 
 // TestWithSkillHint covers the agent-mode error hint pointing at
@@ -253,6 +329,32 @@ func TestFlagValue(t *testing.T) {
 			if got != tc.want {
 				t.Errorf("flagValue(%v, %q) = %q, want %q", tc.args, tc.flag, got, tc.want)
 			}
+		})
+	}
+}
+
+// TestExitCodeForError pins dash0 diff's three-way exit code (0 clean -- not
+// exercised here since exitCodeForError is only called when err != nil, 1
+// differences pending, 2 genuine error) against every other command's
+// uniform 1-on-any-error convention.
+func TestExitCodeForError(t *testing.T) {
+	genericErr := errors.New("boom")
+	pendingErr := &diff.PendingDifferencesError{Count: 3}
+
+	cases := []struct {
+		name    string
+		cmdName string
+		err     error
+		want    int
+	}{
+		{"diff genuine error exits 2", "diff", genericErr, 2},
+		{"diff pending differences exits 1", "diff", pendingErr, 1},
+		{"diff pending differences wrapped still exits 1", "diff", fmt.Errorf("wrapped: %w", pendingErr), 1},
+		{"non-diff command exits 1 on any error", "apply", genericErr, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, exitCodeForError(tc.cmdName, tc.err))
 		})
 	}
 }

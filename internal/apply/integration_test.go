@@ -409,8 +409,11 @@ metadata:
 	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run"})
 
 	var cmdErr error
+	var stderr string
 	output := testutil.CaptureStdout(t, func() {
-		cmdErr = cmd.Execute()
+		stderr = testutil.CaptureStderr(t, func() {
+			cmdErr = cmd.Execute()
+		})
 	})
 
 	require.NoError(t, cmdErr)
@@ -418,6 +421,8 @@ metadata:
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "View")
+	assert.Contains(t, stderr, "--dry-run is deprecated", "--dry-run must nudge users at `dash0 diff` now that it exists")
+	assert.Contains(t, stderr, "dash0 diff")
 }
 
 func TestApply_InvalidKind(t *testing.T) {

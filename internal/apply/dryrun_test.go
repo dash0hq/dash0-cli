@@ -13,30 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestStripScope is a table test for the deletion-path/validated-document
-// path basis mismatch under a subdirectory -f target: gitutil.Deletion.Path
-// is repo-root-relative, asset.Document.FilePath is -f-target-relative, and
-// scope (the -f target's own repo-root-relative path) is what bridges them.
-func TestStripScope(t *testing.T) {
-	cases := []struct {
-		path  string
-		scope string
-		want  string
-	}{
-		{"keep.yaml", "", "keep.yaml"},
-		{"dashboards/keep.yaml", "dashboards", "keep.yaml"},
-		{"dashboards/nested/keep.yaml", "dashboards", "nested/keep.yaml"},
-		// No prefix match: leave the path untouched rather than guessing.
-		{"other/keep.yaml", "dashboards", "other/keep.yaml"},
-		// A directory name that merely starts with scope's name, without the
-		// separator, must not be treated as a match.
-		{"dashboards2/keep.yaml", "dashboards", "dashboards2/keep.yaml"},
-	}
-	for _, c := range cases {
-		assert.Equal(t, c.want, stripScope(c.path, c.scope), "path %q scope %q", c.path, c.scope)
-	}
-}
-
 func withAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
 	prev := agentmode.Enabled
@@ -76,13 +52,13 @@ func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 	documents := []asset.Document{
 		{Kind: "view", Name: "error-logs-view", ID: "33333333-3333-3333-3333-333333333333", FilePath: "assets.yaml"},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "checkrule", Identifier: "44444444-4444-4444-4444-444444444444", Path: "assets.yaml#1"},
 			},
 		},
-		names: map[string]string{"assets.yaml#1": "High Error Rate"},
+		Names: map[string]string{"assets.yaml#1": "High Error Rate"},
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -106,7 +82,7 @@ func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 // target itself -- so "dashboards/removed.yaml" (deletion) and
 // "removed.yaml" (had it survived) would never merge, and the deletion
 // would render as a separate, inconsistently-prefixed file entry instead of
-// joining its file's other row. dp.scope must be stripped from the
+// joining its file's other row. dp.Scope must be stripped from the
 // deletion's path before grouping.
 func TestRunDryRun_JSON_MergedWithDeletions_SubdirectoryScope(t *testing.T) {
 	withAgentMode(t, true)
@@ -114,14 +90,14 @@ func TestRunDryRun_JSON_MergedWithDeletions_SubdirectoryScope(t *testing.T) {
 	documents := []asset.Document{
 		{Kind: "dashboard", Name: "Kept Dashboard", ID: "11111111-1111-1111-1111-111111111111", FilePath: "keep.yaml"},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "dashboard", Identifier: "22222222-2222-2222-2222-222222222222", Path: "dashboards/removed.yaml"},
 			},
 		},
-		names: map[string]string{"dashboards/removed.yaml": "Old Dashboard"},
-		scope: "dashboards",
+		Names: map[string]string{"dashboards/removed.yaml": "Old Dashboard"},
+		Scope: "dashboards",
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -132,27 +108,27 @@ func TestRunDryRun_JSON_MergedWithDeletions_SubdirectoryScope(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
 	require.Len(t, out, 2)
 	paths := []string{out[0].Path, out[1].Path}
-	assert.ElementsMatch(t, []string{"keep.yaml", "removed.yaml"}, paths, "deletion path must have dp.scope stripped, matching validated documents' basis")
+	assert.ElementsMatch(t, []string{"keep.yaml", "removed.yaml"}, paths, "deletion path must have dp.Scope stripped, matching validated documents' basis")
 }
 
 // TestRunDryRun_JSON_MergedWithDeletions_SameFileSubdirectoryScope covers
 // the actual merge case under a subdirectory -f target: a multi-document
 // file with one surviving and one deleted asset must still land in a single
-// {path, changes} entry, not two, once dp.scope is accounted for.
+// {path, changes} entry, not two, once dp.Scope is accounted for.
 func TestRunDryRun_JSON_MergedWithDeletions_SameFileSubdirectoryScope(t *testing.T) {
 	withAgentMode(t, true)
 
 	documents := []asset.Document{
 		{Kind: "view", Name: "error-logs-view", ID: "33333333-3333-3333-3333-333333333333", FilePath: "assets.yaml"},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "checkrule", Identifier: "44444444-4444-4444-4444-444444444444", Path: "dashboards/assets.yaml#1"},
 			},
 		},
-		names: map[string]string{"dashboards/assets.yaml#1": "High Error Rate"},
-		scope: "dashboards",
+		Names: map[string]string{"dashboards/assets.yaml#1": "High Error Rate"},
+		Scope: "dashboards",
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {

@@ -373,6 +373,12 @@ Validate without applying:
 dash0 apply -f assets.yaml --dry-run
 ```
 
+`--dry-run` is deprecated in favor of `dash0 diff` (experimental, requires `-X`), which fetches each asset's current state from Dash0 first to accurately distinguish a create from an update:
+
+```bash
+dash0 -X diff -f assets.yaml
+```
+
 Sync a directory to match its state as of a git ref, deleting assets removed since then (experimental, requires `-X`):
 
 ```bash
