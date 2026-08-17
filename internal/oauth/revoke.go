@@ -15,6 +15,7 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/version"
 )
 
@@ -53,11 +54,14 @@ func Revoke(req RevokeRequest) (ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
 	defer cancel()
 	hint := dash0api.OAuthTokenTypeRefreshToken
-	if err := client.RevokeToken(ctx, &dash0api.OAuthRevocationRequest{
-		ClientId:      req.ClientID,
+	revokeReq := &dash0api.OAuthRevocationRequest{
 		Token:         req.RefreshToken,
 		TokenTypeHint: &hint,
-	}); err != nil {
+	}
+	if clientID := profiles.ResolveOAuthClientID(req.APIURL, req.ClientID); clientID != "" {
+		revokeReq.ClientId = clientID
+	}
+	if err := client.RevokeToken(ctx, revokeReq); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: refresh token revocation failed (it may already be invalid): %v\n", err)
 		return false
 	}

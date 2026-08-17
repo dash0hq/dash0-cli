@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,4 +52,45 @@ func TestRevoke_FailureReturnsFalse(t *testing.T) {
 func TestRevoke_NoOpsOnEmptyArgs(t *testing.T) {
 	assert.True(t, Revoke(RevokeRequest{ClientID: "client-abc-123", RefreshToken: "dash0_rt_test"}), "empty apiURL should no-op")
 	assert.True(t, Revoke(RevokeRequest{APIURL: "https://api.example.com", ClientID: "client-abc-123"}), "empty refreshToken should no-op")
+}
+
+func TestRevoke_OmitsEmptyClientID(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		gotForm = r.Form
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	assert.True(t, Revoke(RevokeRequest{APIURL: server.URL, RefreshToken: "dash0_rt_test"}))
+	require.NotNil(t, gotForm)
+	_, present := gotForm["client_id"]
+	assert.False(t, present, "empty client_id must be omitted, not sent as an empty parameter")
+}
+
+func TestRevoke_FallsBackToDCRCache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DASH0_CONFIG_DIR", dir)
+
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		gotForm = r.Form
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store, err := profiles.NewOAuthClientStore()
+	require.NoError(t, err)
+	require.NoError(t, store.Put(server.URL, profiles.OAuthClientRecord{
+		ClientID:    "cached-from-dcr",
+		RedirectURI: "http://localhost/cb",
+	}))
+
+	assert.True(t, Revoke(RevokeRequest{APIURL: server.URL, RefreshToken: "dash0_rt_test"}))
+	require.NotNil(t, gotForm)
+	assert.Equal(t, "cached-from-dcr", gotForm.Get("client_id"))
 }
