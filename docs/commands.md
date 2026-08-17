@@ -28,7 +28,7 @@ A profile can be in one of three auth states: **static** (holds a long-lived `au
 
 **Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks, recording rules).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
-The `apply` command provides create-or-update semantics across all asset types.
+The `apply` command provides create-or-update semantics across all asset types, and (experimentally, via `--since`) delete semantics based on git history.
 
 **Query commands** search and retrieve telemetry signals.
 They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
@@ -871,13 +871,15 @@ Apply asset definitions from a file, directory, or stdin.
 If an asset already exists (matched by ID), it is updated; otherwise it is created.
 
 ```bash
-dash0 apply -f <file|directory> [--dry-run]
+dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force]]
 ```
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--file` | `-f` | Path to a YAML/JSON file, a directory, or `-` for stdin |
 | `--dry-run` | | Validate without applying |
+| `--since` | | [experimental] Delete assets removed from `-f`'s contents since this git ref (requires `--experimental`/`-X`) |
+| `--force` | | Skip the confirmation prompt for deletions triggered by `--since` |
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
@@ -925,12 +927,13 @@ $ dash0 apply -f dashboard.yaml
 Dashboard "Production Overview" (a1b2c3d4-...) created
 ```
 
-Apply a directory recursively:
+Apply a directory recursively.
+Each line is prefixed with the file's path relative to `-f`'s own target, not the shell's current directory — a nested `assets/dashboards/dashboard.yaml` would print as `dashboards/dashboard.yaml` here:
 
 ```bash
 $ dash0 apply -f assets/
-assets/dashboard.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
-assets/rule.yaml: Check rule "High Error Rate" (b2c3d4e5-...) updated
+dashboard.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+rule.yaml: Check rule "High Error Rate" (b2c3d4e5-...) updated
 ...
 ```
 
@@ -947,8 +950,108 @@ Dry-run validation:
 ```bash
 $ dash0 apply -f assets.yaml --dry-run
 Dry run: 1 document validated
-  1. Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
+  * Apply Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
 ```
+
+#### `apply --since` (experimental)
+
+`--since <ref>` turns `apply` into a full GitOps sync, not just create/update: it additionally deletes any asset whose definition existed in `-f`'s scanned scope at `<ref>` but is no longer present in the current contents.
+`<ref>` accepts any revision expression `git` itself accepts — a commit SHA, a branch or tag name, or a relative expression like `HEAD~1` — and `-f`'s target must be inside a git repository (a single file or a directory both work).
+
+Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert) — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
+`--since` requires `--experimental`/`-X`.
+`apply` itself is not gated: every other flag, including `--dry-run`, is completely unaffected when `--since` is not passed.
+
+Preview a `--since` deletion without applying anything.
+The deletion is merged into the same per-file `--dry-run` listing used for creates and updates, sorted by identifier within each file:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1 --dry-run
+Dry run: 1 document from 1 file validated; 1 deletion pending due to --since 'HEAD~1'
+  keep.yaml
+    * Apply Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
+  removed.yaml
+    * Delete Dashboard "Old Dashboard" (b2c3d4e5-6789-01bc-def0-234567890abc)
+```
+
+A deleted asset's name is resolved by reading its content from git history at `<ref>`; if that lookup fails, `<name>` is shown as a placeholder instead.
+In agent mode, `--dry-run` reports the same information as JSON: an array of `{path, changes: [{op, name, originOrId}]}`, `op` being `"apply"` or `"delete"`.
+
+Apply for real, deleting assets removed since `<ref>`.
+Each deletion prompts for confirmation, the same as a standalone `<kind> delete`:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
+Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
+```
+
+Skip the confirmation prompt (for CI/CD and agent-driven pipelines, where there is no terminal to answer it):
+
+```bash
+dash0 --experimental apply -f dashboards/ --since HEAD~1 --force
+```
+
+Declining a deletion does not stop the rest of the run — creates and updates for the surviving documents still go through — but the command exits non-zero, since the sync's desired end state ("this asset is gone, matching git") was not reached:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: n
+Dashboard "Old Dashboard" (b2c3d4e5-...): deletion declined
+$ echo $?
+1
+```
+
+Two `--since` values get a dedicated, CI-agnostic error message instead of a generic git-resolution failure, since both are common results of imperfect GitHub Actions wiring rather than a typo'd ref:
+
+- The empty string (`--since ""`) — the value a quoted `--since "${{ github.event.before }}"` interpolates to on trigger types that don't define `before` (e.g. `workflow_dispatch`, `schedule`).
+- Git's all-zeros SHA sentinel (`0000000000000000000000000000000000000000`) — the value GitHub gives `github.event.before` on a branch's first push.
+
+Both errors recommend skipping `--since` for that invocation, or passing an explicit ref.
+Any other unresolvable ref (a typo, a too-shallow clone) surfaces the plain git error instead.
+
+A `--since` ref that resolves to a real commit but is not an ancestor of the current commit — the result of a force-push or history rewrite on the tracked branch — prints a warning naming the likely cause, then goes through the same per-asset confirmation as any other deletion.
+It does not hard-fail, so a legitimate force-push still has a recovery path:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since <orphaned-sha> --force
+warning: --since '<orphaned-sha>' is not an ancestor of HEAD (likely a force-push or history rewrite); deletion detection may be inaccurate
+keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
+```
+
+A document removed from git history with no `dash0.com/id` or `dash0.com/origin` at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+Error: --since 'HEAD~1' found 1 document deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:
+  removed.yaml
+```
+
+For a `PrometheusRule` CRD, identity is CRD-level: removing one alerting rule while others remain in the same CRD is detected too, resolved by its composed check-rule name (`<group name> - <alert name>`) rather than by the CRD's shared identifier, since there is no per-alert id to delete by:
+
+```bash
+$ dash0 --experimental apply -f rules/ --since HEAD~1 --force
+alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
+Check rule "service-alerts - HighLatency" deleted
+```
+
+`--since` needs a real `git` binary on `PATH`.
+It is unavailable from the `ghcr.io/dash0hq/cli` Docker image, which is built `FROM scratch` and has no shell or other tools installed.
+
+##### Using `--since` from a GitHub Actions workflow
+
+Quote the interpolated ref and gate the whole step on the event actually providing a usable value, so an unquoted expansion or an undefined `before` never reaches `dash0` as an ambiguous or wrong ref:
+
+```yaml
+- name: Sync deletions since the last push
+  if: github.event.before != '0000000000000000000000000000000000000000'
+  run: dash0 --experimental apply -f dashboards/ --since "${{ github.event.before }}" --force
+```
+
+`fetch-depth: 0` (or a depth covering `github.event.before`) is required on the preceding `actions/checkout` step — a shallow clone makes `<ref>` unresolvable, which `--since` treats as a plain error, not a fallback.
 
 ### Asset YAML formats
 
@@ -2988,3 +3091,14 @@ Use `--dry-run` to check for errors without making changes:
 ```bash
 dash0 apply -f assets/ --dry-run
 ```
+
+### Sync a directory to match its state as of a git ref (experimental)
+
+`apply --since <ref>` deletes assets removed from `-f`'s contents since `<ref>`, in addition to the usual create/update behavior.
+Requires `--experimental`/`-X` and `-f`'s target to be inside a git repository:
+
+```bash
+dash0 --experimental apply -f assets/ --since HEAD~1 --force
+```
+
+Preview the plan (creates, updates, and deletions) first with `--dry-run`; see [`apply --since`](#apply---since-experimental) for the full reference, including the GitHub Actions invocation pattern and the ref-resolution edge cases.
