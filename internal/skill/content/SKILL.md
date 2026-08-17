@@ -41,7 +41,7 @@ Agent mode optimizes the CLI for AI agents: JSON output by default, structured `
 
 All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
 
-`dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command — see the `apply` topic.
+`dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic.
 
 ### Asset identifiers and idempotent upsert
 
@@ -140,6 +140,16 @@ With `--force`, an already-deleted asset is treated as idempotent success — th
 ```bash
 dash0 apply -f assets/ --dry-run
 ```
+
+### Sync a directory to match its state as of a git ref (experimental)
+
+`apply --since <ref>` deletes assets removed from `-f`'s contents since `<ref>`, in addition to the usual create/update behavior. Requires `--experimental`/`-X` and `-f`'s target to be inside a git repository:
+
+```bash
+dash0 --experimental apply -f assets/ --since HEAD~1 --force
+```
+
+Preview the plan first with `--dry-run` — see the `apply` topic for the full reference, including the GitHub Actions invocation pattern and ref-resolution edge cases.
 
 ## Topics
 

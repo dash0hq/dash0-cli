@@ -26,6 +26,10 @@ docker run ghcr.io/dash0hq/cli:latest [command]
 
 Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to the GitHub Container Registry.
 
+> [!NOTE]
+> This image is built `FROM scratch` and has no shell or other tools installed, including `git`.
+> Commands that shell out to `git` (currently `apply --since`) are unavailable from it.
+
 ## Nix / NixOS
 
 The repository is published as a Nix flake.

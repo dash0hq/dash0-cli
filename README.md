@@ -136,6 +136,10 @@ docker run ghcr.io/dash0hq/cli:latest [command]
 
 Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to GitHub Container Registry.
 
+> [!NOTE]
+> This image is built `FROM scratch` and has no shell or other tools installed, including `git`.
+> Commands that shell out to `git` (currently `apply --since`) are unavailable from it.
+
 ### Nix / NixOS
 
 The repository is a Nix flake that builds the CLI with `buildGoModule` and installs shell completions for Bash, Zsh, and Fish.
@@ -368,6 +372,14 @@ Validate without applying:
 ```bash
 dash0 apply -f assets.yaml --dry-run
 ```
+
+Sync a directory to match its state as of a git ref, deleting assets removed since then (experimental, requires `-X`):
+
+```bash
+dash0 -X apply -f dashboards/ --since HEAD~1 --force
+```
+
+See [Command Reference](docs/commands.md#apply---since-experimental) for the full `--since` reference, including the ref-resolution edge cases and the GitHub Actions invocation pattern.
 
 **Note:** In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources".
 The reason for this is that the word "resource" is overloaded in OpenTelemetry, where it describes "where telemetry comes from".
