@@ -268,6 +268,252 @@ func TestPrintDiff_View_PermissionOrderIsNotAChange(t *testing.T) {
 	assert.Contains(t, buf.String(), `View "Error Logs": no changes`)
 }
 
+// The tests below exercise the semantic comparison engine
+// (dash0yaml.Equivalent/Normalize) wired into HasDifference/PrintDiff,
+// covering behaviors a plain textual YAML diff would get wrong: slice
+// reordering, duration-string formatting, check-rule default annotation
+// values, and the bare "sharing" annotation key check rules use (not
+// "dash0.com/sharing").
+
+// TestPrintDiff_View_ReorderedFilterCriteriaIsNotAChange proves the
+// semantic engine's own order-independent slice comparison is doing the
+// work here -- unlike TestPrintDiff_View_PermissionOrderIsNotAChange, which
+// relies on marshalForDiff's own pre-existing SortViewPermissions call, a
+// view's implicit filter criteria (a real JSON array, spec.filter) has no
+// such pre-sort.
+func TestPrintDiff_View_ReorderedFilterCriteriaIsNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Filter: &dash0api.FilterCriteria{
+				{Key: "service.name", Operator: "is_set"},
+				{Key: "severity", Operator: "is_set"},
+			},
+		},
+	}
+	after := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Filter: &dash0api.FilterCriteria{
+				{Key: "severity", Operator: "is_set"},
+				{Key: "service.name", Operator: "is_set"},
+			},
+		},
+	}
+
+	different, err := HasDifference(before, after)
+	require.NoError(t, err)
+	assert.False(t, different, "a real JSON array's element order must not be reported as drift")
+}
+
+// TestPrintDiff_View_ReorderedFilterCriteriaRealChangeDetected proves the
+// order-independent comparison above doesn't also hide a genuine change.
+func TestPrintDiff_View_ReorderedFilterCriteriaRealChangeDetected(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Filter: &dash0api.FilterCriteria{
+				{Key: "service.name", Operator: "is_set"},
+				{Key: "severity", Operator: "is_set"},
+			},
+		},
+	}
+	after := &dash0api.ViewDefinition{
+		Kind:     "View",
+		Metadata: dash0api.ViewMetadata{Name: "Error Logs"},
+		Spec: dash0api.ViewSpec{
+			Display: dash0api.ViewDisplay{},
+			Filter: &dash0api.FilterCriteria{
+				{Key: "severity", Operator: "is_not_set"},
+				{Key: "service.name", Operator: "is_set"},
+			},
+		},
+	}
+
+	different, err := HasDifference(before, after)
+	require.NoError(t, err)
+	assert.True(t, different, "a genuine element-level change must still be detected regardless of position")
+}
+
+func TestPrintDiff_CheckRule_DurationFormatEquivalence_NoChanges(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	for1 := "2m"
+	for2 := "2m0s"
+
+	before := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		For:        &for1,
+	}
+	after := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		For:        &for2,
+	}
+
+	var buf bytes.Buffer
+	err := PrintDiff(&buf, "Check rule", "High Error Rate", before, after)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), `Check rule "High Error Rate": no changes`)
+}
+
+func TestPrintDiff_CheckRule_DurationFormatRealChange_Detected(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	for1 := "2m"
+	for2 := "3m"
+
+	before := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		For:        &for1,
+	}
+	after := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		For:        &for2,
+	}
+
+	different, err := HasDifference(before, after)
+	require.NoError(t, err)
+	assert.True(t, different, "a genuinely different duration must not be swallowed by the format-tolerant comparison")
+}
+
+// TestPrintDiff_CheckRule_DefaultAnnotationValues_NoChanges pins that
+// setting a check rule annotation to the value the Dash0 JSON -> Prometheus
+// YAML conversion omits by default (dash0-threshold-critical/degraded: "0",
+// dash0-enabled: "true") is treated as equivalent to omitting it.
+func TestPrintDiff_CheckRule_DefaultAnnotationValues_NoChanges(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		Annotations: &dash0api.PrometheusAlertRule_Annotations{
+			AdditionalProperties: map[string]string{
+				"summary":                  "Test summary",
+				"dash0-threshold-critical": "0",
+				"dash0-enabled":            "true",
+			},
+		},
+	}
+	after := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		Annotations: &dash0api.PrometheusAlertRule_Annotations{
+			AdditionalProperties: map[string]string{
+				"summary": "Test summary",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := PrintDiff(&buf, "Check rule", "High Error Rate", before, after)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), `Check rule "High Error Rate": no changes`)
+}
+
+// TestPrintDiff_CheckRule_SharingChangeDetected pins that check rules use
+// the bare "sharing" annotation key (dash0api.PrometheusAlertRule_Annotations.Sharing,
+// JSON tag "sharing"), not "dash0.com/sharing" -- and that a real change to
+// it is detected, not silently stripped as a non-preserved annotation.
+func TestPrintDiff_CheckRule_SharingChangeDetected(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		Annotations: &dash0api.PrometheusAlertRule_Annotations{
+			Sharing: strPtr("team:team_01abc"),
+		},
+	}
+	after := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		Annotations: &dash0api.PrometheusAlertRule_Annotations{
+			Sharing: strPtr("team:team_02xyz"),
+		},
+	}
+
+	different, err := HasDifference(before, after)
+	require.NoError(t, err)
+	assert.True(t, different, "a real sharing change on a check rule must be detected, not treated as a non-preserved annotation")
+}
+
+// TestPrintDiff_CheckRule_CustomLabelChangeDetected pins the fix for the gap
+// found while designing WithAnnotationsRoot: CheckRule's flat "labels" map
+// can carry genuine user-set custom labels (unlike the provenance/id-only
+// metadata.labels on every other kind), and a real change to one must not
+// be silently ignored.
+func TestPrintDiff_CheckRule_CustomLabelChangeDetected(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		Labels:     &map[string]string{"team": "platform"},
+	}
+	after := &dash0api.PrometheusAlertRule{
+		Name:       "High Error Rate",
+		Expression: "rate(errors[5m]) > 0.1",
+		Labels:     &map[string]string{"team": "backend"},
+	}
+
+	different, err := HasDifference(before, after)
+	require.NoError(t, err)
+	assert.True(t, different, "a real custom label change on a check rule must be detected")
+}
+
+// TestPrintDiff_NotificationChannel_RoutingAssetsIgnored pins that
+// spec.routing.assets (API-managed, populated as a back-reference when a
+// check rule or synthetic check binds to the channel) never counts as
+// drift, matching apply's existing RoutingAssetsWarning behavior.
+func TestPrintDiff_NotificationChannel_RoutingAssetsIgnored(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	before := &dash0api.NotificationChannelDefinition{
+		Metadata: dash0api.NotificationChannelMetadata{Name: "Slack Alerts"},
+		Spec: dash0api.NotificationChannelSpec{
+			Routing: &dash0api.NotificationChannelRouting{
+				Assets: []dash0api.NotificationChannelRoutingAsset{},
+			},
+		},
+	}
+	after := &dash0api.NotificationChannelDefinition{
+		Metadata: dash0api.NotificationChannelMetadata{Name: "Slack Alerts"},
+		Spec: dash0api.NotificationChannelSpec{
+			Routing: &dash0api.NotificationChannelRouting{
+				Assets: []dash0api.NotificationChannelRoutingAsset{
+					{Kind: dash0api.CheckRule, Id: "id-1", Name: "some check rule"},
+				},
+			},
+		},
+	}
+
+	different, err := HasDifference(before, after)
+	require.NoError(t, err)
+	assert.False(t, different, "spec.routing.assets is API-managed and must never be reported as drift")
+}
+
 func TestPrintDiff_ColorOutput(t *testing.T) {
 	dashcolor.NoColor = false
 	t.Setenv("CLICOLOR_FORCE", "1")

@@ -57,15 +57,31 @@ func TestBuildRows_UpdateWithRealChange(t *testing.T) {
 	assert.Equal(t, 1, pendingCount(rowsByFile))
 }
 
+// TestBuildRows_UpdateWithNoChange uses a realistic near-miss -- two
+// distinct *ViewDefinition values whose spec.filter entries are in a
+// different order -- rather than the same pointer on both sides, so this
+// proves the semantic comparison engine (asset.HasDifference, backed by
+// dash0yaml.Equivalent's order-independent slice comparison) is what
+// decides "no change" here, not incidental pointer/struct identity.
 func TestBuildRows_UpdateWithNoChange(t *testing.T) {
-	same := &dash0api.ViewDefinition{}
-	same.Metadata.Name = "same-name"
+	before := &dash0api.ViewDefinition{}
+	before.Metadata.Name = "same-name"
+	before.Spec.Filter = &dash0api.FilterCriteria{
+		{Key: "service.name", Operator: "is_set"},
+		{Key: "severity", Operator: "is_set"},
+	}
+	after := &dash0api.ViewDefinition{}
+	after.Metadata.Name = "same-name"
+	after.Spec.Filter = &dash0api.FilterCriteria{
+		{Key: "severity", Operator: "is_set"},
+		{Key: "service.name", Operator: "is_set"},
+	}
 
 	planned := []plannedDoc{
 		{
 			doc: viewDoc("view.yaml", "view-id"),
 			plans: []docPlan{
-				{displayKind: "View", name: "same-name", id: "view-id", before: same, after: same},
+				{displayKind: "View", name: "same-name", id: "view-id", before: before, after: after},
 			},
 		},
 	}

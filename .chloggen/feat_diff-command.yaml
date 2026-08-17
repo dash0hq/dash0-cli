@@ -10,6 +10,9 @@ subtext: |
   `diff` fetches each document's current state from Dash0 first, so it can accurately distinguish a create from
   an update — unlike `apply --dry-run`, which is local-only and cannot tell the two apart. It uses a three-way
   exit code (0 clean, 1 differences pending, 2 error), modeled on `kubectl diff`.
+  The comparison itself (also used by `dashboards update` and every other `<kind> update` command's diff) is
+  semantic, not textual: key/slice ordering, duration-string formatting, int-vs-float representation, and
+  API-populated defaults never produce a spurious "changed" result or a noisy diff.
   `apply --dry-run` is now deprecated in favor of `dash0 diff` and prints a warning to stderr on every invocation.
 
 change_logs: [user]
