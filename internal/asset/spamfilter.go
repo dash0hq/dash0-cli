@@ -59,6 +59,28 @@ func DetectSpamFilterAPIVersion(data []byte) (string, error) {
 	}
 }
 
+// SpamFilterUsesOrigin reports whether a spam filter document (v1alpha1 or
+// v1alpha2 — both share the same metadata/labels shape) carries a non-empty
+// dash0.com/origin label.
+//
+// --since uses this to warn when a spam filter is about to be deleted by
+// dash0.com/id alone: per ImportSpamFilter's upsert-key selection, an
+// ID-only spam filter's id is reassigned server-side on its first PUT to a
+// brand-new id, so the id recorded in the git history --since diffs against
+// may no longer match the live asset's actual id by the time the document
+// is deleted — deleting by that stale id either 404s (hard-failing without
+// --force) or is silently treated as already-deleted (with --force),
+// leaving the real live filter orphaned either way. There is no local,
+// API-free way to recover the live id from git history alone; the origin
+// label is the only identifier that never gets reassigned.
+func SpamFilterUsesOrigin(data []byte) (bool, error) {
+	var filter dash0api.SpamFilter
+	if err := sigsyaml.Unmarshal(data, &filter); err != nil {
+		return false, fmt.Errorf("failed to decode Dash0SpamFilter: %w", err)
+	}
+	return filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil && *filter.Metadata.Labels.Dash0Comorigin != "", nil
+}
+
 // ImportSpamFilter creates or updates a v1alpha1 spam filter via the standard
 // CRUD APIs.
 //

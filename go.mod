@@ -99,3 +99,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+// Local development against an unreleased dash0-api-client-go change.
+// Remove once the change is released and go.mod is bumped to that version.
+replace github.com/dash0hq/dash0-api-client-go => ../dash0-api-client-go

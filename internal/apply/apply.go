@@ -15,6 +15,8 @@ import (
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
+	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
@@ -27,6 +29,17 @@ type applyFlags struct {
 	Dataset   string
 	File      string
 	DryRun    bool
+	Since     string
+	// SinceFlagSet records whether --since was actually passed on the
+	// command line, as opposed to left at its "" zero value. This is
+	// distinct from Since != "": a CI script building
+	// --since="${{ github.event.before }}" can pass an explicitly empty
+	// string (e.g. on a workflow_dispatch/schedule trigger with no prior
+	// ref), and that case must still route through computeDeletionPlan to
+	// hit the dedicated RefEmpty error, not be silently treated the same as
+	// --since never being mentioned at all.
+	SinceFlagSet bool
+	Force        bool
 }
 
 // NewApplyCmd creates the top-level apply command
@@ -54,7 +67,9 @@ Supported asset types:
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
-If an asset exists, it will be updated. If it doesn't exist, it will be created.` + internal.CONFIG_HINT,
+If an asset exists, it will be updated. If it doesn't exist, it will be created.
+
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -71,13 +86,26 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
   dash0 apply -f assets.yaml --dry-run
 
   # Validate a directory without applying
-  dash0 apply -f dashboards/ --dry-run`,
+  dash0 apply -f dashboards/ --dry-run
+
+  # Sync a directory to match its state as of a git ref, deleting assets removed since then (experimental)
+  dash0 --experimental apply -f dashboards/ --since HEAD~1
+
+  # Same, without the per-deletion confirmation prompt (experimental)
+  dash0 --experimental apply -f dashboards/ --since HEAD~1 --force`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s\nTo apply multiple files, pass a directory with -f instead of a glob pattern", strings.Join(args, " "))
 			}
 			if flags.File == "" {
 				return fmt.Errorf("file is required; use -f to specify the file (use '-' for stdin)")
+			}
+			if err := experimental.RequireExperimentalFlag(cmd, "since"); err != nil {
+				return err
+			}
+			flags.SinceFlagSet = cmd.Flags().Changed("since")
+			if flags.SinceFlagSet && flags.File == "-" {
+				return fmt.Errorf("--since '%s' cannot be used with -f - (stdin); it needs a file or directory path to compare against git history", flags.Since)
 			}
 			cmd.SilenceUsage = true
 			return runApply(cmd.Context(), &flags)
@@ -89,6 +117,8 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
+	cmd.Flags().StringVar(&flags.Since, "since", "", "[experimental] Delete assets removed from -f's contents since this git ref (requires --experimental/-X)")
+	cmd.Flags().BoolVar(&flags.Force, "force", false, "Skip the confirmation prompt for deletions triggered by --since")
 
 	return cmd
 }
@@ -175,8 +205,23 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
+	var deletionPlan *deletionPlan
+	if flags.SinceFlagSet {
+		plan, err := computeDeletionPlan(ctx, flags)
+		if err != nil {
+			return err
+		}
+		deletionPlan = plan
+	}
+
 	if flags.DryRun {
-		return printDryRun(documents, fromDirectory)
+		if err := printDryRun(documents, fromDirectory); err != nil {
+			return err
+		}
+		if deletionPlan != nil {
+			printDeletionPreview(deletionPlan)
+		}
+		return nil
 	}
 
 	// Create API client
@@ -214,6 +259,31 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 				}
 			}
 			return fmt.Errorf("%s (%s): %w", doc.location(), doc.kind, applyErr)
+		}
+	}
+
+	if deletionPlan != nil {
+		// The non-ancestor confirmation happens here, after every document
+		// create/update above has already gone through — never before them.
+		// Gating it earlier (inside computeDeletionPlan, as this used to
+		// work) meant a declined or unconfirmable --since ref aborted the
+		// entire apply run, including ordinary creates/updates that have
+		// nothing to do with --since's ancestry check.
+		if deletionPlan.warning != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.warning)
+			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", flags.Force)
+			if confirmErr != nil || !confirmed {
+				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
+				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")
+				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", pluralize(skipped, "asset"))
+			}
+		}
+		declined, err := applyDeletions(ctx, apiClient, dataset, deletionPlan, flags.Force)
+		if err != nil {
+			return err
+		}
+		if declined > 0 {
+			return fmt.Errorf("%s declined; the rest of the --since run completed", pluralize(declined, "deletion"))
 		}
 	}
 
@@ -599,12 +669,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 }
 
 func isValidKind(kind string) bool {
-	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team":
-		return true
-	default:
-		return false
-	}
+	return asset.IsValidKind(kind)
 }
 
 func normalizeKind(kind string) string {

@@ -6,6 +6,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
+	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
@@ -30,6 +31,32 @@ func ParseCheckRules(data []byte) ([]*dash0api.PrometheusAlertRule, error) {
 	return rules, nil
 }
 
+// PrometheusRuleEndpoints reports which of the two Dash0 endpoints (check
+// rules for alerting rules, recording rules for recording rules) a
+// PrometheusRule CRD document actually uses. Returns false, false for a
+// document that isn't a PrometheusRule CRD at all.
+//
+// --since uses this to delete a removed CRD only from the endpoint(s) it
+// actually used, instead of unconditionally attempting both and tolerating a
+// 404 from whichever wasn't used — an id happening to also exist,
+// coincidentally, on the endpoint the CRD never used would otherwise be
+// silently deleted too.
+func PrometheusRuleEndpoints(data []byte) (hasAlerts, hasRecords bool, err error) {
+	kind, err := dash0yaml.DetectKind(data)
+	if err != nil {
+		return false, false, err
+	}
+	if !strings.EqualFold(kind, "PrometheusRule") {
+		return false, false, nil
+	}
+
+	var crd dash0api.RecordingRule
+	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
+		return false, false, fmt.Errorf("failed to parse PrometheusRule: %w", err)
+	}
+	return PrometheusRuleHasAlerts(&crd), RecordingOnlyPrometheusRule(&crd) != nil, nil
+}
+
 // composePrometheusRuleNames rewrites the name of each check rule produced from
 // a PrometheusRule CRD to "<group name> - <alert name>". It is a no-op for
 // plain CheckRule documents.
@@ -47,22 +74,79 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 		return nil
 	}
 
-	var crd dash0api.RecordingRule
-	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
-		return fmt.Errorf("failed to parse PrometheusRule: %w", err)
+	names, err := ExtractPrometheusAlertNames(data)
+	if err != nil {
+		return err
+	}
+	for i, name := range names {
+		if i >= len(rules) {
+			return nil
+		}
+		rules[i].Name = name.CheckRuleName()
+	}
+	return nil
+}
+
+// ExtractPrometheusAlertNames parses a PrometheusRule CRD document and
+// returns the (group name, alert name) pair for every alerting rule, in
+// document order. Recording rules are skipped.
+//
+// Unlike a struct-typed unmarshal (sigs.k8s.io/yaml decoding into a *string
+// field, as PrometheusRuleEndpoints and the rest of this file otherwise
+// use), this reads each name's literal scalar value directly off the raw
+// YAML node tree. sigs.k8s.io/yaml's YAML->JSON->struct path resolves an
+// unquoted YAML 1.1/1.2 boolean literal (Y, N, yes, no, on, off, true,
+// false, and case variants) to a real JSON boolean, then silently coerces
+// that boolean into the destination string field as "true"/"false" instead
+// of erroring — so an alert genuinely named e.g. "Y" would otherwise be
+// corrupted to "true" everywhere its name is used (the composed check-rule
+// name here, and --since's alert-tracking diff in internal/git, which calls
+// this function via internal/git/snapshot.go instead of
+// dash0-api-client-go/yaml's identically-named, differently-implemented
+// ExtractPrometheusAlertNames for exactly this reason).
+func ExtractPrometheusAlertNames(data []byte) ([]dash0yaml.PrometheusAlertName, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+	if len(doc.Content) == 0 {
+		return nil, nil
+	}
+	groups := yamlMapValue(yamlMapValue(doc.Content[0], "spec"), "groups")
+	if groups == nil {
+		return nil, nil
 	}
 
-	i := 0
-	for _, group := range crd.Spec.Groups {
-		for _, rule := range group.Rules {
-			if rule.Alert == nil || *rule.Alert == "" {
+	var names []dash0yaml.PrometheusAlertName
+	for _, group := range groups.Content {
+		groupName := ""
+		if n := yamlMapValue(group, "name"); n != nil {
+			groupName = n.Value
+		}
+		rules := yamlMapValue(group, "rules")
+		if rules == nil {
+			continue
+		}
+		for _, rule := range rules.Content {
+			alert := yamlMapValue(rule, "alert")
+			if alert == nil || alert.Value == "" {
 				continue
 			}
-			if i >= len(rules) {
-				return nil
-			}
-			rules[i].Name = fmt.Sprintf("%s - %s", group.Name, *rule.Alert)
-			i++
+			names = append(names, dash0yaml.PrometheusAlertName{GroupName: groupName, AlertName: alert.Value})
+		}
+	}
+	return names, nil
+}
+
+// yamlMapValue returns the value node for key within a YAML mapping node, or
+// nil if node is nil, not a mapping, or key isn't present.
+func yamlMapValue(node *yaml.Node, key string) *yaml.Node {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return node.Content[i+1]
 		}
 	}
 	return nil
