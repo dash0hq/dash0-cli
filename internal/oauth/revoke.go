@@ -11,10 +11,7 @@ package oauth
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -32,38 +29,28 @@ const revokeTimeout = 5 * time.Second
 // optionally append a note to their success message. Callers rely on
 // this function returning promptly regardless of outcome.
 // No-ops (and returns true) when refreshToken or apiURL is empty.
-//
-// Uses the generated client's raw-body form-data method instead of the
-// typed [dash0api.OAuthClient.RevokeToken] because dash0-api-client-go's
-// OAuthRevocationRequest has no ClientId field yet; switch back to the
-// typed call once it does.
 func Revoke(apiURL, clientID, refreshToken string) (ok bool) {
 	if refreshToken == "" || apiURL == "" {
 		return true
 	}
-	userAgentEditor := func(_ context.Context, req *http.Request) error {
-		req.Header.Set("User-Agent", version.UserAgent())
-		return nil
-	}
-	inner, err := dash0api.NewClientWithResponses(apiURL, dash0api.WithRequestEditorFn(userAgentEditor))
+	client, err := dash0api.NewOAuthClient(
+		dash0api.WithApiUrl(apiURL),
+		dash0api.WithUserAgent(version.UserAgent()),
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to construct OAuth client to revoke refresh token: %v\n", err)
 		return false
 	}
-	form := url.Values{
-		"token":           {refreshToken},
-		"token_type_hint": {"refresh_token"},
-		"client_id":       {clientID},
-	}
+	defer func() { _ = client.Close(context.Background()) }()
 	ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
 	defer cancel()
-	resp, err := inner.PostOauthRevokeWithBodyWithResponse(ctx, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
-	if err != nil {
+	hint := dash0api.OAuthTokenTypeRefreshToken
+	if err := client.RevokeToken(ctx, &dash0api.OAuthRevocationRequest{
+		ClientId:      clientID,
+		Token:         refreshToken,
+		TokenTypeHint: &hint,
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: refresh token revocation failed (it may already be invalid): %v\n", err)
-		return false
-	}
-	if status := resp.StatusCode(); status < 200 || status >= 300 {
-		fmt.Fprintf(os.Stderr, "warning: refresh token revocation failed (it may already be invalid): unexpected status %s\n", resp.Status())
 		return false
 	}
 	return true
