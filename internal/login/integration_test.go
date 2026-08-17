@@ -212,11 +212,14 @@ func (f *fakeOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *fakeOAuthServer) handleRevoke(w http.ResponseWriter, r *http.Request) {
-	require.NoError(f.t, r.ParseForm())
+	if !assert.NoError(f.t, r.ParseForm()) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	token := r.Form.Get("token")
-	require.NotEmpty(f.t, token, "revoke requires a token")
+	assert.NotEmpty(f.t, token, "revoke requires a token")
 	clientID := r.Form.Get("client_id")
-	require.NotEmpty(f.t, clientID, "revoke requires a client_id")
+	assert.NotEmpty(f.t, clientID, "revoke requires a client_id")
 	f.revokeCount.Add(1)
 	f.revoked.Lock()
 	f.revokedList = append(f.revokedList, token)

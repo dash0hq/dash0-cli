@@ -22,7 +22,7 @@ func TestRevoke_SendsClientID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	ok := Revoke(server.URL, "client-abc-123", "dash0_rt_test")
+	ok := Revoke(RevokeRequest{APIURL: server.URL, ClientID: "client-abc-123", RefreshToken: "dash0_rt_test"})
 	assert.True(t, ok)
 	require.NotNil(t, gotForm)
 	assert.Equal(t, "dash0_rt_test", gotForm.Get("token"))
@@ -36,7 +36,7 @@ func TestRevoke_AcceptsNoContentStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	assert.True(t, Revoke(server.URL, "client-abc-123", "dash0_rt_test"))
+	assert.True(t, Revoke(RevokeRequest{APIURL: server.URL, ClientID: "client-abc-123", RefreshToken: "dash0_rt_test"}))
 }
 
 func TestRevoke_FailureReturnsFalse(t *testing.T) {
@@ -45,10 +45,10 @@ func TestRevoke_FailureReturnsFalse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	assert.False(t, Revoke(server.URL, "client-abc-123", "dash0_rt_test"))
+	assert.False(t, Revoke(RevokeRequest{APIURL: server.URL, ClientID: "client-abc-123", RefreshToken: "dash0_rt_test"}))
 }
 
 func TestRevoke_NoOpsOnEmptyArgs(t *testing.T) {
-	assert.True(t, Revoke("", "client-abc-123", "dash0_rt_test"), "empty apiURL should no-op")
-	assert.True(t, Revoke("https://api.example.com", "client-abc-123", ""), "empty refreshToken should no-op")
+	assert.True(t, Revoke(RevokeRequest{ClientID: "client-abc-123", RefreshToken: "dash0_rt_test"}), "empty apiURL should no-op")
+	assert.True(t, Revoke(RevokeRequest{APIURL: "https://api.example.com", ClientID: "client-abc-123"}), "empty refreshToken should no-op")
 }

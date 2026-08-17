@@ -133,7 +133,11 @@ func runLogout(ctx context.Context, opts logoutOptions) error {
 	}
 
 	// Best-effort revocation before we clear the in-memory copy on disk.
-	revoked := oauth.Revoke(cfg.ApiUrl, cfg.OAuth.ClientID, cfg.OAuth.RefreshToken)
+	revoked := oauth.Revoke(oauth.RevokeRequest{
+		APIURL:       cfg.ApiUrl,
+		ClientID:     cfg.OAuth.ClientID,
+		RefreshToken: cfg.OAuth.RefreshToken,
+	})
 
 	if err := store.UpdateProfile(name, func(c *profiles.Configuration) {
 		c.AuthToken = ""

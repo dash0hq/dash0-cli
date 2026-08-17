@@ -465,11 +465,11 @@ func exchangeAndValidateTokens(
 	// state — same compensation pattern as the persist-failure branch in
 	// persistAndRevokeOld.
 	if tokenResp.AccessToken == "" {
-		oauth.Revoke(apiURL, authz.ClientID, *tokenResp.RefreshToken)
+		oauth.Revoke(oauth.RevokeRequest{APIURL: apiURL, ClientID: authz.ClientID, RefreshToken: *tokenResp.RefreshToken})
 		return "", "", time.Time{}, errors.New("token exchange succeeded but the server returned an empty access token; aborting")
 	}
 	if tokenResp.ExpiresIn <= 0 {
-		oauth.Revoke(apiURL, authz.ClientID, *tokenResp.RefreshToken)
+		oauth.Revoke(oauth.RevokeRequest{APIURL: apiURL, ClientID: authz.ClientID, RefreshToken: *tokenResp.RefreshToken})
 		return "", "", time.Time{}, fmt.Errorf("token exchange succeeded but the server returned a non-positive expires_in (%d); aborting", tokenResp.ExpiresIn)
 	}
 
@@ -508,7 +508,7 @@ func persistAndRevokeOld(
 		// indefinitely. Best-effort revoke it so the AS state matches what
 		// the user sees locally. Old refresh token is intentionally left
 		// alone: it is still the active session on disk.
-		if !oauth.Revoke(target.APIURL, clientID, refreshToken) {
+		if !oauth.Revoke(oauth.RevokeRequest{APIURL: target.APIURL, ClientID: clientID, RefreshToken: refreshToken}) {
 			return fmt.Errorf(
 				"login succeeded but the new tokens could not be persisted and the compensating revoke also failed; the newly-issued refresh token may still be valid on the authorization server — visit your Dash0 account settings to revoke active sessions manually: %w",
 				err,
@@ -529,7 +529,11 @@ func persistAndRevokeOld(
 		if target.ExistingAPIURL == "" {
 			oldRevoked = false
 		} else {
-			oldRevoked = oauth.Revoke(target.ExistingAPIURL, target.ExistingClientID, target.OldRefresh)
+			oldRevoked = oauth.Revoke(oauth.RevokeRequest{
+				APIURL:       target.ExistingAPIURL,
+				ClientID:     target.ExistingClientID,
+				RefreshToken: target.OldRefresh,
+			})
 		}
 	}
 
