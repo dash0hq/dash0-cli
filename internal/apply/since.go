@@ -130,7 +130,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	plan := gitutil.Diff(before, after)
 	if len(plan.NoIdentifier) > 0 {
 		return nil, fmt.Errorf("--since '%s' found %s deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:\n  %s",
-			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
+			flags.Since, asset.Pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
 	}
 
 	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
@@ -150,19 +150,19 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 // (kind, identifier).
 func resolveDeletionNames(ctx context.Context, repo gitutil.Repo, sha string, deletions []gitutil.Deletion) map[string]string {
 	names := make(map[string]string, len(deletions))
-	docsByFile := map[string][]assetDocument{}
+	docsByFile := map[string][]asset.Document{}
 	for _, d := range deletions {
 		basePath, docIndex := splitMultiDocPath(d.Path)
 		docs, cached := docsByFile[basePath]
 		if !cached {
 			raw, err := repo.ReadFileAtRef(ctx, sha, basePath)
 			if err == nil {
-				docs, _ = parseMultiDocumentYAML(raw)
+				docs, _ = asset.ParseMultiDocumentYAML(raw)
 			}
 			docsByFile[basePath] = docs
 		}
-		if docIndex < len(docs) && docs[docIndex].name != "" {
-			names[d.Path] = docs[docIndex].name
+		if docIndex < len(docs) && docs[docIndex].Name != "" {
+			names[d.Path] = docs[docIndex].Name
 		}
 	}
 	return names
@@ -210,7 +210,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 		if name == "" {
 			name = "<name>"
 		}
-		display := formatNameAndId(name, d.Identifier)
+		display := asset.FormatNameAndID(name, d.Identifier)
 		if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
 			fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
 		}
