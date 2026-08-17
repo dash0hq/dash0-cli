@@ -1,0 +1,45 @@
+kind: GitRepoFixture
+spec:
+  # A commit with a multi-document YAML file, followed by a commit removing
+  # one document while the file (and its other document) survives.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add combined dashboard+view"
+        changes:
+          - op: add
+            name: combined.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Combined Dashboard
+                dash0Extensions:
+                  id: dash-combined
+              spec:
+                display:
+                  name: Combined Dashboard
+              ---
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: Combined View
+                labels:
+                  dash0.com/id: view-combined
+              spec:
+                query: "true"
+      - message: "remove view document, keep dashboard"
+        changes:
+          - op: modify
+            name: combined.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Combined Dashboard
+                dash0Extensions:
+                  id: dash-combined
+              spec:
+                display:
+                  name: Combined Dashboard

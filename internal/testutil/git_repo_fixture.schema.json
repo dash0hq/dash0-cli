@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dash0hq/dash0-cli/internal/testutil/git_repo_fixture.schema.json",
+  "title": "GitRepoFixture",
+  "description": "Declarative description of a git repository's commit history, used to build --since test scenario fixtures. See internal/testutil/gitscenario.go and internal/testutil/fixtures/git-scenarios/*.yml.",
+  "type": "object",
+  "required": ["kind", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "GitRepoFixture"
+    },
+    "spec": {
+      "type": "object",
+      "required": ["sinceRef", "repo"],
+      "additionalProperties": false,
+      "properties": {
+        "sinceRef": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The --since value this scenario is designed to be tested with: either the label of one of repo.commits, or a literal ref value (e.g. git's all-zeros sentinel) used as-is when it doesn't match any commit's label."
+        },
+        "repo": {
+          "type": "object",
+          "required": ["commits"],
+          "additionalProperties": false,
+          "properties": {
+            "commits": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/commit" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "commit": {
+      "type": "object",
+      "required": ["message"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Names this commit so sinceRef or a later commit's resetTo can refer back to it."
+        },
+        "resetTo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hard-resets the working tree to the labeled commit before applying this commit's changes -- simulating a force-push/history rewrite."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/change" }
+        }
+      }
+    },
+    "change": {
+      "type": "object",
+      "required": ["op", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": ["add", "modify", "delete"],
+          "description": "What this change does to the named file. Explicit rather than inferred, so a commit's intent (add vs. modify vs. delete) is readable without cross-referencing earlier commits, and so an inconsistent fixture (e.g. 'add' on a file that already exists) can be caught at build time."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "string",
+          "description": "The file's new full content. Required for 'add'/'modify'; must be absent for 'delete'."
+        }
+      },
+      "if": {
+        "properties": { "op": { "const": "delete" } }
+      },
+      "then": {
+        "not": { "required": ["content"] }
+      },
+      "else": {
+        "required": ["content"]
+      }
+    }
+  }
+}

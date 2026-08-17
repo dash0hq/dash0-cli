@@ -1,0 +1,3 @@
+# Placeholder so git tracks this otherwise-empty directory.
+# This directory intentionally has no .yaml or .yml files: the apply
+# command should report an error when pointed at it.

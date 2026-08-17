@@ -17,6 +17,9 @@ bin/
 # Built binaries
 build/
 
+# Cross-compiled binary for the test-e2e Docker image (see test/e2e/setup_test.go)
+test/e2e/dash0
+
 # Tools binaries
 .tools/
 

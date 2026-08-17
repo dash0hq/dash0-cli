@@ -1,0 +1,51 @@
+kind: GitRepoFixture
+spec:
+  # The full history (three commits) is preserved in this fixture. The
+  # shallow clone (`git clone --depth 1 file://<repo> <dest>`) is performed
+  # by the test itself at run time, not baked in here -- a shallow clone's
+  # whole point is exercising the clone operation itself. --since is pointed
+  # at the oldest commit, which a --depth 1 clone of HEAD will not have.
+  sinceRef: old
+  repo:
+    commits:
+      - label: old
+        message: "add old.yaml"
+        changes:
+          - op: add
+            name: old.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Old Dashboard
+                dash0Extensions:
+                  id: old-id
+              spec:
+                display:
+                  name: Old Dashboard
+      - message: "add middle.yaml"
+        changes:
+          - op: add
+            name: middle.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: Middle View
+                labels:
+                  dash0.com/id: middle-id
+              spec:
+                query: "true"
+      - message: "add newest.yaml"
+        changes:
+          - op: add
+            name: newest.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: Newest View
+                labels:
+                  dash0.com/id: newest-id
+              spec:
+                query: "true"
