@@ -3,6 +3,7 @@
 package apply
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -823,8 +824,9 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Contains(t, output, "would delete")
+	assert.Contains(t, output, fmt.Sprintf("pending due to --since '%s'", before))
 	assert.Contains(t, output, "a1b2c3d4-5678-90ab-cdef-1234567890ab")
+	assert.Contains(t, output, "Delete Dashboard")
 }
 
 // TestApply_Since_SpamFilterIDOnlyDeletionWarns is a regression test for a
@@ -891,7 +893,7 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Contains(t, stderr, "spam filter \"spam-id-only\" was identified by dash0.com/id alone")
+	assert.Contains(t, stderr, "spam filter \"Drop noisy health checks\" (spam-id-only) was identified by dash0.com/id alone")
 }
 
 // TestApply_Since_SpamFilterOriginDeletionDoesNotWarn confirms the warning

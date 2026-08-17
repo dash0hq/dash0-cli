@@ -215,13 +215,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	if flags.DryRun {
-		if err := printDryRun(documents, fromDirectory); err != nil {
-			return err
-		}
-		if deletionPlan != nil {
-			printDeletionPreview(deletionPlan)
-		}
-		return nil
+		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
 	// Create API client
@@ -329,37 +323,6 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		}
 	}
 	return validationErrors, validationWarnings
-}
-
-func printDryRun(documents []assetDocument, fromDirectory bool) error {
-	if !fromDirectory {
-		fmt.Printf("Dry run: %s validated\n", pluralize(len(documents), "document"))
-		for i, doc := range documents {
-			fmt.Printf("  %d. %s %s\n", i+1, asset.KindDisplayName(doc.kind), formatNameAndId(doc.name, doc.id))
-		}
-		return nil
-	}
-
-	// Count unique files
-	fileSet := make(map[string]bool)
-	for _, doc := range documents {
-		fileSet[doc.filePath] = true
-	}
-	fmt.Printf("Dry run: %s from %s validated\n", pluralize(len(documents), "document"), pluralize(len(fileSet), "file"))
-
-	// Group by file, preserving order
-	var currentFile string
-	docInFile := 0
-	for _, doc := range documents {
-		if doc.filePath != currentFile {
-			currentFile = doc.filePath
-			docInFile = 0
-			fmt.Printf("  %s\n", doc.filePath)
-		}
-		docInFile++
-		fmt.Printf("    %d. %s %s\n", docInFile, asset.KindDisplayName(doc.kind), formatNameAndId(doc.name, doc.id))
-	}
-	return nil
 }
 
 // validationError formats one or more validation issues into a consistent
@@ -554,6 +517,16 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]assetDocument, e
 		}
 	}
 
+	return parseMultiDocumentYAML(data)
+}
+
+// parseMultiDocumentYAML splits data on YAML document boundaries and parses
+// each into an assetDocument. Factored out of readMultiDocumentYAML so
+// callers that already have file content in memory (e.g. --since's
+// git-history name lookups, which read a blob via ReadFileAtRef rather than
+// a path on disk) can reuse the same parsing without a round trip through
+// the filesystem.
+func parseMultiDocumentYAML(data []byte) ([]assetDocument, error) {
 	var documents []assetDocument
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 
