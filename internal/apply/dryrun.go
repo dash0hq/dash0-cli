@@ -46,7 +46,7 @@ type dryRunFileJSON struct {
 // buildDryRunRows groups documents (always) and dp's deletion plan (only
 // when dp is non-nil) into per-file rows, sorted within each file by
 // originOrID (id/origin) for both text and JSON rendering to share.
-func buildDryRunRows(documents []assetDocument, dp *deletionPlan) (rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool) {
+func buildDryRunRows(documents []asset.Document, dp *deletionPlan) (rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool) {
 	rowsByFile = map[string][]dryRunRow{}
 	validatedFileSet = map[string]bool{}
 	addRow := func(file string, row dryRunRow) {
@@ -61,15 +61,15 @@ func buildDryRunRows(documents []assetDocument, dp *deletionPlan) (rowsByFile ma
 	// own validated entry.
 	crdFileByIdentifier := map[string]string{}
 	for _, doc := range documents {
-		identifier, err := dash0yaml.ExtractIdentifier(doc.raw)
+		identifier, err := dash0yaml.ExtractIdentifier(doc.Raw)
 		if err != nil || identifier == "" {
-			identifier = doc.id
+			identifier = doc.ID
 		}
-		if normalizeKind(doc.kind) == "prometheusrule" {
-			crdFileByIdentifier[identifier] = doc.filePath
+		if normalizeKind(doc.Kind) == "prometheusrule" {
+			crdFileByIdentifier[identifier] = doc.FilePath
 		}
-		validatedFileSet[doc.filePath] = true
-		addRow(doc.filePath, dryRunRow{op: "apply", kind: doc.kind, name: doc.name, originOrID: identifier})
+		validatedFileSet[doc.FilePath] = true
+		addRow(doc.FilePath, dryRunRow{op: "apply", kind: doc.Kind, name: doc.Name, originOrID: identifier})
 	}
 
 	if dp != nil {
@@ -107,7 +107,7 @@ func buildDryRunRows(documents []assetDocument, dp *deletionPlan) (rowsByFile ma
 // runDryRun renders --dry-run's output: validation results, merged with
 // --since's deletion plan when dp is non-nil. Emits agent-mode JSON when
 // active, plain text otherwise.
-func runDryRun(documents []assetDocument, fromDirectory bool, fileArg, since string, dp *deletionPlan) error {
+func runDryRun(documents []asset.Document, fromDirectory bool, fileArg, since string, dp *deletionPlan) error {
 	if dp != nil && dp.warning != "" {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", dp.warning)
 	}
@@ -124,16 +124,16 @@ func runDryRun(documents []assetDocument, fromDirectory bool, fileArg, since str
 func renderDryRunText(rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool, fromDirectory bool, documentCount int, since string, dp *deletionPlan) {
 	switch {
 	case dp == nil && fromDirectory:
-		fmt.Printf("Dry run: %s from %s validated\n", pluralize(documentCount, "document"), pluralize(len(validatedFileSet), "file"))
+		fmt.Printf("Dry run: %s from %s validated\n", asset.Pluralize(documentCount, "document"), asset.Pluralize(len(validatedFileSet), "file"))
 	case dp == nil:
-		fmt.Printf("Dry run: %s validated\n", pluralize(documentCount, "document"))
+		fmt.Printf("Dry run: %s validated\n", asset.Pluralize(documentCount, "document"))
 	default:
 		deletionCount := len(dp.plan.ByIdentifier) + len(dp.plan.AlertsByName)
 		if deletionCount == 0 {
-			fmt.Printf("Dry run: %s%s validated; --since: no deletions\n", pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)))
+			fmt.Printf("Dry run: %s%s validated; --since: no deletions\n", asset.Pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)))
 		} else {
 			fmt.Printf("Dry run: %s%s validated; %s pending due to --since '%s'\n",
-				pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)), pluralize(deletionCount, "deletion"), since)
+				asset.Pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)), asset.Pluralize(deletionCount, "deletion"), since)
 		}
 	}
 
@@ -165,7 +165,7 @@ func renderDryRunLine(r dryRunRow) string {
 	if r.detail != "" {
 		return fmt.Sprintf("%s %s %q (%s)", verb, asset.KindDisplayName(r.kind), r.name, r.detail)
 	}
-	return fmt.Sprintf("%s %s %s", verb, asset.KindDisplayName(r.kind), formatNameAndId(r.name, r.originOrID))
+	return fmt.Sprintf("%s %s %s", verb, asset.KindDisplayName(r.kind), asset.FormatNameAndID(r.name, r.originOrID))
 }
 
 // stripScope removes scope's directory prefix from path, converting a
@@ -194,7 +194,7 @@ func fileSuffix(fromDirectory bool, fileCount int) string {
 	if !fromDirectory {
 		return ""
 	}
-	return " from " + pluralize(fileCount, "file")
+	return " from " + asset.Pluralize(fileCount, "file")
 }
 
 // renderDryRunJSON emits the {path, changes} array agent mode expects. A
