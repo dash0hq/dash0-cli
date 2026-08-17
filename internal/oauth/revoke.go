@@ -23,18 +23,26 @@ import (
 // — the local state has already been updated by the time the revoke runs.
 const revokeTimeout = 5 * time.Second
 
-// Revoke posts a revocation request for refreshToken, as clientID, against
-// apiURL. Errors are logged to stderr with a `warning:` prefix; the function
-// returns true on success (or no-op) and false on failure so callers can
-// optionally append a note to their success message. Callers rely on
-// this function returning promptly regardless of outcome.
-// No-ops (and returns true) when refreshToken or apiURL is empty.
-func Revoke(apiURL, clientID, refreshToken string) (ok bool) {
-	if refreshToken == "" || apiURL == "" {
+// RevokeRequest is the input to [Revoke]. Named fields keep API URL, client
+// ID, and refresh token from being swapped at the six call sites.
+type RevokeRequest struct {
+	APIURL       string
+	ClientID     string
+	RefreshToken string
+}
+
+// Revoke posts a revocation request for req.RefreshToken, as req.ClientID,
+// against req.APIURL. Errors are logged to stderr with a `warning:` prefix;
+// the function returns true on success (or no-op) and false on failure so
+// callers can optionally append a note to their success message. Callers
+// rely on this function returning promptly regardless of outcome.
+// No-ops (and returns true) when RefreshToken or APIURL is empty.
+func Revoke(req RevokeRequest) (ok bool) {
+	if req.RefreshToken == "" || req.APIURL == "" {
 		return true
 	}
 	client, err := dash0api.NewOAuthClient(
-		dash0api.WithApiUrl(apiURL),
+		dash0api.WithApiUrl(req.APIURL),
 		dash0api.WithUserAgent(version.UserAgent()),
 	)
 	if err != nil {
@@ -46,8 +54,8 @@ func Revoke(apiURL, clientID, refreshToken string) (ok bool) {
 	defer cancel()
 	hint := dash0api.OAuthTokenTypeRefreshToken
 	if err := client.RevokeToken(ctx, &dash0api.OAuthRevocationRequest{
-		ClientId:      clientID,
-		Token:         refreshToken,
+		ClientId:      req.ClientID,
+		Token:         req.RefreshToken,
 		TokenTypeHint: &hint,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: refresh token revocation failed (it may already be invalid): %v\n", err)

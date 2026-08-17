@@ -1229,7 +1229,9 @@ func TestUpdateProfileCmdOAuthFalseRevokesWithClientID(t *testing.T) {
 			return
 		}
 		if err := r.ParseForm(); err != nil {
-			t.Fatalf("failed to parse revoke form: %v", err)
+			t.Errorf("failed to parse revoke form: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 		gotForm = r.Form
 		w.WriteHeader(http.StatusOK)
