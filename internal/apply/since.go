@@ -30,6 +30,15 @@ type deletionPlan struct {
 	// (deleteAssetByKindAndIdentifier) never depends on it, only on
 	// (kind, identifier).
 	names map[string]string
+	// scope is the --since target's path relative to the repository root
+	// (forward-slashed, "" when the target is the repo root itself). Deletion
+	// paths (gitutil.Deletion.Path, from git ls-tree) are always repo-root-
+	// relative, while validated documents' assetDocument.filePath is always
+	// relative to the -f target itself -- when the target is a subdirectory,
+	// those two bases differ, so rendering must strip this prefix from a
+	// deletion path before grouping it with validated documents from the same
+	// file. See stripScope in dryrun.go.
+	scope string
 }
 
 // computeDeletionPlan resolves flags.Since against the git repository
@@ -126,7 +135,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 
 	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
 
-	return &deletionPlan{plan: plan, warning: warning, names: names}, nil
+	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope}, nil
 }
 
 // resolveDeletionNames best-effort looks up each deletion's display name by
