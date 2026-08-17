@@ -1,0 +1,22 @@
+kind: GitRepoFixture
+spec:
+  # No interesting history is needed -- the scenario is the literal
+  # all-zeros SHA GitHub reports for a branch's first push. A minimal real
+  # repo is still needed, since --since requires -f's target to resolve
+  # inside one; the ref value itself is what the test actually exercises.
+  sinceRef: "0000000000000000000000000000000000000000"
+  repo:
+    commits:
+      - message: "add keep.yaml"
+        changes:
+          - op: add
+            name: keep.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: Keep
+                labels:
+                  dash0.com/id: keep-id
+              spec:
+                query: "true"

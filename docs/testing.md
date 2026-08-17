@@ -60,3 +60,58 @@ They create assets, read them back, verify the output, and clean up.
 - When adding a new signal command (e.g., `metrics send`), add a send-and-query roundtrip.
 - Register every new test script in `run_all.sh` (in `API_TESTS` or `OTLP_TESTS`).
   CI discovers test scripts automatically by scanning `test/roundtrip/test_*.sh`.
+
+# End-to-End Tests
+
+End-to-end tests run the real `dash0` binary against a real `git` binary inside a container, using [testcontainers-go](https://golang.testcontainers.org/).
+They exist to prove that code shelling out to `git` (see `internal/git/`) works across a real process boundary — something neither unit tests (in-process) nor integration tests (a real temp git repo, but still in-process against a mocked HTTP server via `httptest`) can cover.
+They need no live Dash0 credentials: the mock API server runs on the host and is exposed to the container via testcontainers-go's [`WithHostPortAccess`](https://pkg.go.dev/github.com/testcontainers/testcontainers-go#WithHostPortAccess), reachable at `http://host.testcontainers.internal:<port>`.
+
+## Running
+- Requires Docker (or a Docker-compatible daemon) running locally.
+- Run: `make test-e2e`.
+- **Colima users**: testcontainers-go's Docker auto-detection does not recognize colima's non-standard socket forwarding. Export these first:
+  ```bash
+  export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+  export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+  ```
+- GitHub-hosted `ubuntu-latest` CI runners have a working Docker daemon natively, so `test-e2e` needs no special CI runner capability, unlike a self-hosted Docker-in-Docker setup.
+
+## Structure
+- `test/e2e/Dockerfile` — a minimal Alpine image with `git` installed; never shipped, used only by this test tier.
+- `test/e2e/setup_test.go` — cross-compiles a linux binary for the container's architecture (on the host, so the module's local `go.mod` replace directives, if any, resolve normally) and builds the image once per test binary run.
+- `test/e2e/since_e2e_test.go` — one test per `--since` scenario fixture (see [Shared git-repo scenario fixtures](#shared-git-repo-scenario-fixtures) below), each starting a fresh container, copying the scenario's repo in, and asserting on `dash0`'s exit code and output.
+- All files are tagged `//go:build e2e`, so `go build`/`go test` skip them unless `-tags e2e` is passed (as `make test-e2e` does).
+
+## A note on container file ownership
+
+`docker cp` (used to copy a scenario's repo into the container) preserves the host file owner's UID, which does not match the container's root user.
+This trips git's "dubious ownership" guard (the fix for CVE-2022-24765) the same way a real CI environment can when a checkout is owned by a different UID than the one running commands — `actions/checkout` works around exactly this by marking the checkout safe.
+The e2e harness does the same (`git config --global --add safe.directory '*'` inside the container after copying) rather than disabling the protection inside `dash0` itself.
+
+## When to Add End-to-End Tests
+- When adding a new `--since`/`--diff`-style scenario fixture (see below), add a matching `TestE2E_*` case.
+- Scope new coverage to commands that actually shell out to `git`; commands that only call the Dash0 API are already covered by integration tests.
+
+# Shared Git-Repo Scenario Fixtures
+
+`--since`-related tests (unit, integration, and end-to-end) share one set of git-repo fixtures rather than each tier hand-rolling its own git setup.
+
+## Fixture Location
+- Checked-in fixtures: `internal/testutil/fixtures/git-scenarios/<scenario-name>.yml`, one `GitRepoFixture` document per scenario.
+- Each fixture declaratively lists the commits to replay: `spec.repo.commits` is an ordered list, each with a `message`, an ordered list of `changes` to apply, an optional `label` naming the commit for later reference, and an optional `resetTo` that hard-resets to a labeled commit first (used to simulate a force-push). `spec.sinceRef` is the `--since` value the scenario is meant to be tested with: either a commit's `label` or a literal ref (e.g. git's all-zeros sentinel) used as-is.
+- Each entry in `changes` has an explicit `op` (`add`, `modify`, or `delete`), a file `name`, and (for `add`/`modify`) its new full `content`. `op` is deliberately explicit rather than inferred from the same file name reappearing with different content in a later commit: a commit's intent reads correctly on its own, and `BuildGitScenario` cross-checks it against the file's actual existence at that point in history (e.g. `add` on a file that's already there, or `modify`/`delete` on one that doesn't exist yet, fails loudly with a message naming the likely correct `op`).
+- There is no generation step or binary artifact to keep in sync: the fixture *is* the repo's history, in a form that's readable and diffable directly in review. A test builds the real repo from it fresh, every run.
+- `internal/testutil/git_repo_fixture.schema.json` is the JSON Schema for this format; `TestGitScenarioFixtures_MatchSchema` in `internal/testutil/gitscenario_test.go` validates every checked-in fixture against it.
+
+## Go Helper
+`internal/testutil.BuildGitScenario(t, name) (repoDir, ref string)` parses a named scenario's YAML and replays its commits into a fresh `t.TempDir()` repo, returning the repo path plus the resolved ref to pass as `--since`. This is the one thing every test tier calls.
+
+## Scenarios
+- `whole-file-deletion` — a file is removed entirely between the ref and HEAD.
+- `multi-document-partial-deletion` — one document is removed from a multi-document YAML file; the file survives.
+- `prometheus-alert-partial-deletion` — one alerting rule is removed from a `PrometheusRule` CRD; the CRD (and its shared `dash0.com/id`) survives.
+- `prometheus-recording-partial-removal` — the same shape for a recording rule; the correct behavior is a plain update, not a deletion (there is no per-record identity to diff).
+- `first-push-new-branch` — a minimal one-commit repo paired with the literal all-zeros SHA as the ref, simulating a branch's first push.
+- `non-ancestor-force-push` — a commit is orphaned by a simulated force-push (`git reset --hard` + a new commit); it still resolves by SHA but is not an ancestor of HEAD.
+- `too-shallow-clone` — the checked-in fixture carries full history; a `--depth 1` clone (performed by the test itself, via `file://`, not baked into the zip) makes the older ref unresolvable.

@@ -1,0 +1,47 @@
+kind: GitRepoFixture
+spec:
+  # A PrometheusRule CRD with two alerting rules sharing one dash0.com/id,
+  # then a commit removing one alert while the CRD (and its shared
+  # identifier) survives.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add rules with two alerts"
+        changes:
+          - op: add
+            name: rules.yaml
+            content: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: PrometheusRule
+              metadata:
+                name: mixed-rules
+                labels:
+                  dash0.com/id: shared-rule-id
+              spec:
+                groups:
+                  - name: rule-group
+                    interval: 1m
+                    rules:
+                      - alert: HighErrorRate
+                        expr: sum(rate(errors[5m])) > 0.1
+                      - alert: DiskFull
+                        expr: disk_free_bytes < 1000000
+      - message: "remove DiskFull alert"
+        changes:
+          - op: modify
+            name: rules.yaml
+            content: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: PrometheusRule
+              metadata:
+                name: mixed-rules
+                labels:
+                  dash0.com/id: shared-rule-id
+              spec:
+                groups:
+                  - name: rule-group
+                    interval: 1m
+                    rules:
+                      - alert: HighErrorRate
+                        expr: sum(rate(errors[5m])) > 0.1
