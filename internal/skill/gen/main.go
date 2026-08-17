@@ -104,6 +104,15 @@ var topics = []topicSpec{
 			"\"Mixed PrometheusRule\" example above.",
 	},
 	{
+		name:            "slos",
+		includeQuickRef: true,
+		sections:        []string{"slo documents and openslo v1 compatibility"},
+		assetYAMLLabels: []string{"SLO (Dash0's OpenSLO"},
+		extraNote: "`dash0.com/origin` — not `dash0.com/id` — is the upsert key for SLOs: SLO IDs are assigned " +
+			"by the server (`slo_<ulid>`), so origin is the only identifier a hand-written document can pin, and " +
+			"it is what makes `apply` idempotent. See the `apply` topic for the full upsert-key selection rules.",
+	},
+	{
 		name:            "spam-filters",
 		includeQuickRef: true,
 		assetYAMLLabels: []string{"Spam filter (v1alpha1", "Spam filter (v1alpha2"},

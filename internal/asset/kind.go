@@ -19,6 +19,8 @@ func KindDisplayName(kind string) string {
 		return "Check rule"
 	case "syntheticcheck":
 		return "Synthetic check"
+	case "slo":
+		return "SLO"
 	case "view":
 		return "View"
 	case "prometheusrule":

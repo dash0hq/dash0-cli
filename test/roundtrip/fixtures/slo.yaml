@@ -1,0 +1,42 @@
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-api-availability
+  annotations:
+    dash0.com/display-name: Checkout API availability
+    dash0.com/enabled: "true"
+spec:
+  description: 99 percent of synthetic checks against the checkout API succeed over a rolling 28-day window.
+  service: checkout-api
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 28d
+      isRolling: true
+  indicator:
+    metadata:
+      name: checkout-api-synthetic-success-ratio
+    spec:
+      # dash0.synthetic_check.runs counts every synthetic check execution, so the
+      # good-over-total ratio over its dash0.synthetic_check.outcome dimension is
+      # a ready-made availability SLI. It is a counter (a Sum), hence
+      # counter: true, and Dash0 does not bill it.
+      #
+      # Each query must be a bare PromQL vector selector — label matchers only, no
+      # functions and no aggregations, or the API rejects it with a 400. Dash0
+      # applies the counter and windowing math itself, so there is no rate() or
+      # sum() here. The good query is a strict subset of the total query.
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: '{otel_metric_name="dash0.synthetic_check.runs",dash0_check_type="synthetic.http",dash0_check_name="checkout-api-uptime",dash0_synthetic_check_outcome="Healthy"}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: '{otel_metric_name="dash0.synthetic_check.runs",dash0_check_type="synthetic.http",dash0_check_name="checkout-api-uptime"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
