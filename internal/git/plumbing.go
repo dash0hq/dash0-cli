@@ -1,0 +1,159 @@
+// Package git wraps the git plumbing commands `--since` needs
+// (rev-parse, merge-base, cat-file, ls-tree) via the system git binary,
+// never porcelain commands (git diff, git show, git log) — porcelain output
+// is for human consumption and isn't a stable, documented contract across
+// git versions.
+package git
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"sort"
+	"strings"
+
+	"github.com/dash0hq/dash0-cli/internal/asset"
+)
+
+// AllZerosSHA is git's sentinel for "this ref did not exist" — the value
+// GitHub gives github.event.before on a branch's first push, and the value
+// git's own pre-receive/post-receive hooks use for a created/deleted ref.
+const AllZerosSHA = "0000000000000000000000000000000000000000"
+
+// ErrRefNotFound is returned by resolveCommit when git could not resolve a
+// ref to a commit — a nonexistent ref, a too-shallow history, or any other
+// plain git-resolution failure. It is not returned for infrastructure
+// failures (git binary missing, context canceled), which propagate as-is.
+var ErrRefNotFound = errors.New("git ref not found")
+
+// Repo is a lightweight handle to a git working tree, used to run plumbing
+// commands against it via the system git binary. Dir may be the working
+// tree's root or any directory inside it — git -C resolves it either way.
+type Repo struct {
+	Dir string
+}
+
+// run invokes `git -C <r.Dir> <args...>` and returns stdout on success. A
+// non-zero exit still returns an error usable with errors.As(&exitErr) to
+// distinguish "git said no" from an infrastructure failure (binary missing,
+// context canceled) — the wrapping here uses %w specifically to preserve
+// that distinction for callers further up the chain.
+func (r Repo) run(ctx context.Context, args ...string) ([]byte, error) {
+	fullArgs := append([]string{"-C", r.Dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git %s: %w (stderr: %s)", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), nil
+}
+
+// resolveCommit runs `git rev-parse --verify <ref>^{commit}`, returning the
+// resolved commit SHA. Returns ErrRefNotFound when git exits non-zero
+// because the ref itself doesn't resolve (as opposed to an infrastructure
+// failure, which is returned unwrapped).
+func (r Repo) resolveCommit(ctx context.Context, ref string) (string, error) {
+	out, err := r.run(ctx, "rev-parse", "--verify", ref+"^{commit}")
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", ErrRefNotFound
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// IsAncestor runs `git merge-base --is-ancestor <ancestor> <descendant>`,
+// reporting whether ancestor is reachable from descendant. Per git's own
+// documented convention for --is-ancestor, exit 0 means true and exit 1
+// means false; any other outcome is a genuine error (e.g. one of the refs
+// doesn't exist).
+func (r Repo) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
+	_, err := r.run(ctx, "merge-base", "--is-ancestor", ancestor, descendant)
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check ancestry of %s against %s: %w", ancestor, descendant, err)
+}
+
+// Root runs `git rev-parse --show-toplevel`, returning the absolute path to
+// the repository root containing r.Dir. Callers use this to anchor
+// repo-relative paths consistently between BuildSnapshotFromRef (whose paths
+// are always repo-root-relative, per git ls-tree's own behavior) and
+// BuildSnapshotFromDisk.
+func (r Repo) Root(ctx context.Context) (string, error) {
+	out, err := r.run(ctx, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", fmt.Errorf("failed to determine repository root for %s: %w", r.Dir, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// ReadFileAtRef runs `git cat-file -p <ref>:<path>`, returning the file's
+// content at that ref. path must be relative to the repo root, using
+// forward slashes (git's own path convention).
+func (r Repo) ReadFileAtRef(ctx context.Context, ref, path string) ([]byte, error) {
+	out, err := r.run(ctx, "cat-file", "-p", ref+":"+path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s at %s: %w", path, ref, err)
+	}
+	return out, nil
+}
+
+// ListYAMLFilesAtRef runs `git ls-tree -r --name-only <ref> [-- <scope>]`,
+// returning every .yaml/.yml file at that ref within scope (a repo-relative
+// directory or file path; empty scope lists the whole tree). Hidden files
+// and directories (any path component starting with ".") are skipped,
+// matching apply's existing discoverFiles behavior for disk scans, so the
+// git-side and disk-side listings stay consistent — including exempting the
+// scope itself from the hidden check: a dot-prefixed -f target (e.g.
+// -f .dash0-assets/) is a deliberate user choice, not something to skip, the
+// same way FindNonHiddenYAMLFiles never applies IsHiddenPath to its walk
+// root. Every path component *inside* scope is still checked normally.
+//
+// The .yaml/.yml extension check is likewise skipped when scope names a
+// single file exactly (line == scope; a directory scope's entries are always
+// listed as scope/<something>, never scope itself, so this can only match a
+// genuine single-file target) — apply's own single-file create/update path
+// (readMultiDocumentYAML) has no extension check at all, so -f config.json
+// must be scanned by --since the same way it's read by every other apply
+// path, not silently excluded from both snapshots because of its extension.
+func (r Repo) ListYAMLFilesAtRef(ctx context.Context, ref, scope string) ([]string, error) {
+	args := []string{"ls-tree", "-r", "--name-only", ref}
+	if scope != "" {
+		args = append(args, "--", scope)
+	}
+	out, err := r.run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files at %s: %w", ref, err)
+	}
+
+	var files []string
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		isExplicitSingleFileTarget := scope != "" && line == scope
+		if !isExplicitSingleFileTarget && !asset.IsYAMLFile(line) {
+			continue
+		}
+		pathBelowScope := strings.TrimPrefix(line, scope)
+		pathBelowScope = strings.TrimPrefix(pathBelowScope, "/")
+		if asset.IsHiddenPath(pathBelowScope) {
+			continue
+		}
+		files = append(files, line)
+	}
+	sort.Strings(files)
+	return files, nil
+}
