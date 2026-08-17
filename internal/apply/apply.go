@@ -551,38 +551,19 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]assetDocument, e
 // skipping hidden entries (names starting with '.').
 // Returns paths relative to dirPath, sorted lexicographically.
 func discoverFiles(dirPath string) ([]string, error) {
-	var files []string
-	hasNestedDirs := false
-	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		name := d.Name()
-		// Skip hidden files and directories
-		if strings.HasPrefix(name, ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			if path != dirPath {
-				hasNestedDirs = true
-			}
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(name))
-		if ext == ".yaml" || ext == ".yml" {
-			rel, err := filepath.Rel(dirPath, path)
-			if err != nil {
-				return err
-			}
-			files = append(files, rel)
-		}
-		return nil
-	})
-	if err != nil {
+	var paths []string
+	var hasNestedDirs bool
+	if err := filepath.WalkDir(dirPath, asset.FindNonHiddenYAMLFiles(dirPath, &paths, &hasNestedDirs)); err != nil {
 		return nil, fmt.Errorf("failed to scan directory: %w", err)
+	}
+
+	var files []string
+	for _, path := range paths {
+		rel, err := filepath.Rel(dirPath, path)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, rel)
 	}
 	if len(files) == 0 {
 		if hasNestedDirs {

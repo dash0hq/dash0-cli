@@ -883,7 +883,7 @@ For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
-Hidden files and directories (starting with `.`) are skipped.
+Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
