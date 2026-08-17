@@ -829,6 +829,65 @@ spec:
 	assert.Contains(t, output, "Delete Dashboard")
 }
 
+// TestApply_Since_DryRunPreview_SubdirectoryScopeGroupsConsistently is a
+// regression test for a bug where a -f target that is a subdirectory of the
+// repo (not the repo root) rendered a deletion under its repo-root-relative
+// path while validated documents rendered under their -f-target-relative
+// path -- producing inconsistent, mismatched file-path prefixing in the same
+// listing (e.g. "keep.yaml" next to "dashboards/removed.yaml") instead of
+// both files rendering on the same (-f-target-relative) basis.
+func TestApply_Since_DryRunPreview_SubdirectoryScopeGroupsConsistently(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	repoRoot := t.TempDir()
+	runGitCmd(t, repoRoot, "init", "-q", "-b", "main")
+	runGitCmd(t, repoRoot, "config", "user.email", "test@example.com")
+	runGitCmd(t, repoRoot, "config", "user.name", "Test")
+	runGitCmd(t, repoRoot, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, repoRoot, "dashboards/keep.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: keep-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: Keep Dashboard
+`)
+	writeFileFixture(t, repoRoot, "dashboards/removed.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: removed-dashboard
+  dash0Extensions:
+    id: b2c3d4e5-6789-01bc-def0-234567890abc
+spec:
+  display:
+    name: Removed Dashboard
+`)
+	runGitCmd(t, repoRoot, "add", "-A")
+	runGitCmd(t, repoRoot, "commit", "-q", "-m", "add dashboards")
+	before := strings.TrimSpace(runGitCmd(t, repoRoot, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(repoRoot, "dashboards", "removed.yaml")))
+	runGitCmd(t, repoRoot, "add", "-A")
+	runGitCmd(t, repoRoot, "commit", "-q", "-m", "remove dashboard")
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{"-f", filepath.Join(repoRoot, "dashboards"), "--since", before, "--dry-run", "--experimental"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "  keep.yaml\n")
+	assert.Contains(t, output, "  removed.yaml\n")
+	assert.NotContains(t, output, "dashboards/keep.yaml")
+	assert.NotContains(t, output, "dashboards/removed.yaml")
+}
+
 // TestApply_Since_SpamFilterIDOnlyDeletionWarns is a regression test for a
 // gap where deleting a spam filter identified by dash0.com/id alone gave no
 // indication that the id recorded in git history might no longer match the

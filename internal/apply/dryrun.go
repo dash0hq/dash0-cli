@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
@@ -82,7 +83,7 @@ func buildDryRunRows(documents []assetDocument, dp *deletionPlan) (rowsByFile ma
 				name = "<name>"
 			}
 			basePath, _ := splitMultiDocPath(d.Path)
-			addRow(basePath, dryRunRow{op: "delete", kind: d.Kind, name: name, originOrID: d.Identifier})
+			addRow(stripScope(basePath, dp.scope), dryRunRow{op: "delete", kind: d.Kind, name: name, originOrID: d.Identifier})
 		}
 		for _, a := range dp.plan.AlertsByName {
 			addRow(crdFileByIdentifier[a.CRDIdentifier], dryRunRow{
@@ -165,6 +166,25 @@ func renderDryRunLine(r dryRunRow) string {
 		return fmt.Sprintf("%s %s %q (%s)", verb, asset.KindDisplayName(r.kind), r.name, r.detail)
 	}
 	return fmt.Sprintf("%s %s %s", verb, asset.KindDisplayName(r.kind), formatNameAndId(r.name, r.originOrID))
+}
+
+// stripScope removes scope's directory prefix from path, converting a
+// repo-root-relative deletion path (gitutil.Deletion.Path, as read via git
+// ls-tree) into the same -f-target-relative basis validated documents'
+// assetDocument.filePath already uses -- otherwise a deletion from a
+// subdirectory -f target groups under a different (repo-root-relative) key
+// than that same file's surviving documents, splitting one file into two
+// entries with inconsistent prefixing. scope is "" when the target is the
+// repository root itself, in which case the two bases already coincide.
+func stripScope(path, scope string) string {
+	if scope == "" {
+		return path
+	}
+	prefix := scope + "/"
+	if rest, ok := strings.CutPrefix(path, prefix); ok {
+		return rest
+	}
+	return path
 }
 
 // fileSuffix renders the " from N files" clause the --since summary line
