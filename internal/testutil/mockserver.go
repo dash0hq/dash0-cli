@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Fixture paths relative to the fixtures directory.
@@ -243,6 +245,24 @@ func (m *MockServer) LastRequest() *RecordedRequest {
 	}
 	req := m.requests[len(m.requests)-1]
 	return &req
+}
+
+// RequestBodies returns the decoded JSON bodies of all recorded requests
+// matching method and path, in the order they were received. Use this
+// instead of LastRequest when a command issues more than one request to the
+// same route and the test needs to inspect all of them, not just the last.
+func (m *MockServer) RequestBodies(t *testing.T, method, path string) []map[string]any {
+	t.Helper()
+	var bodies []map[string]any
+	for _, req := range m.Requests() {
+		if req.Method != method || req.Path != path {
+			continue
+		}
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(req.Body, &body))
+		bodies = append(bodies, body)
+	}
+	return bodies
 }
 
 // Reset clears all recorded requests.

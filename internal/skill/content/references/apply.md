@@ -28,7 +28,7 @@ For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema
 An unknown value fails validation up front, before any document is applied.
 
 For `PrometheusRule`, `apply` inspects each rule entry and dispatches by type.
-Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as one check rule per alert, named `<group name> - <alert name>` to match the Dash0 Kubernetes operator and the Terraform provider.
+Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as one check rule per alert, named `<group name> - <alert name>` to match the Dash0 Kubernetes operator and the Terraform provider (see [PrometheusRule annotation merge](#prometheusrule-annotation-merge)).
 Recording rules (entries with `record:`) are sent to the recording-rule endpoint as a single PrometheusRule CRD with the alerting rules removed.
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
@@ -83,3 +83,128 @@ $ dash0 apply -f assets.yaml --dry-run
 Dry run: 1 document validated
   1. Dashboard "Production Overview" (a1b2c3d4-5678-90ab-cdef-1234567890ab)
 ```
+
+### PrometheusRule annotation merge
+
+A PrometheusRule document's top-level `metadata.annotations` are merged into each alerting rule's own annotations, key by key. A rule that sets the same key wins for that key only, and still inherits the rest.
+Use this to define a common setting once instead of repeating it on every rule in a multi-rule CRD.
+The recurring example is `dash0.com/notification-channel-ids`, whose value is a comma-separated list of notification channel ids (`dash0 notification-channels list` prints the available ids).
+This applies to `check-rules create`, `apply`, and `check-rules update`, though `update` operates on a single check rule and rejects a CRD containing more than one.
+
+Below, `CheckoutHighLatency` inherits the top-level channel and `CheckoutHighErrorRate` replaces it with its own:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: checkout-alerts
+  annotations:
+    dash0.com/notification-channel-ids: ded5721c-2bf0-4a10-ab33-511fef734b0f
+spec:
+  groups:
+    - name: Alerting
+      rules:
+        - alert: CheckoutHighLatency
+          expr: histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m]))) > 1
+        - alert: CheckoutHighErrorRate
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="checkout", http_response_status_code=~"5.."}[5m])) > 0.1
+          annotations:
+            dash0.com/notification-channel-ids: 56aaacb2-10c6-4cef-8aeb-d7c862ad863e
+```
+
+```bash
+$ dash0 check-rules create -f checkout-alerts.yaml
+Check rule "Alerting - CheckoutHighLatency" created
+Check rule "Alerting - CheckoutHighErrorRate" created
+```
+
+`CheckoutHighLatency` declared no annotations of its own and still carries the top-level channel:
+
+```bash
+$ dash0 check-rules get a1b2c3d4-5678-90ab-cdef-1234567890ab -o yaml
+annotations:
+  dash0.com/notification-channel-ids: ded5721c-2bf0-4a10-ab33-511fef734b0f
+enabled: true
+expression: histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m])))
+  > 1
+id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+name: Alerting - CheckoutHighLatency
+...
+```
+
+#### Annotations that control rule behavior
+
+A few annotations configure how a rule evaluates rather than describing it:
+
+| Annotation | Controls | Also accepted |
+|---|---|---|
+| `dash0-enabled` | whether the rule evaluates at all | |
+| `dash0-threshold-critical` | the critical threshold | `threshold-critical` |
+| `dash0-threshold-degraded` | the degraded threshold | `threshold-degraded` |
+
+These are unprefixed, unlike the `dash0.com/`-prefixed annotations above, so they are easy to mistake for ordinary metadata.
+They inherit and override like any other annotation, so a value set at the top level reaches every rule that does not name its own.
+Setting `dash0-enabled: "false"` there stops all of those rules from firing:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: checkout-defaults
+  annotations:
+    dash0-enabled: "false"
+    dash0-threshold-critical: "5"
+spec:
+  groups:
+    - name: Alerting
+      rules:
+        - alert: InheritsDisabled
+          expr: up == 0
+        - alert: OverridesToEnabled
+          expr: up == 1
+          annotations:
+            dash0-enabled: "true"
+            dash0-threshold-critical: "9"
+```
+
+The critical and degraded thresholds are two separate annotations, so a document can set one at the top level and a rule can set the other.
+Both then apply to that rule.
+Below, the rule inherits a critical threshold of 1000 milliseconds and sets a degraded threshold of 500 milliseconds:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: checkout-latency
+  annotations:
+    dash0-threshold-critical: "1000"
+spec:
+  groups:
+    - name: Alerting
+      rules:
+        - alert: Checkout P99 Latency
+          expr: histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m]))) * 1000 > $__threshold
+          annotations:
+            dash0-threshold-degraded: "500"
+```
+
+```bash
+$ dash0 check-rules get c3d4e5f6-7890-12cd-ef01-345678901bcd -o yaml
+id: c3d4e5f6-7890-12cd-ef01-345678901bcd
+name: Alerting - Checkout P99 Latency
+...
+thresholds:
+  degraded: 500
+  failed: 1000
+```
+
+The check then reports critical above 1000 milliseconds, degraded between 500 and 1000 milliseconds, and healthy below 500 milliseconds.
+A measurement that crosses both thresholds is reported as critical, never as both.
+
+Dash0 evaluates the critical threshold first, so the critical value has to be the more severe one for the comparison used in the expression: the higher number for `>`, the lower number for `<`.
+Swapping them in the rule above, to a critical threshold of 500 and a degraded threshold of 1000, reports critical from 500 milliseconds upwards and never reports degraded at all.
+
+The prefixed and unprefixed spellings of a setting are different annotation keys, and the prefixed one wins wherever both are present.
+That takes precedence over the rule-beats-document behavior above: a rule setting `threshold-critical` does not override a top-level `dash0-threshold-critical`.
+The losing value is not discarded either, it stays on the check rule as an ordinary annotation, which is usually how you notice.
+Use one spelling throughout a document.
