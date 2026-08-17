@@ -31,6 +31,8 @@ func KindDisplayName(kind string) string {
 		return "Notification channel"
 	case "spamfilter":
 		return "Spam filter"
+	case "team":
+		return "Team"
 	default:
 		return kind
 	}
