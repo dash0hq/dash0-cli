@@ -17,7 +17,7 @@ description: Use when working with Dash0 observability data or configuration via
 |----------|----------|-----------------|
 | Authentication | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | Configuration | `config profiles`, `config show` | Profile management, no API calls |
-| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -39,9 +39,9 @@ Agent mode optimizes the CLI for AI agents: JSON output by default, structured `
 
 ## How asset commands work
 
-All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
+All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`. `update`'s diff (and `diff`'s) is computed semantically: cosmetic differences (key/slice order, duration formatting, int-vs-float, API-populated defaults) never produce a spurious "changed" result.
 
-`dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic.
+`dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic. `dash0 --experimental diff -f <file|directory>` previews what `apply` would do — fetching each document's current state from Dash0 first, so it can tell a create from an update accurately — without ever mutating anything; see the `diff` topic.
 
 ### Asset identifiers and idempotent upsert
 
@@ -141,6 +141,12 @@ With `--force`, an already-deleted asset is treated as idempotent success — th
 dash0 apply -f assets/ --dry-run
 ```
 
+`--dry-run` is deprecated in favor of `dash0 diff` (experimental), which fetches each asset's current state from Dash0 first to accurately distinguish a create from an update — see the `diff` topic, including its three-way exit code (`0` clean, `1` differences pending, `2` error):
+
+```bash
+dash0 --experimental diff -f assets/
+```
+
 ### Sync a directory to match its state as of a git ref (experimental)
 
 `apply --since <ref>` deletes assets removed from `-f`'s contents since `<ref>`, in addition to the usual create/update behavior. Requires `--experimental`/`-X` and `-f`'s target to be inside a git repository:
@@ -149,7 +155,7 @@ dash0 apply -f assets/ --dry-run
 dash0 --experimental apply -f assets/ --since HEAD~1 --force
 ```
 
-Preview the plan first with `--dry-run` — see the `apply` topic for the full reference, including the GitHub Actions invocation pattern and ref-resolution edge cases.
+Preview the plan first with `dash0 diff -f assets/ --since HEAD~1` — see the `apply` topic for the full reference, including the GitHub Actions invocation pattern and ref-resolution edge cases.
 
 ## Topics
 
@@ -162,6 +168,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |
+| `diff` | Preview what `apply` would do (create/update/delete), without mutating anything |
 | `failed-checks` | Query active and historical alerting issues |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
 | `logs` | Query and send log records |

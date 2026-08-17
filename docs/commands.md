@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -29,6 +29,7 @@ A profile can be in one of three auth states: **static** (holds a long-lived `au
 **Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks, recording rules).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
 The `apply` command provides create-or-update semantics across all asset types, and (experimentally, via `--since`) delete semantics based on git history.
+The experimental `diff` command previews what `apply` would do — fetching each document's current state from Dash0 first, so it can accurately distinguish create from update — without ever creating, updating, or deleting anything.
 
 **Query commands** search and retrieve telemetry signals.
 They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
@@ -619,6 +620,9 @@ If the ID argument is omitted, the ID is extracted from the file content.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
 
+The diff is computed semantically, not as a raw text diff: cosmetic differences — key and slice ordering, duration-string formatting (`2m` vs. `2m0s`), int-vs-float representation, and API-populated defaults absent from the local file — never produce a spurious "changed" result or a noisy diff.
+See [`diff`](#diff-experimental) for the full breakdown of what the comparison does and does not normalize.
+
 ```bash
 dash0 dashboards update [id] -f <file> [--dry-run]
 ```
@@ -926,6 +930,100 @@ Quote the interpolated ref and gate the whole step on the event actually providi
 ```
 
 `fetch-depth: 0` (or a depth covering `github.event.before`) is required on the preceding `actions/checkout` step — a shallow clone makes `<ref>` unresolvable, which `--since` treats as a plain error, not a fallback.
+
+### `diff` (experimental)
+
+Preview what `apply` would do to a file, directory, or stdin, without creating, updating, or deleting anything.
+Requires `--experimental`/`-X`.
+
+```bash
+dash0 --experimental diff -f <file|directory> [--since <ref>]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Path to a YAML/JSON file, a directory, or `-` for stdin |
+| `--since` | | Also preview deletions: assets removed from `-f`'s contents since this git ref |
+
+Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash0 first (when the document carries an identifier), so it can tell a create from an update accurately — `--dry-run` is local-only and cannot make that distinction.
+For an update, `diff` prints a unified diff between the fetched state and the local definition, identical in format to `dashboards update`'s own diff output.
+A document with no identifier, or one whose identifier does not match any existing asset, is reported as a create.
+
+The comparison itself is semantic, not a raw text diff: cosmetic differences never count as a change and never appear in the printed diff.
+This covers key and slice ordering (e.g. `spec.permissions` or `spec.filter` in a different order), duration-string formatting (`2m` and `2m0s` are the same value), int-vs-float representation differences between YAML and JSON, and API-populated defaults absent from the local document.
+For check rules specifically, the default annotation values the Dash0 JSON → Prometheus YAML conversion omits (`dash0-threshold-critical`/`dash0-threshold-degraded: "0"`, `dash0-enabled: "true"`) are treated as equivalent to the annotation being absent altogether.
+A real change that coexists with an unrelated slice-reorder or duration-format difference elsewhere in the same document may still show that unrelated difference as extra noise in the printed diff — the comparison never reports a false "no differences" or misses a real change, but the rendered text isn't fully canonicalized.
+
+All documents are fetched before anything is printed.
+If any single fetch fails for a reason other than the asset simply not existing yet — an auth failure, a 5xx, a network error — the entire preview is aborted and nothing is printed, so a partial, misleading report is never shown.
+
+`--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
+A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
+A deletion candidate with no `dash0.com/id` or `dash0.com/origin` label still fails the whole command before any plan is reported, matching `apply --since`'s posture.
+
+**Exit code** is a deliberate three-way exception to this CLI's uniform 0/1 convention, modeled on `kubectl diff`:
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No differences — the live state already matches `-f`'s contents |
+| `1` | Differences are pending (creates, updates, or deletions) |
+| `2` | A genuine error (bad `--since` ref, unreachable API, and so on) |
+
+A naive CI step that only checks for a non-zero exit code fails on the routine "changes pending" case — branch explicitly on the exit code, or treat `1` as a signal rather than a failure.
+
+Preview a directory with a pending create and update:
+
+```bash
+$ dash0 --experimental diff -f dashboards/
+dashboards/new.yaml
+  Create Dashboard "New Dashboard"
+dashboards/existing.yaml
+--- Dashboard (before)
++++ Dashboard (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Old Name
++    name: New Name
+$ echo $?
+1
+```
+
+Preview with no pending differences:
+
+```bash
+$ dash0 --experimental diff -f dashboard.yaml
+No differences
+$ echo $?
+0
+```
+
+Preview deletions alongside creates and updates:
+
+```bash
+$ dash0 --experimental diff -f dashboards/ --since HEAD~1
+dashboards/keep.yaml
+  Create Dashboard "Production Overview"
+dashboards/removed.yaml
+  Delete Dashboard "Old Dashboard" (b2c3d4e5-...)
+$ echo $?
+1
+```
+
+A genuine error aborts before any plan is printed:
+
+```bash
+$ dash0 --experimental diff -f dashboards/ --since totally-bogus-ref
+Error: --since 'totally-bogus-ref' could not be resolved (check for a typo, or a too-shallow clone missing the needed history)
+$ echo $?
+2
+```
+
+In agent mode, `diff` reports the same information as JSON: an array of `{path, changes: [{op, name, originOrId}]}`, `op` being `"create"`, `"update"`, or `"delete"` — the same shape `apply --dry-run --agent-mode` uses, except `diff` distinguishes `"create"` from `"update"` since that is the entire point of a pre-flight preview.
+An unchanged update is omitted from the JSON output entirely, matching the human-readable output's "no differences" convention.
+
+`diff` needs a real `git` binary on `PATH` for `--since`, same as `apply --since`.
+It is unavailable from the `ghcr.io/dash0hq/cli` Docker image, which is built `FROM scratch` and has no shell or other tools installed.
 
 ### Asset YAML formats
 
@@ -2960,11 +3058,19 @@ This is safe to invoke from GitOps or agent-driven pipelines even when another a
 
 ### Validate assets before applying
 
-Use `--dry-run` to check for errors without making changes:
+Use `--dry-run` to check for local validation errors without making changes:
 
 ```bash
 dash0 apply -f assets/ --dry-run
 ```
+
+`--dry-run` is deprecated in favor of `dash0 diff` (experimental), which fetches each asset's current state from Dash0 first, so it can accurately distinguish a create from an update — `--dry-run` is local-only and cannot tell the two apart:
+
+```bash
+dash0 --experimental diff -f assets/
+```
+
+See [`diff`](#diff-experimental) for the full reference, including its three-way exit code (`0` clean, `1` differences pending, `2` error).
 
 ### Sync a directory to match its state as of a git ref (experimental)
 
@@ -2975,4 +3081,4 @@ Requires `--experimental`/`-X` and `-f`'s target to be inside a git repository:
 dash0 --experimental apply -f assets/ --since HEAD~1 --force
 ```
 
-Preview the plan (creates, updates, and deletions) first with `--dry-run`; see [`apply --since`](#apply---since-experimental) for the full reference, including the GitHub Actions invocation pattern and the ref-resolution edge cases.
+Preview the plan (creates, updates, and deletions) first with `dash0 diff -f assets/ --since HEAD~1`; see [`apply --since`](#apply---since-experimental) for the full reference, including the GitHub Actions invocation pattern and the ref-resolution edge cases.

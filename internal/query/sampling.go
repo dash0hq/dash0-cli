@@ -18,14 +18,14 @@ func ParsePrecision(value string, timeRange dash0api.TimeReferenceRange) (*dash0
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "":
 		return nil, nil
-	case string(dash0api.Adaptive):
+	case string(dash0api.SamplingModeAdaptive):
 		return &dash0api.Sampling{
-			Mode:      dash0api.Adaptive,
+			Mode:      dash0api.SamplingModeAdaptive,
 			TimeRange: timeRange,
 		}, nil
-	case string(dash0api.Disabled):
+	case string(dash0api.SamplingModeDisabled):
 		return &dash0api.Sampling{
-			Mode:      dash0api.Disabled,
+			Mode:      dash0api.SamplingModeDisabled,
 			TimeRange: timeRange,
 		}, nil
 	default:

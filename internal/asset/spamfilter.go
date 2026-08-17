@@ -143,7 +143,7 @@ func ImportSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *da
 // ID fallback), existence check via GetSpamFilter, create-vs-update routing —
 // is identical. See ImportSpamFilter for the rationale.
 func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilterV1Alpha2, dataset *string) (ImportResult, error) {
-	id := v1Alpha2ID(filter)
+	id := SpamFilterV1Alpha2ID(filter)
 	origin := ""
 	if filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil {
 		origin = *filter.Metadata.Labels.Dash0Comorigin
@@ -175,13 +175,13 @@ func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, fi
 		return ImportResult{}, err
 	}
 
-	return ImportResult{Name: result.Metadata.Name, ID: v1Alpha2ID(result), Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: result.Metadata.Name, ID: SpamFilterV1Alpha2ID(result), Action: action, Before: before, After: result}, nil
 }
 
-// v1Alpha2ID extracts the dash0.com/id label from a v1alpha2 filter. Kept here
+// SpamFilterV1Alpha2ID extracts the dash0.com/id label from a v1alpha2 filter. Kept here
 // rather than re-exporting from the api client because the API client only
 // exposes labelled accessors for v1alpha1.
-func v1Alpha2ID(filter *dash0api.SpamFilterV1Alpha2) string {
+func SpamFilterV1Alpha2ID(filter *dash0api.SpamFilterV1Alpha2) string {
 	if filter == nil || filter.Metadata.Labels == nil || filter.Metadata.Labels.Dash0Comid == nil {
 		return ""
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/muesli/termenv"
 	"github.com/pmezard/go-difflib/difflib"
@@ -102,9 +103,98 @@ func marshalForDiff(asset any) (string, error) {
 	return string(out), nil
 }
 
+// semanticCompareConfig returns the per-kind configuration for
+// dash0yaml.Equivalent/Normalize, keyed off after's concrete type (mirroring
+// marshalForDiff's own type switch). preservedAnnotationKeys reuses the
+// already-exported dash0api.AnnotationSharing/AnnotationFolderPath constants
+// rather than redefining them.
+//
+// *dash0api.PrometheusAlertRule needs two options, unlike every other kind
+// here (which is Kubernetes-CRD-shaped, metadata:-nested, and uses the
+// default root with dash0api.AnnotationSharing/AnnotationFolderPath as
+// preserved keys):
+//   - dash0yaml.WithAnnotationsRoot(""): it is flat (top-level
+//     id/name/expression/labels/annotations, no "metadata:" nesting),
+//     whether it originated from a native CheckRule document or was
+//     extracted from a PrometheusRule CRD's alerting rules
+//     (asset.ParseCheckRules produces the same flat wire type either way).
+//   - dash0yaml.WithAnnotationsUnfiltered(): its annotations map holds
+//     genuine user content (summary, description, sharing) directly, not
+//     server-managed-by-default provenance metadata -- confirmed via the
+//     generated PrometheusAlertRule_Annotations type, whose Sharing field
+//     has JSON tag "sharing", not "dash0.com/sharing". Without this, an
+//     empty preservedAnnotationKeys would strip the whole map, silently
+//     hiding real content and sharing changes from drift detection.
+func semanticCompareConfig(asset any) (extraIgnoredFields, preservedAnnotationKeys []string, opts []dash0yaml.Option) {
+	switch asset.(type) {
+	case *dash0api.DashboardDefinition:
+		return nil, []string{dash0api.AnnotationSharing, dash0api.AnnotationFolderPath}, nil
+	case *dash0api.PrometheusAlertRule:
+		return nil, nil, []dash0yaml.Option{dash0yaml.WithAnnotationsRoot(""), dash0yaml.WithAnnotationsUnfiltered()}
+	case *dash0api.ViewDefinition:
+		return nil, []string{dash0api.AnnotationSharing, dash0api.AnnotationFolderPath}, nil
+	case *dash0api.SyntheticCheckDefinition:
+		return nil, []string{dash0api.AnnotationSharing}, nil
+	case *dash0api.NotificationChannelDefinition:
+		// spec.routing.assets is API-managed (a server-derived back-reference);
+		// see RoutingAssetsWarning and CLAUDE.md's Asset annotations section.
+		return []string{"spec.routing.assets"}, nil, nil
+	default:
+		// RecordingRule, SpamFilter, SpamFilterV1Alpha2, TeamDefinitionV1Alpha1:
+		// metadata-nested (default root), no preserved annotations.
+		return nil, nil, nil
+	}
+}
+
+// semanticEquivalent reports whether beforeYAML and afterYAML (already
+// stripped and marshaled by marshalForDiff) are semantically equivalent for
+// drift-detection purposes: ignoring server-managed metadata, empty
+// containers, non-preserved annotations, slice order, duration-string
+// formatting, and numeric type differences. after's concrete type selects
+// the per-kind comparison config via semanticCompareConfig; afterYAML is
+// also the reference document for ConditionallyIgnoredFields (fields only
+// ignored when the local/proposed definition doesn't set them).
+func semanticEquivalent(after any, beforeYAML, afterYAML string) (bool, error) {
+	extraIgnored, preserved, opts := semanticCompareConfig(after)
+	extraIgnored = append(extraIgnored, dash0yaml.AbsentFields([]byte(afterYAML), dash0yaml.ConditionallyIgnoredFields)...)
+	return dash0yaml.Equivalent([]byte(beforeYAML), []byte(afterYAML), extraIgnored, preserved, opts...)
+}
+
+// HasDifference reports whether before and after are semantically different
+// for drift-detection purposes (see semanticEquivalent). It lets a caller
+// that needs to count pending changes (e.g. `dash0 diff`) do so without
+// re-implementing PrintDiff's comparison.
+func HasDifference(before, after any) (bool, error) {
+	beforeYAML, err := marshalForDiff(before)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal before state: %w", err)
+	}
+	afterYAML, err := marshalForDiff(after)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal after state: %w", err)
+	}
+	equivalent, err := semanticEquivalent(after, beforeYAML, afterYAML)
+	if err != nil {
+		return false, fmt.Errorf("failed to compare semantic equivalence: %w", err)
+	}
+	return !equivalent, nil
+}
+
 // PrintDiff computes a unified diff between the before and after states of an
-// asset and writes it to w. If there are no changes, a "no changes" message is
-// printed instead.
+// asset and writes it to w. If the two are semantically equivalent (see
+// semanticEquivalent), a "no changes" message is printed instead of a diff.
+//
+// The diff itself is rendered from normalized YAML (server-managed metadata,
+// empty containers, and non-preserved annotations stripped), not the raw
+// stripped YAML, so ignored-field noise doesn't clutter the output. Two
+// equivalences the comparison honors are not reflected in the rendered
+// text, since they exist only inside the comparator, not as an output
+// transform: slice element order and duration-string formatting (e.g. "2m"
+// vs "2m0s"). So a real change that coexists with an unrelated reordering or
+// duration-format difference elsewhere in the same document may show that
+// difference as extra noise alongside the real one -- this never produces a
+// false "no changes" or misses a real change, which is what matters for
+// drift detection; it is a rendering-only rough edge.
 func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 	beforeYAML, err := marshalForDiff(before)
 	if err != nil {
@@ -116,9 +206,30 @@ func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 		return fmt.Errorf("failed to marshal after state: %w", err)
 	}
 
+	extraIgnored, preserved, opts := semanticCompareConfig(after)
+	extraIgnored = append(extraIgnored, dash0yaml.AbsentFields([]byte(afterYAML), dash0yaml.ConditionallyIgnoredFields)...)
+
+	equivalent, err := dash0yaml.Equivalent([]byte(beforeYAML), []byte(afterYAML), extraIgnored, preserved, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to compare semantic equivalence: %w", err)
+	}
+	if equivalent {
+		fmt.Fprintf(w, "%s %q: no changes\n", displayKind, name)
+		return nil
+	}
+
+	normalizedBefore, err := dash0yaml.Normalize([]byte(beforeYAML), extraIgnored, preserved, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to normalize before state: %w", err)
+	}
+	normalizedAfter, err := dash0yaml.Normalize([]byte(afterYAML), extraIgnored, preserved, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to normalize after state: %w", err)
+	}
+
 	diff := difflib.UnifiedDiff{
-		A:        difflib.SplitLines(beforeYAML),
-		B:        difflib.SplitLines(afterYAML),
+		A:        difflib.SplitLines(string(normalizedBefore)),
+		B:        difflib.SplitLines(string(normalizedAfter)),
 		FromFile: fmt.Sprintf("%s (before)", displayKind),
 		ToFile:   fmt.Sprintf("%s (after)", displayKind),
 		Context:  3,
@@ -130,6 +241,12 @@ func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 	}
 
 	if text == "" {
+		// Equivalent() already reported a real difference, so this should
+		// be unreachable in practice -- Normalize doesn't erase anything
+		// Equivalent's own comparator additionally tolerates (slice order,
+		// duration formatting) that could otherwise fully explain a
+		// "different" verdict with no visible text diff. Kept as a safe
+		// fallback rather than an assumption.
 		fmt.Fprintf(w, "%s %q: no changes\n", displayKind, name)
 		return nil
 	}

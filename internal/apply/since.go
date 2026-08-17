@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -15,174 +12,12 @@ import (
 	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 )
 
-// deletionPlan wraps the identifier-diffing result from internal/git with a
-// human-readable warning to surface when --since's ref resolved but is not
-// an ancestor of HEAD.
-type deletionPlan struct {
-	plan    gitutil.DeletionPlan
-	warning string
-	// names best-effort maps each ByIdentifier deletion's Path (the
-	// git-recorded path, unique within one plan) to its display name,
-	// resolved by re-reading the asset's content from git history at the
-	// --since ref. A missing entry means the lookup failed (e.g. a rewritten
-	// or gc'd blob) or the asset had no name in the first place; callers
-	// fall back to a placeholder. This is cosmetic only — deletion dispatch
-	// (deleteAssetByKindAndIdentifier) never depends on it, only on
-	// (kind, identifier).
-	names map[string]string
-	// scope is the --since target's path relative to the repository root
-	// (forward-slashed, "" when the target is the repo root itself). Deletion
-	// paths (gitutil.Deletion.Path, from git ls-tree) are always repo-root-
-	// relative, while validated documents' assetDocument.filePath is always
-	// relative to the -f target itself -- when the target is a subdirectory,
-	// those two bases differ, so rendering must strip this prefix from a
-	// deletion path before grouping it with validated documents from the same
-	// file. See stripScope in dryrun.go.
-	scope string
-}
-
 // computeDeletionPlan resolves flags.Since against the git repository
 // containing flags.File and diffs the identifier set at that ref against
 // flags.File's current disk contents. It never talks to the Dash0 API —
 // everything it needs comes from git and the local filesystem.
-func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan, error) {
-	absFile, err := filepath.Abs(flags.File)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve absolute path for %s: %w", flags.File, err)
-	}
-	// Resolve symlinks so absFile is comparable with repo.Root()'s output:
-	// `git rev-parse --show-toplevel` always prints the fully-resolved real
-	// path, but filepath.Abs alone does not resolve symlinks in parent
-	// directories (e.g. macOS's /var -> /private/var), which would otherwise
-	// make every filepath.Rel(repoRoot, absFile) below compute a bogus
-	// "outside the repository" path.
-	absFile, err = filepath.EvalSymlinks(absFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve %s: %w", flags.File, err)
-	}
-
-	info, err := os.Stat(absFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat %s: %w", flags.File, err)
-	}
-	repoDir := absFile
-	if !info.IsDir() {
-		repoDir = filepath.Dir(absFile)
-	}
-	repo := gitutil.Repo{Dir: repoDir}
-
-	repoRoot, err := repo.Root(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("--since '%s' requires %s to be inside a git repository: %w", flags.Since, flags.File, err)
-	}
-	// Re-anchor at repoRoot: every scope-relative pathspec built below (and
-	// passed to BuildSnapshotFromRef) is repo-root-relative, matching git
-	// ls-tree's own path convention. Running git commands with -C repoDir
-	// when repoDir is a subdirectory of the repo would otherwise resolve
-	// those pathspecs relative to repoDir instead, silently matching nothing
-	// (e.g. -f dashboards/ turning scope "dashboards" into the nonexistent
-	// "dashboards/dashboards" once -C is already inside dashboards/).
-	repo = gitutil.Repo{Dir: repoRoot}
-
-	refState, sha, err := repo.ClassifyRef(ctx, flags.Since)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve --since '%s' as Git reference: %w", flags.Since, err)
-	}
-
-	var warning string
-	switch refState {
-	case gitutil.RefEmpty:
-		return nil, fmt.Errorf("--since '%s' resolved to an empty ref; there is no prior state to compare against (this can happen when a CI-provided ref variable is unset — check the workflow's before/after ref inputs)", flags.Since)
-	case gitutil.RefAllZeros:
-		return nil, fmt.Errorf("--since '%s' resolved to git's all-zeros SHA (%s), meaning there is no prior state to compare against (some CI systems report this value for a ref's first push)", flags.Since, gitutil.AllZerosSHA)
-	case gitutil.RefUnresolvable:
-		return nil, fmt.Errorf("--since '%s' could not be resolved (check for a typo, or a too-shallow clone missing the needed history)", flags.Since)
-	case gitutil.RefResolvedNonAncestor:
-		// The confirmation for this case is deliberately NOT done here: doing
-		// so would abort the entire apply run (including ordinary, unrelated
-		// creates/updates) before any document is even processed, just
-		// because the --since ref needs confirming. Instead, runApply asks
-		// for confirmation immediately before calling applyDeletions, after
-		// every document create/update has already gone through — mirroring
-		// how a declined per-asset deletion (applyDeletions itself) never
-		// blocks the rest of the run, just the deletions.
-		warning = fmt.Sprintf("--since '%s' is not an ancestor of HEAD (likely a force-push or history rewrite); deletion detection may be inaccurate", flags.Since)
-	}
-
-	scope, err := filepath.Rel(repoRoot, absFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute %s's path relative to repository root %s: %w", flags.File, repoRoot, err)
-	}
-	scope = filepath.ToSlash(scope)
-	if scope == "." {
-		scope = ""
-	}
-
-	before, err := gitutil.BuildSnapshotFromRef(ctx, repo, sha, scope)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read git state at --since ref '%s': %w", flags.Since, err)
-	}
-	after, err := gitutil.BuildSnapshotFromDisk(ctx, absFile, repoRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read current Git state: %w", err)
-	}
-
-	plan := gitutil.Diff(before, after)
-	if len(plan.NoIdentifier) > 0 {
-		return nil, fmt.Errorf("--since '%s' found %s deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:\n  %s",
-			flags.Since, asset.Pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
-	}
-
-	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
-
-	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope}, nil
-}
-
-// resolveDeletionNames best-effort looks up each deletion's display name by
-// re-reading its content from git history at sha (the resolved --since
-// ref). Reads are cached per file so a multi-document file with several
-// deletion candidates only costs one `git cat-file` call.
-//
-// This is display polish, not correctness-critical: a lookup failure (a
-// since-rewritten blob, content that no longer parses under today's rules)
-// just omits that entry from the returned map rather than failing the run —
-// --since's actual deletion dispatch never depends on a name, only on
-// (kind, identifier).
-func resolveDeletionNames(ctx context.Context, repo gitutil.Repo, sha string, deletions []gitutil.Deletion) map[string]string {
-	names := make(map[string]string, len(deletions))
-	docsByFile := map[string][]asset.Document{}
-	for _, d := range deletions {
-		basePath, docIndex := splitMultiDocPath(d.Path)
-		docs, cached := docsByFile[basePath]
-		if !cached {
-			raw, err := repo.ReadFileAtRef(ctx, sha, basePath)
-			if err == nil {
-				docs, _ = asset.ParseMultiDocumentYAML(raw)
-			}
-			docsByFile[basePath] = docs
-		}
-		if docIndex < len(docs) && docs[docIndex].Name != "" {
-			names[d.Path] = docs[docIndex].Name
-		}
-	}
-	return names
-}
-
-// splitMultiDocPath splits a Deletion.Path — possibly suffixed "#<index>"
-// for the second and later documents in a multi-document file, per
-// internal/git/snapshot.go's ingestDocuments — into the base file path and
-// the document's 0-based index within it, matching parseMultiDocumentYAML's
-// return-slice indexing.
-func splitMultiDocPath(path string) (basePath string, docIndex int) {
-	idx := strings.LastIndex(path, "#")
-	if idx == -1 {
-		return path, 0
-	}
-	n, err := strconv.Atoi(path[idx+1:])
-	if err != nil {
-		return path, 0
-	}
-	return path[:idx], n
+func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*gitutil.SincePlan, error) {
+	return gitutil.ComputeSincePlan(ctx, flags.File, flags.Since)
 }
 
 // Rendering (text and agent-mode JSON) for --dry-run, with or without a
@@ -194,19 +29,19 @@ func splitMultiDocPath(path string) (basePath string, docIndex int) {
 // caller declined so runApply can report a non-zero exit even though the
 // rest of the run succeeded.
 //
-// dp.warning (set when --since's ref is a non-ancestor) is not printed here:
+// dp.Warning (set when --since's ref is a non-ancestor) is not printed here:
 // runApply already surfaced it once, as part of confirming whether to run
 // the deletion phase at all, before calling this function. Printing it again
 // here would show the identical line to the user twice for no reason.
-func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *string, dp *deletionPlan, force bool) (int, error) {
+func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *string, dp *gitutil.SincePlan, force bool) (int, error) {
 	declined := 0
 
-	for _, d := range dp.plan.ByIdentifier {
+	for _, d := range dp.Plan.ByIdentifier {
 		displayKind := asset.KindDisplayName(d.Kind)
-		// dp.names is resolved from git history and best-effort: a lookup
+		// dp.Names is resolved from git history and best-effort: a lookup
 		// failure falls back to an explicit "<name>" placeholder, matching
 		// printDryRunWithDeletions' convention.
-		name := dp.names[d.Path]
+		name := dp.Names[d.Path]
 		if name == "" {
 			name = "<name>"
 		}
@@ -230,7 +65,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 		fmt.Printf("%s %s deleted\n", displayKind, display)
 	}
 
-	for _, a := range dp.plan.AlertsByName {
+	for _, a := range dp.Plan.AlertsByName {
 		name := a.CheckRuleName()
 		prompt := fmt.Sprintf("Are you sure you want to delete check rule %q, an alert removed from a PrometheusRule since --since ref? [y/N]: ", name)
 		confirmed, err := confirmation.ConfirmDestructiveOperation(ctx, prompt, force)

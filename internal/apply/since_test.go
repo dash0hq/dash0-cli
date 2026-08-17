@@ -135,101 +135,14 @@ func TestComputeDeletionPlan_WholeFileDeletion(t *testing.T) {
 	flags := &applyFlags{File: dir, Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	require.Len(t, dp.plan.ByIdentifier, 1)
-	deletion := dp.plan.ByIdentifier[0]
+	require.Len(t, dp.Plan.ByIdentifier, 1)
+	deletion := dp.Plan.ByIdentifier[0]
 	assert.Equal(t, "dashboard", deletion.Kind)
 	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", deletion.Identifier)
-	assert.Empty(t, dp.warning)
-	// dp.names is resolved from git history at the --since ref, not from
+	assert.Empty(t, dp.Warning)
+	// dp.Names is resolved from git history at the --since ref, not from
 	// current disk contents (the file no longer exists on disk).
-	assert.Equal(t, "My Dashboard", dp.names[deletion.Path])
-}
-
-// TestSplitMultiDocPath is a table test for the "#<index>" suffix
-// internal/git/snapshot.go appends to the second and later documents' paths
-// in a multi-document file.
-func TestSplitMultiDocPath(t *testing.T) {
-	cases := []struct {
-		path         string
-		wantBase     string
-		wantDocIndex int
-	}{
-		{"assets.yaml", "assets.yaml", 0},
-		{"assets.yaml#1", "assets.yaml", 1},
-		{"assets.yaml#12", "assets.yaml", 12},
-		// A literal "#" not followed by digits is not a multi-document
-		// suffix -- treat the whole string as the path.
-		{"weird#name.yaml", "weird#name.yaml", 0},
-	}
-	for _, c := range cases {
-		base, idx := splitMultiDocPath(c.path)
-		assert.Equal(t, c.wantBase, base, "path %q", c.path)
-		assert.Equal(t, c.wantDocIndex, idx, "path %q", c.path)
-	}
-}
-
-// TestResolveDeletionNames_MultiDocumentFile is a regression test for a bug
-// where a deletion candidate from the second (or later) document in a
-// multi-document file failed to resolve a name at all, because its Path
-// carries a "#<index>" suffix that doesn't match any real git blob path —
-// resolveDeletionNames must strip the suffix to read the file, then use the
-// index to pick the right document out of the file's content.
-func TestResolveDeletionNames_MultiDocumentFile(t *testing.T) {
-	dir := t.TempDir()
-	runGitCmd(t, dir, "init", "-q", "-b", "main")
-	runGitCmd(t, dir, "config", "user.email", "test@example.com")
-	runGitCmd(t, dir, "config", "user.name", "Test")
-	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-
-	writeFileFixture(t, dir, "assets.yaml", `apiVersion: dash0.com/v1alpha1
-kind: View
-metadata:
-  name: first-view
-  labels:
-    dash0.com/id: view-id
-spec:
-  query: "true"
----
-apiVersion: dash0.com/v1alpha1
-kind: CheckRule
-id: rule-id
-name: Second Document Rule
-expression: up == 0
-`)
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "seed")
-
-	repo := gitutil.Repo{Dir: dir}
-	deletions := []gitutil.Deletion{
-		{Kind: "view", Identifier: "view-id", Path: "assets.yaml"},
-		{Kind: "checkrule", Identifier: "rule-id", Path: "assets.yaml#1"},
-	}
-	names := resolveDeletionNames(context.Background(), repo, "HEAD", deletions)
-	assert.Equal(t, "first-view", names["assets.yaml"])
-	assert.Equal(t, "Second Document Rule", names["assets.yaml#1"])
-}
-
-// TestResolveDeletionNames_LookupFailureIsNonFatal is a regression test
-// pinning that a git-read failure (an unresolvable ref, a path that never
-// existed) only omits that entry from the returned map -- it must never
-// panic or error the caller, since name resolution is display polish, not
-// something --since's actual deletion dispatch depends on.
-func TestResolveDeletionNames_LookupFailureIsNonFatal(t *testing.T) {
-	dir := t.TempDir()
-	runGitCmd(t, dir, "init", "-q", "-b", "main")
-	runGitCmd(t, dir, "config", "user.email", "test@example.com")
-	runGitCmd(t, dir, "config", "user.name", "Test")
-	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-	writeFileFixture(t, dir, "placeholder.yaml", "kind: View\nmetadata:\n  name: x\n")
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "seed")
-
-	repo := gitutil.Repo{Dir: dir}
-	deletions := []gitutil.Deletion{
-		{Kind: "dashboard", Identifier: "gone-id", Path: "never-existed.yaml"},
-	}
-	names := resolveDeletionNames(context.Background(), repo, "HEAD", deletions)
-	assert.Empty(t, names)
+	assert.Equal(t, "My Dashboard", dp.Names[deletion.Path])
 }
 
 func TestComputeDeletionPlan_EmptyRef(t *testing.T) {
@@ -317,7 +230,7 @@ func TestComputeDeletionPlan_NonAncestorRef_NeverPromptsOrErrors(t *testing.T) {
 	flags := &applyFlags{File: dir, Since: branchA}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	assert.Contains(t, dp.warning, "not an ancestor of HEAD")
+	assert.Contains(t, dp.Warning, "not an ancestor of HEAD")
 }
 
 // TestApplyDeletions_PrometheusRuleConfirmationPromptUsesConsistentCasing is
@@ -334,8 +247,8 @@ func TestApplyDeletions_PrometheusRuleConfirmationPromptUsesConsistentCasing(t *
 	restore := confirmation.SetReaderForTest(strings.NewReader("n\n"))
 	defer restore()
 
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "prometheusrule", Identifier: "shared-id"},
 			},
