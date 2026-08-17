@@ -49,3 +49,46 @@ func TestRequireExperimental_FlagNotRegistered(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "experimental command")
 }
+
+// newTestCmdWithSinceFlag builds a root/child pair like newTestCmd, plus a
+// "since" string flag on the child — standing in for apply's --since flag.
+func newTestCmdWithSinceFlag() (*cobra.Command, *cobra.Command) {
+	root, child := newTestCmd()
+	child.Flags().String("since", "", "since ref")
+	return root, child
+}
+
+func TestRequireExperimentalFlag_NotPassed(t *testing.T) {
+	_, child := newTestCmdWithSinceFlag()
+	// Flag was never passed, so the gate is a no-op regardless of --experimental.
+	err := RequireExperimentalFlag(child, "since")
+	require.NoError(t, err)
+}
+
+func TestRequireExperimentalFlag_PassedWithoutExperimental(t *testing.T) {
+	root, child := newTestCmdWithSinceFlag()
+	var childErr error
+	child.RunE = func(cmd *cobra.Command, args []string) error {
+		childErr = RequireExperimentalFlag(cmd, "since")
+		return childErr
+	}
+	root.SetArgs([]string{"child", "--since", "HEAD~1"})
+	err := root.Execute()
+	require.Error(t, err)
+	require.Error(t, childErr)
+	assert.Contains(t, childErr.Error(), "--since")
+	assert.Contains(t, childErr.Error(), "--experimental")
+	assert.Contains(t, childErr.Error(), "-X")
+}
+
+func TestRequireExperimentalFlag_PassedWithExperimental(t *testing.T) {
+	root, child := newTestCmdWithSinceFlag()
+	var childErr error
+	child.RunE = func(cmd *cobra.Command, args []string) error {
+		childErr = RequireExperimentalFlag(cmd, "since")
+		return childErr
+	}
+	root.SetArgs([]string{"--experimental", "child", "--since", "HEAD~1"})
+	require.NoError(t, root.Execute())
+	require.NoError(t, childErr)
+}
