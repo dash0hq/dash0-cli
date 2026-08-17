@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -20,6 +21,15 @@ import (
 type deletionPlan struct {
 	plan    gitutil.DeletionPlan
 	warning string
+	// names best-effort maps each ByIdentifier deletion's Path (the
+	// git-recorded path, unique within one plan) to its display name,
+	// resolved by re-reading the asset's content from git history at the
+	// --since ref. A missing entry means the lookup failed (e.g. a rewritten
+	// or gc'd blob) or the asset had no name in the first place; callers
+	// fall back to a placeholder. This is cosmetic only — deletion dispatch
+	// (deleteAssetByKindAndIdentifier) never depends on it, only on
+	// (kind, identifier).
+	names map[string]string
 }
 
 // computeDeletionPlan resolves flags.Since against the git repository
@@ -114,25 +124,60 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
 	}
 
-	return &deletionPlan{plan: plan, warning: warning}, nil
+	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
+
+	return &deletionPlan{plan: plan, warning: warning, names: names}, nil
 }
 
-func printDeletionPreview(dp *deletionPlan) {
-	if dp.warning != "" {
-		fmt.Fprintf(os.Stderr, "warning: %s\n", dp.warning)
+// resolveDeletionNames best-effort looks up each deletion's display name by
+// re-reading its content from git history at sha (the resolved --since
+// ref). Reads are cached per file so a multi-document file with several
+// deletion candidates only costs one `git cat-file` call.
+//
+// This is display polish, not correctness-critical: a lookup failure (a
+// since-rewritten blob, content that no longer parses under today's rules)
+// just omits that entry from the returned map rather than failing the run —
+// --since's actual deletion dispatch never depends on a name, only on
+// (kind, identifier).
+func resolveDeletionNames(ctx context.Context, repo gitutil.Repo, sha string, deletions []gitutil.Deletion) map[string]string {
+	names := make(map[string]string, len(deletions))
+	docsByFile := map[string][]assetDocument{}
+	for _, d := range deletions {
+		basePath, docIndex := splitMultiDocPath(d.Path)
+		docs, cached := docsByFile[basePath]
+		if !cached {
+			raw, err := repo.ReadFileAtRef(ctx, sha, basePath)
+			if err == nil {
+				docs, _ = parseMultiDocumentYAML(raw)
+			}
+			docsByFile[basePath] = docs
+		}
+		if docIndex < len(docs) && docs[docIndex].name != "" {
+			names[d.Path] = docs[docIndex].name
+		}
 	}
-	if dp.plan.IsEmpty() {
-		fmt.Println("--since: no deletions")
-		return
-	}
-	fmt.Println("--since would delete:")
-	for _, d := range dp.plan.ByIdentifier {
-		fmt.Printf("  - %s (%s)\n", asset.KindDisplayName(d.Kind), d.Identifier)
-	}
-	for _, a := range dp.plan.AlertsByName {
-		fmt.Printf("  - Check rule %q (alert removed from PrometheusRule %s)\n", a.CheckRuleName(), a.CRDIdentifier)
-	}
+	return names
 }
+
+// splitMultiDocPath splits a Deletion.Path — possibly suffixed "#<index>"
+// for the second and later documents in a multi-document file, per
+// internal/git/snapshot.go's ingestDocuments — into the base file path and
+// the document's 0-based index within it, matching parseMultiDocumentYAML's
+// return-slice indexing.
+func splitMultiDocPath(path string) (basePath string, docIndex int) {
+	idx := strings.LastIndex(path, "#")
+	if idx == -1 {
+		return path, 0
+	}
+	n, err := strconv.Atoi(path[idx+1:])
+	if err != nil {
+		return path, 0
+	}
+	return path[:idx], n
+}
+
+// Rendering (text and agent-mode JSON) for --dry-run, with or without a
+// deletion plan, lives in dryrun.go.
 
 // applyDeletions carries out dp's deletion plan against the Dash0 API,
 // prompting per asset (skipped when force is set) exactly like every
@@ -149,23 +194,31 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 
 	for _, d := range dp.plan.ByIdentifier {
 		displayKind := asset.KindDisplayName(d.Kind)
-		if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
-			fmt.Fprintf(os.Stderr, "warning: spam filter %q was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", d.Identifier)
+		// dp.names is resolved from git history and best-effort: a lookup
+		// failure falls back to an explicit "<name>" placeholder, matching
+		// printDryRunWithDeletions' convention.
+		name := dp.names[d.Path]
+		if name == "" {
+			name = "<name>"
 		}
-		prompt := fmt.Sprintf("Are you sure you want to delete %s %q, removed since --since ref? [y/N]: ", displayKind, d.Identifier)
+		display := formatNameAndId(name, d.Identifier)
+		if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
+			fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
+		}
+		prompt := fmt.Sprintf("Are you sure you want to delete %s %s, removed since --since ref? [y/N]: ", displayKind, display)
 		confirmed, err := confirmation.ConfirmDestructiveOperation(ctx, prompt, force)
 		if err != nil {
 			return declined, err
 		}
 		if !confirmed {
-			fmt.Fprintf(os.Stderr, "%s %q: deletion declined\n", displayKind, d.Identifier)
+			fmt.Fprintf(os.Stderr, "%s %s: deletion declined\n", displayKind, display)
 			declined++
 			continue
 		}
 		if err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, force); err != nil {
-			return declined, fmt.Errorf("failed to delete %s %q: %w", displayKind, d.Identifier, err)
+			return declined, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
 		}
-		fmt.Printf("%s %q deleted\n", displayKind, d.Identifier)
+		fmt.Printf("%s %s deleted\n", displayKind, display)
 	}
 
 	for _, a := range dp.plan.AlertsByName {
