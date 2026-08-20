@@ -76,12 +76,13 @@ const (
 // new login goes against. Carrying these together lets the phase helpers
 // downstream avoid long parameter lists.
 type loginTarget struct {
-	Name           string       // resolved profile name (user-supplied or active)
-	State          profileState // classification at the start of the flow
-	OldRefresh     string       // refresh token to revoke on successful re-login (OAuth-active only)
-	ExistingAPIURL string       // AS that issued OldRefresh (for cross-tenant revoke directionality)
-	APIURL         string       // AS to authenticate against for the new login
-	PassedExplicit bool         // user passed --profile (vs. implicit active profile)
+	Name             string       // resolved profile name (user-supplied or active)
+	State            profileState // classification at the start of the flow
+	OldRefresh       string       // refresh token to revoke on successful re-login (OAuth-active only)
+	ExistingAPIURL   string       // AS that issued OldRefresh (for cross-tenant revoke directionality)
+	ExistingClientID string       // client_id that issued OldRefresh
+	APIURL           string       // AS to authenticate against for the new login
+	PassedExplicit   bool         // user passed --profile (vs. implicit active profile)
 }
 
 // subjectPhrase returns the noun phrase used in prompts/messages to refer
@@ -184,7 +185,7 @@ func resolveLoginTarget(opts loginOptions) (*loginTarget, error) {
 		profileName = active
 	}
 
-	state, oldRefreshToken, existingAPIURL, err := classifyProfile(profileName)
+	state, oldRefreshToken, existingAPIURL, existingClientID, err := classifyProfile(profileName)
 	if err != nil {
 		return nil, err
 	}
@@ -197,12 +198,13 @@ func resolveLoginTarget(opts loginOptions) (*loginTarget, error) {
 	}
 
 	return &loginTarget{
-		Name:           profileName,
-		State:          state,
-		OldRefresh:     oldRefreshToken,
-		ExistingAPIURL: existingAPIURL,
-		APIURL:         apiURL,
-		PassedExplicit: passedExplicit,
+		Name:             profileName,
+		State:            state,
+		OldRefresh:       oldRefreshToken,
+		ExistingAPIURL:   existingAPIURL,
+		ExistingClientID: existingClientID,
+		APIURL:           apiURL,
+		PassedExplicit:   passedExplicit,
 	}, nil
 }
 
@@ -463,11 +465,11 @@ func exchangeAndValidateTokens(
 	// state — same compensation pattern as the persist-failure branch in
 	// persistAndRevokeOld.
 	if tokenResp.AccessToken == "" {
-		oauth.Revoke(apiURL, *tokenResp.RefreshToken)
+		oauth.Revoke(oauth.RevokeRequest{APIURL: apiURL, ClientID: authz.ClientID, RefreshToken: *tokenResp.RefreshToken})
 		return "", "", time.Time{}, errors.New("token exchange succeeded but the server returned an empty access token; aborting")
 	}
 	if tokenResp.ExpiresIn <= 0 {
-		oauth.Revoke(apiURL, *tokenResp.RefreshToken)
+		oauth.Revoke(oauth.RevokeRequest{APIURL: apiURL, ClientID: authz.ClientID, RefreshToken: *tokenResp.RefreshToken})
 		return "", "", time.Time{}, fmt.Errorf("token exchange succeeded but the server returned a non-positive expires_in (%d); aborting", tokenResp.ExpiresIn)
 	}
 
@@ -506,7 +508,7 @@ func persistAndRevokeOld(
 		// indefinitely. Best-effort revoke it so the AS state matches what
 		// the user sees locally. Old refresh token is intentionally left
 		// alone: it is still the active session on disk.
-		if !oauth.Revoke(target.APIURL, refreshToken) {
+		if !oauth.Revoke(oauth.RevokeRequest{APIURL: target.APIURL, ClientID: clientID, RefreshToken: refreshToken}) {
 			return fmt.Errorf(
 				"login succeeded but the new tokens could not be persisted and the compensating revoke also failed; the newly-issued refresh token may still be valid on the authorization server — visit your Dash0 account settings to revoke active sessions manually: %w",
 				err,
@@ -527,7 +529,11 @@ func persistAndRevokeOld(
 		if target.ExistingAPIURL == "" {
 			oldRevoked = false
 		} else {
-			oldRevoked = oauth.Revoke(target.ExistingAPIURL, target.OldRefresh)
+			oldRevoked = oauth.Revoke(oauth.RevokeRequest{
+				APIURL:       target.ExistingAPIURL,
+				ClientID:     target.ExistingClientID,
+				RefreshToken: target.OldRefresh,
+			})
 		}
 	}
 
@@ -546,14 +552,14 @@ func persistAndRevokeOld(
 // must surface it instead of treating store I/O failures as "no such
 // profile" (which would then proceed to a confusing prompt-then-create
 // flow that ultimately fails on the same I/O error).
-func classifyProfile(name string) (state profileState, oldRefreshToken, existingAPIURL string, err error) {
+func classifyProfile(name string) (state profileState, oldRefreshToken, existingAPIURL, existingClientID string, err error) {
 	store, err := profiles.NewStore()
 	if err != nil {
-		return profileStateMissing, "", "", fmt.Errorf("failed to open profile store: %w", err)
+		return profileStateMissing, "", "", "", fmt.Errorf("failed to open profile store: %w", err)
 	}
 	all, err := store.GetProfiles()
 	if err != nil {
-		return profileStateMissing, "", "", fmt.Errorf("failed to read profiles: %w", err)
+		return profileStateMissing, "", "", "", fmt.Errorf("failed to read profiles: %w", err)
 	}
 	for _, p := range all {
 		if p.Name != name {
@@ -562,16 +568,16 @@ func classifyProfile(name string) (state profileState, oldRefreshToken, existing
 		existingAPIURL = p.Configuration.ApiUrl
 		switch {
 		case p.Configuration.OAuth == nil && p.Configuration.AuthToken == "":
-			return profileStateNoAuth, "", existingAPIURL, nil
+			return profileStateNoAuth, "", existingAPIURL, "", nil
 		case p.Configuration.OAuth == nil:
-			return profileStateStatic, "", existingAPIURL, nil
+			return profileStateStatic, "", existingAPIURL, "", nil
 		case p.Configuration.OAuth.RefreshToken == "":
-			return profileStateOAuthEmpty, "", existingAPIURL, nil
+			return profileStateOAuthEmpty, "", existingAPIURL, "", nil
 		default:
-			return profileStateOAuthActive, p.Configuration.OAuth.RefreshToken, existingAPIURL, nil
+			return profileStateOAuthActive, p.Configuration.OAuth.RefreshToken, existingAPIURL, p.Configuration.OAuth.ClientID, nil
 		}
 	}
-	return profileStateMissing, "", "", nil
+	return profileStateMissing, "", "", "", nil
 }
 
 // resolveTargetAPIURL chooses the API URL to authenticate against. Precedence:

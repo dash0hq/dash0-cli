@@ -34,11 +34,12 @@ type fakeOAuthServer struct {
 	server   *httptest.Server
 	clientID string
 
-	issuedCode      atomic.Value // string
-	issuedChallenge atomic.Value // string -- PKCE code_challenge stored on /authorize
-	revokeCount     atomic.Int32
-	revoked         sync.Mutex
-	revokedList     []string
+	issuedCode       atomic.Value // string
+	issuedChallenge  atomic.Value // string -- PKCE code_challenge stored on /authorize
+	revokeCount      atomic.Int32
+	revoked          sync.Mutex
+	revokedList      []string
+	revokedClientIDs map[string]string // token -> client_id
 
 	// tokenCounter lets us hand out distinct access/refresh tokens so the
 	// re-login test can prove the old refresh was revoked.
@@ -78,6 +79,12 @@ func (f *fakeOAuthServer) Revoked() []string {
 	out := make([]string, len(f.revokedList))
 	copy(out, f.revokedList)
 	return out
+}
+
+func (f *fakeOAuthServer) RevokedClientID(token string) string {
+	f.revoked.Lock()
+	defer f.revoked.Unlock()
+	return f.revokedClientIDs[token]
 }
 
 func (f *fakeOAuthServer) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
@@ -205,12 +212,21 @@ func (f *fakeOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *fakeOAuthServer) handleRevoke(w http.ResponseWriter, r *http.Request) {
-	require.NoError(f.t, r.ParseForm())
+	if !assert.NoError(f.t, r.ParseForm()) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	token := r.Form.Get("token")
-	require.NotEmpty(f.t, token, "revoke requires a token")
+	assert.NotEmpty(f.t, token, "revoke requires a token")
+	clientID := r.Form.Get("client_id")
+	assert.NotEmpty(f.t, clientID, "revoke requires a client_id")
 	f.revokeCount.Add(1)
 	f.revoked.Lock()
 	f.revokedList = append(f.revokedList, token)
+	if f.revokedClientIDs == nil {
+		f.revokedClientIDs = make(map[string]string)
+	}
+	f.revokedClientIDs[token] = clientID
 	f.revoked.Unlock()
 	w.WriteHeader(http.StatusOK)
 }
@@ -397,6 +413,43 @@ func TestRunLogin_OnOAuthActive_RevokesOldRefresh(t *testing.T) {
 	revoked := server.Revoked()
 	require.Len(t, revoked, 1)
 	require.Equal(t, "dash0_rt_OLD_to_be_revoked", revoked[0])
+}
+
+func TestRunLogin_OnOAuthActive_RevokesOldRefreshWithOldClientID(t *testing.T) {
+	forceInteractive(t)
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
+	server := newFakeOAuthServer(t)
+	defer server.Close()
+	server.clientID = "client-freshly-registered"
+
+	store, _ := profiles.NewStore()
+	require.NoError(t, store.AddProfile(profiles.Profile{
+		Name: "active-prof",
+		Configuration: profiles.Configuration{
+			ApiUrl:    server.URL(),
+			AuthToken: "dash0_at_old_xxxxxxxxxxxx",
+			OAuth: &profiles.OAuthState{
+				ClientID:     "client-that-issued-the-old-token",
+				RefreshToken: "dash0_rt_OLD_to_be_revoked",
+				ExpiresAt:    time.Now().Add(time.Hour),
+			},
+		},
+	}))
+
+	defer driveBrowserOnce(t)()
+
+	err := runLogin(context.Background(), loginOptions{
+		ProfileName: "active-prof",
+		Timeout:     5 * time.Second,
+	})
+	require.NoError(t, err)
+
+	revoked := server.Revoked()
+	require.Len(t, revoked, 1)
+	require.Equal(t, "dash0_rt_OLD_to_be_revoked", revoked[0])
+	require.Equal(t, "client-that-issued-the-old-token", server.RevokedClientID("dash0_rt_OLD_to_be_revoked"),
+		"the old refresh token must be revoked using the client_id that issued it, not the freshly-registered one")
 }
 
 func TestRunLogin_RejectsInAgentMode(t *testing.T) {
