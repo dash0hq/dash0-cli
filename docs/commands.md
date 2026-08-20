@@ -747,6 +747,12 @@ Use this to define a common setting once instead of repeating it on every rule i
 The recurring example is `dash0.com/notification-channel-ids`, whose value is a comma-separated list of notification channel ids (`dash0 notification-channels list` prints the available ids).
 This applies to `check-rules create`, `apply`, and `check-rules update`, though `update` operates on a single check rule and rejects a CRD containing more than one.
 
+> [!WARNING]
+> The merge works per key, not per value.
+> Where both set the same key, the rule's value replaces the inherited one.
+> Dash0 does not combine lists, so a rule that names one channel in `dash0.com/notification-channel-ids` loses the ones it would have inherited.
+> Repeat the inherited ids to keep them.
+
 Below, `CheckoutHighLatency` inherits the top-level channel and `CheckoutHighErrorRate` replaces it with its own:
 
 ```yaml
