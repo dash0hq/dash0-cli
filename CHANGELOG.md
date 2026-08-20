@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.16.5
+
+
+### Bug Fixes
+
+
+- `check-rules`: Merge a PrometheusRule CRD's top-level `metadata.annotations` into each rule's own annotations, matching the Dash0 Kubernetes operator and Terraform provider (#245)
+  Previously, a common setting defined once at the top level of a multi-rule PrometheusRule document -
+  most importantly `dash0.com/notification-channel-ids` - was silently dropped for any rule that did not
+  repeat it on its own annotations. A rule's own annotations still take precedence when the same key is
+  set in both places. This affects `check-rules create` and `check-rules update` on PrometheusRule CRD
+  input, and `apply`.
+  
+
+- `auth`: Refresh OAuth access tokens for the whole duration of a command, not just at startup (#258)
+  An OAuth access token lasts 15 minutes, and the CLI resolved it once at startup then reused
+  it for the rest of the command. Anything that ran longer failed partway through with
+  `authentication failed; check your auth token (status: 401)`, leaving partial output. Large
+  exports hit this most often, such as `dash0 logs query --from now-7d -o json`, along with
+  bulk `dash0 apply -f` runs and `list` over many assets.
+  
+  The token is now resolved before every request and refreshed as it nears expiry, so a long
+  command finishes on one `dash0 login`. A request rejected with 401 is retried once with a
+  fresh token, which also covers a token revoked elsewhere and clock skew against the
+  authorization server.
+  
+  `--profile <name>` and `DASH0_PROFILE` never refreshed at all, serving whatever token sat
+  on disk. They now refresh like the active profile.
+  
+  Static `auth_*` tokens do not expire and are still sent unchanged.
+  
+
 ## 1.16.4
 
 
