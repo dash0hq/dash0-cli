@@ -207,7 +207,7 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 	}
 
 	sampling := &dash0api.Sampling{
-		Mode:      dash0api.Disabled,
+		Mode:      dash0api.SamplingModeDisabled,
 		TimeRange: timeRange,
 	}
 
@@ -229,7 +229,7 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 			To:   "now",
 		}
 		followSampling := &dash0api.Sampling{
-			Mode:      dash0api.Disabled,
+			Mode:      dash0api.SamplingModeDisabled,
 			TimeRange: followTimeRange,
 		}
 

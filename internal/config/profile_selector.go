@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -87,13 +88,24 @@ func ProfileSelectorFromContext(ctx context.Context) ProfileSelector {
 // when no profile with the given name exists.
 // When profileName is empty, callers should use the normal active-profile
 // resolution chain; this function only handles explicit selections.
-func ResolveConfigurationForProfile(profileName string) (*profiles.Configuration, error) {
+//
+// The returned configuration records the profile it came from, which is what
+// lets the client refresh its OAuth access token per request.
+func ResolveConfigurationForProfile(ctx context.Context, profileName string) (*profiles.Configuration, error) {
 	if profileName == "" {
 		return nil, fmt.Errorf("profile name must not be empty")
 	}
 
 	store, err := profiles.NewStore()
 	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := store.GetConfigurationForProfile(ctx, profileName)
+	if err == nil {
+		return cfg, nil
+	}
+	if !errors.Is(err, profiles.ErrProfileNotFound) {
 		return nil, err
 	}
 
@@ -109,38 +121,15 @@ func ResolveConfigurationForProfile(profileName string) (*profiles.Configuration
 		)
 	}
 
-	var matched *profiles.Profile
 	names := make([]string, 0, len(all))
 	for i := range all {
 		names = append(names, all[i].Name)
-		if all[i].Name == profileName {
-			matched = &all[i]
-		}
 	}
 
-	if matched == nil {
-		sort.Strings(names)
-		return nil, fmt.Errorf(
-			"profile %q does not exist. Available profiles: %s",
-			profileName,
-			strings.Join(names, ", "),
-		)
-	}
-
-	cfg := matched.Configuration
-
-	if v := os.Getenv(profiles.EnvApiUrl); v != "" {
-		cfg.ApiUrl = v
-	}
-	if v := os.Getenv(profiles.EnvAuthToken); v != "" {
-		cfg.AuthToken = v
-	}
-	if v := os.Getenv(profiles.EnvOtlpUrl); v != "" {
-		cfg.OtlpUrl = v
-	}
-	if v := os.Getenv(profiles.EnvDataset); v != "" {
-		cfg.Dataset = v
-	}
-
-	return &cfg, nil
+	sort.Strings(names)
+	return nil, fmt.Errorf(
+		"profile %q does not exist. Available profiles: %s",
+		profileName,
+		strings.Join(names, ", "),
+	)
 }

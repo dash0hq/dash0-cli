@@ -60,6 +60,23 @@ func NewRawHTTPConfig(ctx context.Context, apiUrl, authToken string) (*RawHTTPCo
 	if resolvedApiUrl == "" {
 		return nil, fmt.Errorf("api-url is required; provide it as a flag, environment variable, or configure a profile")
 	}
+
+	// Resolve the token through the profile's provider so an OAuth access token
+	// that is close to (or already past) expiry is refreshed before the request
+	// goes out. The context-carried configuration is not guaranteed to have been
+	// refreshed: the --profile path reads the profile straight off disk.
+	//
+	// One resolution up front is enough here. Raw commands issue a single short
+	// request, unlike the typed client, which consults its provider per request
+	// because it drives multi-page operations.
+	if cfg := profiles.FromContext(ctx); cfg != nil && !oauthShadowed(cfg, resolvedAuthToken) {
+		refreshed, err := cfg.AuthTokenProvider().AuthToken(ctx)
+		if err != nil {
+			return nil, translateConfigError(ctx, err)
+		}
+		resolvedAuthToken = refreshed
+	}
+
 	if resolvedAuthToken == "" {
 		return nil, fmt.Errorf("auth-token is required; provide it as a flag, environment variable, or configure a profile")
 	}

@@ -132,7 +132,7 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 	setActiveProfile(t, configDir, "dev")
 
 	t.Run("selected profile is used", func(t *testing.T) {
-		cfg, err := ResolveConfigurationForProfile("prod")
+		cfg, err := ResolveConfigurationForProfile(context.Background(), "prod")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -148,7 +148,7 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 		os.Setenv(profiles.EnvDataset, "env-override-ds")
 		defer os.Unsetenv(profiles.EnvDataset)
 
-		cfg, err := ResolveConfigurationForProfile("prod")
+		cfg, err := ResolveConfigurationForProfile(context.Background(), "prod")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -162,7 +162,7 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 	})
 
 	t.Run("unknown profile returns error listing available profiles", func(t *testing.T) {
-		_, err := ResolveConfigurationForProfile("typo")
+		_, err := ResolveConfigurationForProfile(context.Background(), "typo")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -176,7 +176,7 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 	})
 
 	t.Run("empty name is rejected", func(t *testing.T) {
-		_, err := ResolveConfigurationForProfile("")
+		_, err := ResolveConfigurationForProfile(context.Background(), "")
 		if err == nil {
 			t.Fatal("expected error for empty name")
 		}
@@ -186,7 +186,7 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 func TestResolveConfigurationForProfile_NoProfilesAtAll(t *testing.T) {
 	_ = setupTestConfigDir(t)
 
-	_, err := ResolveConfigurationForProfile("any")
+	_, err := ResolveConfigurationForProfile(context.Background(), "any")
 	if err == nil {
 		t.Fatal("expected error when no profiles are configured")
 	}
