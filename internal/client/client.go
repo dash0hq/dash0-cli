@@ -55,7 +55,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 
 	client, err := dash0api.NewClient(
 		dash0api.WithApiUrl(apiUrl),
-		dash0api.WithAuthToken(authToken),
+		authTokenOption(cfg, authToken),
 		dash0api.WithUserAgent(version.UserAgent()),
 		dash0api.WithMaxRetries(maxRetries),
 	)
@@ -106,7 +106,7 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 
 	client, err := dash0api.NewClient(
 		dash0api.WithOtlpEndpoint(dash0api.OtlpEncodingJson, finalOtlpUrl),
-		dash0api.WithAuthToken(finalAuthToken),
+		authTokenOption(cfg, finalAuthToken),
 		dash0api.WithUserAgent(version.UserAgent()),
 		dash0api.WithMaxRetries(maxRetries),
 	)
@@ -170,7 +170,7 @@ func translateConfigError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
-	if dash0api.IsOAuthTokenError(err) {
+	if dash0api.IsOAuthTokenError(err) || errors.Is(err, profiles.ErrReauthenticationRequired) {
 		selector := config.ProfileSelectorFromContext(ctx)
 		displayName := selector.Name
 		if agentmode.Enabled {
@@ -205,6 +205,40 @@ func profileNameForUpdate(_ context.Context, displayName string) string {
 		return "<active-profile>"
 	}
 	return active.Name
+}
+
+// oauthShadowed reports whether a static auth token supersedes the profile's
+// OAuth state for this invocation, via DASH0_AUTH_TOKEN or --auth-token. When
+// one does, the static token is used as-is and no refresh is attempted.
+//
+// checkOAuthEmpty and checkOAuthOnOtlp test the same two conditions inline.
+//
+// TODO(dash0-api-client-go #39): once Configuration records each field's source,
+// this and both inline copies collapse into one check.
+func oauthShadowed(cfg *profiles.Configuration, resolvedAuthToken string) bool {
+	if cfg == nil || cfg.OAuth == nil {
+		return false
+	}
+	if os.Getenv(profiles.EnvAuthToken) != "" {
+		return true
+	}
+	// The resolved token differs from what the profile would have supplied, so
+	// it came from a flag override.
+	return resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken
+}
+
+// authTokenOption picks how the API client authenticates.
+//
+// An OAuth profile goes through a provider, so the access token is refreshed
+// for as long as the client is in use. An access token is valid for 15 minutes,
+// so a token frozen at construction breaks any command that outlives it.
+// Anything else authenticates with the resolved token directly, because a
+// static auth_* token does not expire.
+func authTokenOption(cfg *profiles.Configuration, resolvedAuthToken string) dash0api.ClientOption {
+	if cfg != nil && cfg.OAuth != nil && !oauthShadowed(cfg, resolvedAuthToken) {
+		return dash0api.WithAuthTokenProvider(cfg.AuthTokenProvider())
+	}
+	return dash0api.WithAuthToken(resolvedAuthToken)
 }
 
 // checkOAuthEmpty surfaces a friendly "not authenticated" error when the

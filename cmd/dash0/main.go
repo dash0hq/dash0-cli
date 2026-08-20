@@ -339,7 +339,7 @@ func main() {
 	// Skip the pre-resolve so `dash0 login --profile <new>` can reach runLogin.
 	skipProfileResolve := targetCmd != nil && (targetCmd.Name() == "login" || targetCmd.Name() == "logout")
 	if selector.IsSet() && !skipProfileResolve {
-		cfg, err := config.ResolveConfigurationForProfile(selector.Name)
+		cfg, err := config.ResolveConfigurationForProfile(ctx, selector.Name)
 		if err != nil {
 			printError(err)
 			os.Exit(1)

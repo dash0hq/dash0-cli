@@ -97,7 +97,7 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
 
 			if profileSelector.IsSet() {
 				profileName = profileSelector.Name
-				resolved, err := ResolveConfigurationForProfile(profileSelector.Name)
+				resolved, err := ResolveConfigurationForProfile(cmd.Context(), profileSelector.Name)
 				if err != nil {
 					return err
 				}
