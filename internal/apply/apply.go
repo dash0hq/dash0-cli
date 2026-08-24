@@ -41,6 +41,12 @@ type applyFlags struct {
 	// --since never being mentioned at all.
 	SinceFlagSet bool
 	Force        bool
+	// AcceptNonAncestorRef authorizes proceeding past the warning printed
+	// when --since's ref resolves but is not an ancestor of HEAD (likely a
+	// force-push or history rewrite), without also implying --force's
+	// separate job of skipping every per-asset deletion confirmation.
+	// --force still authorizes this too, for backward compatibility.
+	AcceptNonAncestorRef bool
 }
 
 // NewApplyCmd creates the top-level apply command
@@ -70,7 +76,7 @@ A PrometheusRule CRD that mixes alerting and recording rules is dispatched to bo
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.
 
-[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt.` + internal.CONFIG_HINT,
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -93,7 +99,10 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
   dash0 --experimental apply -f dashboards/ --since HEAD~1
 
   # Same, without the per-deletion confirmation prompt (experimental)
-  dash0 --experimental apply -f dashboards/ --since HEAD~1 --force`,
+  dash0 --experimental apply -f dashboards/ --since HEAD~1 --force
+
+  # Accept a --since ref from a force-push without skipping per-deletion confirmation (experimental)
+  dash0 --experimental apply -f dashboards/ --since HEAD~1 --accept-non-ancestor-ref`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s\nTo apply multiple files, pass a directory with -f instead of a glob pattern", strings.Join(args, " "))
@@ -119,7 +128,8 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
 	cmd.Flags().StringVar(&flags.Since, "since", "", "[experimental] Delete assets removed from -f's contents since this git ref (requires --experimental/-X)")
-	cmd.Flags().BoolVar(&flags.Force, "force", false, "Skip the confirmation prompt for deletions triggered by --since")
+	cmd.Flags().BoolVar(&flags.Force, "force", false, "Skip the confirmation prompt for deletions triggered by --since; also accepts a non-ancestor --since ref")
+	cmd.Flags().BoolVar(&flags.AcceptNonAncestorRef, "accept-non-ancestor-ref", false, "Accept a --since ref that is not an ancestor of HEAD (e.g. after a force-push), without also skipping the per-deletion confirmation prompt")
 
 	return cmd
 }
@@ -282,7 +292,12 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		// nothing to do with --since's ancestry check.
 		if deletionPlan.warning != "" {
 			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.warning)
-			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", flags.Force)
+			// --force also accepts this (backward compatible: it always
+			// implied "proceed unattended"), but --accept-non-ancestor-ref
+			// lets a caller accept a doubtful ref on its own, without also
+			// giving up the per-asset deletion prompts below.
+			acceptRef := flags.Force || flags.AcceptNonAncestorRef
+			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", acceptRef)
 			if confirmErr != nil || !confirmed {
 				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
 				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")

@@ -1044,6 +1044,62 @@ func TestApply_Since_NonAncestorRef_ForceDeletesAndWarnsOnce(t *testing.T) {
 	require.NotNil(t, deleteReq, "expected the view removed since branchA to be deleted with --force")
 }
 
+// TestApply_Since_AcceptNonAncestorRefWithoutForceStillPromptsPerAsset is a
+// regression test for a bug where accepting a non-ancestor --since ref
+// (e.g. after a force-push) was only possible via --force, which also
+// silently skipped every per-asset deletion confirmation -- coupling two
+// separate decisions ("is this doubtful ref okay to proceed with" and "run
+// unattended, no prompts") into a single flag. --accept-non-ancestor-ref
+// answers only the first question: the ref-acceptance prompt is skipped,
+// but the per-asset deletion confirmation below it still fires.
+func TestApply_Since_AcceptNonAncestorRefWithoutForceStillPromptsPerAsset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir, branchA := setUpNonAncestorRefRepo(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+	})
+	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	// Only one answer ("y") is available on the fake reader. If
+	// --accept-non-ancestor-ref failed to skip the ref-acceptance prompt,
+	// that prompt would consume it, leaving the per-asset deletion prompt
+	// below to hit EOF -- which ConfirmDestructiveOperation treats as an
+	// error ("confirmation aborted: stdin closed"), not a silent decline.
+	// require.NoError below would then fail, so this single answer is
+	// enough to prove both prompts didn't compete for it.
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	defer restore()
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", filepath.Join(dir, "assets"), "--since", branchA, "--accept-non-ancestor-ref", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Dashboard")
+	assert.Contains(t, output, "created")
+	assert.Contains(t, output, "Are you sure you want to delete View", "the per-asset deletion prompt must still fire -- --accept-non-ancestor-ref only answers the ref-acceptance question")
+	assert.Contains(t, output, "View")
+	assert.Contains(t, output, "deleted")
+
+	deleteReq := findRequest(server.Requests(), http.MethodDelete, "/api/views/a-id")
+	require.NotNil(t, deleteReq, "expected the view removed since branchA to be deleted")
+}
+
 func TestApply_Since_DeclinedDeletionFailsCommand(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

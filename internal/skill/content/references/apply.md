@@ -8,7 +8,7 @@ Apply asset definitions from a file, directory, or stdin.
 If an asset already exists (matched by ID), it is updated; otherwise it is created.
 
 ```bash
-dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force]]
+dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-non-ancestor-ref]]
 ```
 
 _For the exact, always-current flag list, run `dash0 --agent-mode apply --help`._
@@ -164,6 +164,18 @@ It does not hard-fail, so a legitimate force-push still has a recovery path:
 $ dash0 --experimental apply -f dashboards/ --since <orphaned-sha> --force
 warning: --since '<orphaned-sha>' is not an ancestor of HEAD (likely a force-push or history rewrite); deletion detection may be inaccurate
 keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
+```
+
+`--force` accepts the doubtful ref and skips every per-asset deletion confirmation together, since it always meant "run unattended" end to end.
+These are two separate decisions, though: accepting a ref that might be from a force-push is not the same as wanting no further prompts at all.
+`--accept-non-ancestor-ref` answers only the first one, leaving the per-asset confirmation in place:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since <orphaned-sha> --accept-non-ancestor-ref
+warning: --since '<orphaned-sha>' is not an ancestor of HEAD (likely a force-push or history rewrite); deletion detection may be inaccurate
+keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
