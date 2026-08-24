@@ -80,6 +80,76 @@ spec:
 	assert.Contains(t, output, "deleted")
 }
 
+// TestApply_Since_ConcurrentlyDeletedAssetIsToleratedWithoutForce is a
+// regression test for a bug where an asset already deleted by someone else
+// (e.g. via the Dash0 UI) before --since's own delete call ran caused the
+// whole run to fail with a raw 404 error unless --force was passed --
+// coupling "tolerate an asset that's already gone" to "skip every
+// confirmation prompt" as if they were the same decision. They aren't:
+// --since's job is reconciling Dash0 to match git, and a 404 on a planned
+// deletion already IS that match, confirmed or not. This asserts the
+// confirmation prompt still fires (unlike --force, which skips it), but a
+// 404 on the delete itself is tolerated exactly as it would be with
+// --force.
+func TestApply_Since_ConcurrentlyDeletedAssetIsToleratedWithoutForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboard")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// Simulates someone deleting the dashboard concurrently, e.g. via the
+	// Dash0 UI, before this run's own delete call.
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	defer restore()
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		// Deliberately no --force: the confirmation prompt must still fire.
+		"-f", dir, "--since", before, "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr, "a concurrently-deleted asset must not fail the run even without --force")
+	assert.Contains(t, stdout, "Are you sure you want to delete", "the confirmation prompt must still fire without --force")
+	assert.Contains(t, stderr, "was already deleted")
+}
+
 // TestApply_Since_AllFilesDeleted_DirectorySurvives is a regression test for
 // a bug where --since found nothing to delete (in fact, failed the whole
 // run outright) once every asset definition under -f's target had been

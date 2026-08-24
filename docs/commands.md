@@ -993,6 +993,19 @@ Skip the confirmation prompt (for CI/CD and agent-driven pipelines, where there 
 dash0 --experimental apply -f dashboards/ --since HEAD~1 --force
 ```
 
+If an asset `--since` planned to delete is already gone by the time the confirmed deletion runs — someone deleted it directly in the Dash0 UI, for example — that is treated as the desired end state already reached, regardless of `--force`.
+This is unconditional (unlike a standalone `<kind> delete`, whose own `--force` flag gates the same idempotent-404 tolerance): `--since`'s job is reconciling Dash0 to match git across a whole scanned scope, and one asset a concurrent change already removed matching that goal is not a reason to fail the run, confirmed or not.
+`--force` still controls only whether the confirmation prompt itself is skipped:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
+Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
+Dashboard "Old Dashboard" was already deleted
+$ echo $?
+0
+```
+
 Declining a deletion does not stop the rest of the run — creates and updates for the surviving documents still go through — but the command exits non-zero, since the sync's desired end state ("this asset is gone, matching git") was not reached:
 
 ```bash

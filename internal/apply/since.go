@@ -279,7 +279,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			declined++
 			continue
 		}
-		if err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, force); err != nil {
+		if err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d); err != nil {
 			return declined, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
 		}
 		fmt.Printf("%s %s deleted\n", displayKind, display)
@@ -297,7 +297,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			declined++
 			continue
 		}
-		if err := deleteCheckRuleByName(ctx, apiClient, dataset, name, force); err != nil {
+		if err := deleteCheckRuleByName(ctx, apiClient, dataset, name); err != nil {
 			return declined, fmt.Errorf("failed to delete check rule %q: %w", name, err)
 		}
 		fmt.Printf("Check rule %q deleted\n", name)
@@ -310,10 +310,21 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 // asset whose identifier disappeared entirely) to the matching per-kind
 // delete API call, mirroring the dispatch applyDocument already uses for
 // create/update.
-func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, force bool) error {
+//
+// A 404 here always means "already gone" and is always tolerated,
+// regardless of --force: --since's deletion phase is reconciling Dash0 to
+// match git, and an asset that's already absent already matches the
+// desired end state, whether or not the caller passed --force. --force
+// keeps its own, separate job of skipping the confirmation prompt in
+// applyDeletions, before this function is ever called. This is
+// deliberately unlike the force-gated tolerance a standalone `<kind> delete`
+// command uses: that command acts on one asset the caller named by hand, so
+// a 404 without --force there is more likely a typo'd id worth surfacing
+// loudly than a benign race.
+func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) error {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
-		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, force)
+		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier)
 	}
 
 	var err error
@@ -344,7 +355,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 
 	ectx := client.ErrorContext{AssetType: asset.KindDisplayName(kind), AssetID: identifier}
 	if err != nil {
-		if client.IsAlreadyDeleted(err, force, ectx) {
+		if client.IsAlreadyDeleted(err, true, ectx) {
 			return nil
 		}
 		return client.HandleAPIError(err, ectx)
@@ -373,7 +384,11 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // happen to share the same identifier by coincidence (not because they came
 // from the same CRD) would both be deleted together — accepted as an edge
 // case narrow enough not to justify leaving real orphaned assets behind.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, force bool) error {
+//
+// A 404 on either endpoint always means "already gone" (see
+// deleteAssetByKindAndIdentifier's doc comment for why this is unconditional,
+// unlike a standalone `<kind> delete` command).
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string) error {
 	checkRuleErr := apiClient.DeleteCheckRule(ctx, identifier, dataset)
 	recordingRuleErr := apiClient.DeleteRecordingRule(ctx, identifier, dataset)
 
@@ -382,14 +397,14 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 
 	if checkRuleErr != nil && !checkRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "check rule", AssetID: identifier}
-		if client.IsAlreadyDeleted(checkRuleErr, force, ectx) {
+		if client.IsAlreadyDeleted(checkRuleErr, true, ectx) {
 			return nil
 		}
 		return client.HandleAPIError(checkRuleErr, ectx)
 	}
 	if recordingRuleErr != nil && !recordingRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "recording rule", AssetID: identifier}
-		if client.IsAlreadyDeleted(recordingRuleErr, force, ectx) {
+		if client.IsAlreadyDeleted(recordingRuleErr, true, ectx) {
 			return nil
 		}
 		return client.HandleAPIError(recordingRuleErr, ectx)
@@ -399,7 +414,7 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	// for this identifier.
 	if checkRuleNotFound && recordingRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "PrometheusRule", AssetID: identifier}
-		if client.IsAlreadyDeleted(checkRuleErr, force, ectx) {
+		if client.IsAlreadyDeleted(checkRuleErr, true, ectx) {
 			return nil
 		}
 		return client.HandleAPIError(checkRuleErr, ectx)
@@ -412,23 +427,24 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 // it. This is the only way to target a single alerting rule removed from a
 // PrometheusRule CRD that otherwise survives: the CRD's shared identifier
 // can't distinguish between the alerts it contains.
-func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string, force bool) error {
+//
+// Not finding it by name at all, or a 404 on the delete itself, always means
+// "already gone" (see deleteAssetByKindAndIdentifier's doc comment for why
+// this is unconditional, unlike a standalone `<kind> delete` command).
+func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string) error {
 	id, err := findCheckRuleIDByName(ctx, apiClient, dataset, name)
 	if err != nil {
 		return err
 	}
 	if id == "" {
-		if force {
-			fmt.Fprintf(os.Stderr, "Check rule %q was already deleted\n", name)
-			return nil
-		}
-		return fmt.Errorf("check rule %q not found (already deleted?)", name)
+		fmt.Fprintf(os.Stderr, "Check rule %q was already deleted\n", name)
+		return nil
 	}
 
 	err = apiClient.DeleteCheckRule(ctx, id, dataset)
 	ectx := client.ErrorContext{AssetType: "check rule", AssetID: id, AssetName: name}
 	if err != nil {
-		if client.IsAlreadyDeleted(err, force, ectx) {
+		if client.IsAlreadyDeleted(err, true, ectx) {
 			return nil
 		}
 		return client.HandleAPIError(err, ectx)
