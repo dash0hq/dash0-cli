@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/client"
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
@@ -100,13 +101,12 @@ func ImportSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *da
 		}
 	}
 
-	var result *dash0api.SpamFilter
-	var err error
-	if upsertKey != "" {
-		result, err = apiClient.UpdateSpamFilter(ctx, upsertKey, filter, dataset)
-	} else {
-		result, err = apiClient.CreateSpamFilter(ctx, filter, dataset)
-	}
+	result, err := client.RetryOnConflict(ctx, func() (*dash0api.SpamFilter, error) {
+		if upsertKey != "" {
+			return apiClient.UpdateSpamFilter(ctx, upsertKey, filter, dataset)
+		}
+		return apiClient.CreateSpamFilter(ctx, filter, dataset)
+	})
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -142,13 +142,12 @@ func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, fi
 		}
 	}
 
-	var result *dash0api.SpamFilterV1Alpha2
-	var err error
-	if upsertKey != "" {
-		result, err = apiClient.UpdateSpamFilterV1Alpha2(ctx, upsertKey, filter, dataset)
-	} else {
-		result, err = apiClient.CreateSpamFilterV1Alpha2(ctx, filter, dataset)
-	}
+	result, err := client.RetryOnConflict(ctx, func() (*dash0api.SpamFilterV1Alpha2, error) {
+		if upsertKey != "" {
+			return apiClient.UpdateSpamFilterV1Alpha2(ctx, upsertKey, filter, dataset)
+		}
+		return apiClient.CreateSpamFilterV1Alpha2(ctx, filter, dataset)
+	})
 	if err != nil {
 		return ImportResult{}, err
 	}
