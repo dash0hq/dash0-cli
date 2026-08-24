@@ -16,14 +16,6 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
-	// PrometheusRuleEndpoints records which Dash0 endpoint(s) the deleted
-	// CRD actually used, when Kind is "prometheusrule" (zero value for
-	// every other kind). The delete dispatch uses this to only call the
-	// endpoint(s) the CRD used, instead of blind-deleting from both and
-	// tolerating a 404 from whichever wasn't used — which would otherwise
-	// silently delete an unrelated asset that happens to share the same
-	// identifier on the endpoint the CRD never used.
-	PrometheusRuleEndpoints PrometheusRuleEndpoints
 	// SpamFilterUsesOrigin records whether the deleted spam filter carried a
 	// dash0.com/origin label, when Kind is "spamfilter" (meaningless for
 	// every other kind). false means the filter was identified by
@@ -73,11 +65,10 @@ func Diff(before, after Snapshot) DeletionPlan {
 			continue
 		}
 		plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-			Kind:                    key.Kind,
-			Identifier:              key.Identifier,
-			Path:                    path,
-			PrometheusRuleEndpoints: before.PrometheusRuleEndpointsByIdentifier[key.Identifier],
-			SpamFilterUsesOrigin:    before.SpamFilterUsesOriginByIdentifier[key.Identifier],
+			Kind:                 key.Kind,
+			Identifier:           key.Identifier,
+			Path:                 path,
+			SpamFilterUsesOrigin: before.SpamFilterUsesOriginByIdentifier[key.Identifier],
 		})
 	}
 	sort.Slice(plan.ByIdentifier, func(i, j int) bool {

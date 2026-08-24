@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dash0hq/dash0-cli/internal/asset"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,13 +54,6 @@ type Snapshot struct {
 	// alerting rule removed from a CRD that otherwise still exists.
 	PrometheusAlertsByIdentifier map[string][]dash0yaml.PrometheusAlertName
 
-	// PrometheusRuleEndpointsByIdentifier maps a PrometheusRule CRD's
-	// identifier to which Dash0 endpoint(s) it actually uses. Diff carries
-	// this into Deletion for a whole-CRD deletion, so the delete dispatch
-	// only calls the endpoint(s) the CRD used — never blind-deleting from
-	// the other endpoint just because it also happens to 404-tolerate.
-	PrometheusRuleEndpointsByIdentifier map[string]PrometheusRuleEndpoints
-
 	// SpamFilterUsesOriginByIdentifier maps a spam filter's identifier to
 	// whether it carries a dash0.com/origin label (per
 	// asset.SpamFilterUsesOrigin). Diff carries this into Deletion so --since
@@ -74,21 +67,13 @@ type Snapshot struct {
 	Paths map[string]bool
 }
 
-// PrometheusRuleEndpoints records which Dash0 endpoint(s) a PrometheusRule
-// CRD uses, per internal/asset.PrometheusRuleEndpoints.
-type PrometheusRuleEndpoints struct {
-	HasAlerts  bool
-	HasRecords bool
-}
-
 func newSnapshot() Snapshot {
 	return Snapshot{
-		Identifiers:                         map[IdentifierKey]string{},
-		NoIdentifier:                        map[string]NoIdentifierDoc{},
-		PrometheusAlertsByIdentifier:        map[string][]dash0yaml.PrometheusAlertName{},
-		PrometheusRuleEndpointsByIdentifier: map[string]PrometheusRuleEndpoints{},
-		SpamFilterUsesOriginByIdentifier:    map[string]bool{},
-		Paths:                               map[string]bool{},
+		Identifiers:                      map[IdentifierKey]string{},
+		NoIdentifier:                     map[string]NoIdentifierDoc{},
+		PrometheusAlertsByIdentifier:     map[string][]dash0yaml.PrometheusAlertName{},
+		SpamFilterUsesOriginByIdentifier: map[string]bool{},
+		Paths:                            map[string]bool{},
 	}
 }
 
@@ -276,12 +261,6 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to extract alert names: %w", err)
 			}
 			snap.PrometheusAlertsByIdentifier[identifier] = alerts
-
-			hasAlerts, hasRecords, err := asset.PrometheusRuleEndpoints(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine PrometheusRule endpoints: %w", err)
-			}
-			snap.PrometheusRuleEndpointsByIdentifier[identifier] = PrometheusRuleEndpoints{HasAlerts: hasAlerts, HasRecords: hasRecords}
 		}
 
 		if normalizedKind == "spamfilter" {

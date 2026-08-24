@@ -304,7 +304,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, force bool) error {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
-		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusRuleEndpoints, force)
+		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, force)
 	}
 
 	var err error
@@ -343,28 +343,24 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // create/update dispatch (applyPrometheusRule) sends a mixed CRD to both
 // endpoints, so a mixed CRD's deletion attempts both too.
 //
-// endpoints (extracted from the CRD's content at --since's ref, before it
-// was deleted) says which endpoint(s) the CRD actually used. Only those are
-// called: unconditionally attempting both and tolerating a 404 from
-// whichever wasn't used would silently delete an unrelated asset that
-// happens to carry the same identifier on the endpoint this CRD never used.
-// If endpoints reports neither (only possible for a Snapshot built before
-// this field existed, or corrupted git history), both are attempted and a
-// 404 from either is tolerated, matching the old best-effort behavior.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, endpoints gitutil.PrometheusRuleEndpoints, force bool) error {
-	tryCheckRule := endpoints.HasAlerts
-	tryRecordingRule := endpoints.HasRecords
-	if !tryCheckRule && !tryRecordingRule {
-		tryCheckRule, tryRecordingRule = true, true
-	}
-
-	var checkRuleErr, recordingRuleErr error
-	if tryCheckRule {
-		checkRuleErr = apiClient.DeleteCheckRule(ctx, identifier, dataset)
-	}
-	if tryRecordingRule {
-		recordingRuleErr = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
-	}
+// Both endpoints are always attempted, tolerating a 404 from either: this
+// used to be gated on which endpoint(s) the CRD's content at --since's ref
+// showed it using, but that signal is a single point in time, not a history
+// of everything the identifier has ever used. A CRD that had a recording
+// rule stripped from it in an earlier commit (leaving only its alerting
+// rules), followed by the whole file being deleted, showed --since a ref
+// where the file only ever had alerts — silently orphaning the recording
+// rule created earlier, with no later git state able to recover that fact
+// once the file is gone. Deleting is naturally idempotent (a 404 just means
+// this endpoint never had anything for this identifier), so attempting both
+// unconditionally is safe by the same logic every other kind already
+// relies on. The one tradeoff: a check rule and a recording rule that
+// happen to share the same identifier by coincidence (not because they came
+// from the same CRD) would both be deleted together — accepted as an edge
+// case narrow enough not to justify leaving real orphaned assets behind.
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, force bool) error {
+	checkRuleErr := apiClient.DeleteCheckRule(ctx, identifier, dataset)
+	recordingRuleErr := apiClient.DeleteRecordingRule(ctx, identifier, dataset)
 
 	checkRuleNotFound := checkRuleErr != nil && dash0api.IsNotFound(checkRuleErr)
 	recordingRuleNotFound := recordingRuleErr != nil && dash0api.IsNotFound(recordingRuleErr)
@@ -384,20 +380,14 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 		return client.HandleAPIError(recordingRuleErr, ectx)
 	}
 
-	// "Genuinely gone" means 404 on every endpoint that was actually tried —
-	// an endpoint that was never tried (because the CRD didn't use it)
-	// contributes no signal either way.
-	genuinelyGone := (!tryCheckRule || checkRuleNotFound) && (!tryRecordingRule || recordingRuleNotFound)
-	if genuinelyGone {
+	// "Genuinely gone" means 404 on both endpoints -- neither had anything
+	// for this identifier.
+	if checkRuleNotFound && recordingRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "PrometheusRule", AssetID: identifier}
-		firstErr := checkRuleErr
-		if firstErr == nil {
-			firstErr = recordingRuleErr
-		}
-		if client.IsAlreadyDeleted(firstErr, force, ectx) {
+		if client.IsAlreadyDeleted(checkRuleErr, force, ectx) {
 			return nil
 		}
-		return client.HandleAPIError(firstErr, ectx)
+		return client.HandleAPIError(checkRuleErr, ectx)
 	}
 	return nil
 }

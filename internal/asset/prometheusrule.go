@@ -7,7 +7,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"gopkg.in/yaml.v3"
-	sigsyaml "sigs.k8s.io/yaml"
 )
 
 // ParseCheckRules parses a CheckRule or PrometheusRule CRD document into one or
@@ -29,32 +28,6 @@ func ParseCheckRules(data []byte) ([]*dash0api.PrometheusAlertRule, error) {
 		return nil, err
 	}
 	return rules, nil
-}
-
-// PrometheusRuleEndpoints reports which of the two Dash0 endpoints (check
-// rules for alerting rules, recording rules for recording rules) a
-// PrometheusRule CRD document actually uses. Returns false, false for a
-// document that isn't a PrometheusRule CRD at all.
-//
-// --since uses this to delete a removed CRD only from the endpoint(s) it
-// actually used, instead of unconditionally attempting both and tolerating a
-// 404 from whichever wasn't used — an id happening to also exist,
-// coincidentally, on the endpoint the CRD never used would otherwise be
-// silently deleted too.
-func PrometheusRuleEndpoints(data []byte) (hasAlerts, hasRecords bool, err error) {
-	kind, err := dash0yaml.DetectKind(data)
-	if err != nil {
-		return false, false, err
-	}
-	if !strings.EqualFold(kind, "PrometheusRule") {
-		return false, false, nil
-	}
-
-	var crd dash0api.RecordingRule
-	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
-		return false, false, fmt.Errorf("failed to parse PrometheusRule: %w", err)
-	}
-	return PrometheusRuleHasAlerts(&crd), RecordingOnlyPrometheusRule(&crd) != nil, nil
 }
 
 // composePrometheusRuleNames rewrites the name of each check rule produced from

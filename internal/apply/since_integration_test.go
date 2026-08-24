@@ -438,22 +438,120 @@ spec:
 	assert.NotContains(t, stderr, "persesDashboard", "the kind name must never be turned into an invented hybrid casing either")
 }
 
-// TestApply_Since_PrometheusRuleWholeCRDDeletion_AlertingOnlyDoesNotTouchRecordingRules
+// TestApply_Since_PrometheusRuleWholeCRDDeletion_RecordDroppedBeforeDeletion_StillDeletesRecordingRule
 // is a regression test for a bug where deleting a whole PrometheusRule CRD
-// unconditionally attempted DELETE on both the check-rules and
-// recording-rules endpoints, tolerating a 404 from whichever the CRD didn't
-// use. If an unrelated, still-live recording rule happened to share the same
-// identifier (a coincidental id collision — the two asset types have
-// entirely separate id spaces on the server, so this is possible), the old
-// code would silently delete it too, since a successful DELETE there looks
-// identical to "the CRD used this endpoint." The fix carries forward which
-// endpoint(s) the CRD's content actually used (from the git ref before it
-// was deleted), so an alerting-only CRD's deletion is dispatched to
-// check-rules only.
-func TestApply_Since_PrometheusRuleWholeCRDDeletion_AlertingOnlyDoesNotTouchRecordingRules(t *testing.T) {
+// undercounted which endpoints to clean up, based solely on the CRD's
+// content at --since's own ref -- a single point in time, not a history of
+// everything the identifier has ever used. A CRD that starts out mixed
+// (alert + record), then has its record entry dropped in an earlier commit
+// while keeping the alert, then is deleted entirely, shows --since a ref
+// where the file only ever had an alert: the old code carried that stale
+// "alerting-only" signal straight into the delete dispatch and never called
+// DELETE on the recording-rules endpoint at all, permanently orphaning the
+// recording rule created back when the file was still mixed -- nothing
+// after the file is gone can ever recover that fact from git. The fix
+// always attempts both endpoints (tolerating a 404 from whichever wasn't
+// actually used), so the orphaned recording rule is cleaned up too.
+func TestApply_Since_PrometheusRuleWholeCRDDeletion_RecordDroppedBeforeDeletion_StillDeletesRecordingRule(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	const sharedID = "shared-id-collision"
+	const id = "app-rules-id"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: `+id+`
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+        - record: my_record
+          expr: rate(x[5m])
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add mixed rules")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: `+id+`
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "drop the record, keep the alert")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "rules.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove rules.yaml entirely")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+	// The recording rule created back when rules.yaml was still mixed --
+	// still live server-side, even though the ref --since compares against
+	// only ever shows the file as alerting-only.
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "PrometheusRule")
+	assert.Contains(t, output, id)
+	assert.Contains(t, output, "deleted")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+id), "expected the CRD's check rule to be deleted")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/recording-rules/"+id), "expected the recording rule orphaned by dropping the record entry to be deleted too, even though --since's ref only ever showed the file as alerting-only")
+}
+
+// TestApply_Since_PrometheusRuleWholeCRDDeletion_ToleratesRecordingRule404
+// pins the safety side of the fix above: an alerting-only CRD that never had
+// a recording rule still has DELETE attempted against the recording-rules
+// endpoint (since the code no longer knows, or needs to know, whether it
+// ever used it) -- that attempt must 404 harmlessly and not fail the run.
+func TestApply_Since_PrometheusRuleWholeCRDDeletion_ToleratesRecordingRule404(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const id = "alerting-only-id"
 
 	dir := t.TempDir()
 	runGitCmd(t, dir, "init", "-q", "-b", "main")
@@ -466,7 +564,7 @@ kind: PrometheusRule
 metadata:
   name: alerting-only-rules
   labels:
-    dash0.com/id: `+sharedID+`
+    dash0.com/id: `+id+`
 spec:
   groups:
     - name: test-group
@@ -494,13 +592,9 @@ spec:
 		Body:       map[string]any{},
 		Validator:  testutil.RequireHeaders,
 	})
-	// An unrelated, still-live recording rule that happens to share the same
-	// identifier: registered to SUCCEED, so this test fails loudly if the
-	// buggy code path calls it at all.
 	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		Body:       map[string]any{},
-		Validator:  testutil.RequireHeaders,
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureRecordingRulesNotFound,
 	})
 
 	cmd := newSinceTestCmd()
@@ -516,11 +610,11 @@ spec:
 
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "PrometheusRule")
-	assert.Contains(t, output, sharedID)
+	assert.Contains(t, output, id)
 	assert.Contains(t, output, "deleted")
 
-	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+sharedID), "expected the alerting-only CRD's check rule to be deleted")
-	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, "/api/recording-rules/"+sharedID), "an alerting-only CRD must never call DELETE on the recording-rules endpoint, even if something there happens to share its identifier")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+id))
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/recording-rules/"+id), "the recording-rules endpoint must still be attempted even for a CRD that never had a recording rule")
 }
 
 func TestApply_Since_MultiDocumentPartialDeletion(t *testing.T) {
