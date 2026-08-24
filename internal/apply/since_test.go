@@ -446,6 +446,47 @@ func TestComputeDeletionPlan_UnresolvableRef(t *testing.T) {
 	_, err := computeDeletionPlan(context.Background(), flags)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not be resolved")
+	assert.Contains(t, err.Error(), "check for a typo, or a too-shallow clone", "a genuine typo must still get the generic suggestions")
+}
+
+// TestComputeDeletionPlan_NotAGitRepository is a regression test for a bug
+// where running --since against a directory that was never a git
+// repository at all produced a deeply nested, hard-to-read error: "--since
+// '<ref>' requires <dir> to be inside a git repository: failed to
+// determine repository root for <dir>: git rev-parse --show-toplevel: exit
+// status 128 (stderr: fatal: not a git repository (or any of the parent
+// directories): .git)". The common case now gets one clean sentence
+// instead of three layers of wrapped git plumbing errors.
+func TestComputeDeletionPlan_NotAGitRepository(t *testing.T) {
+	dir := t.TempDir() // deliberately never `git init`-ed
+	flags := &applyFlags{File: dir, Since: "HEAD~1"}
+	_, err := computeDeletionPlan(context.Background(), flags)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "to be inside a git repository, but it is not")
+	assert.NotContains(t, err.Error(), "failed to determine repository root", "the nested git-plumbing wrapping must not leak into the message")
+	assert.NotContains(t, err.Error(), "exit status", "the raw git exec error must not leak into the message")
+}
+
+// TestComputeDeletionPlan_InsufficientHistory is a regression test for a
+// bug where --since HEAD~1 against a fresh, single-commit repository --
+// the first thing many people try when setting up a --since test or demo
+// repo -- was told to check for a typo or a too-shallow clone, neither of
+// which applies: there is simply no earlier commit yet.
+func TestComputeDeletionPlan_InsufficientHistory(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "only commit")
+
+	flags := &applyFlags{File: dir, Since: "HEAD~1"}
+	_, err := computeDeletionPlan(context.Background(), flags)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "1 commit")
+	assert.NotContains(t, err.Error(), "check for a typo, or a too-shallow clone", "the generic suggestions don't apply here and must not be shown")
 }
 
 func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {
@@ -543,4 +584,3 @@ func TestApplyDeletions_PrometheusRuleConfirmationPromptUsesConsistentCasing(t *
 	assert.Contains(t, stdout, "Are you sure you want to delete PrometheusRule \"<name>\" (shared-id)")
 	assert.NotContains(t, stdout, "prometheusrule", "the whole display name must never be force-lowercased into an unreadable compound word")
 }
-

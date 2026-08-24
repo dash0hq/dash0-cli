@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -133,4 +134,27 @@ func TestIsAncestor_UnknownRefIsError(t *testing.T) {
 	repo := testRepo(t)
 	_, err := repo.IsAncestor(context.Background(), "does-not-exist", "HEAD")
 	require.Error(t, err)
+}
+
+// TestRoot_NotAGitRepository pins IsNotAGitRepository's contract: Root's
+// error, run against a plain directory that was never a git repository at
+// all, must be recognized by IsNotAGitRepository so callers can build a
+// clean, single-line message instead of propagating git's own nested
+// "failed to determine repository root for ...: git rev-parse
+// --show-toplevel: exit status 128 (stderr: fatal: not a git repository
+// ...)" chain verbatim.
+func TestRoot_NotAGitRepository(t *testing.T) {
+	notARepo := Repo{Dir: t.TempDir()}
+	_, err := notARepo.Root(context.Background())
+	require.Error(t, err)
+	assert.True(t, IsNotAGitRepository(err), "expected IsNotAGitRepository to recognize %v", err)
+}
+
+// TestIsNotAGitRepository_OtherErrorsReturnFalse pins that
+// IsNotAGitRepository doesn't fire on an unrelated error, so callers don't
+// mistakenly swap in the "not a git repository" message for some other
+// infrastructure failure.
+func TestIsNotAGitRepository_OtherErrorsReturnFalse(t *testing.T) {
+	assert.False(t, IsNotAGitRepository(nil))
+	assert.False(t, IsNotAGitRepository(errors.New("some other failure")))
 }

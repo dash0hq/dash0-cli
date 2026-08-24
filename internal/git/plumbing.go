@@ -90,12 +90,33 @@ func (r Repo) IsAncestor(ctx context.Context, ancestor, descendant string) (bool
 // repo-relative paths consistently between BuildSnapshotFromRef (whose paths
 // are always repo-root-relative, per git ls-tree's own behavior) and
 // BuildSnapshotFromDisk.
+//
+// Its own error is deliberately unadorned (no "failed to determine
+// repository root for %s" wrapping): callers that need a clean, single-line
+// message for the common "not a git repository at all" case should check
+// IsNotAGitRepository(err) themselves and build their own message from
+// scratch, rather than trying to make a wrapped chain of "failed to
+// determine..." / "git rev-parse ...: exit status 128 (stderr: fatal: not
+// a git repository...)" read well. r.Dir is included so a caller that does
+// want the raw error for anything else still knows which directory failed.
 func (r Repo) Root(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", fmt.Errorf("failed to determine repository root for %s: %w", r.Dir, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// IsNotAGitRepository reports whether err (as returned by Root, or any
+// other Repo method) is git's own "fatal: not a git repository (or any of
+// the parent directories): .git" failure -- the common case of running
+// --since against a directory that was never a git repository at all, as
+// opposed to some other infrastructure failure. Matched by substring
+// against git's own stable, documented wording, since git's rev-parse
+// exit code (128) is a generic "fatal error" shared by many unrelated
+// failures and can't distinguish this case on its own.
+func IsNotAGitRepository(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "not a git repository")
 }
 
 // ReadFileAtRef runs `git cat-file -p <ref>:<path>`, returning the file's

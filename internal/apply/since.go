@@ -90,6 +90,9 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 
 	repoRoot, err := repo.Root(ctx)
 	if err != nil {
+		if gitutil.IsNotAGitRepository(err) {
+			return nil, fmt.Errorf("--since '%s' requires %s to be inside a git repository, but it is not (no .git found there or in any parent directory)", flags.Since, flags.File)
+		}
 		return nil, fmt.Errorf("--since '%s' requires %s to be inside a git repository: %w", flags.Since, flags.File, err)
 	}
 	// Re-anchor at repoRoot: every scope-relative pathspec built below (and
@@ -113,6 +116,14 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	case gitutil.RefAllZeros:
 		return nil, fmt.Errorf("--since '%s' resolved to git's all-zeros SHA (%s), meaning there is no prior state to compare against (some CI systems report this value for a ref's first push)", flags.Since, gitutil.AllZerosSHA)
 	case gitutil.RefUnresolvable:
+		// Best-effort: a simple "<base>~N"/"<base>^N" ref whose base
+		// resolves fine but doesn't have N commits of history behind it
+		// (e.g. --since HEAD~1 against a single-commit repo) gets a
+		// specific reason instead of the generic typo-or-shallow-clone
+		// guess, neither of which applies to that case.
+		if reason := repo.ExplainUnresolvableRef(ctx, flags.Since); reason != "" {
+			return nil, fmt.Errorf("--since '%s' could not be resolved: %s", flags.Since, reason)
+		}
 		return nil, fmt.Errorf("--since '%s' could not be resolved (check for a typo, or a too-shallow clone missing the needed history)", flags.Since)
 	case gitutil.RefResolvedNonAncestor:
 		// The confirmation for this case is deliberately NOT done here: doing

@@ -155,7 +155,22 @@ Two `--since` values get a dedicated, CI-agnostic error message instead of a gen
 - Git's all-zeros SHA sentinel (`0000000000000000000000000000000000000000`) — the value GitHub gives `github.event.before` on a branch's first push.
 
 Both errors recommend skipping `--since` for that invocation, or passing an explicit ref.
-Any other unresolvable ref (a typo, a too-shallow clone) surfaces the plain git error instead.
+
+A ref written as `<base>~N` or `<base>^N` (including the bare `<base>~`/`<base>^` shorthand for `N=1`) whose base resolves fine, but whose own history has fewer than `N+1` commits — `--since HEAD~1` against a fresh, single-commit repository, for example, the first thing many people try when setting up a test or demo repository for `--since` — names that specifically, rather than suggesting a typo or a too-shallow clone:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1 --dry-run
+Error: --since 'HEAD~1' could not be resolved: "HEAD" has only 1 commit of history, not enough for "HEAD~1" to resolve 1 commit further back
+```
+
+Any other unresolvable ref (a genuine typo, a too-shallow clone) still surfaces the generic suggestion instead, since git's own error text for those cases doesn't distinguish the reason on its own.
+
+`-f`'s target not being inside a git repository at all gets a direct, single-sentence error rather than git's own nested plumbing failure:
+
+```bash
+$ dash0 --experimental apply -f /tmp/assets/ --since HEAD~1 --dry-run
+Error: --since 'HEAD~1' requires /tmp/assets/ to be inside a git repository, but it is not (no .git found there or in any parent directory)
+```
 
 A `--since` ref that resolves to a real commit but is not an ancestor of the current commit — the result of a force-push or history rewrite on the tracked branch — prints a warning naming the likely cause, then goes through the same per-asset confirmation as any other deletion.
 It does not hard-fail, so a legitimate force-push still has a recovery path:
