@@ -107,7 +107,7 @@ Dry run: 1 document from 1 file validated; 1 deletion pending due to --since 'HE
 ```
 
 A deleted asset's name is resolved by reading its content from git history at `<ref>`; if that lookup fails, `<name>` is shown as a placeholder instead.
-In agent mode, `--dry-run` reports the same information as JSON: an array of `{path, changes: [{op, name, originOrId}]}`, `op` being `"apply"` or `"delete"`.
+In agent mode, `--dry-run` reports the same information as JSON: an array of `{path, changes: [{op, kind, name, originOrId, since}]}`, `op` being `"apply"` or `"delete"`, `kind` the asset's display kind (e.g. `"View"`, `"Dashboard"`), and `since` the `--since` ref that determined the change (present only for `op: "delete"`, since an `"apply"` row comes from `-f`'s current contents, not from any ref).
 
 Apply for real, deleting assets removed since `<ref>`.
 Each deletion prompts for confirmation, the same as a standalone `<kind> delete`:

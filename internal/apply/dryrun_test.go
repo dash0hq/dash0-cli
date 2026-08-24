@@ -62,7 +62,7 @@ func TestRunDryRun_JSON_PlainNoSince(t *testing.T) {
 	require.Len(t, out, 1)
 	assert.Equal(t, "dashboard.yaml", out[0].Path)
 	require.Len(t, out[0].Changes, 1)
-	assert.Equal(t, dryRunChangeJSON{Op: "apply", Name: "Kept Dashboard", OriginOrID: "11111111-1111-1111-1111-111111111111"}, out[0].Changes[0])
+	assert.Equal(t, dryRunChangeJSON{Op: "apply", Kind: "Dashboard", Name: "Kept Dashboard", OriginOrID: "11111111-1111-1111-1111-111111111111"}, out[0].Changes[0])
 }
 
 // TestRunDryRun_JSON_MergedWithDeletions pins the JSON shape when a file has
@@ -93,8 +93,40 @@ func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 	require.Len(t, out, 1)
 	assert.Equal(t, "assets.yaml", out[0].Path)
 	require.Len(t, out[0].Changes, 2)
-	assert.Equal(t, dryRunChangeJSON{Op: "apply", Name: "error-logs-view", OriginOrID: "33333333-3333-3333-3333-333333333333"}, out[0].Changes[0])
-	assert.Equal(t, dryRunChangeJSON{Op: "delete", Name: "High Error Rate", OriginOrID: "44444444-4444-4444-4444-444444444444"}, out[0].Changes[1])
+	assert.Equal(t, dryRunChangeJSON{Op: "apply", Kind: "View", Name: "error-logs-view", OriginOrID: "33333333-3333-3333-3333-333333333333"}, out[0].Changes[0])
+	assert.Equal(t, dryRunChangeJSON{Op: "delete", Kind: "Check rule", Name: "High Error Rate", OriginOrID: "44444444-4444-4444-4444-444444444444", Since: "abc123"}, out[0].Changes[1])
+}
+
+// TestRunDryRun_JSON_DeletionIncludesKindAndSinceRef is a regression test
+// for a bug where agent mode's --dry-run JSON gave an approving agent less
+// context than a human reading the text output: the text renderer's
+// "Delete View "Team Logs" (team-logs)" names the asset's kind, but the
+// JSON change entry carried only {op, name, originOrId} -- no kind, and no
+// mention of which --since ref determined the deletion. An agent deciding
+// whether a deletion is safe to approve needs to know what kind of asset is
+// about to be removed (a view is a very different risk than a production
+// dashboard) as much as a human does.
+func TestRunDryRun_JSON_DeletionIncludesKindAndSinceRef(t *testing.T) {
+	withAgentMode(t, true)
+
+	dp := &deletionPlan{
+		plan: gitutil.DeletionPlan{
+			ByIdentifier: []gitutil.Deletion{
+				{Kind: "view", Identifier: "team-logs", Path: "dashboards.yaml"},
+			},
+		},
+		names: map[string]string{"dashboards.yaml": "Team Logs"},
+	}
+
+	stdout := testutil.CaptureStdout(t, func() {
+		require.NoError(t, runDryRun(nil, true, "dashboards", "HEAD~1", dp))
+	})
+
+	var out []dryRunFileJSON
+	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Changes, 1)
+	assert.Equal(t, dryRunChangeJSON{Op: "delete", Kind: "View", Name: "Team Logs", OriginOrID: "team-logs", Since: "HEAD~1"}, out[0].Changes[0])
 }
 
 // TestRunDryRun_JSON_MergedWithDeletions_SubdirectoryScope is a regression

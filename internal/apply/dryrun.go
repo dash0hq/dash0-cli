@@ -24,22 +24,31 @@ type dryRunRow struct {
 	originOrID string
 	// detail carries the alert-deletion case's extra context (which
 	// PrometheusRule CRD the alert was removed from) for text rendering
-	// only -- the JSON schema's {op, name, originOrId} shape has no field
-	// for it.
+	// only -- dryRunChangeJSON has no field for it.
 	detail string
 }
 
 // dryRunChangeJSON and dryRunFileJSON are --agent-mode --dry-run's JSON
 // output shape: an array of {path, changes}, one entry per file, each
-// change naming the operation, the asset's display name, and its id/origin.
+// change naming the operation, the asset's kind and display name, and its
+// id/origin.
 type dryRunChangeJSON struct {
 	Op         string `json:"op"`
+	Kind       string `json:"kind"`
 	Name       string `json:"name"`
 	OriginOrID string `json:"originOrId"`
+	// Since names the --since ref that determined this change, present only
+	// for op "delete" (an "apply" row's presence is determined by -f's
+	// current contents, not by any ref). An agent deciding whether a
+	// deletion is safe to approve needs the same two facts a human reading
+	// the text-mode output already sees at a glance: what kind of asset
+	// this is, and that a deletion this consequential was derived from
+	// comparing against a specific git ref, not inferred from -f alone.
+	Since string `json:"since,omitempty"`
 }
 
 type dryRunFileJSON struct {
-	Path    string              `json:"path"`
+	Path    string             `json:"path"`
 	Changes []dryRunChangeJSON `json:"changes"`
 }
 
@@ -115,7 +124,7 @@ func runDryRun(documents []assetDocument, fromDirectory bool, fileArg, since str
 	rowsByFile, files, validatedFileSet := buildDryRunRows(documents, dp)
 
 	if agentmode.Enabled {
-		return renderDryRunJSON(rowsByFile, files, fromDirectory, fileArg)
+		return renderDryRunJSON(rowsByFile, files, fromDirectory, fileArg, since)
 	}
 	renderDryRunText(rowsByFile, files, validatedFileSet, fromDirectory, len(documents), since, dp)
 	return nil
@@ -200,12 +209,19 @@ func fileSuffix(fromDirectory bool, fileCount int) string {
 // renderDryRunJSON emits the {path, changes} array agent mode expects. A
 // single-file or stdin target (!fromDirectory) has no real per-document file
 // grouping to report, so every row is collected under one entry keyed by the
-// literal -f argument.
-func renderDryRunJSON(rowsByFile map[string][]dryRunRow, files []string, fromDirectory bool, fileArg string) error {
+// literal -f argument. since is stamped onto every "delete" change (never
+// "apply", which isn't determined by any ref) so an agent deciding whether
+// to approve a deletion doesn't have to already be tracking which --since
+// invocation it came from.
+func renderDryRunJSON(rowsByFile map[string][]dryRunRow, files []string, fromDirectory bool, fileArg, since string) error {
 	toChanges := func(rows []dryRunRow) []dryRunChangeJSON {
 		changes := make([]dryRunChangeJSON, 0, len(rows))
 		for _, r := range rows {
-			changes = append(changes, dryRunChangeJSON{Op: r.op, Name: r.name, OriginOrID: r.originOrID})
+			change := dryRunChangeJSON{Op: r.op, Kind: asset.KindDisplayName(r.kind), Name: r.name, OriginOrID: r.originOrID}
+			if r.op == "delete" {
+				change.Since = since
+			}
+			changes = append(changes, change)
 		}
 		return changes
 	}
