@@ -130,6 +130,39 @@ func TestRoot(t *testing.T) {
 	assert.Equal(t, wantRoot, gotRoot, "Root must resolve to the repo's top level even when Dir is a subdirectory")
 }
 
+func TestIsTreeAtRef_RepoRoot(t *testing.T) {
+	repo := testRepo(t)
+	isTree, err := repo.IsTreeAtRef(context.Background(), "HEAD", "")
+	require.NoError(t, err)
+	assert.True(t, isTree, "the repository root itself is always a tree")
+}
+
+func TestIsTreeAtRef_Directory(t *testing.T) {
+	repo := testRepo(t)
+	writeFile(t, repo.Dir, "dashboards/one.yaml", "kind: Dashboard\n")
+	commitAll(t, repo.Dir, "add directory")
+
+	isTree, err := repo.IsTreeAtRef(context.Background(), "HEAD", "dashboards")
+	require.NoError(t, err)
+	assert.True(t, isTree)
+}
+
+func TestIsTreeAtRef_File(t *testing.T) {
+	repo := testRepo(t)
+	writeFile(t, repo.Dir, "dashboard.yaml", "kind: Dashboard\n")
+	commitAll(t, repo.Dir, "add file")
+
+	isTree, err := repo.IsTreeAtRef(context.Background(), "HEAD", "dashboard.yaml")
+	require.NoError(t, err)
+	assert.False(t, isTree)
+}
+
+func TestIsTreeAtRef_NonexistentPathIsError(t *testing.T) {
+	repo := testRepo(t)
+	_, err := repo.IsTreeAtRef(context.Background(), "HEAD", "never-existed.yaml")
+	require.Error(t, err)
+}
+
 func TestIsAncestor_UnknownRefIsError(t *testing.T) {
 	repo := testRepo(t)
 	_, err := repo.IsAncestor(context.Background(), "does-not-exist", "HEAD")

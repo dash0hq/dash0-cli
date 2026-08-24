@@ -177,6 +177,14 @@ type applyResult struct {
 func runApply(ctx context.Context, flags *applyFlags) error {
 	var documents []assetDocument
 	var fromDirectory bool
+	// targetVanished records that fromDirectory was only a guess (always
+	// true) because the target no longer exists on disk at all, so os.Stat
+	// couldn't say whether it used to be a file or a directory. Once
+	// computeDeletionPlan runs, it can answer that from git history at the
+	// --since ref, and the guess is corrected below -- otherwise a vanished
+	// single-file target would render like a multi-file directory scan
+	// (grouped by its git-recorded path instead of the literal -f argument).
+	var targetVanished bool
 	var err error
 
 	if flags.File == "-" {
@@ -197,6 +205,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			// documents and let computeDeletionPlan report every asset found
 			// at the --since ref as a deletion.
 			fromDirectory = true
+			targetVanished = true
 		case statErr != nil:
 			return fmt.Errorf("failed to read input: %w", statErr)
 		case info.IsDir():
@@ -239,6 +248,9 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			return err
 		}
 		deletionPlan = plan
+		if targetVanished {
+			fromDirectory = plan.targetWasDirectoryAtRef
+		}
 	}
 
 	if flags.DryRun {

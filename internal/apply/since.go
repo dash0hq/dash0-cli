@@ -39,6 +39,13 @@ type deletionPlan struct {
 	// deletion path before grouping it with validated documents from the same
 	// file. See stripScope in dryrun.go.
 	scope string
+	// targetWasDirectoryAtRef reports whether -f's target was a directory
+	// (rather than a single file) the last time it existed, per git history
+	// at --since's ref. runApply uses this to correct its own fromDirectory
+	// guess for a target that no longer exists on disk at all: os.Stat can't
+	// tell file from directory once the path is gone, but the ref usually
+	// still can.
+	targetWasDirectoryAtRef bool
 }
 
 // computeDeletionPlan resolves flags.Since against the git repository
@@ -77,13 +84,17 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	repoDir := resolvedAncestor
 	if missingSuffix == "" {
 		// absFile exists: preserve the original file-vs-directory dance
-		// exactly as before.
+		// exactly as before. resolvedAncestor equals absFile itself here
+		// (nearestExistingAncestor found no missing suffix because the
+		// target already exists), so a single-file target must still be
+		// rehomed to its *parent* directory -- `git -C <path-to-a-file>`
+		// fails outright ("Not a directory"), unlike `git -C <a-directory>`.
 		info, err := os.Stat(absFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to stat %s: %w", flags.File, err)
 		}
-		if info.IsDir() {
-			repoDir = absFile
+		if !info.IsDir() {
+			repoDir = filepath.Dir(absFile)
 		}
 	}
 	repo := gitutil.Repo{Dir: repoDir}
@@ -146,6 +157,16 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 		scope = ""
 	}
 
+	targetWasDirectoryAtRef, err := repo.IsTreeAtRef(ctx, sha, scope)
+	if err != nil {
+		// The target may not have existed at this ref at all (e.g. it was
+		// created after ref, then deleted before now) -- that's a legitimate
+		// "nothing to report either way" outcome, not a hard failure; fall
+		// back to treating it as not-a-directory, matching absFile's own
+		// current-disk-state IsDir() default when nothing else is known.
+		targetWasDirectoryAtRef = false
+	}
+
 	before, err := gitutil.BuildSnapshotFromRef(ctx, repo, sha, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read git state at --since ref '%s': %w", flags.Since, err)
@@ -163,7 +184,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 
 	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
 
-	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope}, nil
+	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope, targetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that

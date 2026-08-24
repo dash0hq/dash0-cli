@@ -130,6 +130,25 @@ func (r Repo) ReadFileAtRef(ctx context.Context, ref, path string) ([]byte, erro
 	return out, nil
 }
 
+// IsTreeAtRef runs `git cat-file -t <ref>:<path>` and reports whether path
+// was a directory (a "tree" object) at ref, as opposed to a file (a "blob").
+// path == "" means the repository root itself, which is always a tree.
+//
+// Used to recover whether a --since target that no longer exists on disk at
+// all was a single file or a directory the last time it did exist, so
+// dry-run rendering can group its output the same way it would have while
+// the target still existed, instead of defaulting to one shape regardless.
+func (r Repo) IsTreeAtRef(ctx context.Context, ref, path string) (bool, error) {
+	if path == "" {
+		return true, nil
+	}
+	out, err := r.run(ctx, "cat-file", "-t", ref+":"+path)
+	if err != nil {
+		return false, fmt.Errorf("failed to determine object type of %s at %s: %w", path, ref, err)
+	}
+	return strings.TrimSpace(string(out)) == "tree", nil
+}
+
 // ListYAMLFilesAtRef runs `git ls-tree -r --name-only <ref> [-- <scope>]`,
 // returning every .yaml/.yml file at that ref within scope (a repo-relative
 // directory or file path; empty scope lists the whole tree). Hidden files

@@ -3,6 +3,7 @@
 package apply
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -1192,6 +1193,77 @@ spec:
 	assert.Contains(t, output, fmt.Sprintf("pending due to --since '%s'", before))
 	assert.Contains(t, output, "a1b2c3d4-5678-90ab-cdef-1234567890ab")
 	assert.Contains(t, output, "Delete Dashboard")
+}
+
+// TestApply_Since_DryRunPreview_SingleFileTargetVanishedRendersFlat is a
+// regression test for a bug where a single-*file* -f target that no longer
+// exists on disk at all (as opposed to a directory) still rendered as if
+// it were a multi-file directory scan: fromDirectory was forced true purely
+// because os.Stat couldn't tell file from directory once the path was
+// gone, so agent-mode JSON grouped the deletion under its git-recorded path
+// instead of the literal -f argument, and text mode added a spurious "from
+// N files" clause. Once computeDeletionPlan determines from git history
+// that the vanished target was a file, not a directory, rendering must
+// fall back to the flat, single-target shape.
+func TestApply_Since_DryRunPreview_SingleFileTargetVanishedRendersFlat(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	target := filepath.Join(dir, "dashboard.yaml")
+	writeFileFixture(t, dir, "dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(target))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboard")
+
+	t.Run("text mode", func(t *testing.T) {
+		cmd := newSinceTestCmd()
+		cmd.SetArgs([]string{"-f", target, "--since", before, "--dry-run", "--experimental"})
+
+		var cmdErr error
+		output := testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+
+		require.NoError(t, cmdErr)
+		assert.NotContains(t, output, "from 1 file", "a single-file target has no per-document file count worth stating")
+		assert.Contains(t, output, "Delete Dashboard")
+	})
+
+	t.Run("agent mode JSON", func(t *testing.T) {
+		withAgentMode(t, true)
+
+		cmd := newSinceTestCmd()
+		cmd.SetArgs([]string{"-f", target, "--since", before, "--dry-run", "--experimental"})
+
+		var cmdErr error
+		output := testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+
+		require.NoError(t, cmdErr)
+		var out []dryRunFileJSON
+		require.NoError(t, json.Unmarshal([]byte(output), &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, target, out[0].Path, "a vanished single-file target must be keyed by the literal -f argument, not its git-recorded path")
+	})
 }
 
 // TestApply_Since_DryRunPreview_SubdirectoryScopeGroupsConsistently is a

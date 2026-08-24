@@ -145,6 +145,43 @@ func TestComputeDeletionPlan_WholeFileDeletion(t *testing.T) {
 	assert.Equal(t, "My Dashboard", dp.names[deletion.Path])
 }
 
+// TestComputeDeletionPlan_SingleFileTargetStillExists is a regression test
+// for a bug where -f pointing directly at a single file (rather than a
+// directory) that still exists on disk made every --since invocation fail
+// outright: computeDeletionPlan derived repoDir from the file's own path
+// without ever taking its parent directory, so the subsequent `git -C
+// <repoDir> rev-parse --show-toplevel` failed with "fatal: cannot change to
+// '<file>': Not a directory" -- contradicting docs/commands.md's own claim
+// that "-f's target must be inside a git repository (a single file or a
+// directory both work)".
+func TestComputeDeletionPlan_SingleFileTargetStillExists(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	target := filepath.Join(dir, "dashboard.yaml")
+	writeFileFixture(t, dir, "dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	flags := &applyFlags{File: target, Since: before}
+	dp, err := computeDeletionPlan(context.Background(), flags)
+	require.NoError(t, err, "a single-file -f target that still exists must not fail to locate its repository")
+	assert.True(t, dp.plan.IsEmpty(), "the file is unchanged since before, so there is nothing to delete")
+}
+
 // testSinceRepoAllDeleted creates a temp git repo with two asset files at ref
 // "before", then removes both of them (and nothing else) in a later commit,
 // leaving the -f target directory itself still present on disk but with zero
