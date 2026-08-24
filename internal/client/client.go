@@ -58,13 +58,6 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		authTokenOption(cfg, authToken),
 		dash0api.WithUserAgent(version.UserAgent()),
 		dash0api.WithMaxRetries(maxRetries),
-		// A Dash0 dataset is guarded by an optimistic-concurrency dataset
-		// version. Two writes to the same dataset that race leave exactly one
-		// winner, and the loser gets a 409 that asks the caller to retry.
-		// Without this the losing write surfaces as a fatal error even though
-		// repeating it converges, which is what a CI matrix or an agent running
-		// concurrent `dash0 apply` invocations against one dataset hits. See
-		// https://github.com/dash0hq/dash0-cli/issues/261.
 		dash0api.WithRetryOnConflict(),
 	)
 	if err != nil {
