@@ -4,6 +4,7 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/client"
 )
 
 // ImportSyntheticCheck creates or updates a synthetic check via the standard CRUD APIs.
@@ -26,13 +27,12 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		}
 	}
 
-	var result *dash0api.SyntheticCheckDefinition
-	var err error
-	if id != "" {
-		result, err = apiClient.UpdateSyntheticCheck(ctx, id, check, dataset)
-	} else {
-		result, err = apiClient.CreateSyntheticCheck(ctx, check, dataset)
-	}
+	result, err := client.RetryOnConflict(ctx, func() (*dash0api.SyntheticCheckDefinition, error) {
+		if id != "" {
+			return apiClient.UpdateSyntheticCheck(ctx, id, check, dataset)
+		}
+		return apiClient.CreateSyntheticCheck(ctx, check, dataset)
+	})
 	if err != nil {
 		return ImportResult{}, err
 	}
