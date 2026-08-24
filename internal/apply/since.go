@@ -203,11 +203,6 @@ func nearestExistingAncestor(path string) (ancestor string, missingSuffix string
 	current := path
 	var missing []string
 	for {
-		// os.Stat, not os.Lstat: the sibling "does this target exist"
-		// checks in runApply (os.Stat(flags.File)) and
-		// BuildSnapshotFromDisk (os.Stat(scope)) both follow symlinks, so a
-		// dangling symlink at -f's target is "gone" from all three checks'
-		// perspective consistently, not just two of the three.
 		if _, statErr := os.Stat(current); statErr == nil {
 			return current, filepath.Join(missing...), nil
 		} else if !os.IsNotExist(statErr) {
