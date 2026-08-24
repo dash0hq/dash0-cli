@@ -4,7 +4,6 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/client"
 )
 
 // ImportDashboard creates or updates a dashboard via the standard CRUD APIs.
@@ -29,13 +28,16 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 		}
 	}
 
-	result, err := client.RetryOnConflict(ctx, func() (*dash0api.DashboardDefinition, error) {
-		if id != "" {
-			dash0api.ClearDashboardID(dashboard)
-			return apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
-		}
-		return apiClient.CreateDashboard(ctx, dashboard, dataset)
-	})
+	var (
+		result *dash0api.DashboardDefinition
+		err    error
+	)
+	if id != "" {
+		dash0api.ClearDashboardID(dashboard)
+		result, err = apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
+	} else {
+		result, err = apiClient.CreateDashboard(ctx, dashboard, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}

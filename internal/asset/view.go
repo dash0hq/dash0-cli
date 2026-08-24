@@ -4,7 +4,6 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/client"
 )
 
 // ImportView creates or updates a view via the standard CRUD APIs.
@@ -27,12 +26,15 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 		}
 	}
 
-	result, err := client.RetryOnConflict(ctx, func() (*dash0api.ViewDefinition, error) {
-		if id != "" {
-			return apiClient.UpdateView(ctx, id, view, dataset)
-		}
-		return apiClient.CreateView(ctx, view, dataset)
-	})
+	var (
+		result *dash0api.ViewDefinition
+		err    error
+	)
+	if id != "" {
+		result, err = apiClient.UpdateView(ctx, id, view, dataset)
+	} else {
+		result, err = apiClient.CreateView(ctx, view, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}
