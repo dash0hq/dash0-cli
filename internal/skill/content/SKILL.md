@@ -52,7 +52,7 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `Dashboard` | `metadata.dash0Extensions.id` |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` |
 | `CheckRule` | top-level `id` |
-| `PrometheusRule` (alerting or recording) | `metadata.labels["dash0.com/id"]` |
+| `PrometheusRule` (alerting or recording) | `metadata.labels["dash0.com/id"]` (a CRD with 2+ alerting rules derives a distinct id per alert instead: `<label>--<slug of "<group> - <alert>">`) |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` |
 | `View` | `metadata.labels["dash0.com/id"]` |
 | `Dash0SpamFilter` | `metadata.labels["dash0.com/id"]` (`dash0.com/origin` takes precedence when both are present) |

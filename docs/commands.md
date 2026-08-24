@@ -726,7 +726,7 @@ The identifier field location varies by asset kind:
 | `Dashboard` | `metadata.dash0Extensions.id` | |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
 | `CheckRule` | top-level `id` | |
-| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | The CRD-level label is applied to every alerting rule converted from the CRD, so a CRD with multiple alerts shares one identifier — pin a unique label per CRD, or split multi-alert CRDs into one CRD per alert |
+| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
 | `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
 | `View` | `metadata.labels["dash0.com/id"]` | |
@@ -739,6 +739,22 @@ The CLI strips `dash0.com/origin` from outbound payloads for the asset types whe
 Notification channels and spam filters are the two exceptions: their server APIs key on origin, and the CLI preserves it accordingly.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
+
+#### Multi-alert PrometheusRule CRDs
+
+A `PrometheusRule` CRD's `dash0.com/id` label is the CRD's own identifier, not one specific alert's.
+For a single alerting rule, that label unambiguously names its one check rule, so it's used verbatim.
+For two or more alerting rules, each one instead gets its own identifier: the CRD's label, plus `--`, plus a slug of that alert's own composed name (`<group name> - <alert name>`, lowercased, with every run of non-alphanumeric characters collapsed to a single hyphen).
+For example, a CRD labeled `dash0.com/id: app-rules` with alerts `HighErrorRate` and `DiskFull` in a group named `test-group` upserts check rules `app-rules--test-group-higherrorrate` and `app-rules--test-group-diskfull`.
+
+This derivation exists because upsert is PUT (create-or-*replace*), and the CRD-level label is the only identifier a multi-alert CRD has to work with — reusing it verbatim for every alert would upsert them all to the exact same check rule, so only the last alert applied in document order would end up with a real check rule at all, silently losing every other one.
+The derived id is stable across repeated applies of unchanged content (neither the CRD's label nor an unrenamed alert's composed name changes) and across reordering the CRD's rules (it depends on the alert's name, not its position), so upsert idempotency holds the same way it does for a single-alert CRD.
+Renaming an alert changes its derived id, the same way `--since` already treats a renamed alert as a delete-and-recreate (see [`apply --since`](#apply---since-experimental)'s PrometheusRule CRD handling) — there is no separate, more stable identity for one alert within a CRD to fall back to.
+
+> [!NOTE]
+> If a multi-alert CRD with a `dash0.com/id` label was applied before this derivation existed, its literal `dash0.com/id` held whichever alert last applied under the old, colliding behavior.
+> Re-applying that CRD now creates a fresh check rule per alert at each alert's own derived id, and leaves the old check rule at the literal `dash0.com/id` untouched — it becomes an orphaned duplicate.
+> Delete it by hand (`dash0 check-rules delete <dash0.com/id>`) once the new per-alert check rules look correct.
 
 ### PrometheusRule annotation merge
 

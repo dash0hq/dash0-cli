@@ -663,6 +663,77 @@ spec:
 	assert.Equal(t, "test-group - HighErrorRate", rule.Name)
 }
 
+// TestApply_PrometheusRule_MultiAlertWithSharedID_CreatesDistinctCheckRules
+// is a regression test for a bug where every alert in a multi-alert
+// PrometheusRule CRD got the CRD's own shared dash0.com/id as its
+// check-rule id, so each alert's upsert (PUT, create-or-*replace*) silently
+// overwrote whatever the previous alert in the same apply run had just
+// written -- only the last alert in document order ended up with a real
+// check rule server-side, even though apply reported success for both.
+// Each alert must now PUT to its own distinct, derived id.
+func TestApply_PrometheusRule_MultiAlertWithSharedID_CreatesDistinctCheckRules(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "prometheusrule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      interval: 1m
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+        - alert: DiskFull
+          expr: disk > 0.9
+`), 0644)
+	require.NoError(t, err)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Check rule")
+
+	highErrorRateReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/shared-id--test-group-higherrorrate")
+	diskFullReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/shared-id--test-group-diskfull")
+	require.NotNil(t, highErrorRateReq, "expected a PUT to the HighErrorRate alert's own derived id")
+	require.NotNil(t, diskFullReq, "expected a PUT to the DiskFull alert's own derived id, not a second write to the same id as HighErrorRate")
+
+	var highErrorRateRule, diskFullRule dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal(highErrorRateReq.Body, &highErrorRateRule))
+	require.NoError(t, json.Unmarshal(diskFullReq.Body, &diskFullRule))
+	assert.Equal(t, "test-group - HighErrorRate", highErrorRateRule.Name)
+	assert.Equal(t, "test-group - DiskFull", diskFullRule.Name)
+
+	// Never PUT to the CRD's own literal shared id (exact match, not a
+	// prefix -- both derived ids above start with "shared-id--" and would
+	// otherwise match a prefix check): that would still be the old
+	// collapsing behavior.
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodPut {
+			assert.NotEqual(t, "/api/alerting/check-rules/shared-id", req.Path, "must never PUT directly to the CRD's shared id")
+		}
+	}
+}
+
 func TestApply_PersesDashboard_Created(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

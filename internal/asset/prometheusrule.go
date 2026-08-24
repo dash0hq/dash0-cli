@@ -67,6 +67,30 @@ func PrometheusRuleHasRecordingRule(data []byte) (bool, error) {
 // document order, then rules in document order, skipping recording rules (those
 // without an `alert`). That alignment lets the names zip onto the returned
 // rules by index.
+//
+// For a CRD with more than one alerting rule, this also rewrites each rule's
+// Id: the SDK conversion (ParseAsPrometheusAlertRules) stamps the CRD's own
+// shared dash0.com/id onto every alert identically, since that's the only id
+// a CRD carries. A single-alert CRD is fine with that -- the shared id
+// unambiguously names its one check rule -- but for 2+ alerts it means every
+// alert upserts (PUT, create-or-*replace*) to the exact same id, so each
+// apply silently overwrites whatever the previous alert in the same run just
+// wrote: only the last alert in document order ends up with a real check
+// rule server-side, even though the CLI reports success for all of them.
+// Deriving a distinct id per alert -- the shared id plus a slug of the
+// alert's own composed name -- gives each one its own upsert target. The
+// derivation is stable across repeated applies of the same content (the
+// dash0.com/id label doesn't change, and an alert's composed name doesn't
+// change unless the alert itself is renamed) and across reordering the
+// CRD's rules (it depends on the name, not position), so upsert idempotency
+// holds the same way it already does for a single-alert CRD.
+//
+// Migration note: re-applying an existing multi-alert CRD under this fix
+// creates a fresh check rule per alert at each alert's derived id; the CRD's
+// literal shared dash0.com/id, which used to hold whichever alert applied
+// last under the old behavior, is not touched by the new per-alert ids and
+// becomes an orphaned duplicate -- delete it by hand once the new per-alert
+// check rules look correct.
 func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRule) error {
 	kind, err := dash0yaml.DetectKind(data)
 	if err != nil {
@@ -80,13 +104,49 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 	if err != nil {
 		return err
 	}
+	multiAlert := len(names) > 1
 	for i, name := range names {
 		if i >= len(rules) {
 			return nil
 		}
-		rules[i].Name = name.CheckRuleName()
+		composedName := name.CheckRuleName()
+		rules[i].Name = composedName
+		if multiAlert && rules[i].Id != nil && *rules[i].Id != "" {
+			derived := deriveAlertCheckRuleID(*rules[i].Id, composedName)
+			rules[i].Id = &derived
+		}
 	}
 	return nil
+}
+
+// deriveAlertCheckRuleID derives a per-alert check-rule identifier for a
+// PrometheusRule CRD with more than one alerting rule, from the CRD's own
+// shared id and the alert's composed name. See composePrometheusRuleNames'
+// doc comment for the full rationale.
+func deriveAlertCheckRuleID(sharedID, composedName string) string {
+	return sharedID + "--" + slugify(composedName)
+}
+
+// slugify lowercases s and replaces every run of characters that aren't
+// lowercase letters or digits with a single hyphen, trimming any leading or
+// trailing hyphen. Used to fold a human-readable composed check-rule name
+// (e.g. "rule-group - DiskFull") into a predictable, URL-safe identifier
+// fragment (e.g. "rule-group-diskfull").
+func slugify(s string) string {
+	var b strings.Builder
+	lastWasHyphen := true // avoid a leading hyphen
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastWasHyphen = false
+			continue
+		}
+		if !lastWasHyphen {
+			b.WriteByte('-')
+			lastWasHyphen = true
+		}
+	}
+	return strings.TrimSuffix(b.String(), "-")
 }
 
 // ExtractPrometheusAlertNames parses a PrometheusRule CRD document and

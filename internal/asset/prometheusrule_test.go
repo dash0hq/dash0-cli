@@ -59,6 +59,122 @@ spec:
 	assert.Equal(t, "group-b - DiskFull", rules[1].Name)
 }
 
+// TestParseCheckRules_SingleAlertKeepsSharedID pins that a single-alert CRD's
+// one check rule keeps the CRD's own dash0.com/id verbatim -- there is only
+// ever one alert to upsert, so the shared id unambiguously names it, and
+// existing single-alert users' check rules must keep resolving to the same
+// id they've always had.
+func TestParseCheckRules_SingleAlertKeepsSharedID(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: single
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: HighErrorRate
+          expr: errors > 0
+`)
+
+	rules, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.NotNil(t, rules[0].Id)
+	assert.Equal(t, "shared-id", *rules[0].Id)
+}
+
+// TestParseCheckRules_MultiAlertDerivesDistinctIDs is a regression test for
+// a bug where every alert in a multi-alert PrometheusRule CRD got the exact
+// same check-rule id (the CRD's own shared dash0.com/id), so each alert's
+// upsert (PUT, create-or-*replace*) silently overwrote whatever the
+// previous alert in the same apply run had just written: only the last
+// alert in document order ended up with a real check rule server-side,
+// even though the CLI reported success for both. Each alert must now get
+// its own distinct, non-empty id derived from the shared id and its own
+// composed name.
+func TestParseCheckRules_MultiAlertDerivesDistinctIDs(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: multi
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: errors > 0
+        - alert: DiskFull
+          expr: disk > 0
+`)
+
+	rules, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+
+	require.NotNil(t, rules[0].Id)
+	require.NotNil(t, rules[1].Id)
+	assert.NotEqual(t, *rules[0].Id, *rules[1].Id, "each alert must get its own id, not the CRD's shared id repeated")
+	assert.NotEqual(t, "shared-id", *rules[0].Id, "the derived id must not collide with the CRD's own literal shared id either")
+	assert.NotEqual(t, "shared-id", *rules[1].Id)
+	assert.Equal(t, "shared-id--test-group-higherrorrate", *rules[0].Id)
+	assert.Equal(t, "shared-id--test-group-diskfull", *rules[1].Id)
+}
+
+// TestParseCheckRules_MultiAlertDerivedIDsAreStableAcrossReapply pins the
+// idempotency property the derivation depends on: re-parsing the identical
+// CRD content must produce the identical derived ids, so repeated applies
+// keep upserting the same check rules rather than creating new ones each
+// time.
+func TestParseCheckRules_MultiAlertDerivedIDsAreStableAcrossReapply(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: multi
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: errors > 0
+        - alert: DiskFull
+          expr: disk > 0
+`)
+
+	first, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+	second, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+
+	require.Len(t, first, 2)
+	require.Len(t, second, 2)
+	assert.Equal(t, *first[0].Id, *second[0].Id)
+	assert.Equal(t, *first[1].Id, *second[1].Id)
+}
+
+func TestSlugify(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"test-group - DiskFull", "test-group-diskfull"},
+		{"g - HighErrorRate", "g-higherrorrate"},
+		{"Group A - Alert/With Slashes", "group-a-alert-with-slashes"},
+		{"  leading and trailing  ", "leading-and-trailing"},
+		{"UPPER_CASE", "upper-case"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, slugify(c.in), "slugify(%q)", c.in)
+	}
+}
+
 // TestParseCheckRules_BooleanLiteralAlertNamePreserved is a regression test
 // for a bug where an alert name that is a YAML boolean literal (Y, N, yes,
 // no, on, off, true, false, and case variants), written unquoted, was
