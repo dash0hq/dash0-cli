@@ -183,7 +183,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
 	}
 
-	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
+	names := resolveDeletionNames(before, plan.ByIdentifier)
 
 	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope, targetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
@@ -222,25 +222,28 @@ func nearestExistingAncestor(path string) (ancestor string, missingSuffix string
 	}
 }
 
-// resolveDeletionNames best-effort looks up each deletion's display name by
-// re-reading its content from git history at sha (the resolved --since
-// ref). Reads are cached per file so a multi-document file with several
-// deletion candidates only costs one `git cat-file` call.
+// resolveDeletionNames best-effort looks up each deletion's display name
+// from before's content — the "before" (--since ref) Snapshot already read
+// while building it (gitutil.Snapshot.RawContent), never a second read of
+// the same git blob. before is the exact Snapshot that produced every
+// deletion candidate in deletions (via gitutil.Diff), so a lookup miss can
+// only mean a document that didn't parse cleanly, never a blob that
+// genuinely needs (re-)fetching. Documents are parsed once per file and
+// cached in memory for the duration of this call, so a multi-document file
+// with several deletion candidates only pays the parse cost once.
 //
-// This is display polish, not correctness-critical: a lookup failure (a
-// since-rewritten blob, content that no longer parses under today's rules)
-// just omits that entry from the returned map rather than failing the run —
-// --since's actual deletion dispatch never depends on a name, only on
-// (kind, identifier).
-func resolveDeletionNames(ctx context.Context, repo gitutil.Repo, sha string, deletions []gitutil.Deletion) map[string]string {
+// This is display polish, not correctness-critical: a lookup miss (content
+// that no longer parses under today's rules) just omits that entry from the
+// returned map rather than failing the run — --since's actual deletion
+// dispatch never depends on a name, only on (kind, identifier).
+func resolveDeletionNames(before gitutil.Snapshot, deletions []gitutil.Deletion) map[string]string {
 	names := make(map[string]string, len(deletions))
 	docsByFile := map[string][]assetDocument{}
 	for _, d := range deletions {
 		basePath, docIndex := splitMultiDocPath(d.Path)
 		docs, cached := docsByFile[basePath]
 		if !cached {
-			raw, err := repo.ReadFileAtRef(ctx, sha, basePath)
-			if err == nil {
+			if raw, ok := before.RawContent[basePath]; ok {
 				docs, _ = parseMultiDocumentYAML(raw)
 			}
 			docsByFile[basePath] = docs

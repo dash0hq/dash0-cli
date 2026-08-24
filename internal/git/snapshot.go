@@ -77,6 +77,16 @@ type Snapshot struct {
 	// parsed into a recognized kind. Used to check whether a NoIdentifier
 	// document's file still exists at all in the other snapshot.
 	Paths map[string]bool
+
+	// RawContent maps every file path scanned to its raw content, as read at
+	// that point in time. Populated only by BuildSnapshotFromRef (nil/empty
+	// from BuildSnapshotFromDisk, which has no caller that needs it): every
+	// file --since's deletion detection ever names came from the "before"
+	// (ref) snapshot, so retaining the content already read while building
+	// it lets a caller resolve a deletion's display name (see
+	// resolveDeletionNames in internal/apply/since.go) from memory instead
+	// of shelling out to `git cat-file` a second time for the same blob.
+	RawContent map[string][]byte
 }
 
 func newSnapshot() Snapshot {
@@ -87,6 +97,7 @@ func newSnapshot() Snapshot {
 		PrometheusRecordingRoleByIdentifier: map[string]bool{},
 		SpamFilterUsesOriginByIdentifier:    map[string]bool{},
 		Paths:                               map[string]bool{},
+		RawContent:                          map[string][]byte{},
 	}
 }
 
@@ -106,6 +117,7 @@ func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string) (Sn
 		if err != nil {
 			return Snapshot{}, err
 		}
+		snap.RawContent[path] = data
 		if err := ingestDocuments(&snap, path, data); err != nil {
 			return Snapshot{}, fmt.Errorf("%s at %s: %w", path, ref, err)
 		}

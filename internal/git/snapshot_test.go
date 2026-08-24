@@ -95,6 +95,24 @@ func TestBuildSnapshotFromRef_BasicIdentifiers(t *testing.T) {
 	assert.Empty(t, snap.NoIdentifier)
 }
 
+// TestBuildSnapshotFromRef_RawContentPopulated pins that RawContent carries
+// the exact bytes read for every scanned file, keyed the same way Paths and
+// Identifiers are (repo-relative, no doc-index suffix). This is what lets
+// resolveDeletionNames (internal/apply/since.go) resolve a deletion's
+// display name from the "before" snapshot already built here, instead of
+// shelling out to `git cat-file` a second time for the same blob.
+func TestBuildSnapshotFromRef_RawContentPopulated(t *testing.T) {
+	repo := testRepo(t)
+	writeFile(t, repo.Dir, "dashboard.yaml", dashboardYAML)
+	commitAll(t, repo.Dir, "add asset")
+
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	require.NoError(t, err)
+
+	require.Contains(t, snap.RawContent, "dashboard.yaml")
+	assert.Equal(t, dashboardYAML, string(snap.RawContent["dashboard.yaml"]))
+}
+
 func TestBuildSnapshotFromRef_NoIdentifierTracked(t *testing.T) {
 	repo := testRepo(t)
 	writeFile(t, repo.Dir, "dashboard.yaml", dashboardNoIdentifierYAML)

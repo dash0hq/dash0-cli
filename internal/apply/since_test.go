@@ -507,35 +507,70 @@ expression: up == 0
 	runGitCmd(t, dir, "commit", "-q", "-m", "seed")
 
 	repo := gitutil.Repo{Dir: dir}
+	before, err := gitutil.BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	require.NoError(t, err)
+
 	deletions := []gitutil.Deletion{
 		{Kind: "view", Identifier: "view-id", Path: "assets.yaml"},
 		{Kind: "checkrule", Identifier: "rule-id", Path: "assets.yaml#1"},
 	}
-	names := resolveDeletionNames(context.Background(), repo, "HEAD", deletions)
+	names := resolveDeletionNames(before, deletions)
 	assert.Equal(t, "first-view", names["assets.yaml"])
 	assert.Equal(t, "Second Document Rule", names["assets.yaml#1"])
 }
 
-// TestResolveDeletionNames_LookupFailureIsNonFatal is a regression test
-// pinning that a git-read failure (an unresolvable ref, a path that never
-// existed) only omits that entry from the returned map -- it must never
-// panic or error the caller, since name resolution is display polish, not
-// something --since's actual deletion dispatch depends on.
-func TestResolveDeletionNames_LookupFailureIsNonFatal(t *testing.T) {
+// TestResolveDeletionNames_ReusesBeforeSnapshotContent is a regression test
+// pinning that resolveDeletionNames never reads git again: it must resolve
+// every name from before.RawContent, which BuildSnapshotFromRef already
+// populated while building the "before" snapshot. Deleting the git repo
+// entirely (but keeping before, already built beforehand) proves this --
+// a version of resolveDeletionNames that shelled out to git a second time
+// would find nothing to read and return an empty map, not the real names.
+func TestResolveDeletionNames_ReusesBeforeSnapshotContent(t *testing.T) {
 	dir := t.TempDir()
 	runGitCmd(t, dir, "init", "-q", "-b", "main")
 	runGitCmd(t, dir, "config", "user.email", "test@example.com")
 	runGitCmd(t, dir, "config", "user.name", "Test")
 	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-	writeFileFixture(t, dir, "placeholder.yaml", "kind: View\nmetadata:\n  name: x\n")
+	writeFileFixture(t, dir, "dashboard.yaml", `kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: gone-id
+spec:
+  display:
+    name: My Dashboard
+`)
 	runGitCmd(t, dir, "add", "-A")
 	runGitCmd(t, dir, "commit", "-q", "-m", "seed")
 
 	repo := gitutil.Repo{Dir: dir}
+	before, err := gitutil.BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	require.NoError(t, err)
+
+	// The repository (and thus any chance of a second git read succeeding)
+	// is gone by the time resolveDeletionNames runs.
+	require.NoError(t, os.RemoveAll(dir))
+
 	deletions := []gitutil.Deletion{
-		{Kind: "dashboard", Identifier: "gone-id", Path: "never-existed.yaml"},
+		{Kind: "dashboard", Identifier: "gone-id", Path: "dashboard.yaml"},
 	}
-	names := resolveDeletionNames(context.Background(), repo, "HEAD", deletions)
+	names := resolveDeletionNames(before, deletions)
+	assert.Equal(t, "My Dashboard", names["dashboard.yaml"])
+}
+
+// TestResolveDeletionNames_MissingRawContentIsNonFatal is a regression test
+// pinning that a deletion candidate whose path was never captured in
+// before.RawContent (e.g. a since-rewritten blob a differently-scoped
+// snapshot never read) only omits that entry from the returned map -- it
+// must never panic or error the caller, since name resolution is display
+// polish, not something --since's actual deletion dispatch depends on.
+func TestResolveDeletionNames_MissingRawContentIsNonFatal(t *testing.T) {
+	before := gitutil.Snapshot{RawContent: map[string][]byte{}}
+	deletions := []gitutil.Deletion{
+		{Kind: "dashboard", Identifier: "gone-id", Path: "never-captured.yaml"},
+	}
+	names := resolveDeletionNames(before, deletions)
 	assert.Empty(t, names)
 }
 
