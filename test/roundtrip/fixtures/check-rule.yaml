@@ -12,4 +12,6 @@ labels:
   should_not_count: "true"
 name: Error logs from Minecraft server
 summary: Error logs from Minecraft server
-thresholds: {}
+thresholds:
+  degraded: 1
+  failed: 5
