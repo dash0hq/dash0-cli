@@ -7,6 +7,7 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"gopkg.in/yaml.v3"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 // ParseCheckRules parses a CheckRule or PrometheusRule CRD document into one or
@@ -28,6 +29,34 @@ func ParseCheckRules(data []byte) ([]*dash0api.PrometheusAlertRule, error) {
 		return nil, err
 	}
 	return rules, nil
+}
+
+// PrometheusRuleHasRecordingRule reports whether a PrometheusRule CRD
+// document has at least one recording rule (a `record:` entry). Returns
+// false for a document that isn't a PrometheusRule CRD at all.
+//
+// --since uses this as a coarse presence/absence signal to detect a CRD
+// that survives (its own identifier is still present in both snapshots) but
+// whose recording-rule role disappeared entirely -- e.g. its last `record:`
+// entry was removed while an `alert:` entry keeps the CRD's identifier
+// alive. Unlike alerting rules, which become one check rule per alert (and
+// so can be tracked and deleted individually by name), Dash0 models a CRD's
+// recording rules as a single server-side resource, so there is no
+// per-record identity to track -- only whether the role exists at all.
+func PrometheusRuleHasRecordingRule(data []byte) (bool, error) {
+	kind, err := dash0yaml.DetectKind(data)
+	if err != nil {
+		return false, err
+	}
+	if !strings.EqualFold(kind, "PrometheusRule") {
+		return false, nil
+	}
+
+	var crd dash0api.RecordingRule
+	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
+		return false, fmt.Errorf("failed to parse PrometheusRule: %w", err)
+	}
+	return RecordingOnlyPrometheusRule(&crd) != nil, nil
 }
 
 // composePrometheusRuleNames rewrites the name of each check rule produced from

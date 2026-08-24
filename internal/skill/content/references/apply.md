@@ -170,6 +170,15 @@ alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
 Check rule "service-alerts - HighLatency" deleted
 ```
 
+Recording rules get the symmetric treatment, but at CRD granularity rather than per-record: Dash0 models a CRD's recording rules as a single server-side resource, not one per `record:` entry, so there is no per-record id to delete by the way there is a per-alert composed name.
+Removing the last `record:` entry from a CRD that keeps at least one `alert:` entry (so the CRD's own identifier survives) is detected as a deletion of that recording rule, even though the surviving alerting rule is only ever a plain update:
+
+```bash
+$ dash0 --experimental apply -f rules/ --since HEAD~1 --force
+rules.yaml: PrometheusRule "app-rules" (c3d4e5f6-...) updated
+Recording rule "app-rules" (c3d4e5f6-...) deleted
+```
+
 When every asset definition under `-f`'s target has been deleted, `--since` still detects and reports every one of them, rather than failing outright.
 This holds whether the target directory survives (now empty of `.yaml`/`.yml` files) or was removed entirely along with its files (e.g. `rm -rf dashboards/`) — both count as "nothing currently there," so every asset found at `<ref>` becomes a deletion candidate:
 

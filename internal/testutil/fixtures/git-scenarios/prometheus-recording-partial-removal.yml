@@ -2,9 +2,11 @@ kind: GitRepoFixture
 spec:
   # A PrometheusRule CRD with one alerting rule and one recording rule
   # sharing one dash0.com/id, then a commit removing the recording rule
-  # while the alert (and the CRD's shared identifier) survives. --since must
-  # treat this as a plain update, not a deletion: there is no per-record
-  # identity to diff.
+  # while the alert (and the CRD's shared identifier) survives. The alert
+  # is a plain update; the recording rule the CRD no longer declares must
+  # still be deleted, even though the CRD's own identifier survives -- a
+  # coarse presence/absence signal, since there is no per-record identity
+  # to diff.
   sinceRef: before
   repo:
     commits:

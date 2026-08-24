@@ -23,9 +23,10 @@ const (
 )
 
 var (
-	dashboardIDPattern = regexp.MustCompile(`^/api/dashboards/[^/]+$`)
-	checkRuleIDPattern = regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`)
-	viewIDPattern      = regexp.MustCompile(`^/api/views/[^/]+$`)
+	dashboardIDPattern     = regexp.MustCompile(`^/api/dashboards/[^/]+$`)
+	checkRuleIDPattern     = regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`)
+	viewIDPattern          = regexp.MustCompile(`^/api/views/[^/]+$`)
+	recordingRuleIDPattern = regexp.MustCompile(`^/api/recording-rules/[^/]+$`)
 )
 
 // drainExecOutput reads an exec result reader to completion. testcontainers'
@@ -229,16 +230,21 @@ func TestE2E_ApplySince_PrometheusAlertPartialDeletion(t *testing.T) {
 	}
 }
 
-func TestE2E_ApplySince_PrometheusRecordingPartialRemovalIsNotADeletion(t *testing.T) {
+// TestE2E_ApplySince_PrometheusRecordingRoleDroppedWhileCRDSurvives is a
+// regression test for a bug where a PrometheusRule CRD losing its last
+// recording rule (while an alert kept the CRD's identifier alive) produced
+// no deletion at all, leaving the recording rule stale in Dash0 while
+// --since reported a false "no deletions" all-clear. The surviving alert
+// is updated (not deleted); the recording rule the CRD no longer declares
+// is deleted.
+func TestE2E_ApplySince_PrometheusRecordingRoleDroppedWhileCRDSurvives(t *testing.T) {
 	ctx := context.Background()
 	repoDir, ref := testutil.BuildGitScenario(t, "prometheus-recording-partial-removal")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, Body: map[string]any{}})
 	server.OnPattern(http.MethodPut, checkRuleIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureCheckRulesImportSuccess})
-	// Deliberately no recording-rules route: hitting one would 404 through
-	// the mock server's default handler, which the exit-code check below
-	// would surface as a failure.
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{}})
 
 	container := startContainer(ctx, t, mockServerPort(t, server))
 	copyScenarioIntoContainer(ctx, t, container, repoDir)
@@ -249,8 +255,11 @@ func TestE2E_ApplySince_PrometheusRecordingPartialRemovalIsNotADeletion(t *testi
 	if exitCode != 0 {
 		t.Fatalf("expected exit 0, got %d. Output:\n%s", exitCode, output)
 	}
-	if strings.Contains(output, "recording") {
-		t.Errorf("removing a record entry from a surviving CRD must not be treated as a deletion, got:\n%s", output)
+	if !strings.Contains(output, "Recording rule") {
+		t.Errorf("expected output to mention the deleted recording rule, got:\n%s", output)
+	}
+	if !strings.Contains(output, "deleted") {
+		t.Errorf("expected output to mention a deletion, got:\n%s", output)
 	}
 }
 

@@ -54,6 +54,18 @@ type Snapshot struct {
 	// alerting rule removed from a CRD that otherwise still exists.
 	PrometheusAlertsByIdentifier map[string][]dash0yaml.PrometheusAlertName
 
+	// PrometheusRecordingRoleByIdentifier maps a PrometheusRule CRD's
+	// identifier to whether it has at least one recording rule. Recorded for
+	// every PrometheusRule CRD identifier found, even when false, so Diff
+	// can tell "this CRD never had a recording role" apart from "this CRD
+	// doesn't exist in this snapshot at all" -- the same map-presence
+	// pattern PrometheusAlertsByIdentifier already relies on. Diff uses this
+	// to detect a CRD that survives but whose recording-rule role
+	// disappeared entirely (its last `record:` entry removed), a case a
+	// per-alert-name diff can't catch: Dash0 models a CRD's recording rules
+	// as one server-side resource, not one per record.
+	PrometheusRecordingRoleByIdentifier map[string]bool
+
 	// SpamFilterUsesOriginByIdentifier maps a spam filter's identifier to
 	// whether it carries a dash0.com/origin label (per
 	// asset.SpamFilterUsesOrigin). Diff carries this into Deletion so --since
@@ -69,11 +81,12 @@ type Snapshot struct {
 
 func newSnapshot() Snapshot {
 	return Snapshot{
-		Identifiers:                      map[IdentifierKey]string{},
-		NoIdentifier:                     map[string]NoIdentifierDoc{},
-		PrometheusAlertsByIdentifier:     map[string][]dash0yaml.PrometheusAlertName{},
-		SpamFilterUsesOriginByIdentifier: map[string]bool{},
-		Paths:                            map[string]bool{},
+		Identifiers:                         map[IdentifierKey]string{},
+		NoIdentifier:                        map[string]NoIdentifierDoc{},
+		PrometheusAlertsByIdentifier:        map[string][]dash0yaml.PrometheusAlertName{},
+		PrometheusRecordingRoleByIdentifier: map[string]bool{},
+		SpamFilterUsesOriginByIdentifier:    map[string]bool{},
+		Paths:                               map[string]bool{},
 	}
 }
 
@@ -261,6 +274,12 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to extract alert names: %w", err)
 			}
 			snap.PrometheusAlertsByIdentifier[identifier] = alerts
+
+			hasRecordingRule, err := asset.PrometheusRuleHasRecordingRule(docBytes)
+			if err != nil {
+				return fmt.Errorf("failed to determine recording rule presence: %w", err)
+			}
+			snap.PrometheusRecordingRoleByIdentifier[identifier] = hasRecordingRule
 		}
 
 		if normalizedKind == "spamfilter" {

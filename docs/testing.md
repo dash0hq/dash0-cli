@@ -113,7 +113,7 @@ The e2e harness does the same (`git config --global --add safe.directory '*'` in
 - `directory-rename` — a file moves from one subdirectory to another between the ref and HEAD; deletion detection is by identifier, never by file path, so this must be a plain update, not a deletion.
 - `multi-document-partial-deletion` — one document is removed from a multi-document YAML file; the file survives.
 - `prometheus-alert-partial-deletion` — one alerting rule is removed from a `PrometheusRule` CRD; the CRD (and its shared `dash0.com/id`) survives.
-- `prometheus-recording-partial-removal` — the same shape for a recording rule; the correct behavior is a plain update, not a deletion (there is no per-record identity to diff).
+- `prometheus-recording-partial-removal` — the same shape for a recording rule; the alert is a plain update, and the recording rule the CRD no longer declares is deleted despite the CRD's own identifier surviving (a coarse presence/absence signal, since there is no per-record identity to diff).
 - `first-push-new-branch` — a minimal one-commit repo paired with the literal all-zeros SHA as the ref, simulating a branch's first push.
 - `non-ancestor-force-push` — a commit is orphaned by a simulated force-push (`git reset --hard` + a new commit); it still resolves by SHA but is not an ancestor of HEAD.
 - `too-shallow-clone` — the checked-in fixture carries full history; a `--depth 1` clone (performed by the test itself, via `file://`, not baked into the zip) makes the older ref unresolvable.

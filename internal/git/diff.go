@@ -71,6 +71,33 @@ func Diff(before, after Snapshot) DeletionPlan {
 			SpamFilterUsesOrigin: before.SpamFilterUsesOriginByIdentifier[key.Identifier],
 		})
 	}
+
+	// A PrometheusRule CRD that survives (its own identifier is present in
+	// both snapshots) can still lose its recording-rule role entirely --
+	// e.g. its last `record:` entry removed while an `alert:` entry keeps
+	// the CRD's identifier alive. Unlike alerting rules, recording rules
+	// have no per-item identity to diff by (Dash0 models a CRD's recording
+	// rules as one server-side resource), so this is a coarse
+	// presence/absence check rather than a name-based diff like AlertsByName
+	// below. A CRD whose identifier disappeared entirely is skipped here:
+	// deletePrometheusRuleCRD already attempts the recording-rules endpoint
+	// unconditionally for a whole-CRD deletion, so adding a second entry
+	// for the same identifier would just double-delete it.
+	for identifier, hadRecordingRule := range before.PrometheusRecordingRoleByIdentifier {
+		if !hadRecordingRule {
+			continue
+		}
+		hasRecordingRuleNow, crdSurvives := after.PrometheusRecordingRoleByIdentifier[identifier]
+		if !crdSurvives || hasRecordingRuleNow {
+			continue
+		}
+		plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
+			Kind:       "recordingrule",
+			Identifier: identifier,
+			Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
+		})
+	}
+
 	sort.Slice(plan.ByIdentifier, func(i, j int) bool {
 		if plan.ByIdentifier[i].Kind != plan.ByIdentifier[j].Kind {
 			return plan.ByIdentifier[i].Kind < plan.ByIdentifier[j].Kind

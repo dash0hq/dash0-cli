@@ -55,6 +55,67 @@ func TestDiff_PrometheusAlertPartialRemoval(t *testing.T) {
 	assert.Equal(t, "g - B", plan.AlertsByName[0].CheckRuleName())
 }
 
+// TestDiff_PrometheusRecordingRoleDroppedWhileCRDSurvives is a regression
+// test for a bug where a PrometheusRule CRD losing its last recording rule
+// (while an alerting rule kept the CRD's identifier alive) produced no
+// deletion signal at all: applyPrometheusRule simply stops calling
+// ImportRecordingRule once RecordingOnlyPrometheusRule returns nil, so the
+// recording rule created back when the CRD still had a record is left
+// stale in Dash0 forever, and --since reported "no deletions" -- a false
+// all-clear on a state that no longer matches git. Unlike alerting rules
+// (tracked per-alert by name via PrometheusAlertsByIdentifier/AlertsByName),
+// recording rules have no per-item identity, so this is a coarse
+// presence/absence signal, surfaced as a "recordingrule"-kind entry in
+// ByIdentifier rather than a new AlertsByName-shaped slice.
+func TestDiff_PrometheusRecordingRoleDroppedWhileCRDSurvives(t *testing.T) {
+	before := newSnapshot()
+	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	before.PrometheusRecordingRoleByIdentifier["crd-1"] = true
+
+	after := newSnapshot()
+	after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	after.PrometheusRecordingRoleByIdentifier["crd-1"] = false
+
+	plan := Diff(before, after)
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, Deletion{Kind: "recordingrule", Identifier: "crd-1", Path: "rules.yaml"}, plan.ByIdentifier[0])
+}
+
+// TestDiff_PrometheusRecordingRoleSurvivesIsNotADeletion pins the negative
+// case: a CRD that still has a recording rule in both snapshots must not
+// produce any "recordingrule" deletion entry.
+func TestDiff_PrometheusRecordingRoleSurvivesIsNotADeletion(t *testing.T) {
+	before := newSnapshot()
+	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	before.PrometheusRecordingRoleByIdentifier["crd-1"] = true
+
+	after := newSnapshot()
+	after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	after.PrometheusRecordingRoleByIdentifier["crd-1"] = true
+
+	plan := Diff(before, after)
+	assert.True(t, plan.IsEmpty())
+}
+
+// TestDiff_PrometheusWholeCRDDeletionSkipsRecordingRoleCheck is a regression
+// test for a bug where a whole-CRD deletion (identifier gone entirely, not
+// just its recording role) would double-report the recording rule: once as
+// the "prometheusrule"-kind whole-CRD entry (whose dispatch,
+// deletePrometheusRuleCRD, already attempts DeleteRecordingRule
+// unconditionally) and again as a standalone "recordingrule"-kind entry,
+// which would call DeleteRecordingRule a second, redundant time.
+func TestDiff_PrometheusWholeCRDDeletionSkipsRecordingRoleCheck(t *testing.T) {
+	before := newSnapshot()
+	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	before.PrometheusRecordingRoleByIdentifier["crd-1"] = true
+
+	after := newSnapshot()
+
+	plan := Diff(before, after)
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, "prometheusrule", plan.ByIdentifier[0].Kind)
+}
+
 func TestDiff_PrometheusWholeCRDDeletionSkipsAlertCheck(t *testing.T) {
 	before := newSnapshot()
 	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"

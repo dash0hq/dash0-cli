@@ -695,7 +695,19 @@ spec:
 	require.NotNil(t, deleteReq, "expected a DELETE request for the view document removed from the surviving file")
 }
 
-func TestApply_Since_PrometheusRecordingRulePartialRemovalIsNotADeletion(t *testing.T) {
+// TestApply_Since_PrometheusRecordingRulePartialRemovalDeletesRecordingRule
+// is a regression test for a bug where a PrometheusRule CRD losing its last
+// recording rule (while an alert kept the CRD's identifier alive) produced
+// no deletion at all: applyPrometheusRule simply stops calling
+// ImportRecordingRule once the CRD has zero records left, so the recording
+// rule created back when the file was still mixed was left stale in Dash0
+// forever, and --since reported "no deletions" -- a false all-clear on a
+// state that no longer matched git. The fix tracks recording-rule presence
+// per identifier and treats a true -> false transition on a surviving CRD
+// as a deletion of that recording rule -- a coarse presence/absence signal
+// rather than a per-record diff, since Dash0 models a CRD's recording
+// rules as a single server-side resource, not one per record.
+func TestApply_Since_PrometheusRecordingRulePartialRemovalDeletesRecordingRule(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	const ruleID = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
@@ -727,8 +739,8 @@ spec:
 	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
 
 	// Remove the recording rule; the alert (and the CRD's shared identifier)
-	// survives. This is not tracked as a deletion at all — no per-record
-	// identity exists to diff, so it is a plain update to the surviving CRD.
+	// survives, so it is a plain update -- but the recording rule the CRD
+	// no longer declares must still be deleted.
 	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -752,8 +764,11 @@ spec:
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
 	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
-	// No recording-rules route registered at all: the removed record entry
-	// must never trigger a call to that endpoint, delete or otherwise.
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
 
 	cmd := newSinceTestCmd()
 	cmd.SetArgs([]string{
@@ -762,12 +777,16 @@ spec:
 	})
 
 	var cmdErr error
-	testutil.CaptureStdout(t, func() {
+	output := testutil.CaptureStdout(t, func() {
 		cmdErr = cmd.Execute()
 	})
 
 	require.NoError(t, cmdErr)
-	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathRecordingRules+"/"+ruleID), "removing a record entry from a surviving CRD must not be treated as a deletion")
+	assert.Contains(t, output, "Recording rule")
+	assert.Contains(t, output, ruleID)
+	assert.Contains(t, output, "deleted")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathRecordingRules+"/"+ruleID), "expected the dropped recording rule to be deleted")
 	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+ruleID), "the surviving alert must still go through the ordinary update path")
 }
 

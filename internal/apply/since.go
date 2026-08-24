@@ -260,7 +260,16 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 		if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
 			fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
 		}
-		prompt := fmt.Sprintf("Are you sure you want to delete %s %s, removed since --since ref? [y/N]: ", displayKind, display)
+		var prompt string
+		if d.Kind == "recordingrule" {
+			// The surviving PrometheusRule CRD's own file is not what's
+			// being removed here -- only its recording-rule role. The
+			// generic "removed since --since ref" phrasing below would
+			// wrongly suggest the whole document is gone.
+			prompt = fmt.Sprintf("Are you sure you want to delete %s %s, whose last record was removed from its PrometheusRule since --since ref? [y/N]: ", displayKind, display)
+		} else {
+			prompt = fmt.Sprintf("Are you sure you want to delete %s %s, removed since --since ref? [y/N]: ", displayKind, display)
+		}
 		confirmed, err := confirmation.ConfirmDestructiveOperation(ctx, prompt, force)
 		if err != nil {
 			return declined, err
@@ -315,6 +324,12 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
 	case "syntheticcheck":
 		err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
+	case "recordingrule":
+		// A surviving PrometheusRule CRD whose recording-rule role
+		// disappeared entirely (see Diff's PrometheusRecordingRoleByIdentifier
+		// handling) -- distinct from the whole-CRD "prometheusrule" case
+		// above, which already attempts this endpoint unconditionally.
+		err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
 	case "view":
 		err = apiClient.DeleteView(ctx, identifier, dataset)
 	case "spamfilter":
