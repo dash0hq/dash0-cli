@@ -88,6 +88,38 @@ func TestBuildGitScenario_WholeFileDeletion(t *testing.T) {
 	assert.Contains(t, atRef, "dash-a")
 }
 
+func TestBuildGitScenario_DirectoryRename(t *testing.T) {
+	repoDir, ref := BuildGitScenario(t, "directory-rename")
+
+	assert.Len(t, ref, 40, "ref should be a full commit SHA")
+	assert.NoFileExists(t, filepath.Join(repoDir, "team-a", "dashboard-a.yaml"), "the old path must not exist at HEAD")
+	assert.FileExists(t, filepath.Join(repoDir, "team-b", "dashboard-a.yaml"))
+
+	atRef := runGitScenario(t, repoDir, "cat-file", "-p", ref+":team-a/dashboard-a.yaml")
+	assert.Contains(t, atRef, "dash-a")
+}
+
+func TestBuildGitScenario_WholeDirectoryDeletion(t *testing.T) {
+	repoDir, ref := BuildGitScenario(t, "whole-directory-deletion")
+
+	assert.Len(t, ref, 40, "ref should be a full commit SHA")
+	assert.NoFileExists(t, filepath.Join(repoDir, "dashboard-a.yaml"), "the deleted file must not exist at HEAD")
+	assert.NoFileExists(t, filepath.Join(repoDir, "view-b.yaml"), "the deleted file must not exist at HEAD")
+
+	entries, err := os.ReadDir(repoDir)
+	require.NoError(t, err)
+	var nonGitEntries []string
+	for _, e := range entries {
+		if e.Name() != ".git" {
+			nonGitEntries = append(nonGitEntries, e.Name())
+		}
+	}
+	assert.Empty(t, nonGitEntries, "the repo's working tree should have nothing left besides .git")
+
+	atRef := runGitScenario(t, repoDir, "cat-file", "-p", ref+":dashboard-a.yaml")
+	assert.Contains(t, atRef, "dash-a")
+}
+
 func TestBuildGitScenario_MultiDocumentPartialDeletion(t *testing.T) {
 	repoDir, ref := BuildGitScenario(t, "multi-document-partial-deletion")
 

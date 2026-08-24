@@ -114,6 +114,69 @@ func TestE2E_ApplySince_WholeFileDeletion(t *testing.T) {
 	}
 }
 
+// TestE2E_ApplySince_WholeDirectoryDeletion covers the same all-deletions
+// scenario as TestE2E_ApplySince_WholeFileDeletion but with every file under
+// -f's target removed (not just one of several) -- the case that used to
+// hard-fail with "no .yaml or .yml files found" before computeDeletionPlan
+// ever ran, since -f here points at the repo root, which git always leaves
+// on disk even once every tracked file under it is gone.
+func TestE2E_ApplySince_WholeDirectoryDeletion(t *testing.T) {
+	ctx := context.Background()
+	repoDir, ref := testutil.BuildGitScenario(t, "whole-directory-deletion")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{}})
+	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{}})
+
+	container := startContainer(ctx, t, mockServerPort(t, server))
+	copyScenarioIntoContainer(ctx, t, container, repoDir)
+
+	exitCode, output := execDash0(ctx, t, container, mockServerPort(t, server),
+		"--experimental", "apply", "-f", "/work/repo", "--since", ref, "--force")
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d. Output:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "deleted") {
+		t.Errorf("expected output to mention a deletion, got:\n%s", output)
+	}
+}
+
+// TestE2E_ApplySince_DirectoryRenameIsNotADeletion pins the documented
+// contract that deletion detection is by identifier, never by file path
+// (see "Deletion detection is by identifier" in docs/commands.md's --since
+// section): a dashboard moved into a differently-named subdirectory between
+// the ref and HEAD must be treated as a plain update at its new path, not a
+// deletion. No DELETE route is registered on the mock server -- if the fix
+// regressed and the rename were (mis)treated as a deletion, the delete
+// call would hit the mock server's default handler and the exit-code/output
+// checks below would surface it, the same technique
+// TestE2E_ApplySince_PrometheusRecordingPartialRemovalIsNotADeletion uses.
+func TestE2E_ApplySince_DirectoryRenameIsNotADeletion(t *testing.T) {
+	ctx := context.Background()
+	repoDir, ref := testutil.BuildGitScenario(t, "directory-rename")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureDashboardsGetSuccess})
+	server.OnPattern(http.MethodPut, dashboardIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureDashboardsImportSuccess})
+
+	container := startContainer(ctx, t, mockServerPort(t, server))
+	copyScenarioIntoContainer(ctx, t, container, repoDir)
+
+	exitCode, output := execDash0(ctx, t, container, mockServerPort(t, server),
+		"--experimental", "apply", "-f", "/work/repo", "--since", ref, "--force")
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d. Output:\n%s", exitCode, output)
+	}
+	if strings.Contains(output, "deleted") {
+		t.Errorf("renaming a subdirectory within the scanned scope must not be treated as a deletion, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Dashboard") {
+		t.Errorf("expected output to mention the dashboard being applied at its new path, got:\n%s", output)
+	}
+}
+
 func TestE2E_ApplySince_MultiDocumentPartialDeletion(t *testing.T) {
 	ctx := context.Background()
 	repoDir, ref := testutil.BuildGitScenario(t, "multi-document-partial-deletion")

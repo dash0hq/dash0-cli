@@ -109,6 +109,8 @@ The e2e harness does the same (`git config --global --add safe.directory '*'` in
 
 ## Scenarios
 - `whole-file-deletion` — a file is removed entirely between the ref and HEAD.
+- `whole-directory-deletion` — every file under the ref is removed between the ref and HEAD, leaving the `-f` target (the repo root, in this scenario) with zero eligible YAML files.
+- `directory-rename` — a file moves from one subdirectory to another between the ref and HEAD; deletion detection is by identifier, never by file path, so this must be a plain update, not a deletion.
 - `multi-document-partial-deletion` — one document is removed from a multi-document YAML file; the file survives.
 - `prometheus-alert-partial-deletion` — one alerting rule is removed from a `PrometheusRule` CRD; the CRD (and its shared `dash0.com/id`) survives.
 - `prometheus-recording-partial-removal` — the same shape for a recording rule; the correct behavior is a plain update, not a deletion (there is no per-record identity to diff).

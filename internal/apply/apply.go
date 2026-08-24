@@ -3,6 +3,7 @@ package apply
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -176,16 +177,32 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		}
 	} else {
 		info, statErr := os.Stat(flags.File)
-		if statErr != nil {
+		switch {
+		case statErr != nil && flags.SinceFlagSet && os.IsNotExist(statErr):
+			// --since's target no longer exists on disk at all: every asset
+			// definition under it was deleted, and (for a directory target)
+			// the directory itself was removed along with them. This is a
+			// legitimate all-deletions run, the same as the existing-but-
+			// empty-directory case below -- continue with zero current
+			// documents and let computeDeletionPlan report every asset found
+			// at the --since ref as a deletion.
+			fromDirectory = true
+		case statErr != nil:
 			return fmt.Errorf("failed to read input: %w", statErr)
-		}
-		if info.IsDir() {
+		case info.IsDir():
 			fromDirectory = true
 			documents, err = readDirectory(flags.File)
 			if err != nil {
-				return validationError(err.Error())
+				if flags.SinceFlagSet && errors.Is(err, errNoYAMLFilesFound) {
+					// Every asset definition that used to live in this
+					// directory was deleted, but the (now-empty) directory
+					// itself survives. Same all-deletions case as above.
+					documents = nil
+				} else {
+					return validationError(err.Error())
+				}
 			}
-		} else {
+		default:
 			documents, err = readMultiDocumentYAML(flags.File, nil)
 			if err != nil {
 				return validationError(err.Error())
@@ -193,7 +210,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		}
 	}
 
-	if len(documents) == 0 {
+	if len(documents) == 0 && !flags.SinceFlagSet {
 		return validationError("no documents found in input")
 	}
 
@@ -590,6 +607,14 @@ func parseMultiDocumentYAML(data []byte) ([]assetDocument, error) {
 	return documents, nil
 }
 
+// errNoYAMLFilesFound is wrapped into discoverFiles' "no .yaml or .yml files
+// found" error so callers can distinguish "the directory is legitimately
+// empty" from any other failure via errors.Is, without matching on message
+// text. runApply uses this to tolerate an empty directory specifically when
+// --since is set: every asset that used to live there may simply have been
+// deleted, which is a valid all-deletions run, not a usage error.
+var errNoYAMLFilesFound = errors.New("no .yaml or .yml files found")
+
 // discoverFiles recursively finds all .yaml/.yml files under dirPath,
 // skipping hidden entries (names starting with '.').
 // Returns paths relative to dirPath, sorted lexicographically.
@@ -610,9 +635,9 @@ func discoverFiles(dirPath string) ([]string, error) {
 	}
 	if len(files) == 0 {
 		if hasNestedDirs {
-			return nil, fmt.Errorf("no .yaml or .yml files found in %s and nested directories", dirPath)
+			return nil, fmt.Errorf("%w in %s and nested directories", errNoYAMLFilesFound, dirPath)
 		}
-		return nil, fmt.Errorf("no .yaml or .yml files found in %s", dirPath)
+		return nil, fmt.Errorf("%w in %s", errNoYAMLFilesFound, dirPath)
 	}
 	sort.Strings(files)
 	return files, nil

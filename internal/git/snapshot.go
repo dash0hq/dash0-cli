@@ -132,9 +132,20 @@ func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string) (Sn
 // but taking one keeps the signature consistent with the rest of this
 // package's public API and forward-compatible with future callers that need
 // to bound how long a large directory scan can run.
+//
+// scope not existing on disk at all is not an error: every asset definition
+// under it may have been deleted, taking the directory itself with them (or,
+// for a single-file scope, the one file it named). That carries the same
+// meaning as an existing-but-empty directory -- the "after" state has
+// nothing -- so every identifier the "before" snapshot (BuildSnapshotFromRef)
+// found becomes a deletion candidate, the same as it would for a survived,
+// merely-emptied directory.
 func BuildSnapshotFromDisk(ctx context.Context, scope, repoRoot string) (Snapshot, error) {
 	info, err := os.Stat(scope)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return newSnapshot(), nil
+		}
 		return Snapshot{}, fmt.Errorf("failed to stat %s: %w", scope, err)
 	}
 

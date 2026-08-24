@@ -80,6 +80,132 @@ spec:
 	assert.Contains(t, output, "deleted")
 }
 
+// TestApply_Since_AllFilesDeleted_DirectorySurvives is a regression test for
+// a bug where --since found nothing to delete (in fact, failed the whole
+// run outright) once every asset definition under -f's target had been
+// removed and the (now-empty) directory itself survived: runApply's
+// directory-discovery step (readDirectory) hard-failed with "no .yaml or
+// .yml files found" before computeDeletionPlan ever got a chance to run, so
+// --since's very purpose -- detecting an all-deletions run -- was
+// unreachable for exactly the case it exists to handle. Unlike
+// TestApply_Since_WholeFileDeletion, no "keep.yaml" survivor is written
+// after the removal: the point of this test is that none is needed.
+func TestApply_Since_AllFilesDeleted_DirectorySurvives(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	writeFileFixture(t, dir, "view.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: my-view\n  labels:\n    dash0.com/id: b2c3d4e5-6789-01bc-def0-234567890abc\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard and view")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+	require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove both")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "a1b2c3d4-5678-90ab-cdef-1234567890ab")
+	assert.Contains(t, output, "b2c3d4e5-6789-01bc-def0-234567890abc")
+	assert.Contains(t, output, "deleted")
+}
+
+// TestApply_Since_AllFilesDeleted_TargetDirectoryRemoved is the same
+// all-deletions scenario as TestApply_Since_AllFilesDeleted_DirectorySurvives,
+// except the -f target directory was removed entirely along with its files
+// (rather than surviving empty) -- a plausible outcome of the same "delete
+// everything" cleanup, and a second, independent failure mode of the
+// original bug: os.Stat(flags.File) itself failed before runApply could even
+// decide whether to treat the target as a directory.
+func TestApply_Since_AllFilesDeleted_TargetDirectoryRemoved(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	repoRoot := t.TempDir()
+	runGitCmd(t, repoRoot, "init", "-q", "-b", "main")
+	runGitCmd(t, repoRoot, "config", "user.email", "test@example.com")
+	runGitCmd(t, repoRoot, "config", "user.name", "Test")
+	runGitCmd(t, repoRoot, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, repoRoot, "dashboards/dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, repoRoot, "add", "-A")
+	runGitCmd(t, repoRoot, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, repoRoot, "rev-parse", "HEAD"))
+
+	target := filepath.Join(repoRoot, "dashboards")
+	require.NoError(t, os.RemoveAll(target))
+	runGitCmd(t, repoRoot, "add", "-A")
+	runGitCmd(t, repoRoot, "commit", "-q", "-m", "remove dashboards directory entirely")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", target, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "a1b2c3d4-5678-90ab-cdef-1234567890ab")
+	assert.Contains(t, output, "deleted")
+}
+
 // TestApply_Since_WholeFileDeletion_SubdirectoryScope is a regression test
 // for a bug where -f pointed at a subdirectory of the repo (rather than the
 // repo root) made --since silently report zero deletions: the git-side

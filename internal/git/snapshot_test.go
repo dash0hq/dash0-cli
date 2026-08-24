@@ -178,6 +178,22 @@ func TestBuildSnapshotFromDisk_SingleFileScopeIgnoresExtension(t *testing.T) {
 	assert.Contains(t, snap.Identifiers, IdentifierKey{Kind: "dashboard", Identifier: "a1b2c3d4-5678-90ab-cdef-1234567890ab"}, "a single-file scope must be scanned regardless of its extension")
 }
 
+// TestBuildSnapshotFromDisk_ScopeDoesNotExist is a regression test for a bug
+// where a --since target that no longer exists on disk at all -- every asset
+// definition under it was deleted, taking the directory (or, for a
+// single-file scope, the one file it named) with them -- hard-failed the
+// "after" snapshot with "failed to stat", instead of being treated the same
+// as an existing-but-empty directory: nothing currently there, so everything
+// found in the "before" (git-ref) snapshot is a deletion candidate.
+func TestBuildSnapshotFromDisk_ScopeDoesNotExist(t *testing.T) {
+	repo := testRepo(t)
+
+	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/never-existed", repo.Dir)
+	require.NoError(t, err)
+	assert.Empty(t, snap.Identifiers)
+	assert.Empty(t, snap.Paths)
+}
+
 func TestBuildSnapshotFromDisk_PathsAlignWithRepoRootWhenScopeIsSubdirectory(t *testing.T) {
 	repo := testRepo(t)
 	writeFile(t, repo.Dir, "sub/dashboard.yaml", dashboardYAML)

@@ -170,6 +170,21 @@ alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
 Check rule "service-alerts - HighLatency" deleted
 ```
 
+When every asset definition under `-f`'s target has been deleted, `--since` still detects and reports every one of them, rather than failing outright.
+This holds whether the target directory survives (now empty of `.yaml`/`.yml` files) or was removed entirely along with its files (e.g. `rm -rf dashboards/`) — both count as "nothing currently there," so every asset found at `<ref>` becomes a deletion candidate:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since HEAD~1 --dry-run
+Dry run: 0 documents from 0 files validated; 2 deletions pending due to --since 'HEAD~1'
+  dashboard-a.yaml
+    * Delete Dashboard "Dashboard A" (dash-a)
+  view-b.yaml
+    * Delete View "View B" (view-b)
+```
+
+Without `--since`, an empty or missing `-f` target is a plain usage error instead — `apply` on its own has nothing to fall back to when there is nothing to apply, so it fails fast rather than silently doing nothing.
+`--since` changes this because "everything under this target was deleted" is itself the meaningful, actionable outcome it exists to detect.
+
 `--since` needs a real `git` binary on `PATH`.
 It is unavailable from the `ghcr.io/dash0hq/cli` Docker image, which is built `FROM scratch` and has no shell or other tools installed.
 

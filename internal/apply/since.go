@@ -50,24 +50,41 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve absolute path for %s: %w", flags.File, err)
 	}
+
+	// absFile may no longer exist on disk at all: every asset definition
+	// under -f's target may have been deleted, taking the directory itself
+	// with them. A --since run only needs *some* real, existing path inside
+	// the repository to locate its root -- not the target itself -- so walk
+	// up to the nearest existing ancestor instead of requiring absFile to
+	// exist, then reattach the missing suffix below so scope still reflects
+	// the target's (now-vanished) location.
+	existingAncestor, missingSuffix, err := nearestExistingAncestor(absFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", flags.File, err)
+	}
 	// Resolve symlinks so absFile is comparable with repo.Root()'s output:
 	// `git rev-parse --show-toplevel` always prints the fully-resolved real
 	// path, but filepath.Abs alone does not resolve symlinks in parent
 	// directories (e.g. macOS's /var -> /private/var), which would otherwise
 	// make every filepath.Rel(repoRoot, absFile) below compute a bogus
 	// "outside the repository" path.
-	absFile, err = filepath.EvalSymlinks(absFile)
+	resolvedAncestor, err := filepath.EvalSymlinks(existingAncestor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve %s: %w", flags.File, err)
 	}
+	absFile = filepath.Join(resolvedAncestor, missingSuffix)
 
-	info, err := os.Stat(absFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat %s: %w", flags.File, err)
-	}
-	repoDir := absFile
-	if !info.IsDir() {
-		repoDir = filepath.Dir(absFile)
+	repoDir := resolvedAncestor
+	if missingSuffix == "" {
+		// absFile exists: preserve the original file-vs-directory dance
+		// exactly as before.
+		info, err := os.Stat(absFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat %s: %w", flags.File, err)
+		}
+		if info.IsDir() {
+			repoDir = absFile
+		}
 	}
 	repo := gitutil.Repo{Dir: repoDir}
 
@@ -136,6 +153,35 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	names := resolveDeletionNames(ctx, repo, sha, plan.ByIdentifier)
 
 	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope}, nil
+}
+
+// nearestExistingAncestor walks up from path until it finds an entry that
+// exists on disk, returning that ancestor plus the path components between
+// it and path, joined back together with filepath.Join's separator so a
+// caller can filepath.Join them straight onto the ancestor's symlink-resolved
+// form. missingSuffix is "" when path itself already exists (the common
+// case, unaffected by --since: the ancestor returned is then path itself).
+//
+// This lets computeDeletionPlan resolve a --since target that no longer
+// exists on disk at all -- every asset definition under it may have been
+// deleted, taking the directory with them -- without needing path itself to
+// exist: locating the git repository only needs *some* real path inside it.
+func nearestExistingAncestor(path string) (ancestor string, missingSuffix string, err error) {
+	current := path
+	var missing []string
+	for {
+		if _, statErr := os.Lstat(current); statErr == nil {
+			return current, filepath.Join(missing...), nil
+		} else if !os.IsNotExist(statErr) {
+			return "", "", statErr
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", "", fmt.Errorf("no existing ancestor directory found for %s", path)
+		}
+		missing = append([]string{filepath.Base(current)}, missing...)
+		current = parent
+	}
 }
 
 // resolveDeletionNames best-effort looks up each deletion's display name by

@@ -1,0 +1,40 @@
+kind: GitRepoFixture
+spec:
+  # A commit with two asset files, followed by a commit removing both --
+  # the -f target directory survives (it's the repo root) but ends up with
+  # zero eligible YAML files, unlike whole-file-deletion where one survives.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add dashboard-a and view-b"
+        changes:
+          - op: add
+            name: dashboard-a.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Dashboard A
+                dash0Extensions:
+                  id: dash-a
+              spec:
+                display:
+                  name: Dashboard A
+          - op: add
+            name: view-b.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: View B
+                labels:
+                  dash0.com/id: view-b
+              spec:
+                query: "true"
+      - message: "remove dashboard-a and view-b"
+        changes:
+          - op: delete
+            name: dashboard-a.yaml
+          - op: delete
+            name: view-b.yaml

@@ -145,6 +145,198 @@ func TestComputeDeletionPlan_WholeFileDeletion(t *testing.T) {
 	assert.Equal(t, "My Dashboard", dp.names[deletion.Path])
 }
 
+// testSinceRepoAllDeleted creates a temp git repo with two asset files at ref
+// "before", then removes both of them (and nothing else) in a later commit,
+// leaving the -f target directory itself still present on disk but with zero
+// eligible YAML files -- the "all files deleted" scenario, as opposed to
+// testSinceRepo's "one file survives" scenario.
+func testSinceRepoAllDeleted(t *testing.T) (dir, beforeSHA string) {
+	t.Helper()
+	dir = t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	writeFileFixture(t, dir, "view.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: my-view\n  labels:\n    dash0.com/id: b2c3d4e5-6789-01bc-def0-234567890abc\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard and view")
+	beforeSHA = strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+	require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove both")
+
+	return dir, beforeSHA
+}
+
+// TestComputeDeletionPlan_AllFilesDeleted is a regression test for a bug
+// where --since silently found nothing to delete once every asset
+// definition under -f's target was removed and the (now-empty) directory
+// itself survived: computeDeletionPlan itself has always tolerated an empty
+// disk-side scope fine (BuildSnapshotFromDisk over an empty directory finds
+// nothing to ingest, which is not an error) -- the actual bug lived one layer
+// up, in runApply's directory-discovery step (readDirectory), which hard-
+// failed with "no .yaml or .yml files found" before computeDeletionPlan ever
+// ran. This test pins computeDeletionPlan's own (already-correct) contract;
+// TestApply_Since_AllFilesDeleted_DirectorySurvives in
+// since_integration_test.go covers the full runApply path that used to fail.
+func TestComputeDeletionPlan_AllFilesDeleted(t *testing.T) {
+	dir, before := testSinceRepoAllDeleted(t)
+
+	flags := &applyFlags{File: dir, Since: before}
+	dp, err := computeDeletionPlan(context.Background(), flags)
+	require.NoError(t, err)
+	require.Len(t, dp.plan.ByIdentifier, 2)
+
+	identifiers := []string{dp.plan.ByIdentifier[0].Identifier, dp.plan.ByIdentifier[1].Identifier}
+	assert.ElementsMatch(t, []string{"a1b2c3d4-5678-90ab-cdef-1234567890ab", "b2c3d4e5-6789-01bc-def0-234567890abc"}, identifiers)
+	assert.Empty(t, dp.warning)
+}
+
+// TestComputeDeletionPlan_TargetDirectoryRemoved is a regression test for a
+// bug where computeDeletionPlan itself couldn't run at all once the -f
+// target directory was removed entirely (not just emptied): filepath.
+// EvalSymlinks and os.Stat both require the path to exist, and both were
+// called directly on the target before this fix. This exercises the case
+// where the target is a subdirectory of the repo (not the repo root itself,
+// which can never be "removed" while still being a git worktree) that no
+// longer exists on disk at all.
+func TestComputeDeletionPlan_TargetDirectoryRemoved(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboards/dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	target := filepath.Join(dir, "dashboards")
+	require.NoError(t, os.RemoveAll(target))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboards directory entirely")
+
+	flags := &applyFlags{File: target, Since: before}
+	dp, err := computeDeletionPlan(context.Background(), flags)
+	require.NoError(t, err)
+	require.Len(t, dp.plan.ByIdentifier, 1)
+	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.plan.ByIdentifier[0].Identifier)
+	assert.Empty(t, dp.warning)
+}
+
+// TestComputeDeletionPlan_SubdirectoryRenamedWithinScope pins the documented
+// contract that deletion detection is by identifier, never by file path
+// (see "Deletion detection is by identifier" in docs/commands.md's --since
+// section): renaming a subdirectory *within* -f's scanned scope must not be
+// reported as a deletion, since the asset's identifier survives under the
+// new path. TestDiff_NoChangeWhenIdentifierSurvives in internal/git/diff_test.go
+// already pins this at the pure Snapshot/Diff level with hand-built
+// Snapshots; this test exercises the same contract through computeDeletionPlan
+// end to end, against a real git repo with an actual `git mv` of a directory
+// (not just a single file), which is what a user restructuring a dashboards/
+// tree by team or environment would actually do.
+func TestComputeDeletionPlan_SubdirectoryRenamedWithinScope(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboards/team-a/dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard under team-a")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	// -f itself (the "dashboards" directory below) is unaffected by this
+	// rename -- only the subdirectory nested inside it moves.
+	runGitCmd(t, dir, "mv", "dashboards/team-a", "dashboards/team-b")
+	runGitCmd(t, dir, "commit", "-q", "-m", "rename team-a to team-b")
+
+	flags := &applyFlags{File: filepath.Join(dir, "dashboards"), Since: before}
+	dp, err := computeDeletionPlan(context.Background(), flags)
+	require.NoError(t, err)
+	assert.True(t, dp.plan.IsEmpty(), "renaming a subdirectory within the scanned scope must not be reported as a deletion")
+	assert.Empty(t, dp.warning)
+}
+
+// TestComputeDeletionPlan_TargetItselfRenamedIsReportedAsDeletion documents
+// the necessary counterpart to
+// TestComputeDeletionPlan_SubdirectoryRenamedWithinScope: identifier-based
+// matching only reaches as far as -f's own scope. If -f's *own* target
+// directory is what gets renamed (as opposed to something nested inside it)
+// and the caller keeps pointing -f at the old, now-gone path, every asset
+// that used to live there is correctly reported as deleted -- from that
+// fixed scope's perspective, it genuinely no longer has anything, the exact
+// case TestComputeDeletionPlan_TargetDirectoryRemoved and
+// TestComputeDeletionPlan_AllFilesDeleted exist to detect. Re-pointing -f at
+// the new path instead (not exercised here) reports zero deletions, since
+// the "before" snapshot for that new scope has nothing to diff against --
+// the identifier simply becomes a new create/update, business as usual.
+func TestComputeDeletionPlan_TargetItselfRenamedIsReportedAsDeletion(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboards/dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	runGitCmd(t, dir, "mv", "dashboards", "dashboards-v2")
+	runGitCmd(t, dir, "commit", "-q", "-m", "rename dashboards to dashboards-v2")
+
+	// -f still names the old path, which the rename left nonexistent.
+	flags := &applyFlags{File: filepath.Join(dir, "dashboards"), Since: before}
+	dp, err := computeDeletionPlan(context.Background(), flags)
+	require.NoError(t, err)
+	require.Len(t, dp.plan.ByIdentifier, 1)
+	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.plan.ByIdentifier[0].Identifier)
+	assert.Empty(t, dp.warning)
+}
+
 // TestSplitMultiDocPath is a table test for the "#<index>" suffix
 // internal/git/snapshot.go appends to the second and later documents' paths
 // in a multi-document file.

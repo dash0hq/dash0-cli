@@ -390,6 +390,20 @@ func TestDiscoverFiles_EmptyDir(t *testing.T) {
 	assert.Contains(t, err.Error(), "no .yaml or .yml files found")
 }
 
+// TestDiscoverFiles_EmptyDirErrorIsErrNoYAMLFilesFound pins that an empty
+// directory's error wraps errNoYAMLFilesFound (via errors.Is), not just a
+// matching message string -- runApply's --since tolerance for an empty
+// directory (see TestApply_Since_AllFilesDeleted_DirectorySurvives in
+// since_integration_test.go) depends on being able to detect this specific
+// condition rather than any other discoverFiles failure.
+func TestDiscoverFiles_EmptyDirErrorIsErrNoYAMLFilesFound(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := discoverFiles(dir)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errNoYAMLFilesFound)
+}
+
 func TestDiscoverFiles_CaseInsensitiveExtensions(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "upper.YAML"), []byte("kind: Dashboard"), 0644))

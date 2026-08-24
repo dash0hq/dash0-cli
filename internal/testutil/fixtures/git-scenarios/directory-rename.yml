@@ -1,0 +1,45 @@
+kind: GitRepoFixture
+spec:
+  # A dashboard file is moved from one subdirectory to another between the
+  # ref and HEAD (its containing directory renamed) -- deletion detection is
+  # by identifier, never by file path, so this must not be treated as a
+  # deletion. Represented as a delete-and-add pair with identical content
+  # rather than a literal `git mv`: BuildGitScenario applies changes as plain
+  # file writes plus `git add -A` (see internal/testutil/gitscenario.go), and
+  # --since's own snapshot comparison (internal/git/snapshot.go) scans each
+  # side's full tree rather than diffing successive commits, so the two are
+  # indistinguishable to the code under test.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add dashboard-a under team-a"
+        changes:
+          - op: add
+            name: team-a/dashboard-a.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Dashboard A
+                dash0Extensions:
+                  id: dash-a
+              spec:
+                display:
+                  name: Dashboard A
+      - message: "rename team-a to team-b"
+        changes:
+          - op: delete
+            name: team-a/dashboard-a.yaml
+          - op: add
+            name: team-b/dashboard-a.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Dashboard A
+                dash0Extensions:
+                  id: dash-a
+              spec:
+                display:
+                  name: Dashboard A
