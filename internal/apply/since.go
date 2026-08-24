@@ -279,10 +279,17 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			declined++
 			continue
 		}
-		if err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d); err != nil {
+		alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d)
+		if err != nil {
 			return declined, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
 		}
-		fmt.Printf("%s %s deleted\n", displayKind, display)
+		// alreadyDeleted means IsAlreadyDeleted already printed its own
+		// "was already deleted" line -- printing "deleted" here too would
+		// contradict it and misrepresent a no-op as a real deletion in a CI
+		// log or audit trail.
+		if !alreadyDeleted {
+			fmt.Printf("%s %s deleted\n", displayKind, display)
+		}
 	}
 
 	for _, a := range dp.plan.AlertsByName {
@@ -297,10 +304,13 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			declined++
 			continue
 		}
-		if err := deleteCheckRuleByName(ctx, apiClient, dataset, name); err != nil {
+		alreadyDeleted, err := deleteCheckRuleByName(ctx, apiClient, dataset, name)
+		if err != nil {
 			return declined, fmt.Errorf("failed to delete check rule %q: %w", name, err)
 		}
-		fmt.Printf("Check rule %q deleted\n", name)
+		if !alreadyDeleted {
+			fmt.Printf("Check rule %q deleted\n", name)
+		}
 	}
 
 	return declined, nil
@@ -321,13 +331,19 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 // command uses: that command acts on one asset the caller named by hand, so
 // a 404 without --force there is more likely a typo'd id worth surfacing
 // loudly than a benign race.
-func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) error {
+//
+// The returned bool reports whether the asset was already gone (rather
+// than genuinely deleted by this call), so applyDeletions can avoid
+// printing a "deleted" line that would contradict IsAlreadyDeleted's own
+// "was already deleted" message -- printing both claims a deletion that
+// never happened, which a CI log or audit trail would then take at face
+// value.
+func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (alreadyDeleted bool, err error) {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
 		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier)
 	}
 
-	var err error
 	switch kind {
 	case "dashboard", "persesdashboard":
 		err = apiClient.DeleteDashboard(ctx, identifier, dataset)
@@ -350,17 +366,17 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	case "team":
 		err = apiClient.DeleteTeam(ctx, identifier)
 	default:
-		return fmt.Errorf("unsupported kind for deletion: %s", kind)
+		return false, fmt.Errorf("unsupported kind for deletion: %s", kind)
 	}
 
 	ectx := client.ErrorContext{AssetType: asset.KindDisplayName(kind), AssetID: identifier}
 	if err != nil {
 		if client.IsAlreadyDeleted(err, true, ectx) {
-			return nil
+			return true, nil
 		}
-		return client.HandleAPIError(err, ectx)
+		return false, client.HandleAPIError(err, ectx)
 	}
-	return nil
+	return false, nil
 }
 
 // deletePrometheusRuleCRD deletes a whole PrometheusRule CRD by identifier.
@@ -388,7 +404,12 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // A 404 on either endpoint always means "already gone" (see
 // deleteAssetByKindAndIdentifier's doc comment for why this is unconditional,
 // unlike a standalone `<kind> delete` command).
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string) error {
+//
+// The returned bool follows deleteAssetByKindAndIdentifier's contract: true
+// only when *neither* endpoint had anything left to delete (both 404), so a
+// mixed outcome -- one endpoint genuinely deleted, the other already gone --
+// is reported as a real deletion, matching the fact that something was.
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string) (alreadyDeleted bool, err error) {
 	checkRuleErr := apiClient.DeleteCheckRule(ctx, identifier, dataset)
 	recordingRuleErr := apiClient.DeleteRecordingRule(ctx, identifier, dataset)
 
@@ -398,16 +419,16 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	if checkRuleErr != nil && !checkRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "check rule", AssetID: identifier}
 		if client.IsAlreadyDeleted(checkRuleErr, true, ectx) {
-			return nil
+			return true, nil
 		}
-		return client.HandleAPIError(checkRuleErr, ectx)
+		return false, client.HandleAPIError(checkRuleErr, ectx)
 	}
 	if recordingRuleErr != nil && !recordingRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "recording rule", AssetID: identifier}
 		if client.IsAlreadyDeleted(recordingRuleErr, true, ectx) {
-			return nil
+			return true, nil
 		}
-		return client.HandleAPIError(recordingRuleErr, ectx)
+		return false, client.HandleAPIError(recordingRuleErr, ectx)
 	}
 
 	// "Genuinely gone" means 404 on both endpoints -- neither had anything
@@ -415,11 +436,11 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	if checkRuleNotFound && recordingRuleNotFound {
 		ectx := client.ErrorContext{AssetType: "PrometheusRule", AssetID: identifier}
 		if client.IsAlreadyDeleted(checkRuleErr, true, ectx) {
-			return nil
+			return true, nil
 		}
-		return client.HandleAPIError(checkRuleErr, ectx)
+		return false, client.HandleAPIError(checkRuleErr, ectx)
 	}
-	return nil
+	return false, nil
 }
 
 // deleteCheckRuleByName resolves a check rule by its exact name (the "<group
@@ -430,26 +451,28 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 //
 // Not finding it by name at all, or a 404 on the delete itself, always means
 // "already gone" (see deleteAssetByKindAndIdentifier's doc comment for why
-// this is unconditional, unlike a standalone `<kind> delete` command).
-func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string) error {
+// this is unconditional, unlike a standalone `<kind> delete` command). The
+// returned bool follows the same contract: true means nothing was actually
+// deleted by this call.
+func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string) (alreadyDeleted bool, err error) {
 	id, err := findCheckRuleIDByName(ctx, apiClient, dataset, name)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if id == "" {
 		fmt.Fprintf(os.Stderr, "Check rule %q was already deleted\n", name)
-		return nil
+		return true, nil
 	}
 
 	err = apiClient.DeleteCheckRule(ctx, id, dataset)
 	ectx := client.ErrorContext{AssetType: "check rule", AssetID: id, AssetName: name}
 	if err != nil {
 		if client.IsAlreadyDeleted(err, true, ectx) {
-			return nil
+			return true, nil
 		}
-		return client.HandleAPIError(err, ectx)
+		return false, client.HandleAPIError(err, ectx)
 	}
-	return nil
+	return false, nil
 }
 
 // findCheckRuleIDByName lists every check rule in dataset and returns the ID
