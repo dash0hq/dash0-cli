@@ -4,7 +4,6 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/client"
 )
 
 const labelVersion = "dash0.com/version"
@@ -99,12 +98,15 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 		CarryRecordingRuleVersion(before.(*dash0api.RecordingRule), rule)
 	}
 
-	result, err := client.RetryOnConflict(ctx, func() (*dash0api.RecordingRule, error) {
-		if id != "" {
-			return apiClient.UpdateRecordingRule(ctx, id, rule, dataset)
-		}
-		return apiClient.CreateRecordingRule(ctx, rule, dataset)
-	})
+	var (
+		result *dash0api.RecordingRule
+		err    error
+	)
+	if id != "" {
+		result, err = apiClient.UpdateRecordingRule(ctx, id, rule, dataset)
+	} else {
+		result, err = apiClient.CreateRecordingRule(ctx, rule, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}

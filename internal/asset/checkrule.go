@@ -4,7 +4,6 @@ import (
 	"context"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/client"
 )
 
 // ImportCheckRule creates or updates a check rule via the standard CRUD APIs.
@@ -27,12 +26,15 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 		}
 	}
 
-	result, err := client.RetryOnConflict(ctx, func() (*dash0api.PrometheusAlertRule, error) {
-		if id != "" {
-			return apiClient.UpdateCheckRule(ctx, id, rule, dataset)
-		}
-		return apiClient.CreateCheckRule(ctx, rule, dataset)
-	})
+	var (
+		result *dash0api.PrometheusAlertRule
+		err    error
+	)
+	if id != "" {
+		result, err = apiClient.UpdateCheckRule(ctx, id, rule, dataset)
+	} else {
+		result, err = apiClient.CreateCheckRule(ctx, rule, dataset)
+	}
 	if err != nil {
 		return ImportResult{}, err
 	}
