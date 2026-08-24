@@ -886,6 +886,13 @@ func validatePrometheusRule(data []byte) error {
 	if !asset.PrometheusRuleHasAlerts(crd) && asset.RecordingOnlyPrometheusRule(crd) == nil {
 		return fmt.Errorf("PrometheusRule contains no alerting or recording rules")
 	}
+	names, err := asset.ExtractPrometheusAlertNames(data)
+	if err != nil {
+		return err
+	}
+	if err := asset.CheckAlertNameCollisions(names); err != nil {
+		return err
+	}
 	return nil
 }
 

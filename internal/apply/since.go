@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
@@ -373,7 +374,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (alreadyDeleted bool, err error) {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
-		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier)
+		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusAlerts)
 	}
 
 	switch kind {
@@ -412,67 +413,101 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 }
 
 // deletePrometheusRuleCRD deletes a whole PrometheusRule CRD by identifier.
-// The same identifier may back a check rule (from the CRD's alerting rules),
-// a recording rule (from its recording rules), or both — apply's own
-// create/update dispatch (applyPrometheusRule) sends a mixed CRD to both
-// endpoints, so a mixed CRD's deletion attempts both too.
+// The same identifier may back a check rule (from the CRD's alerting
+// rules), a recording rule (from its recording rules), or both — apply's
+// own create/update dispatch (applyPrometheusRule) sends a mixed CRD to
+// both endpoints, so a mixed CRD's deletion attempts both too.
 //
-// Both endpoints are always attempted, tolerating a 404 from either: this
-// used to be gated on which endpoint(s) the CRD's content at --since's ref
-// showed it using, but that signal is a single point in time, not a history
-// of everything the identifier has ever used. A CRD that had a recording
-// rule stripped from it in an earlier commit (leaving only its alerting
-// rules), followed by the whole file being deleted, showed --since a ref
-// where the file only ever had alerts — silently orphaning the recording
-// rule created earlier, with no later git state able to recover that fact
-// once the file is gone. Deleting is naturally idempotent (a 404 just means
-// this endpoint never had anything for this identifier), so attempting both
+// alerts is the CRD's alerting-rule list at the "before" (--since ref)
+// snapshot (gitutil.Deletion.PrometheusAlerts). A CRD with two or more
+// alerts has each alert's real check rule living at its own derived id
+// (asset.DeriveAlertCheckRuleID), never at the CRD's literal identifier --
+// see composePrometheusRuleNames' doc comment for why -- so deleting such a
+// CRD must attempt each alert's derived id individually. A CRD with zero or
+// one alert keeps using the literal identifier directly, matching how
+// applyPrometheusRule creates it.
+//
+// Every endpoint attempted (every check-rule id, plus the recording-rule
+// endpoint) tolerates a 404: this used to be gated on which endpoint(s) the
+// CRD's content at --since's ref showed it using, but that signal is a
+// single point in time, not a history of everything the identifier has
+// ever used. A CRD that had a recording rule stripped from it in an
+// earlier commit (leaving only its alerting rules), followed by the whole
+// file being deleted, showed --since a ref where the file only ever had
+// alerts — silently orphaning the recording rule created earlier, with no
+// later git state able to recover that fact once the file is gone.
+// Deleting is naturally idempotent (a 404 just means this endpoint never
+// had anything for this identifier), so attempting all of them
 // unconditionally is safe by the same logic every other kind already
-// relies on. The one tradeoff: a check rule and a recording rule that
-// happen to share the same identifier by coincidence (not because they came
-// from the same CRD) would both be deleted together — accepted as an edge
-// case narrow enough not to justify leaving real orphaned assets behind.
+// relies on. The one tradeoff: a check rule or recording rule that happens
+// to share one of these identifiers by coincidence (not because it came
+// from this CRD) would be deleted too — accepted as an edge case narrow
+// enough not to justify leaving real orphaned assets behind.
 //
-// A 404 on either endpoint always means "already gone" (see
-// deleteAssetByKindAndIdentifier's doc comment for why this is unconditional,
-// unlike a standalone `<kind> delete` command).
+// A 404 on any endpoint always means "already gone" (see
+// deleteAssetByKindAndIdentifier's doc comment for why this is
+// unconditional, unlike a standalone `<kind> delete` command).
 //
 // The returned bool follows deleteAssetByKindAndIdentifier's contract: true
-// only when *neither* endpoint had anything left to delete (both 404), so a
-// mixed outcome -- one endpoint genuinely deleted, the other already gone --
-// is reported as a real deletion, matching the fact that something was.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string) (alreadyDeleted bool, err error) {
-	checkRuleErr := apiClient.DeleteCheckRule(ctx, identifier, dataset)
+// only when *nothing* attempted had anything left to delete (every check
+// rule id and the recording rule all 404), so a mixed outcome -- anything
+// genuinely deleted, the rest already gone -- is reported as a real
+// deletion, matching the fact that something was.
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []dash0yaml.PrometheusAlertName) (alreadyDeleted bool, err error) {
+	checkRuleIDs := checkRuleIDsForWholeCRDDeletion(identifier, alerts)
+
+	var lastCheckRuleNotFoundErr error
+	checkRulesAllNotFound := true
+	for _, id := range checkRuleIDs {
+		checkRuleErr := apiClient.DeleteCheckRule(ctx, id, dataset)
+		if checkRuleErr == nil {
+			checkRulesAllNotFound = false
+			continue
+		}
+		if !dash0api.IsNotFound(checkRuleErr) {
+			return false, client.HandleAPIError(checkRuleErr, client.ErrorContext{AssetType: "check rule", AssetID: id})
+		}
+		lastCheckRuleNotFoundErr = checkRuleErr
+	}
+
 	recordingRuleErr := apiClient.DeleteRecordingRule(ctx, identifier, dataset)
-
-	checkRuleNotFound := checkRuleErr != nil && dash0api.IsNotFound(checkRuleErr)
 	recordingRuleNotFound := recordingRuleErr != nil && dash0api.IsNotFound(recordingRuleErr)
-
-	if checkRuleErr != nil && !checkRuleNotFound {
-		ectx := client.ErrorContext{AssetType: "check rule", AssetID: identifier}
-		if client.IsAlreadyDeleted(checkRuleErr, true, ectx) {
-			return true, nil
-		}
-		return false, client.HandleAPIError(checkRuleErr, ectx)
-	}
 	if recordingRuleErr != nil && !recordingRuleNotFound {
-		ectx := client.ErrorContext{AssetType: "recording rule", AssetID: identifier}
-		if client.IsAlreadyDeleted(recordingRuleErr, true, ectx) {
-			return true, nil
-		}
-		return false, client.HandleAPIError(recordingRuleErr, ectx)
+		return false, client.HandleAPIError(recordingRuleErr, client.ErrorContext{AssetType: "recording rule", AssetID: identifier})
 	}
 
-	// "Genuinely gone" means 404 on both endpoints -- neither had anything
-	// for this identifier.
-	if checkRuleNotFound && recordingRuleNotFound {
+	// "Genuinely gone" means 404 on every check-rule id attempted and on
+	// the recording-rule endpoint -- nothing had anything for this CRD.
+	if checkRulesAllNotFound && recordingRuleNotFound {
+		notFoundErr := lastCheckRuleNotFoundErr
+		if notFoundErr == nil {
+			notFoundErr = recordingRuleErr
+		}
 		ectx := client.ErrorContext{AssetType: "PrometheusRule", AssetID: identifier}
-		if client.IsAlreadyDeleted(checkRuleErr, true, ectx) {
+		if client.IsAlreadyDeleted(notFoundErr, true, ectx) {
 			return true, nil
 		}
-		return false, client.HandleAPIError(checkRuleErr, ectx)
+		return false, client.HandleAPIError(notFoundErr, ectx)
 	}
 	return false, nil
+}
+
+// checkRuleIDsForWholeCRDDeletion returns every check-rule id a whole-CRD
+// deletion must attempt: the CRD's own literal identifier for a CRD with
+// zero or one alerting rule (a single-alert CRD's one check rule lives
+// there directly, per composePrometheusRuleNames), or each alert's own
+// derived id (asset.DeriveAlertCheckRuleID) for a CRD with two or more,
+// since none of them live at the literal identifier once derivation kicks
+// in.
+func checkRuleIDsForWholeCRDDeletion(identifier string, alerts []dash0yaml.PrometheusAlertName) []string {
+	if len(alerts) <= 1 {
+		return []string{identifier}
+	}
+	ids := make([]string, len(alerts))
+	for i, alertName := range alerts {
+		ids[i] = asset.DeriveAlertCheckRuleID(identifier, alertName.CheckRuleName())
+	}
+	return ids
 }
 
 // deleteCheckRuleByName resolves a check rule by its exact name (the "<group

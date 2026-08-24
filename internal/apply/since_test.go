@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -395,6 +397,35 @@ func TestSplitMultiDocPath(t *testing.T) {
 		assert.Equal(t, c.wantBase, base, "path %q", c.path)
 		assert.Equal(t, c.wantDocIndex, idx, "path %q", c.path)
 	}
+}
+
+// TestCheckRuleIDsForWholeCRDDeletion_SingleAlertUsesLiteralIdentifier pins
+// that a CRD with zero or one alerting rule keeps using the CRD's own
+// literal identifier for its whole-CRD deletion, unchanged: composePrometheusRuleNames
+// never derives a distinct id for it either, so it lives at that literal id.
+func TestCheckRuleIDsForWholeCRDDeletion_SingleAlertUsesLiteralIdentifier(t *testing.T) {
+	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", nil))
+	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", []dash0yaml.PrometheusAlertName{
+		{GroupName: "g", AlertName: "A"},
+	}))
+}
+
+// TestCheckRuleIDsForWholeCRDDeletion_MultiAlertUsesDerivedIDs is a
+// regression test for a bug where a whole-CRD deletion for a multi-alert
+// CRD only ever targeted the CRD's literal identifier, which -- once
+// composePrometheusRuleNames derives a distinct id per alert for 2+ alerts
+// -- was never where any of the real check rules actually lived. Each
+// alert's own derived id must be targeted instead.
+func TestCheckRuleIDsForWholeCRDDeletion_MultiAlertUsesDerivedIDs(t *testing.T) {
+	ids := checkRuleIDsForWholeCRDDeletion("shared-id", []dash0yaml.PrometheusAlertName{
+		{GroupName: "g", AlertName: "A"},
+		{GroupName: "g", AlertName: "B"},
+	})
+	assert.Equal(t, []string{
+		asset.DeriveAlertCheckRuleID("shared-id", "g - A"),
+		asset.DeriveAlertCheckRuleID("shared-id", "g - B"),
+	}, ids)
+	assert.NotContains(t, ids, "shared-id", "the literal shared id must never be targeted once derivation applies")
 }
 
 // TestResolveDeletionNames_MultiDocumentFile is a regression test for a bug

@@ -734,6 +734,49 @@ spec:
 	}
 }
 
+// TestApply_PrometheusRule_MultiAlertCollidingDerivedIDsFailValidation is a
+// regression test for a bug where two alerts in the same multi-alert CRD
+// whose composed names collide once slugified (e.g. "High CPU" and
+// "High_CPU" both fold to "high-cpu") would derive the identical
+// check-rule id, silently reopening the exact overwrite bug id derivation
+// exists to prevent. This must fail validation before any API call, not
+// silently apply and clobber one alert with the other.
+func TestApply_PrometheusRule_MultiAlertCollidingDerivedIDsFailValidation(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "prometheusrule.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: High CPU
+          expr: cpu > 0.9
+        - alert: High_CPU
+          expr: cpu > 0.8
+`), 0644)
+	require.NoError(t, err)
+
+	// No mock server routes registered at all: validation must fail before
+	// any API call is attempted.
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	cmdErr := cmd.Execute()
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), "g - High CPU")
+	assert.Contains(t, cmdErr.Error(), "g - High_CPU")
+	assert.Empty(t, server.Requests(), "validation must fail before any API call")
+}
+
 func TestApply_PersesDashboard_Created(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

@@ -3,6 +3,7 @@ package asset
 import (
 	"testing"
 
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -173,6 +174,54 @@ func TestSlugify(t *testing.T) {
 	for _, c := range cases {
 		assert.Equal(t, c.want, slugify(c.in), "slugify(%q)", c.in)
 	}
+}
+
+// TestParseCheckRules_CollidingSlugsAreRejected is a regression test for a
+// bug where slugify's punctuation folding let two differently-punctuated
+// alert names in the same multi-alert CRD derive the identical check-rule
+// id (e.g. "High CPU" and "High_CPU" both fold to "high-cpu") -- silently
+// reopening the exact overwrite bug DeriveAlertCheckRuleID exists to
+// prevent, since the derived ids would then collide with each other the
+// same way the CRD's shared id used to collide across all of its alerts.
+func TestParseCheckRules_CollidingSlugsAreRejected(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: app-rules
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: High CPU
+          expr: cpu > 0.9
+        - alert: High_CPU
+          expr: cpu > 0.8
+`)
+	_, err := ParseCheckRules(crd)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "g - High CPU")
+	assert.Contains(t, err.Error(), "g - High_CPU")
+}
+
+// TestCheckAlertNameCollisions_SingleAlertNeverCollides pins that the
+// collision check is a no-op for zero or one alert -- there is nothing to
+// collide with.
+func TestCheckAlertNameCollisions_SingleAlertNeverCollides(t *testing.T) {
+	require.NoError(t, CheckAlertNameCollisions(nil))
+	require.NoError(t, CheckAlertNameCollisions([]dash0yaml.PrometheusAlertName{{GroupName: "g", AlertName: "A"}}))
+}
+
+// TestCheckAlertNameCollisions_DistinctNamesDoNotCollide pins the negative
+// case: alerts whose composed names remain distinct after slugification
+// must not be rejected.
+func TestCheckAlertNameCollisions_DistinctNamesDoNotCollide(t *testing.T) {
+	err := CheckAlertNameCollisions([]dash0yaml.PrometheusAlertName{
+		{GroupName: "g", AlertName: "HighErrorRate"},
+		{GroupName: "g", AlertName: "DiskFull"},
+	})
+	require.NoError(t, err)
 }
 
 // TestParseCheckRules_BooleanLiteralAlertNamePreserved is a regression test

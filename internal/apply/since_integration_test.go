@@ -688,6 +688,99 @@ spec:
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/recording-rules/"+id), "the recording-rules endpoint must still be attempted even for a CRD that never had a recording rule")
 }
 
+// TestApply_Since_PrometheusRuleWholeCRDDeletion_MultiAlertDeletesEachDerivedID
+// is a regression test for a bug where deleting a whole multi-alert
+// PrometheusRule CRD only ever attempted DELETE against the CRD's literal
+// dash0.com/id -- but composePrometheusRuleNames gives each of a
+// multi-alert CRD's check rules its own derived id (asset.
+// DeriveAlertCheckRuleID), never the literal shared id, once there are two
+// or more alerts. The literal-id delete attempt 404s, is silently
+// tolerated as "already deleted", and every real check rule the CRD ever
+// created is left orphaned forever -- exactly the kind of silent data loss
+// the derived-id fix was written to prevent, just moved from create-time
+// collisions to delete-time blind spots.
+func TestApply_Since_PrometheusRuleWholeCRDDeletion_MultiAlertDeletesEachDerivedID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const id = "app-rules"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: `+id+`
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+        - alert: DiskFull
+          expr: disk > 0.9
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add mixed multi-alert rules")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "rules.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove rules.yaml entirely")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	// The CRD's literal shared id was never a real check rule once
+	// derivation kicked in for its 2 alerts: registered to 404, so this
+	// test fails loudly if the buggy code path stops there and reports
+	// success without ever reaching the real, derived-id resources.
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureRecordingRulesNotFound,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "PrometheusRule")
+	assert.Contains(t, output, "deleted")
+
+	highErrorRateID := "app-rules--test-group-higherrorrate"
+	diskFullID := "app-rules--test-group-diskfull"
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+highErrorRateID), "expected a DELETE for the HighErrorRate alert's own derived check-rule id")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+diskFullID), "expected a DELETE for the DiskFull alert's own derived check-rule id")
+
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodDelete && req.Path == "/api/alerting/check-rules/"+id {
+			t.Errorf("must not stop at a DELETE to the CRD's literal shared id -- that was never a real check rule for a multi-alert CRD")
+		}
+	}
+}
+
 func TestApply_Since_MultiDocumentPartialDeletion(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

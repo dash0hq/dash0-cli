@@ -23,6 +23,15 @@ type Deletion struct {
 	// since this identifier was recorded, so the delete dispatch warns
 	// rather than deleting silently.
 	SpamFilterUsesOrigin bool
+	// PrometheusAlerts carries every alerting rule the CRD had at the
+	// "before" snapshot, when Kind is "prometheusrule" (nil for every other
+	// kind, and for a CRD with zero or one alert). A CRD with two or more
+	// alerts has each alert's real check rule living at its own derived id
+	// (asset.DeriveAlertCheckRuleID), not at the CRD's literal Identifier --
+	// the delete dispatch needs this list to compute and delete each of
+	// those derived ids individually, since Identifier alone only ever
+	// named a check rule for a single-alert CRD.
+	PrometheusAlerts []dash0yaml.PrometheusAlertName
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -64,12 +73,16 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if _, stillPresent := after.Identifiers[key]; stillPresent {
 			continue
 		}
-		plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
+		deletion := Deletion{
 			Kind:                 key.Kind,
 			Identifier:           key.Identifier,
 			Path:                 path,
 			SpamFilterUsesOrigin: before.SpamFilterUsesOriginByIdentifier[key.Identifier],
-		})
+		}
+		if key.Kind == "prometheusrule" {
+			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
+		}
+		plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 	}
 
 	// A PrometheusRule CRD that survives (its own identifier is present in

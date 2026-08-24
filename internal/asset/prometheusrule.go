@@ -104,6 +104,9 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 	if err != nil {
 		return err
 	}
+	if err := CheckAlertNameCollisions(names); err != nil {
+		return err
+	}
 	multiAlert := len(names) > 1
 	for i, name := range names {
 		if i >= len(rules) {
@@ -112,18 +115,53 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 		composedName := name.CheckRuleName()
 		rules[i].Name = composedName
 		if multiAlert && rules[i].Id != nil && *rules[i].Id != "" {
-			derived := deriveAlertCheckRuleID(*rules[i].Id, composedName)
+			derived := DeriveAlertCheckRuleID(*rules[i].Id, composedName)
 			rules[i].Id = &derived
 		}
 	}
 	return nil
 }
 
-// deriveAlertCheckRuleID derives a per-alert check-rule identifier for a
+// CheckAlertNameCollisions validates that no two alerting rules in the same
+// PrometheusRule CRD would derive the identical check-rule id.
+// DeriveAlertCheckRuleID folds each alert's composed name through slugify,
+// which collapses punctuation differences (e.g. "High CPU" and "High_CPU"
+// both fold to "high-cpu") -- if that happens, both alerts would upsert to
+// the identical derived id, silently overwriting each other exactly like
+// the collision this derivation exists to prevent in the first place.
+//
+// Called both from composePrometheusRuleNames (so apply's actual dispatch
+// and check-rules create/update, which both go through ParseCheckRules,
+// refuse the CRD) and from apply's own pre-flight validatePrometheusRule
+// (so a multi-document apply run fails before any document is applied, not
+// only once this specific CRD's turn comes up mid-run).
+func CheckAlertNameCollisions(names []dash0yaml.PrometheusAlertName) error {
+	if len(names) < 2 {
+		return nil
+	}
+	seenBySlug := make(map[string]dash0yaml.PrometheusAlertName, len(names))
+	for _, name := range names {
+		slug := slugify(name.CheckRuleName())
+		if existing, ok := seenBySlug[slug]; ok {
+			return fmt.Errorf("alerting rules %q and %q derive the same check-rule id once slugified (%q); rename one of them to make them distinguishable", existing.CheckRuleName(), name.CheckRuleName(), slug)
+		}
+		seenBySlug[slug] = name
+	}
+	return nil
+}
+
+// DeriveAlertCheckRuleID derives a per-alert check-rule identifier for a
 // PrometheusRule CRD with more than one alerting rule, from the CRD's own
 // shared id and the alert's composed name. See composePrometheusRuleNames'
 // doc comment for the full rationale.
-func deriveAlertCheckRuleID(sharedID, composedName string) string {
+//
+// Exported so --since's whole-CRD deletion dispatch (internal/apply/since.go)
+// can compute the exact same derived id per alert when the whole CRD is
+// removed: the check rules that actually exist server-side for a
+// multi-alert CRD live at these derived ids, never at the literal shared
+// id, so deleting the CRD must target each of them individually rather
+// than the shared id alone.
+func DeriveAlertCheckRuleID(sharedID, composedName string) string {
 	return sharedID + "--" + slugify(composedName)
 }
 
@@ -132,6 +170,12 @@ func deriveAlertCheckRuleID(sharedID, composedName string) string {
 // trailing hyphen. Used to fold a human-readable composed check-rule name
 // (e.g. "rule-group - DiskFull") into a predictable, URL-safe identifier
 // fragment (e.g. "rule-group-diskfull").
+//
+// This intentionally does not attempt to make its output collision-free on
+// its own (e.g. "High CPU" and "High_CPU" both fold to "high-cpu") --
+// DeriveAlertCheckRuleID's caller is expected to combine this with a
+// distinguishing prefix. It is not, on its own, a substitute for choosing
+// alert names that remain distinct once punctuation is folded away.
 func slugify(s string) string {
 	var b strings.Builder
 	lastWasHyphen := true // avoid a leading hyphen

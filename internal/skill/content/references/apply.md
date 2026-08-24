@@ -210,6 +210,14 @@ alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
 Check rule "service-alerts - HighLatency" deleted
 ```
 
+Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with:
+
+```bash
+$ dash0 --experimental apply -f rules/ --since HEAD~1 --force
+Check rule "service-alerts - HighLatency" deleted
+Check rule "service-alerts - HighErrorRate" deleted
+```
+
 Recording rules get the symmetric treatment, but at CRD granularity rather than per-record: Dash0 models a CRD's recording rules as a single server-side resource, not one per `record:` entry, so there is no per-record id to delete by the way there is a per-alert composed name.
 Removing the last `record:` entry from a CRD that keeps at least one `alert:` entry (so the CRD's own identifier survives) is detected as a deletion of that recording rule, even though the surviving alerting rule is only ever a plain update:
 

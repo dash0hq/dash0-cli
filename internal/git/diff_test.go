@@ -131,6 +131,46 @@ func TestDiff_PrometheusWholeCRDDeletionSkipsAlertCheck(t *testing.T) {
 	assert.Empty(t, plan.AlertsByName, "whole-CRD deletion must not also be reported as an alert removal")
 }
 
+// TestDiff_PrometheusWholeCRDDeletionCarriesAlertNames is a regression test
+// for a bug where a whole-CRD deletion's Deletion entry carried only the
+// CRD's own identifier, with no way for the delete dispatch to know the
+// CRD's alerts each got their own derived check-rule id (see
+// asset.DeriveAlertCheckRuleID) once the CRD has two or more of them --
+// dispatch had no choice but to (wrongly) delete by the literal identifier
+// alone, missing every alert's real check rule entirely.
+func TestDiff_PrometheusWholeCRDDeletionCarriesAlertNames(t *testing.T) {
+	before := newSnapshot()
+	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	before.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+		{GroupName: "g", AlertName: "A"},
+		{GroupName: "g", AlertName: "B"},
+	}
+
+	after := newSnapshot()
+
+	plan := Diff(before, after)
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, []dash0yaml.PrometheusAlertName{
+		{GroupName: "g", AlertName: "A"},
+		{GroupName: "g", AlertName: "B"},
+	}, plan.ByIdentifier[0].PrometheusAlerts)
+}
+
+// TestDiff_NonPrometheusRuleDeletionHasNoAlerts pins that PrometheusAlerts
+// is only ever populated for kind "prometheusrule", never accidentally
+// carried over for an unrelated kind that happens to share PrometheusAlertsByIdentifier's
+// map (it doesn't, but the zero-value contract is worth pinning directly).
+func TestDiff_NonPrometheusRuleDeletionHasNoAlerts(t *testing.T) {
+	before := newSnapshot()
+	before.Identifiers[IdentifierKey{Kind: "dashboard", Identifier: "id-1"}] = "dashboard.yaml"
+
+	after := newSnapshot()
+
+	plan := Diff(before, after)
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Empty(t, plan.ByIdentifier[0].PrometheusAlerts)
+}
+
 func TestDiff_NoIdentifierFileDeleted(t *testing.T) {
 	before := newSnapshot()
 	before.NoIdentifier["orphan.yaml"] = NoIdentifierDoc{Kind: "dashboard", FilePath: "orphan.yaml"}
