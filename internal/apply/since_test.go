@@ -286,6 +286,53 @@ spec:
 	assert.Empty(t, dp.warning)
 }
 
+// TestComputeDeletionPlan_DanglingSymlinkTargetIsTreatedAsMissing is a
+// regression test for a bug where a --since target that is a dangling
+// symlink (the symlink itself exists, but whatever it points at doesn't)
+// was treated inconsistently across the three places that ask "does -f's
+// target exist": runApply's os.Stat(flags.File) and BuildSnapshotFromDisk's
+// os.Stat(scope) both follow symlinks, so both see it as "gone" and route
+// to the all-deletions-tolerant path -- but nearestExistingAncestor used
+// os.Lstat, which sees the dangling symlink itself as "existing" and stops
+// there, so computeDeletionPlan then failed outright trying to resolve it
+// as a real path instead of taking the same tolerant path the other two
+// checks would.
+func TestComputeDeletionPlan_DanglingSymlinkTargetIsTreatedAsMissing(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dashboards/dashboard.yaml", `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: my-dashboard
+  dash0Extensions:
+    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+spec:
+  display:
+    name: My Dashboard
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	target := filepath.Join(dir, "dashboards")
+	require.NoError(t, os.RemoveAll(target))
+	// A dangling symlink at the target's own path -- the symlink itself
+	// exists, but its destination never did.
+	require.NoError(t, os.Symlink(filepath.Join(dir, "never-existed"), target))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "replace dashboards with a dangling symlink")
+
+	flags := &applyFlags{File: target, Since: before}
+	dp, err := computeDeletionPlan(context.Background(), flags)
+	require.NoError(t, err, "a dangling symlink target must be treated the same as a missing one, not fail to resolve")
+	require.Len(t, dp.plan.ByIdentifier, 1)
+	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.plan.ByIdentifier[0].Identifier)
+}
+
 // TestComputeDeletionPlan_SubdirectoryRenamedWithinScope pins the documented
 // contract that deletion detection is by identifier, never by file path
 // (see "Deletion detection is by identifier" in docs/commands.md's --since
