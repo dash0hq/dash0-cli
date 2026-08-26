@@ -9,8 +9,15 @@
   installShellFiles,
   stdenv,
   # Build metadata. `flake.nix` overrides these with values derived from the
-  # flake source; the defaults keep a bare `nix-build ./nix/package.nix` working.
-  version ? "1.15.0",
+  # flake source; the defaults keep a bare `nix-build ./nix/package.nix` (and
+  # default.nix) working.
+  #
+  # The version default is a placeholder rather than a real release number on
+  # purpose. Nothing keeps it in step with the version in flake.nix, so any
+  # real number here goes stale at the next release and then silently mislabels
+  # every caller that does not pass one -- which is how the overlay ended up
+  # shipping a "1.15.0" build of 1.16.5 source.
+  version ? "0.0.0-dev",
   date ? "1970-01-01T00:00:00Z",
 }:
 

@@ -70,7 +70,13 @@
       # Overlay so downstreams can pull `dash0` into their own nixpkgs instance:
       #   nixpkgs.overlays = [ dash0-cli.overlays.default ];
       overlays.default = final: _prev: {
-        dash0 = final.callPackage ./nix/package.nix { };
+        # `inherit version date` rather than an empty argument set: without it
+        # the package falls back to the placeholder defaults in
+        # nix/package.nix, so the overlay and packages.<system>.dash0 become
+        # two different derivations of the same source. A config that uses
+        # both this overlay and homeManagerModules.default then builds the CLI
+        # twice per rebuild, under two different version strings.
+        dash0 = final.callPackage ./nix/package.nix { inherit version date; };
       };
 
       # Home Manager module for declarative per-user profiles:
