@@ -3,9 +3,11 @@ package apply
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -236,4 +238,93 @@ func TestRunDryRun_TextMode_Unaffected(t *testing.T) {
 	assert.Contains(t, stdout, "Dry run: 1 document from 1 file validated")
 	assert.Contains(t, stdout, `Apply Dashboard "Kept Dashboard" (11111111-1111-1111-1111-111111111111)`)
 	assert.False(t, bytes.HasPrefix([]byte(stdout), []byte("[")), "text mode must not emit JSON")
+}
+
+// prometheusRuleCRDForDryRun is a two-alert CRD whose dash0.com/id label is
+// what buildDryRunRows keys crdFileByIdentifier on, so an alert deletion
+// (which carries only its surviving CRD's identifier, never a file path)
+// lands under the same file entry as the CRD's own "apply" row.
+const prometheusRuleCRDForDryRun = `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+`
+
+// TestRunDryRun_TextMode_PrometheusRuleAlertPartialDeletion is the --dry-run
+// analogue of TestApply_Since_PrometheusRuleAlertPartialDeletion: one alert
+// removed from a CRD that otherwise survives. The surviving CRD's "apply"
+// row and the removed alert's "delete" row must group under the same file,
+// and the delete line must carry the detail suffix naming which CRD the
+// alert was removed from -- without it, "Delete Check rule "test-group -
+// DiskFull"" gives no hint that the CRD itself is being kept.
+func TestRunDryRun_TextMode_PrometheusRuleAlertPartialDeletion(t *testing.T) {
+	withAgentMode(t, false)
+
+	documents := []assetDocument{
+		{kind: "PrometheusRule", name: "test-rules", filePath: "rules.yaml", raw: []byte(prometheusRuleCRDForDryRun)},
+	}
+	dp := &deletionPlan{
+		plan: gitutil.DeletionPlan{
+			AlertsByName: []gitutil.AlertDeletion{
+				{
+					CRDIdentifier:       "shared-id",
+					PrometheusAlertName: asset.PrometheusAlertName{GroupName: "test-group", AlertName: "DiskFull"},
+				},
+			},
+		},
+	}
+
+	stdout := testutil.CaptureStdout(t, func() {
+		require.NoError(t, runDryRun(documents, true, "dir", "HEAD~1", dp))
+	})
+
+	assert.Contains(t, stdout, "1 deletion pending due to --since 'HEAD~1'")
+	// A single file heading, with both rows nested under it.
+	assert.Equal(t, 1, strings.Count(stdout, "\n  rules.yaml\n"), "both rows must group under the surviving CRD's own file")
+	assert.Contains(t, stdout, `    * Apply PrometheusRule "test-rules" (shared-id)`)
+	assert.Contains(t, stdout, `    * Delete Check rule "test-group - DiskFull" (alert removed from PrometheusRule shared-id)`)
+}
+
+// TestRunDryRun_JSON_PrometheusRuleAlertPartialDeletion pins the agent-mode
+// JSON for the same case. The detail suffix is text-only (dryRunChangeJSON
+// has no field for it), so the JSON's originOrId is the surviving CRD's
+// identifier -- an agent must not read that as "the CRD is being deleted",
+// which is why the change's name is the alert's composed check-rule name and
+// its kind is CheckRule, not PrometheusRule.
+func TestRunDryRun_JSON_PrometheusRuleAlertPartialDeletion(t *testing.T) {
+	withAgentMode(t, true)
+
+	documents := []assetDocument{
+		{kind: "PrometheusRule", name: "test-rules", filePath: "rules.yaml", raw: []byte(prometheusRuleCRDForDryRun)},
+	}
+	dp := &deletionPlan{
+		plan: gitutil.DeletionPlan{
+			AlertsByName: []gitutil.AlertDeletion{
+				{
+					CRDIdentifier:       "shared-id",
+					PrometheusAlertName: asset.PrometheusAlertName{GroupName: "test-group", AlertName: "DiskFull"},
+				},
+			},
+		},
+	}
+
+	stdout := testutil.CaptureStdout(t, func() {
+		require.NoError(t, runDryRun(documents, true, "dir", "HEAD~1", dp))
+	})
+
+	var out []dryRunFileJSON
+	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
+	require.Len(t, out, 1, "the alert deletion must join its surviving CRD's file entry")
+	assert.Equal(t, "rules.yaml", out[0].Path)
+	require.Len(t, out[0].Changes, 2)
+	assert.Equal(t, dryRunChangeJSON{Op: "apply", Kind: "PrometheusRule", Name: "test-rules", OriginOrID: "shared-id"}, out[0].Changes[0])
+	assert.Equal(t, dryRunChangeJSON{Op: "delete", Kind: "Check rule", Name: "test-group - DiskFull", OriginOrID: "shared-id", Since: "HEAD~1"}, out[0].Changes[1])
 }
