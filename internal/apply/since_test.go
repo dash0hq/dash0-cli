@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	gitutil "github.com/dash0hq/dash0-cli/internal/git"
@@ -452,7 +451,7 @@ func TestSplitMultiDocPath(t *testing.T) {
 // never derives a distinct id for it either, so it lives at that literal id.
 func TestCheckRuleIDsForWholeCRDDeletion_SingleAlertUsesLiteralIdentifier(t *testing.T) {
 	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", nil))
-	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", []dash0yaml.PrometheusAlertName{
+	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 	}))
 }
@@ -464,7 +463,7 @@ func TestCheckRuleIDsForWholeCRDDeletion_SingleAlertUsesLiteralIdentifier(t *tes
 // -- was never where any of the real check rules actually lived. Each
 // alert's own derived id must be targeted instead.
 func TestCheckRuleIDsForWholeCRDDeletion_MultiAlertUsesDerivedIDs(t *testing.T) {
-	ids := checkRuleIDsForWholeCRDDeletion("shared-id", []dash0yaml.PrometheusAlertName{
+	ids := checkRuleIDsForWholeCRDDeletion("shared-id", []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 		{GroupName: "g", AlertName: "B"},
 	})

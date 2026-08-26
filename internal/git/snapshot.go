@@ -52,7 +52,7 @@ type Snapshot struct {
 	// PrometheusAlertsByIdentifier maps a PrometheusRule CRD's identifier to
 	// the (group, alert) pairs it contains, for detecting an individual
 	// alerting rule removed from a CRD that otherwise still exists.
-	PrometheusAlertsByIdentifier map[string][]dash0yaml.PrometheusAlertName
+	PrometheusAlertsByIdentifier map[string][]asset.PrometheusAlertName
 
 	// PrometheusRecordingRoleByIdentifier maps a PrometheusRule CRD's
 	// identifier to whether it has at least one recording rule. Recorded for
@@ -93,7 +93,7 @@ func newSnapshot() Snapshot {
 	return Snapshot{
 		Identifiers:                         map[IdentifierKey]string{},
 		NoIdentifier:                        map[string]NoIdentifierDoc{},
-		PrometheusAlertsByIdentifier:        map[string][]dash0yaml.PrometheusAlertName{},
+		PrometheusAlertsByIdentifier:        map[string][]asset.PrometheusAlertName{},
 		PrometheusRecordingRoleByIdentifier: map[string]bool{},
 		SpamFilterUsesOriginByIdentifier:    map[string]bool{},
 		Paths:                               map[string]bool{},
@@ -261,7 +261,7 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 			continue
 		}
 
-		identifier, err := dash0yaml.ExtractIdentifier(docBytes)
+		identifier, err := asset.ExtractIdentifier(docBytes)
 		if err != nil {
 			return fmt.Errorf("failed to extract identifier: %w", err)
 		}

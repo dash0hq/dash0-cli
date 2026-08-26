@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
@@ -456,7 +455,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // rule id and the recording rule all 404), so a mixed outcome -- anything
 // genuinely deleted, the rest already gone -- is reported as a real
 // deletion, matching the fact that something was.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []dash0yaml.PrometheusAlertName) (alreadyDeleted bool, err error) {
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []asset.PrometheusAlertName) (alreadyDeleted bool, err error) {
 	checkRuleIDs := checkRuleIDsForWholeCRDDeletion(identifier, alerts)
 
 	var lastCheckRuleNotFoundErr error
@@ -502,7 +501,7 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 // derived id (asset.DeriveAlertCheckRuleID) for a CRD with two or more,
 // since none of them live at the literal identifier once derivation kicks
 // in.
-func checkRuleIDsForWholeCRDDeletion(identifier string, alerts []dash0yaml.PrometheusAlertName) []string {
+func checkRuleIDsForWholeCRDDeletion(identifier string, alerts []asset.PrometheusAlertName) []string {
 	if len(alerts) <= 1 {
 		return []string{identifier}
 	}

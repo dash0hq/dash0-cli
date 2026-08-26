@@ -3,7 +3,7 @@ package git
 import (
 	"testing"
 
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,14 +37,14 @@ func TestDiff_NoChangeWhenIdentifierSurvives(t *testing.T) {
 func TestDiff_PrometheusAlertPartialRemoval(t *testing.T) {
 	before := newSnapshot()
 	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
-	before.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+	before.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 		{GroupName: "g", AlertName: "B"},
 	}
 
 	after := newSnapshot()
 	after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
-	after.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+	after.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 	}
 
@@ -119,7 +119,7 @@ func TestDiff_PrometheusWholeCRDDeletionSkipsRecordingRoleCheck(t *testing.T) {
 func TestDiff_PrometheusWholeCRDDeletionSkipsAlertCheck(t *testing.T) {
 	before := newSnapshot()
 	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
-	before.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+	before.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 	}
 
@@ -141,7 +141,7 @@ func TestDiff_PrometheusWholeCRDDeletionSkipsAlertCheck(t *testing.T) {
 func TestDiff_PrometheusWholeCRDDeletionCarriesAlertNames(t *testing.T) {
 	before := newSnapshot()
 	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
-	before.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+	before.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 		{GroupName: "g", AlertName: "B"},
 	}
@@ -150,7 +150,7 @@ func TestDiff_PrometheusWholeCRDDeletionCarriesAlertNames(t *testing.T) {
 
 	plan := Diff(before, after)
 	require.Len(t, plan.ByIdentifier, 1)
-	assert.Equal(t, []dash0yaml.PrometheusAlertName{
+	assert.Equal(t, []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 		{GroupName: "g", AlertName: "B"},
 	}, plan.ByIdentifier[0].PrometheusAlerts)
@@ -284,11 +284,11 @@ func TestDiff_AlertsByNameSortOrder(t *testing.T) {
 	before := newSnapshot()
 	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules1.yaml"
 	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-2"}] = "rules2.yaml"
-	before.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+	before.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "B"},
 		{GroupName: "g", AlertName: "A"},
 	}
-	before.PrometheusAlertsByIdentifier["crd-2"] = []dash0yaml.PrometheusAlertName{
+	before.PrometheusAlertsByIdentifier["crd-2"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "Z"},
 		{GroupName: "g", AlertName: "A"},
 	}
@@ -296,7 +296,7 @@ func TestDiff_AlertsByNameSortOrder(t *testing.T) {
 	after := newSnapshot()
 	after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules1.yaml"
 	after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-2"}] = "rules2.yaml"
-	after.PrometheusAlertsByIdentifier["crd-1"] = []dash0yaml.PrometheusAlertName{
+	after.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 	}
 	after.PrometheusAlertsByIdentifier["crd-2"] = nil

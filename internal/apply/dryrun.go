@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 )
@@ -70,7 +69,7 @@ func buildDryRunRows(documents []assetDocument, dp *deletionPlan) (rowsByFile ma
 	// own validated entry.
 	crdFileByIdentifier := map[string]string{}
 	for _, doc := range documents {
-		identifier, err := dash0yaml.ExtractIdentifier(doc.raw)
+		identifier, err := asset.ExtractIdentifier(doc.raw)
 		if err != nil || identifier == "" {
 			identifier = doc.id
 		}

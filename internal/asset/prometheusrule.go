@@ -135,11 +135,11 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 // refuse the CRD) and from apply's own pre-flight validatePrometheusRule
 // (so a multi-document apply run fails before any document is applied, not
 // only once this specific CRD's turn comes up mid-run).
-func CheckAlertNameCollisions(names []dash0yaml.PrometheusAlertName) error {
+func CheckAlertNameCollisions(names []PrometheusAlertName) error {
 	if len(names) < 2 {
 		return nil
 	}
-	seenBySlug := make(map[string]dash0yaml.PrometheusAlertName, len(names))
+	seenBySlug := make(map[string]PrometheusAlertName, len(names))
 	for _, name := range names {
 		slug := slugify(name.CheckRuleName())
 		if existing, ok := seenBySlug[slug]; ok {
@@ -210,7 +210,7 @@ func slugify(s string) string {
 // this function via internal/git/snapshot.go instead of
 // dash0-api-client-go/yaml's identically-named, differently-implemented
 // ExtractPrometheusAlertNames for exactly this reason).
-func ExtractPrometheusAlertNames(data []byte) ([]dash0yaml.PrometheusAlertName, error) {
+func ExtractPrometheusAlertNames(data []byte) ([]PrometheusAlertName, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
@@ -223,7 +223,7 @@ func ExtractPrometheusAlertNames(data []byte) ([]dash0yaml.PrometheusAlertName, 
 		return nil, nil
 	}
 
-	var names []dash0yaml.PrometheusAlertName
+	var names []PrometheusAlertName
 	for _, group := range groups.Content {
 		groupName := ""
 		if n := yamlMapValue(group, "name"); n != nil {
@@ -238,7 +238,7 @@ func ExtractPrometheusAlertNames(data []byte) ([]dash0yaml.PrometheusAlertName, 
 			if alert == nil || alert.Value == "" {
 				continue
 			}
-			names = append(names, dash0yaml.PrometheusAlertName{GroupName: groupName, AlertName: alert.Value})
+			names = append(names, PrometheusAlertName{GroupName: groupName, AlertName: alert.Value})
 		}
 	}
 	return names, nil

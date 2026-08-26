@@ -3,7 +3,7 @@ package git
 import (
 	"sort"
 
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 )
 
 // Deletion is one asset --since determined must be deleted: its identifier
@@ -31,7 +31,7 @@ type Deletion struct {
 	// the delete dispatch needs this list to compute and delete each of
 	// those derived ids individually, since Identifier alone only ever
 	// named a check rule for a single-alert CRD.
-	PrometheusAlerts []dash0yaml.PrometheusAlertName
+	PrometheusAlerts []asset.PrometheusAlertName
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -43,7 +43,7 @@ type AlertDeletion struct {
 	// only — dispatch resolves the check rule to delete by name (see
 	// PrometheusAlertName.CheckRuleName), not by this identifier.
 	CRDIdentifier string
-	dash0yaml.PrometheusAlertName
+	asset.PrometheusAlertName
 }
 
 // DeletionPlan is the result of diffing two Snapshots: everything --since
@@ -125,7 +125,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			// above.
 			continue
 		}
-		afterSet := make(map[dash0yaml.PrometheusAlertName]bool, len(afterAlerts))
+		afterSet := make(map[asset.PrometheusAlertName]bool, len(afterAlerts))
 		for _, name := range afterAlerts {
 			afterSet[name] = true
 		}

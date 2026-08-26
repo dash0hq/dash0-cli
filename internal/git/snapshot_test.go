@@ -63,7 +63,7 @@ data:
 // for a bug where a document whose kind Dash0 doesn't recognize (e.g. a
 // stray Kubernetes ConfigMap sitting in a scanned scope, unrelated to any
 // Dash0 asset) hard-failed the whole snapshot build via
-// dash0yaml.ExtractIdentifier's "unsupported kind" error, masking whatever
+// asset.ExtractIdentifier's "unsupported kind" error, masking whatever
 // real Dash0 deletions --since should have detected in the same scope.
 func TestBuildSnapshotFromRef_UnrecognizedKindIsTolerated(t *testing.T) {
 	repo := testRepo(t)

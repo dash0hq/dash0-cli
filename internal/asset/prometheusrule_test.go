@@ -3,7 +3,6 @@ package asset
 import (
 	"testing"
 
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -210,14 +209,14 @@ spec:
 // collide with.
 func TestCheckAlertNameCollisions_SingleAlertNeverCollides(t *testing.T) {
 	require.NoError(t, CheckAlertNameCollisions(nil))
-	require.NoError(t, CheckAlertNameCollisions([]dash0yaml.PrometheusAlertName{{GroupName: "g", AlertName: "A"}}))
+	require.NoError(t, CheckAlertNameCollisions([]PrometheusAlertName{{GroupName: "g", AlertName: "A"}}))
 }
 
 // TestCheckAlertNameCollisions_DistinctNamesDoNotCollide pins the negative
 // case: alerts whose composed names remain distinct after slugification
 // must not be rejected.
 func TestCheckAlertNameCollisions_DistinctNamesDoNotCollide(t *testing.T) {
-	err := CheckAlertNameCollisions([]dash0yaml.PrometheusAlertName{
+	err := CheckAlertNameCollisions([]PrometheusAlertName{
 		{GroupName: "g", AlertName: "HighErrorRate"},
 		{GroupName: "g", AlertName: "DiskFull"},
 	})
