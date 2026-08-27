@@ -115,7 +115,7 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 			}
 			flags.SinceFlagSet = cmd.Flags().Changed("since")
 			if flags.SinceFlagSet && flags.File == "-" {
-				return fmt.Errorf("--since '%s' cannot be used with -f - (stdin); it needs a file or directory path to compare against git history", flags.Since)
+				return fmt.Errorf("--since '%s' cannot be used with -f - (stdin)\nHint: --since needs a file or directory path to compare against git history; pass -f <path> instead", flags.Since)
 			}
 			cmd.SilenceUsage = true
 			return runApply(cmd.Context(), &flags)

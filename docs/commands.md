@@ -1046,15 +1046,23 @@ A ref written as `<base>~N` or `<base>^N` (including the bare `<base>~`/`<base>^
 ```bash
 $ dash0 --experimental apply -f dashboards/ --since HEAD~1 --dry-run
 Error: --since 'HEAD~1' could not be resolved: "HEAD" has only 1 commit of history, not enough for "HEAD~1" to resolve 1 commit further back
+Hint: pass a ref that exists this far back in the repository's history, or skip --since for this invocation
 ```
 
-Any other unresolvable ref (a genuine typo, a too-shallow clone) still surfaces the generic suggestion instead, since git's own error text for those cases doesn't distinguish the reason on its own.
+Any other unresolvable ref (a genuine typo, a too-shallow clone) still surfaces the generic suggestion instead, since git's own error text for those cases doesn't distinguish the reason on its own:
+
+```bash
+$ dash0 --experimental apply -f dashboards/ --since bogus-ref --dry-run
+Error: --since 'bogus-ref' could not be resolved
+Hint: check the ref for a typo; if this is a shallow clone (actions/checkout defaults to fetch-depth: 1), re-run the checkout with fetch-depth: 0 so the ref's history is available
+```
 
 `-f`'s target not being inside a git repository at all gets a direct, single-sentence error rather than git's own nested plumbing failure:
 
 ```bash
 $ dash0 --experimental apply -f /tmp/assets/ --since HEAD~1 --dry-run
 Error: --since 'HEAD~1' requires /tmp/assets/ to be inside a git repository, but it is not (no .git found there or in any parent directory)
+Hint: point -f at a path inside the repository that tracks these assets, or drop --since to apply without deletion detection
 ```
 
 A `--since` ref that resolves to a real commit but is not an ancestor of the current commit — the result of a force-push or history rewrite on the tracked branch — prints a warning naming the likely cause, then goes through the same per-asset confirmation as any other deletion.
@@ -1085,6 +1093,7 @@ A document removed from git history with no `dash0.com/id` or `dash0.com/origin`
 $ dash0 --experimental apply -f dashboards/ --since HEAD~1
 Error: --since 'HEAD~1' found 1 document deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:
   removed.yaml
+Hint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation
 ```
 
 For a `PrometheusRule` CRD, identity is CRD-level: removing one alerting rule while others remain in the same CRD is detected too, resolved by its composed check-rule name (`<group name> - <alert name>`) rather than by the CRD's shared identifier, since there is no per-alert id to delete by:

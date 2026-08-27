@@ -595,7 +595,7 @@ func TestComputeDeletionPlan_UnresolvableRef(t *testing.T) {
 	_, err := computeDeletionPlan(context.Background(), flags)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not be resolved")
-	assert.Contains(t, err.Error(), "check for a typo, or a too-shallow clone", "a genuine typo must still get the generic suggestions")
+	assert.Contains(t, err.Error(), "\nHint: check the ref for a typo", "a genuine typo must still get the generic suggestions, as an agent-mode-parseable hint")
 }
 
 // TestComputeDeletionPlan_NotAGitRepository is a regression test for a bug
@@ -635,7 +635,7 @@ func TestComputeDeletionPlan_InsufficientHistory(t *testing.T) {
 	_, err := computeDeletionPlan(context.Background(), flags)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "1 commit")
-	assert.NotContains(t, err.Error(), "check for a typo, or a too-shallow clone", "the generic suggestions don't apply here and must not be shown")
+	assert.NotContains(t, err.Error(), "check the ref for a typo", "the generic suggestions don't apply here and must not be shown")
 }
 
 func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {

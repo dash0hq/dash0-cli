@@ -102,7 +102,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	repoRoot, err := repo.Root(ctx)
 	if err != nil {
 		if gitutil.IsNotAGitRepository(err) {
-			return nil, fmt.Errorf("--since '%s' requires %s to be inside a git repository, but it is not (no .git found there or in any parent directory)", flags.Since, flags.File)
+			return nil, fmt.Errorf("--since '%s' requires %s to be inside a git repository, but it is not (no .git found there or in any parent directory)\nHint: point -f at a path inside the repository that tracks these assets, or drop --since to apply without deletion detection", flags.Since, flags.File)
 		}
 		return nil, fmt.Errorf("--since '%s' requires %s to be inside a git repository: %w", flags.Since, flags.File, err)
 	}
@@ -123,9 +123,9 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	var warning string
 	switch refState {
 	case gitutil.RefEmpty:
-		return nil, fmt.Errorf("--since '%s' resolved to an empty ref; there is no prior state to compare against (this can happen when a CI-provided ref variable is unset — check the workflow's before/after ref inputs)", flags.Since)
+		return nil, fmt.Errorf("--since '%s' resolved to an empty ref; there is no prior state to compare against\nHint: a CI-provided ref variable is likely unset (e.g. github.event.before on a workflow_dispatch or schedule trigger); skip --since for this invocation, or pass an explicit ref", flags.Since)
 	case gitutil.RefAllZeros:
-		return nil, fmt.Errorf("--since '%s' resolved to git's all-zeros SHA (%s), meaning there is no prior state to compare against (some CI systems report this value for a ref's first push)", flags.Since, gitutil.AllZerosSHA)
+		return nil, fmt.Errorf("--since '%s' resolved to git's all-zeros SHA (%s), meaning there is no prior state to compare against\nHint: some CI systems report this value for a branch's first push; skip --since for this invocation, or pass an explicit ref", flags.Since, gitutil.AllZerosSHA)
 	case gitutil.RefUnresolvable:
 		// Best-effort: a simple "<base>~N"/"<base>^N" ref whose base
 		// resolves fine but doesn't have N commits of history behind it
@@ -133,9 +133,9 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 		// specific reason instead of the generic typo-or-shallow-clone
 		// guess, neither of which applies to that case.
 		if reason := repo.ExplainUnresolvableRef(ctx, flags.Since); reason != "" {
-			return nil, fmt.Errorf("--since '%s' could not be resolved: %s", flags.Since, reason)
+			return nil, fmt.Errorf("--since '%s' could not be resolved: %s\nHint: pass a ref that exists this far back in the repository's history, or skip --since for this invocation", flags.Since, reason)
 		}
-		return nil, fmt.Errorf("--since '%s' could not be resolved (check for a typo, or a too-shallow clone missing the needed history)", flags.Since)
+		return nil, fmt.Errorf("--since '%s' could not be resolved\nHint: check the ref for a typo; if this is a shallow clone (actions/checkout defaults to fetch-depth: 1), re-run the checkout with fetch-depth: 0 so the ref's history is available", flags.Since)
 	case gitutil.RefResolvedNonAncestor:
 		// The confirmation for this case is deliberately NOT done here: doing
 		// so would abort the entire apply run (including ordinary, unrelated
@@ -178,7 +178,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 
 	plan := gitutil.Diff(before, after)
 	if len(plan.NoIdentifier) > 0 {
-		return nil, fmt.Errorf("--since '%s' found %s deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:\n  %s",
+		return nil, fmt.Errorf("--since '%s' found %s deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
 			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
 	}
 
