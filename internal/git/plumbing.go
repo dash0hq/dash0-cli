@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dash0hq/dash0-cli/internal/asset"
 )
@@ -128,6 +129,30 @@ func (r Repo) ReadFileAtRef(ctx context.Context, ref, path string) ([]byte, erro
 		return nil, fmt.Errorf("failed to read %s at %s: %w", path, ref, err)
 	}
 	return out, nil
+}
+
+// readFilesAtRef reads every path at ref with bounded concurrency. One
+// cat-file subprocess per file dominates snapshot build time (~9ms of spawn
+// each), so a few hundred assets otherwise cost seconds of process startup.
+func (r Repo) readFilesAtRef(ctx context.Context, ref string, paths []string) ([][]byte, error) {
+	contents := make([][]byte, len(paths))
+	errs := make([]error, len(paths))
+	sem := make(chan struct{}, 16)
+	var wg sync.WaitGroup
+	for i, path := range paths {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			contents[i], errs[i] = r.ReadFileAtRef(ctx, ref, path)
+		})
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return contents, nil
 }
 
 // IsTreeAtRef runs `git cat-file -t <ref>:<path>` and reports whether path

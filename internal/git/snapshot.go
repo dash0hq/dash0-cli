@@ -110,15 +110,16 @@ func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string) (Sn
 		return Snapshot{}, err
 	}
 
+	contents, err := repo.readFilesAtRef(ctx, ref, files)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
 	snap := newSnapshot()
-	for _, path := range files {
+	for i, path := range files {
 		snap.Paths[path] = true
-		data, err := repo.ReadFileAtRef(ctx, ref, path)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		snap.RawContent[path] = data
-		if err := ingestDocuments(&snap, path, data); err != nil {
+		snap.RawContent[path] = contents[i]
+		if err := ingestDocuments(&snap, path, contents[i]); err != nil {
 			return Snapshot{}, fmt.Errorf("%s at %s: %w", path, ref, err)
 		}
 	}
