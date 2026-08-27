@@ -112,6 +112,19 @@ func buildDryRunRows(documents []assetDocument, dp *deletionPlan) (rowsByFile ma
 	return rowsByFile, files, validatedFileSet
 }
 
+// flattenSorted collapses per-file rows into one list sorted by originOrID,
+// for the single-file -f target both renderers report flat: there is no real
+// per-file grouping to show, so the file boundaries buildDryRunRows sorted
+// within are dropped and the rows re-sorted as a whole.
+func flattenSorted(rowsByFile map[string][]dryRunRow, files []string) []dryRunRow {
+	var flat []dryRunRow
+	for _, f := range files {
+		flat = append(flat, rowsByFile[f]...)
+	}
+	sort.SliceStable(flat, func(i, j int) bool { return flat[i].originOrID < flat[j].originOrID })
+	return flat
+}
+
 // runDryRun renders --dry-run's output: validation results, merged with
 // --since's deletion plan when dp is non-nil. Emits agent-mode JSON when
 // active, plain text otherwise.
@@ -146,12 +159,7 @@ func renderDryRunText(rowsByFile map[string][]dryRunRow, files []string, validat
 	}
 
 	if !fromDirectory {
-		var flat []dryRunRow
-		for _, f := range files {
-			flat = append(flat, rowsByFile[f]...)
-		}
-		sort.SliceStable(flat, func(i, j int) bool { return flat[i].originOrID < flat[j].originOrID })
-		for _, r := range flat {
+		for _, r := range flattenSorted(rowsByFile, files) {
 			fmt.Printf("  * %s\n", renderDryRunLine(r))
 		}
 		return
@@ -227,12 +235,7 @@ func renderDryRunJSON(rowsByFile map[string][]dryRunRow, files []string, fromDir
 
 	out := []dryRunFileJSON{}
 	if !fromDirectory {
-		var flat []dryRunRow
-		for _, f := range files {
-			flat = append(flat, rowsByFile[f]...)
-		}
-		sort.SliceStable(flat, func(i, j int) bool { return flat[i].originOrID < flat[j].originOrID })
-		out = append(out, dryRunFileJSON{Path: fileArg, Changes: toChanges(flat)})
+		out = append(out, dryRunFileJSON{Path: fileArg, Changes: toChanges(flattenSorted(rowsByFile, files))})
 	} else {
 		for _, f := range files {
 			out = append(out, dryRunFileJSON{Path: f, Changes: toChanges(rowsByFile[f])})
