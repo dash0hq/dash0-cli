@@ -191,3 +191,32 @@ func TestIsNotAGitRepository_OtherErrorsReturnFalse(t *testing.T) {
 	assert.False(t, IsNotAGitRepository(nil))
 	assert.False(t, IsNotAGitRepository(errors.New("some other failure")))
 }
+
+// TestListYAMLFilesAtRef_PathsGitWouldMangle covers the paths that only
+// survive with -z. Non-ASCII is the reported regression: git C-quoted it, the
+// trailing quote failed the extension check, and the deletion went undetected.
+// The other two are why -z beats core.quotePath=false, which fixes neither.
+//
+// ListYAMLFilesAtRef sorts, so each case's files double as its expectation.
+func TestListYAMLFilesAtRef_PathsGitWouldMangle(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files []string
+	}{
+		{"non-ASCII bytes, which git C-quotes", []string{"café.yaml", "plain.yaml", "日本語/ビュー.yaml"}},
+		{"a newline, which splits one path into two", []string{"we\nird.yaml"}},
+		{"a leading space, which per-line trimming eats", []string{" lead.yaml"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := testRepo(t)
+			for _, f := range tc.files {
+				writeFile(t, repo.Dir, f, "kind: View\n")
+			}
+			commitAll(t, repo.Dir, "add files")
+
+			files, err := repo.ListYAMLFilesAtRef(context.Background(), "HEAD", "")
+			require.NoError(t, err)
+			assert.Equal(t, tc.files, files)
+		})
+	}
+}

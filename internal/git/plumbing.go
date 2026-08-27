@@ -149,7 +149,7 @@ func (r Repo) IsTreeAtRef(ctx context.Context, ref, path string) (bool, error) {
 	return strings.TrimSpace(string(out)) == "tree", nil
 }
 
-// ListYAMLFilesAtRef runs `git ls-tree -r --name-only <ref> [-- <scope>]`,
+// ListYAMLFilesAtRef runs `git ls-tree -r -z --name-only <ref> [-- <scope>]`,
 // returning every .yaml/.yml file at that ref within scope (a repo-relative
 // directory or file path; empty scope lists the whole tree). Hidden files
 // and directories (any path component starting with ".") are skipped,
@@ -168,7 +168,9 @@ func (r Repo) IsTreeAtRef(ctx context.Context, ref, path string) (bool, error) {
 // must be scanned by --since the same way it's read by every other apply
 // path, not silently excluded from both snapshots because of its extension.
 func (r Repo) ListYAMLFilesAtRef(ctx context.Context, ref, scope string) ([]string, error) {
-	args := []string{"ls-tree", "-r", "--name-only", ref}
+	// -z is load-bearing: without it git C-quotes a non-ASCII path
+	// ("a/caf\303\251.yaml") and the trailing quote fails IsYAMLFile.
+	args := []string{"ls-tree", "-r", "-z", "--name-only", ref}
 	if scope != "" {
 		args = append(args, "--", scope)
 	}
@@ -178,8 +180,7 @@ func (r Repo) ListYAMLFilesAtRef(ctx context.Context, ref, scope string) ([]stri
 	}
 
 	var files []string
-	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
-		line = strings.TrimSpace(line)
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\x00"), "\x00") {
 		if line == "" {
 			continue
 		}
