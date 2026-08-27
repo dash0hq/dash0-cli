@@ -6,6 +6,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.17.0
+
+
+### Breaking Changes
+
+
+- `apply`: `apply --dry-run` changed its output shape, including without `--since` (#253)
+  `--since` renders its deletions in the same listing as creates and updates, so that
+  listing had to name each row's operation and order the two kinds of row together. Plain
+  `--dry-run` shares the renderer and therefore changed too, in three ways:
+  
+  - Each row is now prefixed with `*` and its operation instead of a per-file ordinal:
+    `1. Dashboard "Production Overview" (a1b2c3d4-...)` becomes
+    `* Apply Dashboard "Production Overview" (a1b2c3d4-...)`.
+  - Rows within a file are ordered by identifier rather than by their position in the
+    file, so a document's row can move relative to its siblings.
+  - In agent mode, `--dry-run` now emits the documented JSON array of
+    `{path, changes: [{op, kind, name, originOrId}]}` instead of the human-readable text,
+    matching every other command's agent-mode contract.
+  
+  Separately, `Dash0Team` now renders as `Team` wherever an asset kind is displayed, so
+  `apply` reports `Team "Backend Team" created` instead of `Dash0Team "Backend Team"
+  created`. Every other kind already had a human-readable display name; teams fell
+  through to the raw kind identifier, which also contradicted the `--- Team (before)`
+  header their own update diff printed.
+  
+  Scripts that parsed `--dry-run`'s text output, or grepped for `Dash0Team`, need
+  updating. Agent-mode callers should read the JSON rather than parsing text.
+  
+
+
+### Enhancements
+
+
+- `apply`: Add `apply --since <ref>` and `--force` for git-history-based deletion sync (#253)
+  Deletes assets whose definition existed at `<ref>` but is no longer present in `-f`'s
+  current contents, detected by identifier (id or origin), never by file path. Requires
+  `--experimental`/`-X`. `--dry-run --since` previews the deletion plan, merged with the
+  existing create/update preview into one per-file listing, and now also resolves deleted
+  assets' names from git history instead of only showing their id. Agent mode emits
+  `--dry-run`'s preview as JSON.
+  
+  Also, while stabilizing this feature ahead of release:
+  - `--since` now correctly detects an all-deletions run, whether `-f`'s target survives
+    empty or was removed entirely, instead of failing outright.
+  - Deleting a PrometheusRule CRD always cleans up both its check rule and its recording
+    rule, instead of trusting a single git snapshot that could undercount which endpoints
+    the CRD ever used.
+  - A CRD's recording rule is deleted when its last `record:` entry is removed, even
+    though the CRD's own identifier survives via a remaining `alert:` entry.
+  - An asset already deleted by someone else no longer fails the whole run; this no
+    longer requires `--force`, which keeps its own separate job of skipping confirmation
+    prompts.
+  - New `--accept-non-ancestor-ref` flag accepts a non-ancestor `--since` ref (e.g. after
+    a force-push) without also skipping every per-asset deletion confirmation, which
+    `--force` alone used to do together.
+  - A concurrently-deleted asset is now reported once, not as both "already deleted" and
+    "deleted".
+  - Fixed a pre-existing, `--since`-independent bug in `apply`/`check-rules create`: a
+    PrometheusRule CRD with 2+ alerting rules and a `dash0.com/id` label silently
+    collapsed to one check rule (the last alert applied overwrote the rest under the
+    shared id). Each alert now upserts its own derived id. Re-applying an existing
+    multi-alert CRD leaves an orphaned duplicate at the literal `dash0.com/id`; delete it
+    by hand once the new per-alert check rules look correct.
+  
+
+
+### Bug Fixes
+
+
+- `apply`: Retry a 409 dataset version conflict instead of failing immediately when creating or updating dashboards, check rules, views, recording rules, synthetic checks, or spam filters (#261)
+  Two `dash0` processes (e.g. a CI matrix, or a script running concurrent `apply`/`create`/`update`
+  commands) writing to the same dataset at once could previously race the dataset's optimistic-concurrency
+  version check: the losing write got a 409 that nothing retried, and surfaced as a fatal error. The losing
+  write is now retried with backoff, up to the existing `--max-retries`/`DASH0_MAX_RETRIES` budget.
+  
+
 ## 1.16.5
 
 
