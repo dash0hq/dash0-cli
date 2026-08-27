@@ -165,6 +165,20 @@ func DeriveAlertCheckRuleID(sharedID, composedName string) string {
 	return sharedID + "--" + slugify(composedName)
 }
 
+// CheckRuleIDsOccupiedByCRD returns the check-rule ids a CRD's alerts live at:
+// the CRD's literal identifier for zero or one alert, each alert's derived id
+// for two or more. ids[i] is alerts[i]'s address, which --since's diff needs.
+func CheckRuleIDsOccupiedByCRD(identifier string, alerts []PrometheusAlertName) []string {
+	if len(alerts) <= 1 {
+		return []string{identifier}
+	}
+	ids := make([]string, len(alerts))
+	for i, alertName := range alerts {
+		ids[i] = DeriveAlertCheckRuleID(identifier, alertName.CheckRuleName())
+	}
+	return ids
+}
+
 // slugify lowercases s and replaces every run of characters that aren't
 // lowercase letters or digits with a single hyphen, trimming any leading or
 // trailing hyphen. Used to fold a human-readable composed check-rule name

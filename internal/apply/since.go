@@ -476,7 +476,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // genuinely deleted, the rest already gone -- is reported as a real
 // deletion, matching the fact that something was.
 func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []asset.PrometheusAlertName, declared map[string]bool) (alreadyDeleted bool, err error) {
-	checkRuleIDs := checkRuleIDsOccupiedByCRD(identifier, alerts)
+	checkRuleIDs := asset.CheckRuleIDsOccupiedByCRD(identifier, alerts)
 	if len(alerts) > 1 {
 		// A multi-alert CRD applied before per-alert derivation existed left
 		// its one check rule at the literal id (docs/commands.md's multi-alert
@@ -526,21 +526,6 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	return false, nil
 }
 
-// checkRuleIDsOccupiedByCRD returns the check-rule ids a PrometheusRule CRD's
-// alerts actually live at: the CRD's own literal identifier for zero or one
-// alert (per composePrometheusRuleNames), or each alert's own derived id
-// (asset.DeriveAlertCheckRuleID) for two or more.
-func checkRuleIDsOccupiedByCRD(identifier string, alerts []asset.PrometheusAlertName) []string {
-	if len(alerts) <= 1 {
-		return []string{identifier}
-	}
-	ids := make([]string, len(alerts))
-	for i, alertName := range alerts {
-		ids[i] = asset.DeriveAlertCheckRuleID(identifier, alertName.CheckRuleName())
-	}
-	return ids
-}
-
 // declaredCheckRuleIDs collects every check-rule id -f's current contents
 // still declare. Dispatch resolves an identifier to an endpoint, dropping the
 // kind half of the (kind, identifier) key Snapshot.Identifiers uses elsewhere:
@@ -559,7 +544,7 @@ func declaredCheckRuleIDs(after gitutil.Snapshot) map[string]bool {
 		case "prometheusrule":
 			// Occupied ids only: a multi-alert CRD's literal identifier holds
 			// an orphan, not something it declares, so it stays reclaimable.
-			for _, id := range checkRuleIDsOccupiedByCRD(key.Identifier, after.PrometheusAlertsByIdentifier[key.Identifier]) {
+			for _, id := range asset.CheckRuleIDsOccupiedByCRD(key.Identifier, after.PrometheusAlertsByIdentifier[key.Identifier]) {
 				declared[id] = true
 			}
 		}

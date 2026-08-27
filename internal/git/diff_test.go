@@ -49,10 +49,13 @@ func TestDiff_PrometheusAlertPartialRemoval(t *testing.T) {
 	}
 
 	plan := Diff(before, after)
-	assert.Empty(t, plan.ByIdentifier, "CRD survives, so it is not a whole-file deletion")
 	require.Len(t, plan.AlertsByName, 1)
 	assert.Equal(t, "crd-1", plan.AlertsByName[0].CRDIdentifier)
 	assert.Equal(t, "g - B", plan.AlertsByName[0].CheckRuleName())
+	// The survivor moves from its derived id back to the literal one, so the
+	// derived id is abandoned and apply's write there would leave a duplicate.
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, Deletion{Kind: "checkrule", Identifier: "crd-1--g-a", Path: "rules.yaml"}, plan.ByIdentifier[0])
 }
 
 // TestDiff_PrometheusRecordingRoleDroppedWhileCRDSurvives is a regression
@@ -311,4 +314,65 @@ func TestDiff_AlertsByNameSortOrder(t *testing.T) {
 	}
 	assert.Equal(t, []string{"crd-1", "crd-2", "crd-2"}, crds)
 	assert.Equal(t, []string{"g - B", "g - A", "g - Z"}, names)
+}
+
+// TestDiff_PrometheusAlertThresholdCrossing_OneToMany covers the other
+// direction: both alerts move to derived ids, abandoning the literal one.
+func TestDiff_PrometheusAlertThresholdCrossing_OneToMany(t *testing.T) {
+	before := newSnapshot()
+	before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	before.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
+		{GroupName: "g", AlertName: "A"},
+	}
+
+	after := newSnapshot()
+	after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+	after.PrometheusAlertsByIdentifier["crd-1"] = []asset.PrometheusAlertName{
+		{GroupName: "g", AlertName: "A"},
+		{GroupName: "g", AlertName: "B"},
+	}
+
+	plan := Diff(before, after)
+	assert.Empty(t, plan.AlertsByName, "no alert was removed")
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, Deletion{Kind: "checkrule", Identifier: "crd-1", Path: "rules.yaml"}, plan.ByIdentifier[0])
+}
+
+// TestDiff_PrometheusAlertNoAbandonedAddress pins the cases where no survivor
+// changes address.
+func TestDiff_PrometheusAlertNoAbandonedAddress(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		before, after []asset.PrometheusAlertName
+	}{
+		{
+			name:   "three alerts down to two, both derived",
+			before: []asset.PrometheusAlertName{{GroupName: "g", AlertName: "A"}, {GroupName: "g", AlertName: "B"}, {GroupName: "g", AlertName: "C"}},
+			after:  []asset.PrometheusAlertName{{GroupName: "g", AlertName: "A"}, {GroupName: "g", AlertName: "B"}},
+		},
+		{
+			// Survives as recording-rule-only; the alert goes by name.
+			name:   "one alert down to none, both literal",
+			before: []asset.PrometheusAlertName{{GroupName: "g", AlertName: "A"}},
+			after:  nil,
+		},
+		{
+			// Nothing was at the literal id to reclaim.
+			name:   "no alerts up to two",
+			before: nil,
+			after:  []asset.PrometheusAlertName{{GroupName: "g", AlertName: "A"}, {GroupName: "g", AlertName: "B"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := newSnapshot()
+			before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+			before.PrometheusAlertsByIdentifier["crd-1"] = tc.before
+
+			after := newSnapshot()
+			after.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: "crd-1"}] = "rules.yaml"
+			after.PrometheusAlertsByIdentifier["crd-1"] = tc.after
+
+			assert.Empty(t, Diff(before, after).ByIdentifier)
+		})
+	}
 }

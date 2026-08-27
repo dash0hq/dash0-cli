@@ -432,6 +432,19 @@ spec:
 
 	deleteReq := findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/disk-full-check-rule-id")
 	require.NotNil(t, deleteReq, "expected a DELETE request for the removed alert's resolved check rule id")
+
+	// The survivor moves back to the literal id, abandoning its derived one;
+	// apply's write at the literal id would otherwise leave a duplicate.
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/shared-id--test-group-higherrorrate"),
+		"expected a DELETE for the surviving alert's now-abandoned derived id")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/shared-id"),
+		"the surviving alert must be written at the CRD's literal id, which declaredCheckRuleIDs must not then delete")
+	// Exact path: findRequest matches by prefix, which the derived id shares.
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodDelete && req.Path == apiPathCheckRules+"/shared-id" {
+			t.Error("the literal id is the surviving alert's new home and must never be deleted")
+		}
+	}
 }
 
 // TestApply_Since_PersesDashboardAlreadyDeletedPreservesCanonicalKindName is a

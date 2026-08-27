@@ -450,8 +450,8 @@ func TestSplitMultiDocPath(t *testing.T) {
 // identifier, unchanged: composePrometheusRuleNames never derives a distinct
 // id for it either, so it lives at that literal id.
 func TestCheckRuleIDsOccupiedByCRD_SingleAlertUsesLiteralIdentifier(t *testing.T) {
-	assert.Equal(t, []string{"shared-id"}, checkRuleIDsOccupiedByCRD("shared-id", nil))
-	assert.Equal(t, []string{"shared-id"}, checkRuleIDsOccupiedByCRD("shared-id", []asset.PrometheusAlertName{
+	assert.Equal(t, []string{"shared-id"}, asset.CheckRuleIDsOccupiedByCRD("shared-id", nil))
+	assert.Equal(t, []string{"shared-id"}, asset.CheckRuleIDsOccupiedByCRD("shared-id", []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 	}))
 }
@@ -463,7 +463,7 @@ func TestCheckRuleIDsOccupiedByCRD_SingleAlertUsesLiteralIdentifier(t *testing.T
 // -- was never where any of the real check rules actually lived. Each
 // alert's own derived id must be targeted instead.
 func TestCheckRuleIDsOccupiedByCRD_MultiAlertUsesDerivedIDs(t *testing.T) {
-	ids := checkRuleIDsOccupiedByCRD("shared-id", []asset.PrometheusAlertName{
+	ids := asset.CheckRuleIDsOccupiedByCRD("shared-id", []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 		{GroupName: "g", AlertName: "B"},
 	})

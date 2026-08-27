@@ -1,6 +1,7 @@
 package git
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -111,13 +112,6 @@ func Diff(before, after Snapshot) DeletionPlan {
 		})
 	}
 
-	sort.Slice(plan.ByIdentifier, func(i, j int) bool {
-		if plan.ByIdentifier[i].Kind != plan.ByIdentifier[j].Kind {
-			return plan.ByIdentifier[i].Kind < plan.ByIdentifier[j].Kind
-		}
-		return plan.ByIdentifier[i].Identifier < plan.ByIdentifier[j].Identifier
-	})
-
 	for identifier, beforeAlerts := range before.PrometheusAlertsByIdentifier {
 		afterAlerts, crdSurvives := after.PrometheusAlertsByIdentifier[identifier]
 		if !crdSurvives {
@@ -129,15 +123,35 @@ func Diff(before, after Snapshot) DeletionPlan {
 		for _, name := range afterAlerts {
 			afterSet[name] = true
 		}
-		for _, name := range beforeAlerts {
+		// An alert's id depends on its sibling count, so moving the CRD between
+		// one alert and many relocates a survivor. apply writes the new
+		// address and leaves the old one live.
+		occupiedNow := asset.CheckRuleIDsOccupiedByCRD(identifier, afterAlerts)
+		occupiedBefore := asset.CheckRuleIDsOccupiedByCRD(identifier, beforeAlerts)
+		for i, name := range beforeAlerts {
 			if !afterSet[name] {
 				plan.AlertsByName = append(plan.AlertsByName, AlertDeletion{
 					CRDIdentifier:       identifier,
 					PrometheusAlertName: name,
 				})
+				continue
+			}
+			if id := occupiedBefore[i]; !slices.Contains(occupiedNow, id) {
+				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
+					Kind:       "checkrule",
+					Identifier: id,
+					Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
+				})
 			}
 		}
 	}
+	sort.Slice(plan.ByIdentifier, func(i, j int) bool {
+		if plan.ByIdentifier[i].Kind != plan.ByIdentifier[j].Kind {
+			return plan.ByIdentifier[i].Kind < plan.ByIdentifier[j].Kind
+		}
+		return plan.ByIdentifier[i].Identifier < plan.ByIdentifier[j].Identifier
+	})
+
 	sort.Slice(plan.AlertsByName, func(i, j int) bool {
 		a, b := plan.AlertsByName[i], plan.AlertsByName[j]
 		if a.CRDIdentifier != b.CRDIdentifier {
