@@ -285,8 +285,10 @@ if ! APPLY_OUTPUT=$("$DASH0" -X apply -f "${TMPDIR}/updated.yaml"); then
   exit 1
 fi
 echo "$APPLY_OUTPUT"
-if ! echo "$APPLY_OUTPUT" | grep -q "Dash0Team"; then
-  echo "FAIL: apply output did not mention Dash0Team"
+# "Team", not "Dash0Team": KindDisplayName maps every kind to its
+# human-readable name, per docs/cli-naming-conventions.md.
+if ! echo "$APPLY_OUTPUT" | grep -q "Team"; then
+  echo "FAIL: apply output did not mention the Team asset kind"
   exit 1
 fi
 

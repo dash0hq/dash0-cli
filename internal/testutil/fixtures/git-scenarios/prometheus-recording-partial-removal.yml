@@ -1,0 +1,51 @@
+kind: GitRepoFixture
+spec:
+  # A PrometheusRule CRD with one alerting rule and one recording rule
+  # sharing one dash0.com/id, then a commit removing the recording rule
+  # while the alert (and the CRD's shared identifier) survives. The alert
+  # is a plain update; the recording rule the CRD no longer declares must
+  # still be deleted, even though the CRD's own identifier survives -- a
+  # coarse presence/absence signal, since there is no per-record identity
+  # to diff.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add rules with alert and recording rule"
+        changes:
+          - op: add
+            name: rules.yaml
+            content: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: PrometheusRule
+              metadata:
+                name: mixed-rules
+                labels:
+                  dash0.com/id: shared-rule-id
+              spec:
+                groups:
+                  - name: rule-group
+                    interval: 1m
+                    rules:
+                      - alert: HighErrorRate
+                        expr: sum(rate(errors[5m])) > 0.1
+                      - record: instance:cpu_usage:avg5m
+                        expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+      - message: "remove recording rule"
+        changes:
+          - op: modify
+            name: rules.yaml
+            content: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: PrometheusRule
+              metadata:
+                name: mixed-rules
+                labels:
+                  dash0.com/id: shared-rule-id
+              spec:
+                groups:
+                  - name: rule-group
+                    interval: 1m
+                    rules:
+                      - alert: HighErrorRate
+                        expr: sum(rate(errors[5m])) > 0.1

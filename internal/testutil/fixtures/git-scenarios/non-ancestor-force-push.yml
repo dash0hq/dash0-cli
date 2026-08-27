@@ -1,0 +1,53 @@
+kind: GitRepoFixture
+spec:
+  # A commit "orphaned" is the ref a --since run is pointed at, then history
+  # is rewritten (resetTo: base + a new commit) to simulate a force-push,
+  # leaving "orphaned" unreachable from the new HEAD. It stays resolvable by
+  # SHA (its object is never garbage-collected in this fixture's lifecycle),
+  # so --since <orphaned> resolves but is not an ancestor of HEAD.
+  sinceRef: orphaned
+  repo:
+    commits:
+      - label: base
+        message: "initial commit"
+        changes:
+          - op: add
+            name: keep.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: Keep
+                labels:
+                  dash0.com/id: keep-id
+              spec:
+                query: "true"
+      - label: orphaned
+        message: "add to-be-orphaned (this becomes an orphaned commit)"
+        changes:
+          - op: add
+            name: to-be-orphaned.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Orphaned
+                dash0Extensions:
+                  id: orphaned-id
+              spec:
+                display:
+                  name: Orphaned
+      - resetTo: base
+        message: "rewritten history, does not descend from the orphaned commit"
+        changes:
+          - op: add
+            name: rewritten-history.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: Rewritten
+                labels:
+                  dash0.com/id: rewritten-id
+              spec:
+                query: "true"

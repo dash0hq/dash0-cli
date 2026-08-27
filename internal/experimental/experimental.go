@@ -26,3 +26,26 @@ func RequireExperimental(cmd *cobra.Command) error {
 	}
 	return nil
 }
+
+// RequireExperimentalFlag checks whether the --experimental (-X) flag has
+// been set, for a single flag on an otherwise-stable command. Unlike
+// RequireExperimental, it is a no-op — returning nil — when flagName was not
+// passed at all, so the rest of the command remains fully stable and
+// ungated. It only requires --experimental once the caller actually uses the
+// experimental flag.
+func RequireExperimentalFlag(cmd *cobra.Command, flagName string) error {
+	if !cmd.Flags().Changed(flagName) {
+		return nil
+	}
+	enabled, err := cmd.Flags().GetBool("experimental")
+	if err != nil {
+		enabled = false
+	}
+	if !enabled {
+		return fmt.Errorf(
+			"--%s is an experimental flag on %q; pass --experimental (or -X) to enable it",
+			flagName, cmd.CommandPath(),
+		)
+	}
+	return nil
+}

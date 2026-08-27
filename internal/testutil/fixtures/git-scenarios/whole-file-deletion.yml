@@ -1,0 +1,37 @@
+kind: GitRepoFixture
+spec:
+  # A commit with two asset files, followed by a commit removing one file
+  # entirely -- the other file (and the repo) survives.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add dashboard-a and view-b"
+        changes:
+          - op: add
+            name: dashboard-a.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: Dashboard A
+                dash0Extensions:
+                  id: dash-a
+              spec:
+                display:
+                  name: Dashboard A
+          - op: add
+            name: view-b.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: View B
+                labels:
+                  dash0.com/id: view-b
+              spec:
+                query: "true"
+      - message: "remove dashboard-a"
+        changes:
+          - op: delete
+            name: dashboard-a.yaml

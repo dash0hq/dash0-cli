@@ -3,6 +3,7 @@ package apply
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
+	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
@@ -27,6 +30,23 @@ type applyFlags struct {
 	Dataset   string
 	File      string
 	DryRun    bool
+	Since     string
+	// SinceFlagSet records whether --since was actually passed on the
+	// command line, as opposed to left at its "" zero value. This is
+	// distinct from Since != "": a CI script building
+	// --since="${{ github.event.before }}" can pass an explicitly empty
+	// string (e.g. on a workflow_dispatch/schedule trigger with no prior
+	// ref), and that case must still route through computeDeletionPlan to
+	// hit the dedicated RefEmpty error, not be silently treated the same as
+	// --since never being mentioned at all.
+	SinceFlagSet bool
+	Force        bool
+	// AcceptNonAncestorRef authorizes proceeding past the warning printed
+	// when --since's ref resolves but is not an ancestor of HEAD (likely a
+	// force-push or history rewrite), without also implying --force's
+	// separate job of skipping every per-asset deletion confirmation.
+	// --force still authorizes this too, for backward compatibility.
+	AcceptNonAncestorRef bool
 }
 
 // NewApplyCmd creates the top-level apply command
@@ -54,7 +74,9 @@ Supported asset types:
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
-If an asset exists, it will be updated. If it doesn't exist, it will be created.` + internal.CONFIG_HINT,
+If an asset exists, it will be updated. If it doesn't exist, it will be created.
+
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -71,13 +93,29 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
   dash0 apply -f assets.yaml --dry-run
 
   # Validate a directory without applying
-  dash0 apply -f dashboards/ --dry-run`,
+  dash0 apply -f dashboards/ --dry-run
+
+  # Sync a directory to match its state as of a git ref, deleting assets removed since then (experimental)
+  dash0 --experimental apply -f dashboards/ --since HEAD~1
+
+  # Same, without the per-deletion confirmation prompt (experimental)
+  dash0 --experimental apply -f dashboards/ --since HEAD~1 --force
+
+  # Accept a --since ref from a force-push without skipping per-deletion confirmation (experimental)
+  dash0 --experimental apply -f dashboards/ --since HEAD~1 --accept-non-ancestor-ref`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s\nTo apply multiple files, pass a directory with -f instead of a glob pattern", strings.Join(args, " "))
 			}
 			if flags.File == "" {
 				return fmt.Errorf("file is required; use -f to specify the file (use '-' for stdin)")
+			}
+			if err := experimental.RequireExperimentalFlag(cmd, "since"); err != nil {
+				return err
+			}
+			flags.SinceFlagSet = cmd.Flags().Changed("since")
+			if flags.SinceFlagSet && flags.File == "-" {
+				return fmt.Errorf("--since '%s' cannot be used with -f - (stdin)\nHint: --since needs a file or directory path to compare against git history; pass -f <path> instead", flags.Since)
 			}
 			cmd.SilenceUsage = true
 			return runApply(cmd.Context(), &flags)
@@ -89,6 +127,9 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	cmd.Flags().StringVar(&flags.ApiUrl, "api-url", "", "API URL for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token for the Dash0 API (overrides active profile)")
 	cmd.Flags().StringVar(&flags.Dataset, "dataset", "", "Dataset to operate on")
+	cmd.Flags().StringVar(&flags.Since, "since", "", "[experimental] Delete assets removed from -f's contents since this git ref (requires --experimental/-X)")
+	cmd.Flags().BoolVar(&flags.Force, "force", false, "Skip the confirmation prompt for deletions triggered by --since; also accepts a non-ancestor --since ref")
+	cmd.Flags().BoolVar(&flags.AcceptNonAncestorRef, "accept-non-ancestor-ref", false, "Accept a --since ref that is not an ancestor of HEAD (e.g. after a force-push), without also skipping the per-deletion confirmation prompt")
 
 	return cmd
 }
@@ -136,6 +177,14 @@ type applyResult struct {
 func runApply(ctx context.Context, flags *applyFlags) error {
 	var documents []assetDocument
 	var fromDirectory bool
+	// targetVanished records that fromDirectory was only a guess (always
+	// true) because the target no longer exists on disk at all, so os.Stat
+	// couldn't say whether it used to be a file or a directory. Once
+	// computeDeletionPlan runs, it can answer that from git history at the
+	// --since ref, and the guess is corrected below -- otherwise a vanished
+	// single-file target would render like a multi-file directory scan
+	// (grouped by its git-recorded path instead of the literal -f argument).
+	var targetVanished bool
 	var err error
 
 	if flags.File == "-" {
@@ -146,16 +195,33 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		}
 	} else {
 		info, statErr := os.Stat(flags.File)
-		if statErr != nil {
+		switch {
+		case statErr != nil && flags.SinceFlagSet && os.IsNotExist(statErr):
+			// --since's target no longer exists on disk at all: every asset
+			// definition under it was deleted, and (for a directory target)
+			// the directory itself was removed along with them. This is a
+			// legitimate all-deletions run, the same as the existing-but-
+			// empty-directory case below -- continue with zero current
+			// documents and let computeDeletionPlan report every asset found
+			// at the --since ref as a deletion.
+			fromDirectory = true
+			targetVanished = true
+		case statErr != nil:
 			return fmt.Errorf("failed to read input: %w", statErr)
-		}
-		if info.IsDir() {
+		case info.IsDir():
 			fromDirectory = true
 			documents, err = readDirectory(flags.File)
 			if err != nil {
-				return validationError(err.Error())
+				if flags.SinceFlagSet && errors.Is(err, errNoYAMLFilesFound) {
+					// Every asset definition that used to live in this
+					// directory was deleted, but the (now-empty) directory
+					// itself survives. Same all-deletions case as above.
+					documents = nil
+				} else {
+					return validationError(err.Error())
+				}
 			}
-		} else {
+		default:
 			documents, err = readMultiDocumentYAML(flags.File, nil)
 			if err != nil {
 				return validationError(err.Error())
@@ -163,7 +229,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		}
 	}
 
-	if len(documents) == 0 {
+	if len(documents) == 0 && !flags.SinceFlagSet {
 		return validationError("no documents found in input")
 	}
 
@@ -175,8 +241,20 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
+	var deletionPlan *deletionPlan
+	if flags.SinceFlagSet {
+		plan, err := computeDeletionPlan(ctx, flags)
+		if err != nil {
+			return err
+		}
+		deletionPlan = plan
+		if targetVanished {
+			fromDirectory = plan.targetWasDirectoryAtRef
+		}
+	}
+
 	if flags.DryRun {
-		return printDryRun(documents, fromDirectory)
+		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
 	// Create API client
@@ -214,6 +292,36 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 				}
 			}
 			return fmt.Errorf("%s (%s): %w", doc.location(), doc.kind, applyErr)
+		}
+	}
+
+	if deletionPlan != nil {
+		// The non-ancestor confirmation happens here, after every document
+		// create/update above has already gone through — never before them.
+		// Gating it earlier (inside computeDeletionPlan, as this used to
+		// work) meant a declined or unconfirmable --since ref aborted the
+		// entire apply run, including ordinary creates/updates that have
+		// nothing to do with --since's ancestry check.
+		if deletionPlan.warning != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.warning)
+			// --force also accepts this (backward compatible: it always
+			// implied "proceed unattended"), but --accept-non-ancestor-ref
+			// lets a caller accept a doubtful ref on its own, without also
+			// giving up the per-asset deletion prompts below.
+			acceptRef := flags.Force || flags.AcceptNonAncestorRef
+			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", acceptRef)
+			if confirmErr != nil || !confirmed {
+				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
+				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")
+				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", pluralize(skipped, "asset"))
+			}
+		}
+		declined, err := applyDeletions(ctx, apiClient, dataset, deletionPlan, flags.Force)
+		if err != nil {
+			return err
+		}
+		if declined > 0 {
+			return fmt.Errorf("%s declined; the rest of the --since run completed", pluralize(declined, "deletion"))
 		}
 	}
 
@@ -259,37 +367,6 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		}
 	}
 	return validationErrors, validationWarnings
-}
-
-func printDryRun(documents []assetDocument, fromDirectory bool) error {
-	if !fromDirectory {
-		fmt.Printf("Dry run: %s validated\n", pluralize(len(documents), "document"))
-		for i, doc := range documents {
-			fmt.Printf("  %d. %s %s\n", i+1, asset.KindDisplayName(doc.kind), formatNameAndId(doc.name, doc.id))
-		}
-		return nil
-	}
-
-	// Count unique files
-	fileSet := make(map[string]bool)
-	for _, doc := range documents {
-		fileSet[doc.filePath] = true
-	}
-	fmt.Printf("Dry run: %s from %s validated\n", pluralize(len(documents), "document"), pluralize(len(fileSet), "file"))
-
-	// Group by file, preserving order
-	var currentFile string
-	docInFile := 0
-	for _, doc := range documents {
-		if doc.filePath != currentFile {
-			currentFile = doc.filePath
-			docInFile = 0
-			fmt.Printf("  %s\n", doc.filePath)
-		}
-		docInFile++
-		fmt.Printf("    %d. %s %s\n", docInFile, asset.KindDisplayName(doc.kind), formatNameAndId(doc.name, doc.id))
-	}
-	return nil
 }
 
 // validationError formats one or more validation issues into a consistent
@@ -484,6 +561,16 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]assetDocument, e
 		}
 	}
 
+	return parseMultiDocumentYAML(data)
+}
+
+// parseMultiDocumentYAML splits data on YAML document boundaries and parses
+// each into an assetDocument. Factored out of readMultiDocumentYAML so
+// callers that already have file content in memory (e.g. --since's
+// git-history name lookups, which read a blob via ReadFileAtRef rather than
+// a path on disk) can reuse the same parsing without a round trip through
+// the filesystem.
+func parseMultiDocumentYAML(data []byte) ([]assetDocument, error) {
 	var documents []assetDocument
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 
@@ -547,48 +634,37 @@ func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]assetDocument, e
 	return documents, nil
 }
 
+// errNoYAMLFilesFound is wrapped into discoverFiles' "no .yaml or .yml files
+// found" error so callers can distinguish "the directory is legitimately
+// empty" from any other failure via errors.Is, without matching on message
+// text. runApply uses this to tolerate an empty directory specifically when
+// --since is set: every asset that used to live there may simply have been
+// deleted, which is a valid all-deletions run, not a usage error.
+var errNoYAMLFilesFound = errors.New("no .yaml or .yml files found")
+
 // discoverFiles recursively finds all .yaml/.yml files under dirPath,
 // skipping hidden entries (names starting with '.').
 // Returns paths relative to dirPath, sorted lexicographically.
 func discoverFiles(dirPath string) ([]string, error) {
-	var files []string
-	hasNestedDirs := false
-	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		name := d.Name()
-		// Skip hidden files and directories
-		if strings.HasPrefix(name, ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			if path != dirPath {
-				hasNestedDirs = true
-			}
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(name))
-		if ext == ".yaml" || ext == ".yml" {
-			rel, err := filepath.Rel(dirPath, path)
-			if err != nil {
-				return err
-			}
-			files = append(files, rel)
-		}
-		return nil
-	})
-	if err != nil {
+	var paths []string
+	var hasNestedDirs bool
+	if err := filepath.WalkDir(dirPath, asset.FindNonHiddenYAMLFiles(dirPath, &paths, &hasNestedDirs)); err != nil {
 		return nil, fmt.Errorf("failed to scan directory: %w", err)
+	}
+
+	var files []string
+	for _, path := range paths {
+		rel, err := filepath.Rel(dirPath, path)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, rel)
 	}
 	if len(files) == 0 {
 		if hasNestedDirs {
-			return nil, fmt.Errorf("no .yaml or .yml files found in %s and nested directories", dirPath)
+			return nil, fmt.Errorf("%w in %s and nested directories", errNoYAMLFilesFound, dirPath)
 		}
-		return nil, fmt.Errorf("no .yaml or .yml files found in %s", dirPath)
+		return nil, fmt.Errorf("%w in %s", errNoYAMLFilesFound, dirPath)
 	}
 	sort.Strings(files)
 	return files, nil
@@ -618,12 +694,7 @@ func readDirectory(dirPath string) ([]assetDocument, error) {
 }
 
 func isValidKind(kind string) bool {
-	switch normalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team":
-		return true
-	default:
-		return false
-	}
+	return asset.IsValidKind(kind)
 }
 
 func normalizeKind(kind string) string {
@@ -814,6 +885,13 @@ func validatePrometheusRule(data []byte) error {
 	}
 	if !asset.PrometheusRuleHasAlerts(crd) && asset.RecordingOnlyPrometheusRule(crd) == nil {
 		return fmt.Errorf("PrometheusRule contains no alerting or recording rules")
+	}
+	names, err := asset.ExtractPrometheusAlertNames(data)
+	if err != nil {
+		return err
+	}
+	if err := asset.CheckAlertNameCollisions(names); err != nil {
+		return err
 	}
 	return nil
 }

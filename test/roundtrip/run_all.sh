@@ -79,6 +79,9 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_spam_filter_concurrent_create.sh"
   "${SCRIPT_DIR}/test_team_roundtrip.sh"
   "${SCRIPT_DIR}/test_team_declarative_roundtrip.sh"
+  "${SCRIPT_DIR}/test_apply_since_roundtrip.sh"
+  "${SCRIPT_DIR}/test_apply_since_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_since_ref_edge_cases.sh"
 )
 
 # OTLP-based round-trip tests additionally need DASH0_OTLP_URL.

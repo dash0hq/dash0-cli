@@ -89,3 +89,16 @@ Validate with `make chlog-validate`.
 3. `make lint` passes.
 4. `./dash0 <command> --help` shows help without `[experimental]` prefix.
 5. `./dash0 -X <command> --help` still works (backward compatibility).
+
+## Flag-level promotion (e.g. `apply --since`)
+
+Everything above assumes the whole command is gated (`experimental.RequireExperimental`).
+A command can instead gate a single flag on an otherwise-stable command — `apply --since` is the first example, using `experimental.RequireExperimentalFlag(cmd, flagName)` instead of `RequireExperimental(cmd)`, because `apply` itself is stable and heavily used; gating the whole command to protect one new flag would force every existing caller to add `-X` for no reason (see `openspec/changes/add-diff-and-since-flag/design.md`'s rationale).
+Promoting a flag-level gate follows the same shape as above, with these differences:
+
+1. **Remove the gate call**: delete the `experimental.RequireExperimentalFlag(cmd, "<flag>")` call from `RunE`, not `RequireExperimental`. The command's own `Short`/`Long` text is not `[experimental]`-prefixed to begin with (only the flag's own description names the requirement), so there is no prefix to remove.
+2. **Trim examples and flag description, not the whole command**: drop `-X`/`--experimental` from only the `Example` lines that exercise the promoted flag — lines demonstrating the command's other, already-stable behavior are unaffected. Drop the `requires --experimental/-X` (or equivalent) clause from just that flag's description in `cmd.Flags().___Var(...)`, not from the command's `Short`/`Long`.
+3. **Backward-compat test shape**: name it `Test<Command>_<Flag>BackwardCompatWithExperimentalFlag` (e.g. `TestApply_SinceBackwardCompatWithExperimentalFlag`) and assert the flag's behavior still succeeds with `-X` passed — the rest of the command's tests (exercising it without the flag) need no `-X` before or after promotion, since they were never gated.
+4. **`docs/commands.md`**: remove the flag's own `[experimental]` marker and `requires --experimental/-X` clause (e.g. in its row of the command's flag table and its dedicated subsection heading, such as `#### \`apply --since\` (experimental)` → `#### \`apply --since\``), not a whole-command header. Drop `-X`/`--experimental` from the flag's own examples only.
+5. **`README.md`**: no `[!WARNING]` block to remove for a flag-level gate (that pattern is for whole experimental commands); drop `-X` from the promoted flag's own example(s) only.
+6. **Changelog**: `note` names the specific flag promoted (e.g. "`apply --since` no longer requires `--experimental`"), not the whole command.

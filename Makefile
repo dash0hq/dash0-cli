@@ -1,4 +1,4 @@
-.PHONY: all build clean test test-unit test-integration test-roundtrip install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update update-vendor-hash update-flake-lock skill-bundle skill-validate
+.PHONY: all build clean test test-unit test-integration test-roundtrip test-e2e install lint lint-install lint-go-install lint-sh-install lint-go lint-sh chlog-install chlog-new chlog-validate chlog-preview chlog-update update-vendor-hash update-flake-lock skill-bundle skill-validate
 
 all: lint test
 
@@ -17,7 +17,7 @@ CHLOGGEN=$(TOOLS_BIN_DIR)/chloggen
 build:
 	(mkdir -p $(BUILD_DIR) || true) && go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dash0
 
-test: test-unit test-integration test-roundtrip
+test: test-unit test-integration test-e2e test-roundtrip
 
 test-unit:
 	go test -v ./...
@@ -27,6 +27,21 @@ test-integration:
 
 test-roundtrip: build
 	bash test/roundtrip/run_all.sh
+
+# End-to-end tests: the real dash0 binary + the real git binary inside a
+# container, proving --since's git-shell-out path works across a real
+# process boundary (in-process unit/integration tests can't). Gated behind
+# Docker being available and kept separate from test-unit/test-integration
+# given the added runtime cost and the Docker dependency.
+#
+# Colima users: testcontainers-go's Docker auto-detection doesn't recognize
+# colima's non-standard socket forwarding. Export these first:
+#   export DOCKER_HOST="unix://$$HOME/.colima/default/docker.sock"
+#   export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+test-e2e:
+	@command -v docker >/dev/null 2>&1 || { echo "Error: docker is required for test-e2e" >&2; exit 1; }
+	@docker version >/dev/null 2>&1 || { echo "Error: docker daemon is not reachable (is it running?)" >&2; exit 1; }
+	go test -v -tags=e2e ./test/e2e/...
 
 install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/

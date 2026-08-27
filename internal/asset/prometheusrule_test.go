@@ -59,6 +59,220 @@ spec:
 	assert.Equal(t, "group-b - DiskFull", rules[1].Name)
 }
 
+// TestParseCheckRules_SingleAlertKeepsSharedID pins that a single-alert CRD's
+// one check rule keeps the CRD's own dash0.com/id verbatim -- there is only
+// ever one alert to upsert, so the shared id unambiguously names it, and
+// existing single-alert users' check rules must keep resolving to the same
+// id they've always had.
+func TestParseCheckRules_SingleAlertKeepsSharedID(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: single
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: HighErrorRate
+          expr: errors > 0
+`)
+
+	rules, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.NotNil(t, rules[0].Id)
+	assert.Equal(t, "shared-id", *rules[0].Id)
+}
+
+// TestParseCheckRules_MultiAlertDerivesDistinctIDs is a regression test for
+// a bug where every alert in a multi-alert PrometheusRule CRD got the exact
+// same check-rule id (the CRD's own shared dash0.com/id), so each alert's
+// upsert (PUT, create-or-*replace*) silently overwrote whatever the
+// previous alert in the same apply run had just written: only the last
+// alert in document order ended up with a real check rule server-side,
+// even though the CLI reported success for both. Each alert must now get
+// its own distinct, non-empty id derived from the shared id and its own
+// composed name.
+func TestParseCheckRules_MultiAlertDerivesDistinctIDs(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: multi
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: errors > 0
+        - alert: DiskFull
+          expr: disk > 0
+`)
+
+	rules, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+
+	require.NotNil(t, rules[0].Id)
+	require.NotNil(t, rules[1].Id)
+	assert.NotEqual(t, *rules[0].Id, *rules[1].Id, "each alert must get its own id, not the CRD's shared id repeated")
+	assert.NotEqual(t, "shared-id", *rules[0].Id, "the derived id must not collide with the CRD's own literal shared id either")
+	assert.NotEqual(t, "shared-id", *rules[1].Id)
+	assert.Equal(t, "shared-id--test-group-higherrorrate", *rules[0].Id)
+	assert.Equal(t, "shared-id--test-group-diskfull", *rules[1].Id)
+}
+
+// TestParseCheckRules_MultiAlertDerivedIDsAreStableAcrossReapply pins the
+// idempotency property the derivation depends on: re-parsing the identical
+// CRD content must produce the identical derived ids, so repeated applies
+// keep upserting the same check rules rather than creating new ones each
+// time.
+func TestParseCheckRules_MultiAlertDerivedIDsAreStableAcrossReapply(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: multi
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: errors > 0
+        - alert: DiskFull
+          expr: disk > 0
+`)
+
+	first, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+	second, err := ParseCheckRules(crd)
+	require.NoError(t, err)
+
+	require.Len(t, first, 2)
+	require.Len(t, second, 2)
+	assert.Equal(t, *first[0].Id, *second[0].Id)
+	assert.Equal(t, *first[1].Id, *second[1].Id)
+}
+
+func TestSlugify(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"test-group - DiskFull", "test-group-diskfull"},
+		{"g - HighErrorRate", "g-higherrorrate"},
+		{"Group A - Alert/With Slashes", "group-a-alert-with-slashes"},
+		{"  leading and trailing  ", "leading-and-trailing"},
+		{"UPPER_CASE", "upper-case"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, slugify(c.in), "slugify(%q)", c.in)
+	}
+}
+
+// TestParseCheckRules_CollidingSlugsAreRejected is a regression test for a
+// bug where slugify's punctuation folding let two differently-punctuated
+// alert names in the same multi-alert CRD derive the identical check-rule
+// id (e.g. "High CPU" and "High_CPU" both fold to "high-cpu") -- silently
+// reopening the exact overwrite bug DeriveAlertCheckRuleID exists to
+// prevent, since the derived ids would then collide with each other the
+// same way the CRD's shared id used to collide across all of its alerts.
+func TestParseCheckRules_CollidingSlugsAreRejected(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: app-rules
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: High CPU
+          expr: cpu > 0.9
+        - alert: High_CPU
+          expr: cpu > 0.8
+`)
+	_, err := ParseCheckRules(crd)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "g - High CPU")
+	assert.Contains(t, err.Error(), "g - High_CPU")
+}
+
+// TestCheckAlertNameCollisions_SingleAlertNeverCollides pins that the
+// collision check is a no-op for zero or one alert -- there is nothing to
+// collide with.
+func TestCheckAlertNameCollisions_SingleAlertNeverCollides(t *testing.T) {
+	require.NoError(t, CheckAlertNameCollisions(nil))
+	require.NoError(t, CheckAlertNameCollisions([]PrometheusAlertName{{GroupName: "g", AlertName: "A"}}))
+}
+
+// TestCheckAlertNameCollisions_DistinctNamesDoNotCollide pins the negative
+// case: alerts whose composed names remain distinct after slugification
+// must not be rejected.
+func TestCheckAlertNameCollisions_DistinctNamesDoNotCollide(t *testing.T) {
+	err := CheckAlertNameCollisions([]PrometheusAlertName{
+		{GroupName: "g", AlertName: "HighErrorRate"},
+		{GroupName: "g", AlertName: "DiskFull"},
+	})
+	require.NoError(t, err)
+}
+
+// TestParseCheckRules_BooleanLiteralAlertNamePreserved is a regression test
+// for a bug where an alert name that is a YAML boolean literal (Y, N, yes,
+// no, on, off, true, false, and case variants), written unquoted, was
+// silently corrupted to "true"/"false": sigs.k8s.io/yaml's YAML->JSON->struct
+// unmarshal path resolves the literal to a real JSON boolean, then coerces
+// it into the destination *string field instead of erroring. Confirmed
+// directly, unmarshaling `alert: Y` into a struct with an `Alert *string`
+// field sets Alert to "true", not "Y".
+func TestParseCheckRules_BooleanLiteralAlertNamePreserved(t *testing.T) {
+	cases := []string{"Y", "N", "yes", "No", "ON", "off", "true", "False"}
+	for _, alertName := range cases {
+		crd := []byte("apiVersion: monitoring.coreos.com/v1\n" +
+			"kind: PrometheusRule\n" +
+			"metadata:\n" +
+			"  name: boolean-literal-test\n" +
+			"spec:\n" +
+			"  groups:\n" +
+			"    - name: g\n" +
+			"      rules:\n" +
+			"        - alert: " + alertName + "\n" +
+			"          expr: up == 0\n")
+
+		rules, err := ParseCheckRules(crd)
+		require.NoError(t, err, "alert name %q", alertName)
+		require.Len(t, rules, 1, "alert name %q", alertName)
+		assert.Equal(t, "g - "+alertName, rules[0].Name, "alert name %q must be preserved verbatim, not coerced into a boolean and re-stringified", alertName)
+	}
+}
+
+func TestExtractPrometheusAlertNames_BooleanLiteralPreserved(t *testing.T) {
+	crd := []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: boolean-literal-test
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: Y
+          expr: up == 0
+        - alert: N
+          expr: up == 1
+`)
+	names, err := ExtractPrometheusAlertNames(crd)
+	require.NoError(t, err)
+	require.Len(t, names, 2)
+	assert.Equal(t, "g - Y", names[0].CheckRuleName())
+	assert.Equal(t, "g - N", names[1].CheckRuleName())
+}
+
 func TestParseCheckRules_PlainCheckRuleKeepsName(t *testing.T) {
 	doc := []byte(`kind: CheckRule
 id: b2c3d4e5-6789-01bc-def0-234567890abc

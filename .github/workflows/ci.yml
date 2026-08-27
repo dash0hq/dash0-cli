@@ -31,6 +31,25 @@ jobs:
           path: build/dash0
           retention-days: 1
 
+  test-e2e:
+    # Real dash0 binary + real git binary inside a container, proving
+    # --since's git-shell-out path works across a real process boundary --
+    # something in-process unit/integration tests can't cover. GitHub-hosted
+    # ubuntu-latest runners have a working Docker daemon natively, so no
+    # special runner capability (unlike self-hosted Docker-in-Docker) is
+    # needed here.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run end-to-end tests
+        run: make test-e2e
+
   lint-go:
     runs-on: ubuntu-latest
     steps:

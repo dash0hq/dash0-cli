@@ -355,6 +355,22 @@ func TestDiscoverFiles_SkipsHidden(t *testing.T) {
 	assert.Equal(t, []string{"visible.yaml"}, files)
 }
 
+// TestDiscoverFiles_DotPrefixedTargetItselfIsNotHidden pins a deliberate
+// behavior: a dot-prefixed directory explicitly passed via -f (e.g.
+// -f .dash0-assets/) is a deliberate user choice, not something to skip —
+// only path components *inside* it are checked against the hidden-name
+// rule.
+func TestDiscoverFiles_DotPrefixedTargetItselfIsNotHidden(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, ".dash0-assets")
+	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dashboard.yaml"), []byte("kind: Dashboard"), 0644))
+
+	files, err := discoverFiles(dir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"dashboard.yaml"}, files)
+}
+
 func TestDiscoverFiles_Sorted(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "z.yaml"), []byte("kind: Dashboard"), 0644))
@@ -372,6 +388,20 @@ func TestDiscoverFiles_EmptyDir(t *testing.T) {
 	_, err := discoverFiles(dir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no .yaml or .yml files found")
+}
+
+// TestDiscoverFiles_EmptyDirErrorIsErrNoYAMLFilesFound pins that an empty
+// directory's error wraps errNoYAMLFilesFound (via errors.Is), not just a
+// matching message string -- runApply's --since tolerance for an empty
+// directory (see TestApply_Since_AllFilesDeleted_DirectorySurvives in
+// since_integration_test.go) depends on being able to detect this specific
+// condition rather than any other discoverFiles failure.
+func TestDiscoverFiles_EmptyDirErrorIsErrNoYAMLFilesFound(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := discoverFiles(dir)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errNoYAMLFilesFound)
 }
 
 func TestDiscoverFiles_CaseInsensitiveExtensions(t *testing.T) {
