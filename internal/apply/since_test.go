@@ -445,25 +445,25 @@ func TestSplitMultiDocPath(t *testing.T) {
 	}
 }
 
-// TestCheckRuleIDsForWholeCRDDeletion_SingleAlertUsesLiteralIdentifier pins
-// that a CRD with zero or one alerting rule keeps using the CRD's own
-// literal identifier for its whole-CRD deletion, unchanged: composePrometheusRuleNames
-// never derives a distinct id for it either, so it lives at that literal id.
-func TestCheckRuleIDsForWholeCRDDeletion_SingleAlertUsesLiteralIdentifier(t *testing.T) {
-	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", nil))
-	assert.Equal(t, []string{"shared-id"}, checkRuleIDsForWholeCRDDeletion("shared-id", []asset.PrometheusAlertName{
+// TestCheckRuleIDsOccupiedByCRD_SingleAlertUsesLiteralIdentifier pins that a
+// CRD with zero or one alerting rule keeps using the CRD's own literal
+// identifier, unchanged: composePrometheusRuleNames never derives a distinct
+// id for it either, so it lives at that literal id.
+func TestCheckRuleIDsOccupiedByCRD_SingleAlertUsesLiteralIdentifier(t *testing.T) {
+	assert.Equal(t, []string{"shared-id"}, checkRuleIDsOccupiedByCRD("shared-id", nil))
+	assert.Equal(t, []string{"shared-id"}, checkRuleIDsOccupiedByCRD("shared-id", []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 	}))
 }
 
-// TestCheckRuleIDsForWholeCRDDeletion_MultiAlertUsesDerivedIDs is a
-// regression test for a bug where a whole-CRD deletion for a multi-alert
-// CRD only ever targeted the CRD's literal identifier, which -- once
+// TestCheckRuleIDsOccupiedByCRD_MultiAlertUsesDerivedIDs is a regression
+// test for a bug where a whole-CRD deletion for a multi-alert CRD only ever
+// targeted the CRD's literal identifier, which -- once
 // composePrometheusRuleNames derives a distinct id per alert for 2+ alerts
 // -- was never where any of the real check rules actually lived. Each
 // alert's own derived id must be targeted instead.
-func TestCheckRuleIDsForWholeCRDDeletion_MultiAlertUsesDerivedIDs(t *testing.T) {
-	ids := checkRuleIDsForWholeCRDDeletion("shared-id", []asset.PrometheusAlertName{
+func TestCheckRuleIDsOccupiedByCRD_MultiAlertUsesDerivedIDs(t *testing.T) {
+	ids := checkRuleIDsOccupiedByCRD("shared-id", []asset.PrometheusAlertName{
 		{GroupName: "g", AlertName: "A"},
 		{GroupName: "g", AlertName: "B"},
 	})
@@ -471,7 +471,7 @@ func TestCheckRuleIDsForWholeCRDDeletion_MultiAlertUsesDerivedIDs(t *testing.T) 
 		asset.DeriveAlertCheckRuleID("shared-id", "g - A"),
 		asset.DeriveAlertCheckRuleID("shared-id", "g - B"),
 	}, ids)
-	assert.NotContains(t, ids, "shared-id", "the literal shared id must never be targeted once derivation applies")
+	assert.NotContains(t, ids, "shared-id", "a multi-alert CRD's alerts never live at the literal shared id")
 }
 
 // TestResolveDeletionNames_MultiDocumentFile is a regression test for a bug

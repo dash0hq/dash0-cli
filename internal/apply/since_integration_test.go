@@ -774,11 +774,11 @@ spec:
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+highErrorRateID), "expected a DELETE for the HighErrorRate alert's own derived check-rule id")
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+diskFullID), "expected a DELETE for the DiskFull alert's own derived check-rule id")
 
-	for _, req := range server.Requests() {
-		if req.Method == http.MethodDelete && req.Path == "/api/alerting/check-rules/"+id {
-			t.Errorf("must not stop at a DELETE to the CRD's literal shared id -- that was never a real check rule for a multi-alert CRD")
-		}
-	}
+	// The literal shared id is attempted alongside the derived ids, never
+	// instead of them: for a CRD applied before per-alert derivation existed,
+	// that is where its one check rule sits.
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/"+id),
+		"expected a DELETE for the CRD's literal shared id too, to reclaim a pre-derivation orphan")
 }
 
 func TestApply_Since_MultiDocumentPartialDeletion(t *testing.T) {
@@ -1547,4 +1547,156 @@ spec:
 
 	require.NoError(t, cmdErr)
 	assert.NotContains(t, stderr, "identified by dash0.com/id alone", "an origin-identified spam filter's id is never reassigned, so no warning is needed")
+}
+
+// TestApply_Since_WholeCRDDeletionSpares_DeclaredCheckRule is a regression
+// test for silent over-deletion: a whole-CRD deletion dispatches to the
+// check-rule endpoint by identifier alone, dropping the (kind, identifier)
+// keying used everywhere else, so a `kind: CheckRule` document still
+// declaring that id was deleted right after phase 1 created it.
+func TestApply_Since_WholeCRDDeletionSpares_DeclaredCheckRule(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sharedID = "collision-id"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: `+sharedID+`
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+`)
+	// A plain CheckRule that happens to carry the same identifier string.
+	writeFileFixture(t, dir, "checkrule.yaml", `apiVersion: dash0.com/v1alpha1
+kind: CheckRule
+id: `+sharedID+`
+name: Standalone Rule
+expression: up == 0
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add CRD and colliding check rule")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	// Remove only the CRD. checkrule.yaml survives and is applied in phase 1.
+	require.NoError(t, os.Remove(filepath.Join(dir, "rules.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove the CRD")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{},
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+sharedID),
+		"the surviving CheckRule document must still be applied in phase 1")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/"+sharedID),
+		"the CRD's deletion must not delete a check rule the current contents still declare")
+}
+
+// TestApply_Since_CheckRuleDeletionSpares_DeclaredCRDsCheckRule covers the
+// other direction: a removed `kind: CheckRule` whose id is where a surviving
+// single-alert CRD's check rule lives, which phase 1 just upserted.
+func TestApply_Since_CheckRuleDeletionSpares_DeclaredCRDsCheckRule(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sharedID = "collision-id"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	crd := `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: ` + sharedID + `
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+`
+	writeFileFixture(t, dir, "rules.yaml", crd)
+	writeFileFixture(t, dir, "checkrule.yaml", `apiVersion: dash0.com/v1alpha1
+kind: CheckRule
+id: `+sharedID+`
+name: Standalone Rule
+expression: up == 0
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add CRD and colliding check rule")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	// The surviving CRD's check rule lives at the very id this would target.
+	require.NoError(t, os.Remove(filepath.Join(dir, "checkrule.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove the standalone check rule")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+sharedID),
+		"the surviving CRD's alert must still be applied in phase 1")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/"+sharedID),
+		"the removed CheckRule must not delete the surviving CRD's check rule at the same id")
 }

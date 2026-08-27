@@ -39,6 +39,10 @@ type deletionPlan struct {
 	// deletion path before grouping it with validated documents from the same
 	// file. See stripScope in dryrun.go.
 	scope string
+	// declaredCheckRuleIDs is every check-rule id -f's current contents still
+	// declare, so a deletion dispatched by identifier never removes an asset
+	// this same run created or updated. See declaredCheckRuleIDs.
+	declaredCheckRuleIDs map[string]bool
 	// targetWasDirectoryAtRef reports whether -f's target was a directory
 	// (rather than a single file) the last time it existed, per git history
 	// at --since's ref. runApply uses this to correct its own fromDirectory
@@ -184,7 +188,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
-	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope, targetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope, declaredCheckRuleIDs: declaredCheckRuleIDs(after), targetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that
@@ -314,7 +318,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			declined++
 			continue
 		}
-		alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d)
+		alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.declaredCheckRuleIDs)
 		if err != nil {
 			return declined, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
 		}
@@ -373,16 +377,22 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 // "was already deleted" message -- printing both claims a deletion that
 // never happened, which a CI log or audit trail would then take at face
 // value.
-func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (alreadyDeleted bool, err error) {
+func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (alreadyDeleted bool, err error) {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
-		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusAlerts)
+		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusAlerts, declared)
 	}
 
 	switch kind {
 	case "dashboard", "persesdashboard":
 		err = apiClient.DeleteDashboard(ctx, identifier, dataset)
 	case "checkrule":
+		if declared[identifier] {
+			// A surviving single-alert CRD's check rule lives here. Reporting
+			// "nothing deleted" keeps applyDeletions from printing "deleted".
+			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", identifier))
+			return true, nil
+		}
 		err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
 	case "syntheticcheck":
 		err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
@@ -455,12 +465,24 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // rule id and the recording rule all 404), so a mixed outcome -- anything
 // genuinely deleted, the rest already gone -- is reported as a real
 // deletion, matching the fact that something was.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []asset.PrometheusAlertName) (alreadyDeleted bool, err error) {
-	checkRuleIDs := checkRuleIDsForWholeCRDDeletion(identifier, alerts)
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []asset.PrometheusAlertName, declared map[string]bool) (alreadyDeleted bool, err error) {
+	checkRuleIDs := checkRuleIDsOccupiedByCRD(identifier, alerts)
+	if len(alerts) > 1 {
+		// A multi-alert CRD applied before per-alert derivation existed left
+		// its one check rule at the literal id (docs/commands.md's multi-alert
+		// migration note); the per-id 404 tolerance below makes this extra
+		// attempt free when there is no such orphan.
+		checkRuleIDs = append([]string{identifier}, checkRuleIDs...)
+	}
 
 	var lastCheckRuleNotFoundErr error
 	checkRulesAllNotFound := true
 	for _, id := range checkRuleIDs {
+		if declared[id] {
+			// Not attempted, so not a "found nothing" either.
+			warnSkippedDeclaredCheckRule(id, fmt.Sprintf("PrometheusRule %q", identifier))
+			continue
+		}
 		checkRuleErr := apiClient.DeleteCheckRule(ctx, id, dataset)
 		if checkRuleErr == nil {
 			checkRulesAllNotFound = false
@@ -494,14 +516,11 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	return false, nil
 }
 
-// checkRuleIDsForWholeCRDDeletion returns every check-rule id a whole-CRD
-// deletion must attempt: the CRD's own literal identifier for a CRD with
-// zero or one alerting rule (a single-alert CRD's one check rule lives
-// there directly, per composePrometheusRuleNames), or each alert's own
-// derived id (asset.DeriveAlertCheckRuleID) for a CRD with two or more,
-// since none of them live at the literal identifier once derivation kicks
-// in.
-func checkRuleIDsForWholeCRDDeletion(identifier string, alerts []asset.PrometheusAlertName) []string {
+// checkRuleIDsOccupiedByCRD returns the check-rule ids a PrometheusRule CRD's
+// alerts actually live at: the CRD's own literal identifier for zero or one
+// alert (per composePrometheusRuleNames), or each alert's own derived id
+// (asset.DeriveAlertCheckRuleID) for two or more.
+func checkRuleIDsOccupiedByCRD(identifier string, alerts []asset.PrometheusAlertName) []string {
 	if len(alerts) <= 1 {
 		return []string{identifier}
 	}
@@ -510,6 +529,38 @@ func checkRuleIDsForWholeCRDDeletion(identifier string, alerts []asset.Prometheu
 		ids[i] = asset.DeriveAlertCheckRuleID(identifier, alertName.CheckRuleName())
 	}
 	return ids
+}
+
+// declaredCheckRuleIDs collects every check-rule id -f's current contents
+// still declare. Dispatch resolves an identifier to an endpoint, dropping the
+// kind half of the (kind, identifier) key Snapshot.Identifiers uses elsewhere:
+// a removed PrometheusRule and a surviving CheckRule sharing an identifier are
+// two plan entries but one DELETE /api/alerting/check-rules/<id>, which would
+// undo phase 1's own create/update. The collision runs both ways.
+//
+// Tolerating an orphan here is deliberate: leaving an asset behind is
+// recoverable by hand, deleting one the user just declared is not.
+func declaredCheckRuleIDs(after gitutil.Snapshot) map[string]bool {
+	declared := map[string]bool{}
+	for key := range after.Identifiers {
+		switch key.Kind {
+		case "checkrule":
+			declared[key.Identifier] = true
+		case "prometheusrule":
+			// Occupied ids only: a multi-alert CRD's literal identifier holds
+			// an orphan, not something it declares, so it stays reclaimable.
+			for _, id := range checkRuleIDsOccupiedByCRD(key.Identifier, after.PrometheusAlertsByIdentifier[key.Identifier]) {
+				declared[id] = true
+			}
+		}
+	}
+	return declared
+}
+
+// warnSkippedDeclaredCheckRule reports a skipped check-rule deletion, so the
+// orphan it leaves behind is not invisible.
+func warnSkippedDeclaredCheckRule(id, removedDisplay string) {
+	fmt.Fprintf(os.Stderr, "warning: not deleting check rule %q on behalf of removed %s: the current contents of -f still declare a check rule with that identifier, and deleting it would undo this run's own create/update; remove it by hand if it is a leftover\n", id, removedDisplay)
 }
 
 // deleteCheckRuleByName resolves a check rule by its exact name (the "<group
