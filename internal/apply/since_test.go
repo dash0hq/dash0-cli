@@ -789,3 +789,28 @@ func TestCheckRuleNameIndex_Resolve(t *testing.T) {
 		}
 	})
 }
+
+// TestComputeDeletionPlan_SparseCheckoutRefuses is a regression test for
+// silent data loss: the ref side of the diff comes from `git ls-tree`, which
+// enumerates the whole commit, while the disk side walks only what is
+// materialized. Under a sparse checkout every tracked-but-absent asset became
+// a deletion candidate, and --force deleted assets git still declares.
+func TestComputeDeletionPlan_SparseCheckoutRefuses(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+	writeFileFixture(t, dir, "keep.yaml", "kind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	writeFileFixture(t, dir, "hidden.yaml", "kind: View\nmetadata:\n  name: hidden\n  labels:\n    dash0.com/id: hidden-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add both")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+	runGitCmd(t, dir, "update-index", "--skip-worktree", "hidden.yaml")
+	require.NoError(t, os.Remove(filepath.Join(dir, "hidden.yaml")))
+
+	_, err := computeDeletionPlan(context.Background(), &applyFlags{File: dir, Since: before})
+	require.Error(t, err, "hidden.yaml is still declared in git and must never become a deletion candidate")
+	assert.Contains(t, err.Error(), "sparse checkout")
+	assert.Contains(t, err.Error(), "\nHint:")
+}

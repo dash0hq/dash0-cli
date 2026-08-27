@@ -149,6 +149,23 @@ func (r Repo) IsTreeAtRef(ctx context.Context, ref, path string) (bool, error) {
 	return strings.TrimSpace(string(out)) == "tree", nil
 }
 
+// HasSkipWorktreeFiles reports whether any tracked file under scope carries
+// git's skip-worktree bit, which sparse-checkout sets on everything outside
+// the cone. Such a file is in the commit but not on disk, so the ref side of a
+// --since diff sees it and the disk side does not, making it look deleted.
+func (r Repo) HasSkipWorktreeFiles(ctx context.Context, scope string) (bool, error) {
+	args := []string{"ls-files", "-t", "-z"}
+	if scope != "" {
+		args = append(args, "--", scope)
+	}
+	out, err := r.run(ctx, args...)
+	if err != nil {
+		return false, fmt.Errorf("failed to list tracked files under %s: %w", scope, err)
+	}
+	// Entries are "<tag> <path>" separated by NUL; S is skip-worktree.
+	return bytes.HasPrefix(out, []byte("S ")) || bytes.Contains(out, []byte("\x00S ")), nil
+}
+
 // ListYAMLFilesAtRef runs `git ls-tree -r -z --name-only <ref> [-- <scope>]`,
 // returning every .yaml/.yml file at that ref within scope (a repo-relative
 // directory or file path; empty scope lists the whole tree). Hidden files

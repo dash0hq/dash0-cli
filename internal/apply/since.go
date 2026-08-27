@@ -162,6 +162,17 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 		scope = ""
 	}
 
+	// A sparse checkout leaves tracked files off disk, so the disk side of the
+	// diff sees fewer than the ref side and every absent one looks deleted.
+	// Refuse rather than delete assets git still declares.
+	sparse, err := repo.HasSkipWorktreeFiles(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	if sparse {
+		return nil, fmt.Errorf("--since '%s' cannot run against a sparse checkout: files tracked under %s are absent from disk, so they would be detected as deletions\nHint: run from a full checkout (git sparse-checkout disable), or drop --since to apply without deletion detection", flags.Since, flags.File)
+	}
+
 	targetWasDirectoryAtRef, err := repo.IsTreeAtRef(ctx, sha, scope)
 	if err != nil {
 		// The target may not have existed at this ref at all (e.g. it was

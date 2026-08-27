@@ -220,3 +220,29 @@ func TestListYAMLFilesAtRef_PathsGitWouldMangle(t *testing.T) {
 		})
 	}
 }
+
+// TestHasSkipWorktreeFiles checks per scope, not repo-wide: a sparse cone
+// elsewhere in a monorepo must not block a --since run whose own target is
+// fully materialized.
+func TestHasSkipWorktreeFiles(t *testing.T) {
+	for _, tc := range []struct {
+		scope string
+		want  bool
+	}{
+		{"", true},
+		{"drop", true},
+		{"keep", false},
+	} {
+		t.Run("scope="+tc.scope, func(t *testing.T) {
+			repo := testRepo(t)
+			writeFile(t, repo.Dir, "keep/k.yaml", "kind: View\n")
+			writeFile(t, repo.Dir, "drop/d.yaml", "kind: View\n")
+			commitAll(t, repo.Dir, "add files")
+			runGit(t, repo.Dir, "update-index", "--skip-worktree", "drop/d.yaml")
+
+			got, err := repo.HasSkipWorktreeFiles(context.Background(), tc.scope)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
