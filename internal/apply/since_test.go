@@ -733,3 +733,59 @@ func TestApplyDeletions_PrometheusRuleConfirmationPromptUsesConsistentCasing(t *
 	assert.Contains(t, stdout, "Are you sure you want to delete PrometheusRule \"<name>\" (shared-id)")
 	assert.NotContains(t, stdout, "prometheusrule", "the whole display name must never be force-lowercased into an unreadable compound word")
 }
+
+// TestCheckRuleNameIndex_Resolve covers resolve's three outcomes. Ambiguity
+// matters most: the previous first-exact-match lookup silently deleted
+// whichever check rule the API happened to list first.
+func TestCheckRuleNameIndex_Resolve(t *testing.T) {
+	const name = "group - Alert"
+
+	t.Run("single deletable match resolves", func(t *testing.T) {
+		index := checkRuleNameIndex{name: {{id: "id-1"}}}
+		id, err := index.resolve(name)
+		require.NoError(t, err)
+		assert.Equal(t, "id-1", id)
+	})
+
+	t.Run("no match resolves to empty, not an error", func(t *testing.T) {
+		id, err := checkRuleNameIndex{}.resolve(name)
+		require.NoError(t, err)
+		assert.Empty(t, id, "an absent check rule is already in the desired end state")
+	})
+
+	t.Run("two deletable matches error instead of guessing", func(t *testing.T) {
+		index := checkRuleNameIndex{name: {{id: "id-2"}, {id: "id-1"}}}
+		_, err := index.resolve(name)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ambiguous")
+		assert.Contains(t, err.Error(), "id-1, id-2", "both candidates must be named, sorted")
+		assert.Contains(t, err.Error(), "\nHint:")
+	})
+
+	t.Run("a foreign-owned match is not deletable", func(t *testing.T) {
+		for _, source := range []string{"ui", "terraform", "operator", "platform"} {
+			index := checkRuleNameIndex{name: {{id: "id-1", source: source}}}
+			id, err := index.resolve(name)
+			require.NoError(t, err)
+			assert.Empty(t, id, "a check rule managed by %s is a different asset that merely collides", source)
+		}
+	})
+
+	t.Run("a foreign match does not make its deletable sibling ambiguous", func(t *testing.T) {
+		index := checkRuleNameIndex{name: {{id: "id-terraform", source: "terraform"}, {id: "id-1"}}}
+		id, err := index.resolve(name)
+		require.NoError(t, err)
+		assert.Equal(t, "id-1", id)
+	})
+
+	t.Run("api, dash0-cli and an unrecognized source stay deletable", func(t *testing.T) {
+		// CrdSource's contract is to treat an unknown value as "api", and a
+		// CLI-applied check rule carries no origin of its own at all.
+		for _, source := range []string{"", "api", "dash0-cli", "something-new"} {
+			index := checkRuleNameIndex{name: {{id: "id-1", source: source}}}
+			id, err := index.resolve(name)
+			require.NoError(t, err)
+			assert.Equal(t, "id-1", id, "source %q must not be treated as foreign", source)
+		}
+	})
+}

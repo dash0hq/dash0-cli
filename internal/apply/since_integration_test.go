@@ -1700,3 +1700,180 @@ expression: up == 0
 	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/"+sharedID),
 		"the removed CheckRule must not delete the surviving CRD's check rule at the same id")
 }
+
+// TestApply_Since_MultipleAlertDeletionsListCheckRulesOnce pins that the
+// alert-deletion path lists check rules once per run rather than once per
+// removed alert.
+func TestApply_Since_MultipleAlertDeletionsListCheckRulesOnce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: Survivor
+          expr: up == 1
+        - alert: DiskFull
+          expr: disk > 0.9
+        - alert: MemFull
+          expr: mem > 0.9
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add rules with three alerts")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	// Drop two of the three alerts; the CRD (and its identifier) survives.
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: Survivor
+          expr: up == 1
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove two alerts")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+	server.On(http.MethodGet, apiPathCheckRules, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: []map[string]any{
+			{"dataset": "default", "id": "disk-full-id", "name": "test-group - DiskFull"},
+			{"dataset": "default", "id": "mem-full-id", "name": "test-group - MemFull"},
+		},
+		Validator: testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/disk-full-id"))
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/mem-full-id"))
+
+	listings := 0
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodGet && req.Path == apiPathCheckRules {
+			listings++
+		}
+	}
+	assert.Equal(t, 1, listings, "two removed alerts must share one check-rule listing")
+}
+
+// TestApply_Since_AlertDeletionSkipsForeignOwnedCheckRule pins that a
+// same-named check rule owned by another system of record is left alone, and
+// that the API's source field actually reaches the index.
+func TestApply_Since_AlertDeletionSkipsForeignOwnedCheckRule(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: Survivor
+          expr: up == 1
+        - alert: DiskFull
+          expr: disk > 0.9
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add rules with two alerts")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: Survivor
+          expr: up == 1
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove DiskFull")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+	// The only check rule with that name is Terraform's.
+	server.On(http.MethodGet, apiPathCheckRules, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: []map[string]any{
+			{"dataset": "default", "id": "terraform-owned-id", "name": "test-group - DiskFull", "source": "terraform"},
+		},
+		Validator: testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/terraform-owned-id"),
+		"a Terraform-managed check rule must never be deleted on behalf of an alert removed from -f")
+}

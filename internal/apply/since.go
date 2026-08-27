@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -331,6 +332,15 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 		}
 	}
 
+	var nameIndex checkRuleNameIndex
+	if len(dp.plan.AlertsByName) > 0 {
+		// One listing for the whole loop, not one per alert.
+		var err error
+		nameIndex, err = buildCheckRuleNameIndex(ctx, apiClient, dataset)
+		if err != nil {
+			return declined, err
+		}
+	}
 	for _, a := range dp.plan.AlertsByName {
 		name := a.CheckRuleName()
 		prompt := fmt.Sprintf("Are you sure you want to delete check rule %q, an alert removed from a PrometheusRule since --since ref? [y/N]: ", name)
@@ -343,7 +353,7 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			declined++
 			continue
 		}
-		alreadyDeleted, err := deleteCheckRuleByName(ctx, apiClient, dataset, name)
+		alreadyDeleted, err := deleteCheckRuleByName(ctx, apiClient, dataset, name, nameIndex)
 		if err != nil {
 			return declined, fmt.Errorf("failed to delete check rule %q: %w", name, err)
 		}
@@ -563,9 +573,8 @@ func warnSkippedDeclaredCheckRule(id, removedDisplay string) {
 	fmt.Fprintf(os.Stderr, "warning: not deleting check rule %q on behalf of removed %s: the current contents of -f still declare a check rule with that identifier, and deleting it would undo this run's own create/update; remove it by hand if it is a leftover\n", id, removedDisplay)
 }
 
-// deleteCheckRuleByName resolves a check rule by its exact name (the "<group
-// name> - <alert name>" composed by apply's create/update path) and deletes
-// it. This is the only way to target a single alerting rule removed from a
+// deleteCheckRuleByName deletes the check rule index resolves name to. Name
+// is the only way to target a single alerting rule removed from a
 // PrometheusRule CRD that otherwise survives: the CRD's shared identifier
 // can't distinguish between the alerts it contains.
 //
@@ -574,8 +583,8 @@ func warnSkippedDeclaredCheckRule(id, removedDisplay string) {
 // this is unconditional, unlike a standalone `<kind> delete` command). The
 // returned bool follows the same contract: true means nothing was actually
 // deleted by this call.
-func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string) (alreadyDeleted bool, err error) {
-	id, err := findCheckRuleIDByName(ctx, apiClient, dataset, name)
+func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string, index checkRuleNameIndex) (alreadyDeleted bool, err error) {
+	id, err := index.resolve(name)
 	if err != nil {
 		return false, err
 	}
@@ -595,18 +604,72 @@ func deleteCheckRuleByName(ctx context.Context, apiClient dash0api.Client, datas
 	return false, nil
 }
 
-// findCheckRuleIDByName lists every check rule in dataset and returns the ID
-// of the first one whose name matches exactly, or "" if none matches.
-func findCheckRuleIDByName(ctx context.Context, apiClient dash0api.Client, dataset *string, name string) (string, error) {
+// checkRuleNameIndex maps each live check rule's name to every check rule
+// carrying it, built once per run so resolving N removed alerts costs one
+// listing rather than N, and so a shared name is visible as the ambiguity it
+// is rather than resolving to whichever the API listed first.
+type checkRuleNameIndex map[string][]checkRuleMatch
+
+type checkRuleMatch struct {
+	id     string
+	source string // dash0.com/origin-derived system of record, "" when unset
+}
+
+// foreignCheckRuleSources are the systems of record --since must not delete
+// on behalf of an alert removed from -f: a same-named check rule owned by one
+// of them merely collides. A denylist, not an allowlist: the CLI strips
+// dash0.com/origin before sending, so its own check rules read back as "api"
+// or unset, and CrdSource's contract treats an unknown value as "api" too.
+var foreignCheckRuleSources = map[string]bool{
+	string(dash0api.Ui):        true,
+	string(dash0api.Terraform): true,
+	string(dash0api.Operator):  true,
+	string(dash0api.Platform):  true,
+}
+
+func buildCheckRuleNameIndex(ctx context.Context, apiClient dash0api.Client, dataset *string) (checkRuleNameIndex, error) {
+	index := checkRuleNameIndex{}
 	iter := apiClient.ListCheckRulesIter(ctx, dataset)
 	for iter.Next() {
 		item := iter.Current()
-		if item.Name != nil && *item.Name == name {
-			return item.Id, nil
+		if item.Name == nil {
+			continue
 		}
+		match := checkRuleMatch{id: item.Id}
+		if item.Source != nil {
+			match.source = string(*item.Source)
+		}
+		index[*item.Name] = append(index[*item.Name], match)
 	}
 	if err := iter.Err(); err != nil {
-		return "", fmt.Errorf("failed to list check rules: %w", err)
+		return nil, fmt.Errorf("failed to list check rules: %w", err)
 	}
-	return "", nil
+	return index, nil
+}
+
+// resolve returns the id of the one deletable check rule named name, "" when
+// there is none, or an error when two carry it -- deleting the wrong one is
+// unrecoverable, and the CRD's identifier cannot disambiguate them.
+func (index checkRuleNameIndex) resolve(name string) (string, error) {
+	var deletable, foreign []string
+	for _, match := range index[name] {
+		if foreignCheckRuleSources[match.source] {
+			foreign = append(foreign, match.source)
+			continue
+		}
+		deletable = append(deletable, match.id)
+	}
+
+	if len(deletable) > 1 {
+		sort.Strings(deletable)
+		return "", fmt.Errorf("check rule %q is ambiguous: %d check rules carry that name (%s)\nHint: --since resolves an alert removed from a surviving PrometheusRule CRD by name, since the CRD's shared identifier cannot distinguish its alerts; rename or delete the duplicates in Dash0, or skip --since for this invocation", name, len(deletable), strings.Join(deletable, ", "))
+	}
+	if len(deletable) == 0 {
+		if len(foreign) > 0 {
+			sort.Strings(foreign)
+			fmt.Fprintf(os.Stderr, "warning: not deleting check rule %q: every check rule with that name is managed by another system (%s), not by this repository\n", name, strings.Join(foreign, ", "))
+		}
+		return "", nil
+	}
+	return deletable[0], nil
 }
