@@ -29,8 +29,14 @@ subtext: |
     `{path, changes: [{op, kind, name, originOrId}]}` instead of the human-readable text,
     matching every other command's agent-mode contract.
 
-  Scripts that parsed `--dry-run`'s text output need updating. Agent-mode callers should
-  read the JSON rather than parsing text.
+  Separately, `Dash0Team` now renders as `Team` wherever an asset kind is displayed, so
+  `apply` reports `Team "Backend Team" created` instead of `Dash0Team "Backend Team"
+  created`. Every other kind already had a human-readable display name; teams fell
+  through to the raw kind identifier, which also contradicted the `--- Team (before)`
+  header their own update diff printed.
+
+  Scripts that parsed `--dry-run`'s text output, or grepped for `Dash0Team`, need
+  updating. Agent-mode callers should read the JSON rather than parsing text.
 
 # If your change doesn't affect end users or the exported elements of any package,
 # you should instead start your pull request title with "chore" or use the "Skip Changelog" label.
