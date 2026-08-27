@@ -56,7 +56,10 @@ func doBuildE2EImage() error {
 
 	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/dash0")
 	buildCmd.Dir = repoRoot
-	buildCmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
+	// CGO_ENABLED=0: GOOS=linux is a cross-compile from macOS (cgo off by
+	// default) but native on a linux CI runner (cgo on), which would link the
+	// binary against glibc and make it unexecutable in this musl-only image.
+	buildCmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to cross-compile dash0 for linux/%s: %w\n%s", runtime.GOARCH, err, out)
 	}
