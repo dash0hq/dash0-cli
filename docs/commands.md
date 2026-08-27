@@ -1087,11 +1087,11 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
-A document removed from git history with no `dash0.com/id` or `dash0.com/origin` at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to:
+A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
 ```bash
 $ dash0 --experimental apply -f dashboards/ --since HEAD~1
-Error: --since 'HEAD~1' found 1 document deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:
+Error: --since 'HEAD~1' found 1 document deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:
   removed.yaml
 Hint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation
 ```

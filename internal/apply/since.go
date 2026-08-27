@@ -194,7 +194,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 
 	plan := gitutil.Diff(before, after)
 	if len(plan.NoIdentifier) > 0 {
-		return nil, fmt.Errorf("--since '%s' found %s deleted with no dash0.com/id or dash0.com/origin label, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
+		return nil, fmt.Errorf("--since '%s' found %s deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
 			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
 	}
 

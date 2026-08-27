@@ -658,7 +658,7 @@ func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {
 	flags := &applyFlags{File: dir, Since: before}
 	_, err := computeDeletionPlan(context.Background(), flags)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no dash0.com/id or dash0.com/origin label")
+	assert.Contains(t, err.Error(), "no identifier its kind is upserted by")
 	assert.Contains(t, err.Error(), "orphan.yaml")
 }
 

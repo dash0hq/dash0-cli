@@ -44,40 +44,38 @@ type identifierProbe struct {
 //
 //   - Dashboard: metadata.dash0Extensions.id
 //   - CheckRule: top-level id
-//   - Dash0SpamFilter, Dash0NotificationChannel, Dash0Team: dash0.com/origin,
-//     falling back to dash0.com/id
+//   - Dash0NotificationChannel: dash0.com/origin
+//   - Dash0SpamFilter, Dash0Team: dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View):
 //     dash0.com/id
+//
+// Each kind reads only the field its Import helper actually upserts by. A
+// fallback onto some other field would return an identifier no live asset can
+// match, which --since would then "delete" to a 404 and report as already
+// deleted -- returning "" instead routes the document to the NoIdentifier
+// hard-fail. Only teams and spam filters genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := sigsyaml.Unmarshal(data, &probe); err != nil {
 		return "", fmt.Errorf("failed to extract identifier: %w", err)
 	}
 
-	id := probe.Metadata.Labels["dash0.com/id"]
 	origin := probe.Metadata.Labels["dash0.com/origin"]
 
 	switch normalizeKindForIdentifier(probe.Kind) {
 	case "dashboard":
-		if probe.Metadata.Dash0Extensions.ID != "" {
-			return probe.Metadata.Dash0Extensions.ID, nil
-		}
-		return id, nil
+		return probe.Metadata.Dash0Extensions.ID, nil
 	case "checkrule":
-		if probe.ID != "" {
-			return probe.ID, nil
-		}
-		return id, nil
-	case "spamfilter", "notificationchannel", "team":
+		return probe.ID, nil
+	case "notificationchannel":
+		return origin, nil
+	case "spamfilter", "team":
 		if origin != "" {
 			return origin, nil
 		}
-		return id, nil
+		return probe.Metadata.Labels["dash0.com/id"], nil
 	default:
-		if id != "" {
-			return id, nil
-		}
-		return origin, nil
+		return probe.Metadata.Labels["dash0.com/id"], nil
 	}
 }
 
