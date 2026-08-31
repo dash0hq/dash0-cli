@@ -138,8 +138,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-// Temporary local redirect so this branch can consume ClientId on
-// OAuthRevocationRequest from dash0-api-client-go#31 before that PR is
-// released. Drop this replace and bump the require once the client ships.
-replace github.com/dash0hq/dash0-api-client-go => ../dash0-api-client-go
