@@ -1,0 +1,310 @@
+name: 'Sync Dash0 Assets'
+description: 'Sync a directory of Dash0 asset YAML files, deleting assets removed since the last push'
+author: 'Dash0'
+
+branding:
+  icon: 'refresh-cw'
+  color: 'orange'
+
+inputs:
+  # -- CLI installation --
+
+  cli-version:
+    description: >-
+      Dash0 CLI version to install (e.g., "1.1.0" or omit for latest).
+      Minimum supported version is 1.1.0.
+      Ignored if the CLI is already on PATH (e.g., via the setup action).
+    required: false
+    default: ''
+
+  # -- Connection --
+
+  api-url:
+    description: >-
+      Dash0 API URL (e.g., "https://api.us-west-2.aws.dash0.com").
+      Find yours at https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http.
+      Overrides the value from the active CLI profile.
+    required: false
+    default: ''
+
+  auth-token:
+    description: >-
+      Dash0 auth token (e.g., "auth_xxx").
+      Get one from https://app.dash0.com/goto/settings/auth-tokens.
+      You should store this in a GitHub secret.
+      Overrides the value from the active CLI profile.
+    required: false
+    default: ''
+
+  dataset:
+    description: >-
+      Dash0 dataset name (e.g., "production").
+      Defaults to "default" if omitted.
+      Overrides the value from the active CLI profile.
+    required: false
+    default: ''
+
+  # -- Sync --
+
+  path:
+    description: 'Path to a file or directory containing asset definitions to sync (mirrors `apply -f`).'
+    required: true
+
+  since:
+    description: >-
+      Controls deletion detection. Three states: "auto" (the default) derives the comparison
+      ref from the triggering event's github.event.before, omitting deletion detection when
+      there is no usable prior state (e.g. a first push to a new branch, or a workflow_dispatch
+      run); "none" unconditionally disables deletion detection for this run, regardless of what
+      the triggering event would otherwise supply; any other value is used directly as the
+      comparison ref, letting a workflow_dispatch or schedule run opt into deletion detection
+      against a caller-chosen ref (e.g. a tag). An explicit empty string or all-zeros SHA fails
+      the job (likely a broken expression) rather than being silently treated like "auto"
+      finding no prior state.
+    required: false
+    default: 'auto'
+
+  dry-run:
+    description: >-
+      When "true", computes and reports the pending plan (see outputs) but never applies it.
+      Since this makes no Dash0 API calls at all, it can be used without api-url/auth-token
+      (e.g. to preview pending changes on a pull request).
+    required: false
+    default: 'false'
+
+  accept-non-ancestor-ref:
+    description: >-
+      When "true", accepts a resolved comparison ref that is not an ancestor of the current
+      commit (the signature of a force-push or history rewrite on the tracked branch) instead
+      of failing the job. Has no effect when since is "none" or resolves to no comparison ref.
+    required: false
+    default: 'false'
+
+  max-deletions:
+    description: >-
+      If set, fails the job before any mutating call when the pending plan reports more
+      deletions than this. Leave unset for no limit.
+    required: false
+    default: ''
+
+outputs:
+  since:
+    description: 'The comparison ref actually used for deletion detection this run (empty when deletion detection did not apply).'
+    value: ${{ steps.since.outputs.candidate }}
+  deletion-count:
+    description: 'Number of assets planned for deletion.'
+    value: ${{ steps.plan.outputs.deletion-count }}
+  deletions:
+    description: 'JSON array of assets planned for deletion, each `{"kind": ..., "name": ..., "originOrId": ...}`.'
+    value: ${{ steps.plan.outputs.deletions }}
+  modification-count:
+    description: 'Number of assets planned for creation or update.'
+    value: ${{ steps.plan.outputs.modification-count }}
+  modifications:
+    description: 'JSON array of assets planned for creation or update, same shape as `deletions`.'
+    value: ${{ steps.plan.outputs.modifications }}
+
+runs:
+  using: 'composite'
+  steps:
+    # -- CLI installation (skipped if already on PATH, e.g., via the setup action) --
+
+    - name: Resolve Dash0 CLI version
+      id: resolve-version
+      shell: bash
+      env:
+        CLI_VERSION: ${{ inputs.cli-version }}
+        SKIP_IF_ON_PATH: 'true'
+      run: bash "${{ github.action_path }}/../lib/resolve-cli-version.sh"
+
+    - name: Restore Dash0 CLI from cache
+      if: steps.resolve-version.outputs.skip-install != 'true'
+      id: cache-dash0-cli
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.dash0/bin/dash0
+        key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
+
+    - name: Download Dash0 CLI
+      if: steps.resolve-version.outputs.skip-install != 'true' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CLI_VERSION: ${{ steps.resolve-version.outputs.version }}
+      run: bash "${{ github.action_path }}/../lib/download-cli.sh"
+
+    - name: Add Dash0 CLI to PATH
+      if: steps.resolve-version.outputs.skip-install != 'true'
+      shell: bash
+      run: echo "$HOME/.dash0/bin" >> "$GITHUB_PATH"
+
+    - name: Save Dash0 CLI to cache
+      if: steps.resolve-version.outputs.skip-install != 'true' && steps.cache-dash0-cli.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.dash0/bin/dash0
+        key: setup-dash0-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.version }}
+
+    # -- Ensure a profile exists --
+
+    - name: Create or update Dash0 profile
+      shell: bash
+      env:
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_AUTH_TOKEN: ${{ inputs.auth-token }}
+        INPUT_DATASET: ${{ inputs.dataset }}
+      run: |
+        export PATH="$HOME/.dash0/bin:$PATH"
+
+        ARGS=()
+        [ -n "$INPUT_API_URL" ] && ARGS+=(--api-url "$INPUT_API_URL")
+        [ -n "$INPUT_AUTH_TOKEN" ] && ARGS+=(--auth-token "$INPUT_AUTH_TOKEN")
+        [ -n "$INPUT_DATASET" ] && ARGS+=(--dataset "$INPUT_DATASET")
+
+        # If an active profile already exists (e.g., from the setup action),
+        # update it with any connection inputs provided to this action.
+        # When no profile is configured, `dash0 config show` prints "Profile:    (none)".
+        PROFILE_LINE=$(dash0 config show 2>/dev/null | grep '^Profile:' || true)
+        if [ -n "$PROFILE_LINE" ] && ! echo "$PROFILE_LINE" | grep -q '(none)'; then
+          if [ ${#ARGS[@]} -gt 0 ]; then
+            PROFILE_NAME=$(echo "$PROFILE_LINE" | sed 's/^Profile:[[:space:]]*//' | sed 's/[[:space:]]*(.*//')
+            dash0 config profiles update "$PROFILE_NAME" "${ARGS[@]}"
+          fi
+          exit 0
+        fi
+
+        # No active profile — create one from the connection inputs. A dry-run invocation with
+        # --since (or since: none) never calls the Dash0 API, so this is only a hard requirement
+        # once a mutating call, or a --since preflight against a real ref, is actually reached.
+        if [ ${#ARGS[@]} -eq 0 ]; then
+          echo "No active profile and no connection inputs (api-url, auth-token) provided; proceeding without one. This is only safe for a dry-run without deletion detection — any other invocation will fail once it needs to reach the Dash0 API."
+          exit 0
+        fi
+
+        dash0 config profiles create default "${ARGS[@]}"
+        dash0 config profiles select default
+
+    # -- Resolve the --since comparison ref --
+
+    - name: Resolve --since comparison ref
+      id: since
+      shell: bash
+      env:
+        INPUT_SINCE: ${{ inputs.since }}
+        INPUT_ACCEPT_NON_ANCESTOR_REF: ${{ inputs.accept-non-ancestor-ref }}
+        EVENT_BEFORE: ${{ github.event.before }}
+      run: |
+        set -euo pipefail
+
+        ALL_ZEROS="0000000000000000000000000000000000000000"
+
+        if [ "$INPUT_SINCE" = "none" ]; then
+          echo "since: none -- deletion detection disabled for this run"
+          echo "applies=false" >> "$GITHUB_OUTPUT"
+          echo "candidate=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ "$INPUT_SINCE" = "auto" ]; then
+          CANDIDATE="$EVENT_BEFORE"
+          # Event-derived: an empty/unset/all-zeros before is a routine, expected condition
+          # (first push to a new branch, or a trigger with no before at all) -- omit --since
+          # cleanly rather than failing the job. This is the whole reason this action exists
+          # instead of blindly passing github.event.before through to dash0 itself.
+          if [ -z "$CANDIDATE" ] || [ "$CANDIDATE" = "$ALL_ZEROS" ]; then
+            echo "no prior state to compare against -- omitting --since"
+            echo "applies=false" >> "$GITHUB_OUTPUT"
+            echo "candidate=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        else
+          CANDIDATE="$INPUT_SINCE"
+          # Explicit override: an empty string or the all-zeros sentinel here is not a routine
+          # GitHub event quirk -- there is no legitimate reason to explicitly pass either, so
+          # this almost always means a broken expression evaluated to nothing. Fail loudly
+          # instead of silently folding it into the same "nothing to do" path as the
+          # event-derived case above, mirroring dash0 apply --since's own dedicated errors for
+          # an explicit "" or all-zeros SHA.
+          if [ -z "$CANDIDATE" ]; then
+            echo "::error::since was explicitly set to an empty string. This usually means an expression evaluated to nothing. Use since: auto to derive from the triggering event, since: none to disable deletion detection, or pass a real ref."
+            exit 1
+          fi
+          if [ "$CANDIDATE" = "$ALL_ZEROS" ]; then
+            echo "::error::since was explicitly set to git's all-zeros SHA ($ALL_ZEROS), which never names a real commit. Use since: auto to derive from the triggering event, or since: none to disable deletion detection."
+            exit 1
+          fi
+        fi
+
+        if ! git rev-parse --verify "${CANDIDATE}^{commit}" >/dev/null 2>&1; then
+          echo "::error::--since ref '$CANDIDATE' does not resolve in this checkout. This usually means the workflow's actions/checkout step did not fetch enough history -- set fetch-depth: 0."
+          exit 1
+        fi
+
+        if ! git merge-base --is-ancestor "$CANDIDATE" HEAD 2>/dev/null; then
+          if [ "$INPUT_ACCEPT_NON_ANCESTOR_REF" = "true" ]; then
+            echo "::warning::--since ref '$CANDIDATE' is not an ancestor of HEAD (likely a force-push or history rewrite); accept-non-ancestor-ref is set, proceeding anyway."
+          else
+            echo "::error::--since ref '$CANDIDATE' is not an ancestor of HEAD -- this usually means the tracked branch was force-pushed or its history was rewritten. If this is expected, set accept-non-ancestor-ref: true."
+            exit 1
+          fi
+        fi
+
+        echo "applies=true" >> "$GITHUB_OUTPUT"
+        echo "candidate=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+    # -- Compute the pending plan (no API calls, no mutation) --
+
+    - name: Compute pending plan
+      id: plan
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_MAX_DELETIONS: ${{ inputs.max-deletions }}
+        SINCE_APPLIES: ${{ steps.since.outputs.applies }}
+        CANDIDATE: ${{ steps.since.outputs.candidate }}
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.dash0/bin:$PATH"
+
+        ARGS=(--dry-run --agent-mode -f "$INPUT_PATH")
+        if [ "$SINCE_APPLIES" = "true" ]; then
+          ARGS+=(--since "$CANDIDATE" --experimental)
+        fi
+
+        PLAN_JSON=$(dash0 apply "${ARGS[@]}")
+
+        DELETIONS=$(echo "$PLAN_JSON" | jq -c '[.[].changes[]? | select(.op == "delete") | {kind, name, originOrId}]')
+        MODIFICATIONS=$(echo "$PLAN_JSON" | jq -c '[.[].changes[]? | select(.op == "apply") | {kind, name, originOrId}]')
+        DELETION_COUNT=$(echo "$DELETIONS" | jq 'length')
+        MODIFICATION_COUNT=$(echo "$MODIFICATIONS" | jq 'length')
+
+        {
+          echo "deletion-count=$DELETION_COUNT"
+          echo "deletions=$DELETIONS"
+          echo "modification-count=$MODIFICATION_COUNT"
+          echo "modifications=$MODIFICATIONS"
+        } >> "$GITHUB_OUTPUT"
+
+        if [ -n "$INPUT_MAX_DELETIONS" ] && [ "$DELETION_COUNT" -gt "$INPUT_MAX_DELETIONS" ]; then
+          echo "::error::pending plan reports $DELETION_COUNT planned deletion(s), exceeding max-deletions ($INPUT_MAX_DELETIONS)"
+          exit 1
+        fi
+
+    # -- Apply the plan --
+
+    - name: Apply
+      if: inputs.dry-run != 'true'
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        SINCE_APPLIES: ${{ steps.since.outputs.applies }}
+        CANDIDATE: ${{ steps.since.outputs.candidate }}
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.dash0/bin:$PATH"
+
+        ARGS=(-f "$INPUT_PATH")
+        if [ "$SINCE_APPLIES" = "true" ]; then
+          ARGS+=(--since "$CANDIDATE" --force --experimental)
+        fi
+
+        dash0 apply "${ARGS[@]}"

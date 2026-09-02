@@ -72,7 +72,7 @@ files:
   - source: docs/github-actions.md
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/about.md
     title: About GitHub Actions
-    description: How to use the dash0 CLI from GitHub Actions workflows via the setup and send-log-event composite actions shipped in this repository.
+    description: How to use the dash0 CLI from GitHub Actions workflows via the setup, send-log-event, and sync-assets composite actions shipped in this repository.
     transformations:
       - description: rewrite the cross-repo relative link to the setup action README into a sibling website page link
         type: replace-regex
@@ -82,6 +82,10 @@ files:
         type: replace-regex
         find: '\]\(\.\./\.github/actions/send-log-event/README\.md\)'
         replace: '](send-log-event)'
+      - description: rewrite the cross-repo relative link to the sync-assets action README into a sibling website page link
+        type: replace-regex
+        find: '\]\(\.\./\.github/actions/sync-assets/README\.md\)'
+        replace: '](sync-assets)'
 
   - source: .github/actions/setup/README.md
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/setup.md
@@ -101,6 +105,16 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/send-log-event.md
     title: Send Log Event
     description: Composite GitHub Action that emits a log event (e.g., a deployment marker) to Dash0 via the CLI.
+    transformations:
+      - description: rewrite the "../setup/README.md" cross-action link to the sibling website page
+        type: replace-regex
+        find: '\]\(\.\./setup/README\.md\)'
+        replace: '](setup.md)'
+
+  - source: .github/actions/sync-assets/README.md
+    target: dash0/miscellaneous/tooling/dash0-cli/github-actions/sync-assets.md
+    title: Sync Dash0 Assets
+    description: Composite GitHub Action that syncs a directory of Dash0 asset YAML files, deleting assets removed since the last push, via the CLI.
     transformations:
       - description: rewrite the "../setup/README.md" cross-action link to the sibling website page
         type: replace-regex
