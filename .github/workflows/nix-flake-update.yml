@@ -56,8 +56,15 @@ jobs:
           git commit -m "chore(nix): update flake.lock"
           git push --force origin "$BRANCH"
 
-          if gh pr view "$BRANCH" >/dev/null 2>&1; then
-            echo "Pull request for $BRANCH already open; pushed the new update to it."
+          # `gh pr view "$BRANCH"` resolves the branch's most recent pull
+          # request regardless of its state, so once the previous update PR was
+          # merged or closed it would keep reporting "already open" and never
+          # open a new one for the freshly pushed lock file. Ask for pull
+          # requests in the open state on this head branch explicitly instead.
+          EXISTING_PR="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Pull request #$EXISTING_PR for $BRANCH already open; pushed the new update to it."
           else
             gh pr create \
               --title "chore(nix): update flake.lock" \
