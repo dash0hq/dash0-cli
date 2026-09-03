@@ -134,8 +134,12 @@ func runLogout(ctx context.Context, opts logoutOptions) error {
 
 	// Best-effort revocation before we clear the in-memory copy on disk.
 	revoked := oauth.Revoke(oauth.RevokeRequest{
-		APIURL:       cfg.ApiUrl,
-		ClientID:     cfg.OAuth.ClientID,
+		APIURL: cfg.ApiUrl,
+		// Resolve a profile written without a stored ClientID through the
+		// DCR cache here, at read time: oauth.Revoke uses the field
+		// verbatim so no caller can accidentally revoke under a client
+		// that a later registration wrote into the cache.
+		ClientID:     profiles.ResolveOAuthClientID(cfg.ApiUrl, cfg.OAuth.ClientID),
 		RefreshToken: cfg.OAuth.RefreshToken,
 	})
 

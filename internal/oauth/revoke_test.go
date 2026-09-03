@@ -14,10 +14,13 @@ import (
 func TestRevoke_SendsClientID(t *testing.T) {
 	var gotForm url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/oauth/revoke", r.URL.Path)
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
-		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "/oauth/revoke", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+		if !assert.NoError(t, r.ParseForm()) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		gotForm = r.Form
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -59,7 +62,10 @@ func TestRevoke_OmitsEmptyClientID(t *testing.T) {
 
 	var gotForm url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
+		if !assert.NoError(t, r.ParseForm()) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		gotForm = r.Form
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -71,13 +77,22 @@ func TestRevoke_OmitsEmptyClientID(t *testing.T) {
 	assert.False(t, present, "empty client_id must be omitted, not sent as an empty parameter")
 }
 
-func TestRevoke_FallsBackToDCRCache(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("DASH0_CONFIG_DIR", dir)
+// TestRevoke_IgnoresDCRCache pins down that an empty ClientID stays empty.
+// Falling back to the DCR client cache here would be wrong: the cache is
+// keyed by API URL alone, so on the re-login path a fresh registration has
+// already overwritten the entry by the time the superseded token is
+// revoked, and the revoke would go out under a client that never issued it
+// — the AS answers 200 and revokes nothing. Callers resolve the client ID
+// at profile-read time instead, before any registration runs.
+func TestRevoke_IgnoresDCRCache(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
 
 	var gotForm url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
+		if !assert.NoError(t, r.ParseForm()) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		gotForm = r.Form
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -92,5 +107,6 @@ func TestRevoke_FallsBackToDCRCache(t *testing.T) {
 
 	assert.True(t, Revoke(RevokeRequest{APIURL: server.URL, RefreshToken: "dash0_rt_test"}))
 	require.NotNil(t, gotForm)
-	assert.Equal(t, "cached-from-dcr", gotForm.Get("client_id"))
+	_, present := gotForm["client_id"]
+	assert.False(t, present, "Revoke must not read the DCR cache; an empty ClientID stays omitted")
 }

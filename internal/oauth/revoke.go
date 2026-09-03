@@ -15,7 +15,6 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/version"
 )
 
@@ -26,6 +25,14 @@ const revokeTimeout = 5 * time.Second
 
 // RevokeRequest is the input to [Revoke]. Named fields keep API URL, client
 // ID, and refresh token from being swapped at the six call sites.
+//
+// ClientID is used verbatim. [Revoke] deliberately does not fall back to the
+// DCR client cache when it is empty: that cache is keyed by API URL alone, so
+// on the re-login path a fresh registration has already overwritten the entry
+// by the time the old token is revoked, and the revoke would go out under a
+// client that never issued it — the AS answers 200 without revoking anything.
+// Callers that read a stored profile resolve the client ID at read time
+// through profiles.ResolveOAuthClientID, before any registration runs.
 type RevokeRequest struct {
 	APIURL       string
 	ClientID     string
@@ -35,8 +42,9 @@ type RevokeRequest struct {
 // Revoke posts a revocation request for req.RefreshToken, as req.ClientID,
 // against req.APIURL. Errors are logged to stderr with a `warning:` prefix;
 // the function returns true on success (or no-op) and false on failure so
-// callers can optionally append a note to their success message. Callers
-// rely on this function returning promptly regardless of outcome.
+// callers can optionally append a note to their success message. The
+// function performs one bounded network call and no disk I/O, so callers can
+// rely on it returning promptly regardless of outcome.
 // No-ops (and returns true) when RefreshToken or APIURL is empty.
 func Revoke(req RevokeRequest) (ok bool) {
 	if req.RefreshToken == "" || req.APIURL == "" {
@@ -58,8 +66,8 @@ func Revoke(req RevokeRequest) (ok bool) {
 		Token:         req.RefreshToken,
 		TokenTypeHint: &hint,
 	}
-	if clientID := profiles.ResolveOAuthClientID(req.APIURL, req.ClientID); clientID != "" {
-		revokeReq.ClientId = clientID
+	if req.ClientID != "" {
+		revokeReq.ClientId = req.ClientID
 	}
 	if err := client.RevokeToken(ctx, revokeReq); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: refresh token revocation failed (it may already be invalid): %v\n", err)
