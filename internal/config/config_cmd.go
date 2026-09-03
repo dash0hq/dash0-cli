@@ -527,7 +527,14 @@ are mutually exclusive.`,
 				// after the update so the user knows the AS still holds
 				// the token.
 				if existing.OAuth != nil {
-					if !oauthpkg.Revoke(existing.ApiUrl, existing.OAuth.RefreshToken) {
+					if !oauthpkg.Revoke(oauthpkg.RevokeRequest{
+						APIURL: existing.ApiUrl,
+						// Resolve a profile written without a stored
+						// ClientID through the DCR cache here, at read
+						// time; oauthpkg.Revoke uses the field verbatim.
+						ClientID:     profiles.ResolveOAuthClientID(existing.ApiUrl, existing.OAuth.ClientID),
+						RefreshToken: existing.OAuth.RefreshToken,
+					}) {
 						defer fmt.Println("Note: server-side refresh-token revocation failed; the token will remain valid on the authorization server until natural expiry.")
 					}
 				}
