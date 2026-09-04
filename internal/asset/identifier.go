@@ -44,7 +44,7 @@ type identifierProbe struct {
 //
 //   - Dashboard: metadata.dash0Extensions.id
 //   - CheckRule: top-level id
-//   - Dash0NotificationChannel: dash0.com/origin
+//   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0SpamFilter, Dash0Team: dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View):
 //     dash0.com/id
@@ -67,7 +67,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 		return probe.Metadata.Dash0Extensions.ID, nil
 	case "checkrule":
 		return probe.ID, nil
-	case "notificationchannel":
+	case "notificationchannel", "timeseriesaggregation":
 		return origin, nil
 	case "spamfilter", "team":
 		if origin != "" {

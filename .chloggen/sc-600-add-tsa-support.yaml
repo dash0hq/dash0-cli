@@ -1,0 +1,23 @@
+change_type: new_component
+component: time-series-aggregations
+note: Add the `time-series-aggregations` command group (alias `tsa`) and the `Dash0TimeSeriesAggregation` kind to `apply`
+issues: [281]
+subtext: |
+  The five standard CRUD subcommands (`list`, `get`, `create`, `update`, `delete`) are available as
+  `dash0 time-series-aggregations <subcommand>` or `dash0 tsa <subcommand>`, and `apply` accepts
+  `kind: Dash0TimeSeriesAggregation` documents.
+
+  Three behaviors differ from the other asset kinds:
+
+  - `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key. The API rejects an
+    aggregation without an origin, so there is no server-assigned-id fallback and no plain create: both
+    `create -f` and `apply -f` PUT to the origin, which is create-or-replace. A document without the
+    label fails before any API call, and during `apply`'s validation phase before any document in the
+    run is applied.
+  - Every endpoint requires the organization admin role, which is stricter than any other asset type.
+  - Origins are unique per organization while each aggregation belongs to exactly one dataset, so one
+    document cannot be applied to two datasets. The second dataset returns a 400; the CLI adds a hint
+    naming the organization-wide origin namespace and suggesting a per-dataset origin.
+
+  A `dash0.com/id` in a document body is ignored by the API, so a definition exported with
+  `tsa get -o yaml` reapplies as a clean no-op.

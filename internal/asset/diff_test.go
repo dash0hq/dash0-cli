@@ -292,3 +292,57 @@ func TestPrintDiff_ColorOutput(t *testing.T) {
 	assert.Contains(t, output, "\033[")
 }
 
+// TestPrintDiff_TimeSeriesAggregation_VersionBumpIsNotAChange pins the
+// marshalForDiff case for this kind. The server increments dash0.com/version
+// on every PUT, so without stripping it, a reapply of unchanged content would
+// always render a diff and could never report "no changes".
+func TestPrintDiff_TimeSeriesAggregation_VersionBumpIsNotAChange(t *testing.T) {
+	aggregation := func(version, updatedAt string) *dash0api.TimeSeriesAggregationDefinition {
+		origin := "http-server-request-duration"
+		v := version
+		source := dash0api.Api
+		dataset := "default"
+		parsed, err := time.Parse(time.RFC3339, updatedAt)
+		require.NoError(t, err)
+		return &dash0api.TimeSeriesAggregationDefinition{
+			Kind: dash0api.Dash0TimeSeriesAggregation,
+			Metadata: dash0api.TimeSeriesAggregationMetadata{
+				Name: origin,
+				Annotations: &dash0api.TimeSeriesAggregationAnnotations{
+					Dash0ComupdatedAt: &parsed,
+				},
+				Labels: &dash0api.TimeSeriesAggregationLabels{
+					Dash0Comorigin:  &origin,
+					Dash0Comversion: &v,
+					Dash0Comsource:  &source,
+					Dash0Comdataset: &dataset,
+				},
+			},
+			Spec: dash0api.TimeSeriesAggregationSpec{
+				Enabled: true,
+				Match: dash0api.TimeSeriesAggregationMetricNameMatch{
+					MetricNameMatcher: dash0api.Matcher{Operator: "is", Value: matcherValue(t, "http.server.request.duration")},
+				},
+				Sample: dash0api.TimeSeriesAggregationSample{Interval: "5m"},
+			},
+		}
+	}
+
+	var buf bytes.Buffer
+	err := PrintDiff(&buf,
+		"Time series aggregation", "HTTP server request duration",
+		aggregation("1", "2026-09-04T10:27:37Z"),
+		aggregation("2", "2026-09-04T10:31:02Z"),
+	)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "no changes")
+}
+
+// matcherValue builds the Matcher.Value union from a plain string.
+func matcherValue(t *testing.T, value string) *dash0api.Matcher_Value {
+	t.Helper()
+	var v dash0api.Matcher_Value
+	require.NoError(t, v.FromAttributeFilterStringValue(value))
+	return &v
+}

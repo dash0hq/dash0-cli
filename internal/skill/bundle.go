@@ -47,6 +47,7 @@ var Manifest = []ManifestEntry{
 	{"spans", "references/spans.md"},
 	{"synthetic-checks", "references/synthetic-checks.md"},
 	{"teams", "references/teams.md"},
+	{"time-series-aggregations", "references/time-series-aggregations.md"},
 	{"traces", "references/traces.md"},
 	{"views", "references/views.md"},
 }

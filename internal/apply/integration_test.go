@@ -27,6 +27,7 @@ const (
 	apiPathSyntheticChecks      = "/api/synthetic-checks"
 	apiPathRecordingRules       = "/api/recording-rules"
 	apiPathNotificationChannels = "/api/notification-channels"
+	apiPathTimeSeriesAggs       = "/api/time-series-aggregations"
 )
 
 var (
@@ -36,6 +37,7 @@ var (
 	syntheticCheckIDPattern      = regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`)
 	recordingRuleIDPattern       = regexp.MustCompile(`^/api/recording-rules/[^/]+$`)
 	notificationChannelIDPattern = regexp.MustCompile(`^/api/notification-channels/[^/]+$`)
+	timeSeriesAggOriginPattern   = regexp.MustCompile(`^/api/time-series-aggregations/[^/]+$`)
 )
 
 func TestApply_CheckRule_Created(t *testing.T) {
@@ -2205,4 +2207,152 @@ spec:
 	assert.Contains(t, output, "Notification channel")
 	assert.Contains(t, output, "Slack Alerts")
 	assert.Contains(t, output, "abc-123")
+}
+
+const tsaDoc = `apiVersion: dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: http-server-request-duration
+  labels:
+    dash0.com/origin: http-server-request-duration
+spec:
+  enabled: true
+  display:
+    name: HTTP server request duration
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.request.duration
+  sample:
+    interval: 5m
+`
+
+// TestApply_TimeSeriesAggregation_UpsertByOrigin asserts that apply routes the
+// kind through the same PUT-by-origin path the dedicated create command uses.
+// POST is unreachable for this kind: the API rejects an origin that already
+// exists, so a second apply of the same document would fail.
+func TestApply_TimeSeriesAggregation_UpsertByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "aggregation.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(tsaDoc), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, timeSeriesAggOriginPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   "timeseriesaggregations/error_not_found.json",
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, timeSeriesAggOriginPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   "timeseriesaggregations/create_response.json",
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Time series aggregation")
+	assert.Contains(t, output, "created")
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathTimeSeriesAggs+"/http-server-request-duration"), "expected PUT by origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathTimeSeriesAggs), "did not expect POST")
+}
+
+// TestApply_TimeSeriesAggregation_MissingOriginFailsValidation asserts the
+// document is rejected during the validation phase, so a multi-document apply
+// never writes anything before hitting it.
+func TestApply_TimeSeriesAggregation_MissingOriginFailsValidation(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "dashboard.yaml"), []byte(`kind: Dashboard
+metadata:
+  name: Test Dashboard
+  dash0Extensions:
+    id: dash-1
+spec:
+  display:
+    name: Test Dashboard
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aggregation.yaml"), []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: no-origin
+spec:
+  enabled: true
+  display:
+    name: No origin
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.request.duration
+  sample:
+    interval: 5m
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dash0.com/origin")
+	assert.Empty(t, server.Requests(), "validation must fail before the dashboard in the same directory is written")
+}
+
+// TestApply_TimeSeriesAggregation_WrongDatasetHint asserts the cross-dataset
+// 400 keeps its explanation instead of being flattened into "invalid request"
+// by HandleAPIError.
+func TestApply_TimeSeriesAggregation_WrongDatasetHint(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "aggregation.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(tsaDoc), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, timeSeriesAggOriginPattern, testutil.MockResponse{
+		StatusCode: http.StatusBadRequest,
+		BodyFile:   "timeseriesaggregations/error_wrong_dataset.json",
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unique per organization")
+}
+
+// TestApply_TimeSeriesAggregation_DryRun asserts the dry-run listing names the
+// origin, which is the key apply upserts by, rather than a server-assigned id
+// the document may not carry.
+func TestApply_TimeSeriesAggregation_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "aggregation.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(tsaDoc), 0644))
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Dry run")
+	assert.Contains(t, output, "Time series aggregation")
+	assert.Contains(t, output, "http-server-request-duration")
 }

@@ -21,7 +21,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -46,6 +46,16 @@ When only `dash0.com/id` is present the CLI preflights the team with a GET — o
 A document with neither label creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
+
+`Dash0TimeSeriesAggregation` documents are dispatched to the dataset-scoped time series aggregations endpoint.
+`metadata.labels["dash0.com/origin"]` is mandatory: a document without it fails during the validation phase, before any document in the run is applied.
+Every call requires the organization admin role, so a directory holding an aggregation next to other kinds fails on the aggregation alone when the token is not an admin.
+
+> [!IMPORTANT]
+> Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
+> One document therefore cannot be applied to two datasets the way it can for every other asset kind.
+> The second dataset fails with `400 ... associated with a different dataset`; the CLI adds a hint naming the organization-wide origin namespace.
+> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.

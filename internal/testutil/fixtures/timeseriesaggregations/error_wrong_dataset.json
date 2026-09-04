@@ -1,0 +1,5 @@
+{
+  "code": 400,
+  "message": "Bad Request: A time series aggregation with this origin exists, but it is associated with a different dataset.",
+  "traceId": "cc0697bbcba4b2bb1f01c7bd6771ff46"
+}
