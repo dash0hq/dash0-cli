@@ -1,7 +1,7 @@
 change_type: new_component
 component: time-series-aggregations
 note: Add the `time-series-aggregations` command group (alias `tsa`) and the `Dash0TimeSeriesAggregation` kind to `apply`
-issues: [279]
+issues: [281]
 subtext: |
   The five standard CRUD subcommands (`list`, `get`, `create`, `update`, `delete`) are available as
   `dash0 time-series-aggregations <subcommand>` or `dash0 tsa <subcommand>`, and `apply` accepts
