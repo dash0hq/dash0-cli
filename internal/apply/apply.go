@@ -71,6 +71,7 @@ Supported asset types:
   - Dash0SpamFilter
   - Dash0NotificationChannel
   - Dash0Team
+  - Dash0TimeSeriesAggregation
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -337,7 +338,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -362,6 +363,17 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			if err := sigsyaml.Unmarshal(doc.raw, &channel); err == nil {
 				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
 					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+				}
+			}
+		} else if normalizeKind(doc.kind) == "timeseriesaggregation" {
+			// Origin is mandatory for this kind — the API rejects a create
+			// without one, and there is no fallback create path — so a
+			// document missing it fails here rather than after the run has
+			// already written its other documents.
+			var aggregation dash0api.TimeSeriesAggregationDefinition
+			if err := sigsyaml.Unmarshal(doc.raw, &aggregation); err == nil {
+				if asset.GetTimeSeriesAggregationOrigin(&aggregation) == "" {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrTimeSeriesAggregationMissingOrigin.Error()))
 				}
 			}
 		}
@@ -491,6 +503,18 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			// existing channel the document will replace.
 			id = dash0api.GetNotificationChannelOrigin(&channel)
 		}
+
+	case "timeseriesaggregation":
+		var aggregation dash0api.TimeSeriesAggregationDefinition
+		if err := sigsyaml.Unmarshal(data, &aggregation); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetTimeSeriesAggregationName(&aggregation)
+		// Origin, not id, is what this kind upserts by, and it is mandatory.
+		// Showing it as the ID in dry-run output names the aggregation the
+		// document will replace; an exported document's server-assigned id
+		// would name the same object but not the key being used.
+		id = asset.GetTimeSeriesAggregationOrigin(&aggregation)
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
@@ -771,6 +795,25 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			})
 		}
 		return []applyResult{{kind: "Dash0NotificationChannel", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "timeseriesaggregation":
+		var aggregation dash0api.TimeSeriesAggregationDefinition
+		if err := sigsyaml.Unmarshal(doc.raw, &aggregation); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0TimeSeriesAggregation: %w", err)
+		}
+		result, err := asset.ImportTimeSeriesAggregation(ctx, apiClient, &aggregation, dataset)
+		if err != nil {
+			// The cross-dataset collision already carries its own explanation
+			// and would only be flattened into "invalid request" here.
+			if asset.IsTimeSeriesAggregationWrongDataset(err) {
+				return nil, err
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "time series aggregation",
+				AssetName: dash0api.GetTimeSeriesAggregationName(&aggregation),
+			})
+		}
+		return []applyResult{{kind: "Dash0TimeSeriesAggregation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
