@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -494,7 +494,7 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All seven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) share the same CRUD subcommands.
+All eight asset types (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`) share the same CRUD subcommands.
 The examples below use `dashboards`, but the same patterns apply to every asset type.
 
 ### `list`
@@ -692,7 +692,7 @@ $ echo $?
 ```
 
 Without `--force`, a missing asset surfaces as a non-zero exit with a "not found" error.
-The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `teams`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
+The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
 In the multi-target `remove` variants the check runs per member, so one concurrently-removed member does not fail the whole `--force` call — the loop keeps going.
 See also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
 
@@ -709,6 +709,7 @@ Aliases: `remove`
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
+| Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 ### Asset identifiers and idempotent upsert
@@ -731,6 +732,7 @@ The identifier field location varies by asset kind:
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
+| `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory, not optional: the API rejects an aggregation without an origin, so there is no server-assigned-id fallback. `dash0.com/id` in a document body is ignored — the server takes the origin from the URL path — so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so the same document cannot be applied to two datasets; see [`apply`](#apply) |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
@@ -906,7 +908,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -931,6 +933,16 @@ When only `dash0.com/id` is present the CLI preflights the team with a GET — o
 A document with neither label creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
+
+`Dash0TimeSeriesAggregation` documents are dispatched to the dataset-scoped time series aggregations endpoint.
+`metadata.labels["dash0.com/origin"]` is mandatory: a document without it fails during the validation phase, before any document in the run is applied.
+Every call requires the organization admin role, so a directory holding an aggregation next to other kinds fails on the aggregation alone when the token is not an admin.
+
+> [!IMPORTANT]
+> Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
+> One document therefore cannot be applied to two datasets the way it can for every other asset kind.
+> The second dataset fails with `400 ... associated with a different dataset`; the CLI adds a hint naming the organization-wide origin namespace.
+> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -1333,6 +1345,32 @@ spec:
 ```
 
 `spec.members` entries can be email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation.
+
+Time series aggregation (dataset-scoped, requires the organization admin role):
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: http-server-request-duration
+  labels:
+    dash0.com/origin: http-server-request-duration
+spec:
+  enabled: true
+  display:
+    name: HTTP server request duration
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.request.duration
+  sample:
+    interval: 5m
+```
+
+`dash0.com/origin` is mandatory and is the only upsert key.
+`metadata.name` is independent of it and of `spec.display.name`; the server derives none of the three from another.
+
+Optional `spec` fields: `priority` (lower values are evaluated first), `sample.delay`, `sample.staleAfter`, `match.otherFilters`, and `attributeModifications`.
 
 Mixed PrometheusRule (one alerting rule and one recording rule in the same CRD):
 
@@ -3091,7 +3129,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: apply, api, check-rules, config, dashboards, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, traces, views
+Hint: valid topics are: apply, api, check-rules, config, dashboards, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

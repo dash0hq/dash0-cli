@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`
 - Group related functionality: `config profiles` for profile management
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`) use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`) use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -24,6 +24,12 @@ All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `r
 Every `delete` subcommand — including `remove`-shaped variants like `members remove` and `teams remove-members` — must treat a 404 from the server as success when the caller passed `--force`.
 The desired end-state ("asset is gone") already holds regardless of who removed it, so returning a non-zero exit code punishes CI/CD and agent-driven pipelines for concurrency they cannot always avoid.
 Without `--force`, a 404 must surface as a clean "asset not found" error (via `client.HandleAPIError` with an `ErrorContext`), not a raw HTTP dump.
+
+> [!NOTE]
+> In practice the without-`--force` branch is rarely reached, because most Dash0 delete endpoints answer a missing asset with 2xx rather than 404.
+> Verified against dash0-development: `dashboards`, `check-rules`, `views`, `spam-filters`, and `time-series-aggregations` all return success for an id or origin that does not exist, so `delete <typo>` exits 0 with or without `--force`.
+> The CLI does not preflight with a GET to close that gap; if one command started doing so it would be the only one that errors on a missing asset, which is a worse inconsistency than the one it fixes.
+> Keep `client.IsAlreadyDeleted` wired in every delete path anyway, so the behavior is correct for the endpoints that do return 404 and for any that start.
 
 The shared helper is `client.IsAlreadyDeleted(err, force, ectx)` in `internal/client/client.go`.
 Every delete path must call it before falling through to `client.HandleAPIError`; the helper prints an "already deleted" line to stderr and returns `true` when force is set and the error is a 404.
@@ -112,6 +118,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `PersesDashboard`           | PersesDashboard      |
 | `Dash0NotificationChannel`  | Notification channel |
 | `Dash0SpamFilter`           | Spam filter          |
+| `Dash0TimeSeriesAggregation`| Time series aggregation |
 
 For example: `Check rule "High Error Rate" created`, not `CheckRule "High Error Rate" created`.
 

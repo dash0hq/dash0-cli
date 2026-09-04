@@ -26,6 +26,7 @@
 - `/internal/skill`: The `skill install`/`skill show` commands — distribute the dash0-cli Agent Skill (embedded via `//go:embed`) to AI coding agents; `internal/skill/gen` regenerates the embedded reference content from `docs/commands.md` (see `docs/agent-skill-maintenance.md`)
 - `/internal/teams`: The `teams` command group — `teams list`, `teams get`, `teams create`, `teams update`, `teams delete`, `teams add-members`, `teams remove-members` (experimental, org-wide, no dataset)
 - `/internal/testutil`: Test helpers — mock HTTP server, fixture constants
+- `/internal/timeseriesaggregations`: The `time-series-aggregations` command group (alias `tsa`) — the five standard CRUD subcommands. Dataset-scoped, admin-role-only, and upserted exclusively by `dash0.com/origin`; the shared import helper lives in `internal/asset/timeseriesaggregation.go`
 - `/internal/tracing`: The `spans` and `traces` command groups — `spans send`, `spans query`, `traces get` — plus shared span helpers (kind/status conversions, duration formatting/parsing)
 - `/internal/version`: Build version (set at build time via linker flags)
 
