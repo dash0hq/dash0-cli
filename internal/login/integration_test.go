@@ -34,11 +34,12 @@ type fakeOAuthServer struct {
 	server   *httptest.Server
 	clientID string
 
-	issuedCode      atomic.Value // string
-	issuedChallenge atomic.Value // string -- PKCE code_challenge stored on /authorize
-	revokeCount     atomic.Int32
-	revoked         sync.Mutex
-	revokedList     []string
+	issuedCode       atomic.Value // string
+	issuedChallenge  atomic.Value // string -- PKCE code_challenge stored on /authorize
+	revokeCount      atomic.Int32
+	revoked          sync.Mutex
+	revokedList      []string
+	revokedClientIDs map[string]string // token -> client_id
 
 	// tokenCounter lets us hand out distinct access/refresh tokens so the
 	// re-login test can prove the old refresh was revoked.
@@ -51,6 +52,12 @@ type fakeOAuthServer struct {
 	tokenErrorCode     atomic.Value // string -- 400 with this OAuth error code
 	tokenOmitRefresh   atomic.Bool  // 200 OK with access_token but no refresh_token
 	tokenExpiresIn     atomic.Int64 // when > 0, overrides the 3600s default expires_in
+
+	// revokeAllowMissingClientID stops handleRevoke from failing the test
+	// when a revoke arrives without a client_id. The handler still answers
+	// 400, the way a real AS does; only the assertion is lifted, for the
+	// one test whose point is that no client_id goes out.
+	revokeAllowMissingClientID atomic.Bool
 }
 
 func newFakeOAuthServer(t *testing.T) *fakeOAuthServer {
@@ -78,6 +85,12 @@ func (f *fakeOAuthServer) Revoked() []string {
 	out := make([]string, len(f.revokedList))
 	copy(out, f.revokedList)
 	return out
+}
+
+func (f *fakeOAuthServer) RevokedClientID(token string) string {
+	f.revoked.Lock()
+	defer f.revoked.Unlock()
+	return f.revokedClientIDs[token]
 }
 
 func (f *fakeOAuthServer) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
@@ -205,13 +218,38 @@ func (f *fakeOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *fakeOAuthServer) handleRevoke(w http.ResponseWriter, r *http.Request) {
-	require.NoError(f.t, r.ParseForm())
+	if !assert.NoError(f.t, r.ParseForm()) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	token := r.Form.Get("token")
-	require.NotEmpty(f.t, token, "revoke requires a token")
+	assert.NotEmpty(f.t, token, "revoke requires a token")
+	clientID := r.Form.Get("client_id")
+	if !f.revokeAllowMissingClientID.Load() {
+		assert.NotEmpty(f.t, clientID, "revoke requires a client_id")
+	}
+
+	// Record the attempt before answering, so a test can assert on what
+	// went out even when the request is the one being rejected.
 	f.revokeCount.Add(1)
 	f.revoked.Lock()
 	f.revokedList = append(f.revokedList, token)
+	if f.revokedClientIDs == nil {
+		f.revokedClientIDs = make(map[string]string)
+	}
+	f.revokedClientIDs[token] = clientID
 	f.revoked.Unlock()
+
+	// RFC 7009 §2.1 makes client_id mandatory for a public client, and the
+	// Dash0 AS enforces it. Answering 200 to a request this server itself
+	// just called malformed would hand any future assertion on the status,
+	// or on runLogin's error, a success signal.
+	if clientID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid_client"})
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -399,6 +437,90 @@ func TestRunLogin_OnOAuthActive_RevokesOldRefresh(t *testing.T) {
 	require.Equal(t, "dash0_rt_OLD_to_be_revoked", revoked[0])
 }
 
+func TestRunLogin_OnOAuthActive_RevokesOldRefreshWithOldClientID(t *testing.T) {
+	forceInteractive(t)
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
+	server := newFakeOAuthServer(t)
+	defer server.Close()
+	server.clientID = "client-freshly-registered"
+
+	store, _ := profiles.NewStore()
+	require.NoError(t, store.AddProfile(profiles.Profile{
+		Name: "active-prof",
+		Configuration: profiles.Configuration{
+			ApiUrl:    server.URL(),
+			AuthToken: "dash0_at_old_xxxxxxxxxxxx",
+			OAuth: &profiles.OAuthState{
+				ClientID:     "client-that-issued-the-old-token",
+				RefreshToken: "dash0_rt_OLD_to_be_revoked",
+				ExpiresAt:    time.Now().Add(time.Hour),
+			},
+		},
+	}))
+
+	defer driveBrowserOnce(t)()
+
+	err := runLogin(context.Background(), loginOptions{
+		ProfileName: "active-prof",
+		Timeout:     5 * time.Second,
+	})
+	require.NoError(t, err)
+
+	revoked := server.Revoked()
+	require.Len(t, revoked, 1)
+	require.Equal(t, "dash0_rt_OLD_to_be_revoked", revoked[0])
+	require.Equal(t, "client-that-issued-the-old-token", server.RevokedClientID("dash0_rt_OLD_to_be_revoked"),
+		"the old refresh token must be revoked using the client_id that issued it, not the freshly-registered one")
+}
+
+func TestRunLogin_OnOAuthActiveWithoutStoredClientID_DoesNotRevokeWithFreshClientID(t *testing.T) {
+	forceInteractive(t)
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
+	server := newFakeOAuthServer(t)
+	defer server.Close()
+	server.clientID = "client-freshly-registered"
+	// A profile with no stored ClientID is the case under test, so the
+	// missing client_id on the wire is the expected outcome, not a failure.
+	server.revokeAllowMissingClientID.Store(true)
+
+	store, _ := profiles.NewStore()
+	require.NoError(t, store.AddProfile(profiles.Profile{
+		Name: "active-prof",
+		Configuration: profiles.Configuration{
+			ApiUrl:    server.URL(),
+			AuthToken: "dash0_at_old_xxxxxxxxxxxx",
+			OAuth: &profiles.OAuthState{
+				// Hand-edited, or written by other SDK tooling: OAuth
+				// state with a refresh token but no client ID.
+				ClientID:     "",
+				RefreshToken: "dash0_rt_OLD_to_be_revoked",
+				ExpiresAt:    time.Now().Add(time.Hour),
+			},
+		},
+	}))
+
+	defer driveBrowserOnce(t)()
+
+	err := runLogin(context.Background(), loginOptions{
+		ProfileName: "active-prof",
+		Timeout:     5 * time.Second,
+	})
+	// The revoke is best-effort: it fails honestly (the AS rejects a
+	// revoke with no client_id) and login still succeeds, printing a Note.
+	require.NoError(t, err)
+
+	revoked := server.Revoked()
+	require.Len(t, revoked, 1)
+	require.Equal(t, "dash0_rt_OLD_to_be_revoked", revoked[0])
+	require.NotEqual(t, "client-freshly-registered", server.RevokedClientID("dash0_rt_OLD_to_be_revoked"),
+		"the old refresh token must never be revoked under the client this login just registered; "+
+			"the DCR cache is keyed by API URL alone, so a fallback read after registration would send exactly that")
+	require.Empty(t, server.RevokedClientID("dash0_rt_OLD_to_be_revoked"),
+		"with no stored client ID resolvable before registration, the revoke must go out without a client_id and fail honestly")
+}
+
 func TestRunLogin_RejectsInAgentMode(t *testing.T) {
 	prev := isTerminal
 	isTerminal = func() bool { return false }
@@ -440,6 +562,44 @@ func TestRunLogout_OnOAuthActive_ClearsState(t *testing.T) {
 	require.Equal(t, "", all[0].Configuration.AuthToken)
 	require.NotNil(t, all[0].Configuration.OAuth)
 	require.Equal(t, "", all[0].Configuration.OAuth.RefreshToken)
+}
+
+// TestRunLogout_WithoutStoredClientID_ResolvesFromDCRCache covers the half
+// of the client-ID resolution that stays safe: logout registers no new
+// client, so the DCR cache entry for this API URL is still the one that
+// issued the token, and a profile written without a ClientID can be
+// revoked correctly.
+func TestRunLogout_WithoutStoredClientID_ResolvesFromDCRCache(t *testing.T) {
+	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
+
+	server := newFakeOAuthServer(t)
+	defer server.Close()
+
+	clientStore, err := profiles.NewOAuthClientStore()
+	require.NoError(t, err)
+	require.NoError(t, clientStore.Put(server.URL(), profiles.OAuthClientRecord{
+		ClientID:    "client-cached-from-dcr",
+		RedirectURI: "http://127.0.0.1/callback",
+	}))
+
+	store, _ := profiles.NewStore()
+	require.NoError(t, store.AddProfile(profiles.Profile{
+		Name: "oauth-prof",
+		Configuration: profiles.Configuration{
+			ApiUrl:    server.URL(),
+			AuthToken: "dash0_at_aaaaaaaaaaaaaa",
+			OAuth: &profiles.OAuthState{
+				ClientID:     "",
+				RefreshToken: "dash0_rt_to_revoke",
+				ExpiresAt:    time.Now().Add(time.Hour),
+			},
+		},
+	}))
+
+	require.NoError(t, runLogout(context.Background(), logoutOptions{Force: true}))
+
+	require.Equal(t, []string{"dash0_rt_to_revoke"}, server.Revoked())
+	require.Equal(t, "client-cached-from-dcr", server.RevokedClientID("dash0_rt_to_revoke"))
 }
 
 func TestRunLogout_OnOAuthEmpty_NoOp(t *testing.T) {

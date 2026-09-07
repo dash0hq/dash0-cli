@@ -76,12 +76,13 @@ const (
 // new login goes against. Carrying these together lets the phase helpers
 // downstream avoid long parameter lists.
 type loginTarget struct {
-	Name           string       // resolved profile name (user-supplied or active)
-	State          profileState // classification at the start of the flow
-	OldRefresh     string       // refresh token to revoke on successful re-login (OAuth-active only)
-	ExistingAPIURL string       // AS that issued OldRefresh (for cross-tenant revoke directionality)
-	APIURL         string       // AS to authenticate against for the new login
-	PassedExplicit bool         // user passed --profile (vs. implicit active profile)
+	Name             string       // resolved profile name (user-supplied or active)
+	State            profileState // classification at the start of the flow
+	OldRefresh       string       // refresh token to revoke on successful re-login (OAuth-active only)
+	ExistingAPIURL   string       // AS that issued OldRefresh (for cross-tenant revoke directionality)
+	ExistingClientID string       // client_id that issued OldRefresh, resolved before any re-registration
+	APIURL           string       // AS to authenticate against for the new login
+	PassedExplicit   bool         // user passed --profile (vs. implicit active profile)
 }
 
 // subjectPhrase returns the noun phrase used in prompts/messages to refer
@@ -184,25 +185,26 @@ func resolveLoginTarget(opts loginOptions) (*loginTarget, error) {
 		profileName = active
 	}
 
-	state, oldRefreshToken, existingAPIURL, err := classifyProfile(profileName)
+	existing, err := classifyProfile(profileName)
 	if err != nil {
 		return nil, err
 	}
 
 	// Decide which API URL to authenticate against — flag -> env -> existing
 	// profile -> active profile (only when target is implicit).
-	apiURL, err := resolveTargetAPIURL(opts.APIURL, existingAPIURL, !passedExplicit)
+	apiURL, err := resolveTargetAPIURL(opts.APIURL, existing.APIURL, !passedExplicit)
 	if err != nil {
 		return nil, err
 	}
 
 	return &loginTarget{
-		Name:           profileName,
-		State:          state,
-		OldRefresh:     oldRefreshToken,
-		ExistingAPIURL: existingAPIURL,
-		APIURL:         apiURL,
-		PassedExplicit: passedExplicit,
+		Name:             profileName,
+		State:            existing.State,
+		OldRefresh:       existing.RefreshToken,
+		ExistingAPIURL:   existing.APIURL,
+		ExistingClientID: existing.ClientID,
+		APIURL:           apiURL,
+		PassedExplicit:   passedExplicit,
 	}, nil
 }
 
@@ -462,13 +464,20 @@ func exchangeAndValidateTokens(
 	// revoke it best-effort so the AS state matches the discarded local
 	// state — same compensation pattern as the persist-failure branch in
 	// persistAndRevokeOld.
+	revokeIssued := func() bool {
+		return oauth.Revoke(oauth.RevokeRequest{APIURL: apiURL, ClientID: authz.ClientID, RefreshToken: *tokenResp.RefreshToken})
+	}
 	if tokenResp.AccessToken == "" {
-		oauth.Revoke(apiURL, *tokenResp.RefreshToken)
-		return "", "", time.Time{}, errors.New("token exchange succeeded but the server returned an empty access token; aborting")
+		return "", "", time.Time{}, withManualRevokeHint(
+			revokeIssued(),
+			errors.New("token exchange succeeded but the server returned an empty access token; aborting"),
+		)
 	}
 	if tokenResp.ExpiresIn <= 0 {
-		oauth.Revoke(apiURL, *tokenResp.RefreshToken)
-		return "", "", time.Time{}, fmt.Errorf("token exchange succeeded but the server returned a non-positive expires_in (%d); aborting", tokenResp.ExpiresIn)
+		return "", "", time.Time{}, withManualRevokeHint(
+			revokeIssued(),
+			fmt.Errorf("token exchange succeeded but the server returned a non-positive expires_in (%d); aborting", tokenResp.ExpiresIn),
+		)
 	}
 
 	// Cap expires_in defensively so a hostile or buggy AS that returns a
@@ -485,6 +494,22 @@ func exchangeAndValidateTokens(
 	expiresAt = time.Now().Add(time.Duration(cappedExpiresIn) * time.Second)
 
 	return tokenResp.AccessToken, *tokenResp.RefreshToken, expiresAt, nil
+}
+
+// withManualRevokeHint appends a manual-revocation hint to err when the
+// compensating revoke of a just-issued refresh token failed. Every abort
+// that happens after a successful token exchange runs the same
+// compensation, so every one of them reports the same way when the
+// compensation itself does not land — otherwise the user is left with a
+// live refresh token and no indication of it.
+func withManualRevokeHint(revoked bool, err error) error {
+	if revoked {
+		return err
+	}
+	return fmt.Errorf(
+		"%w; the compensating revoke of the newly-issued refresh token also failed, so that token may still be valid on the authorization server — visit your Dash0 account settings to revoke active sessions manually",
+		err,
+	)
 }
 
 // persistAndRevokeOld writes the new OAuth tokens to the profile store,
@@ -506,13 +531,10 @@ func persistAndRevokeOld(
 		// indefinitely. Best-effort revoke it so the AS state matches what
 		// the user sees locally. Old refresh token is intentionally left
 		// alone: it is still the active session on disk.
-		if !oauth.Revoke(target.APIURL, refreshToken) {
-			return fmt.Errorf(
-				"login succeeded but the new tokens could not be persisted and the compensating revoke also failed; the newly-issued refresh token may still be valid on the authorization server — visit your Dash0 account settings to revoke active sessions manually: %w",
-				err,
-			)
-		}
-		return fmt.Errorf("login succeeded but the new tokens could not be persisted: %w", err)
+		return withManualRevokeHint(
+			oauth.Revoke(oauth.RevokeRequest{APIURL: target.APIURL, ClientID: clientID, RefreshToken: refreshToken}),
+			fmt.Errorf("login succeeded but the new tokens could not be persisted: %w", err),
+		)
 	}
 
 	// Best-effort: revoke the now-superseded refresh token if we just replaced
@@ -527,7 +549,11 @@ func persistAndRevokeOld(
 		if target.ExistingAPIURL == "" {
 			oldRevoked = false
 		} else {
-			oldRevoked = oauth.Revoke(target.ExistingAPIURL, target.OldRefresh)
+			oldRevoked = oauth.Revoke(oauth.RevokeRequest{
+				APIURL:       target.ExistingAPIURL,
+				ClientID:     target.ExistingClientID,
+				RefreshToken: target.OldRefresh,
+			})
 		}
 	}
 
@@ -538,40 +564,63 @@ func persistAndRevokeOld(
 	return nil
 }
 
-// classifyProfile inspects the named profile (if any) and returns its
-// auth state, the refresh token that should be revoked after a successful
-// new login (only set for OAuth-active), and the existing API URL that
-// should be used as the default when no --api-url flag is given. A non-nil
-// error indicates the profile store could not be opened or read — callers
-// must surface it instead of treating store I/O failures as "no such
-// profile" (which would then proceed to a confusing prompt-then-create
+// existingOAuthState is what classifyProfile learns about the profile login
+// is about to overwrite. Named fields keep the three strings — refresh
+// token, API URL, client ID — from being swapped, the same reason
+// [oauth.RevokeRequest] exists.
+type existingOAuthState struct {
+	State profileState // classification at the moment login starts
+
+	// RefreshToken is the token to revoke after a successful new login.
+	// Only set for OAuth-active.
+	RefreshToken string
+	// APIURL is the AS that issued RefreshToken, and the default to
+	// authenticate against when no --api-url flag is given.
+	APIURL string
+	// ClientID is the client that issued RefreshToken, already resolved
+	// through the DCR cache. Resolving it here rather than inside
+	// oauth.Revoke matters: the cache is keyed by API URL alone, so a
+	// fresh registration later in this same login would otherwise
+	// overwrite the entry and the revoke would go out under a client that
+	// never issued the token.
+	ClientID string
+}
+
+// classifyProfile inspects the named profile (if any) and returns its auth
+// state plus the OAuth state that a successful login will supersede. A
+// non-nil error indicates the profile store could not be opened or read —
+// callers must surface it instead of treating store I/O failures as "no
+// such profile" (which would then proceed to a confusing prompt-then-create
 // flow that ultimately fails on the same I/O error).
-func classifyProfile(name string) (state profileState, oldRefreshToken, existingAPIURL string, err error) {
+func classifyProfile(name string) (existingOAuthState, error) {
 	store, err := profiles.NewStore()
 	if err != nil {
-		return profileStateMissing, "", "", fmt.Errorf("failed to open profile store: %w", err)
+		return existingOAuthState{State: profileStateMissing}, fmt.Errorf("failed to open profile store: %w", err)
 	}
 	all, err := store.GetProfiles()
 	if err != nil {
-		return profileStateMissing, "", "", fmt.Errorf("failed to read profiles: %w", err)
+		return existingOAuthState{State: profileStateMissing}, fmt.Errorf("failed to read profiles: %w", err)
 	}
 	for _, p := range all {
 		if p.Name != name {
 			continue
 		}
-		existingAPIURL = p.Configuration.ApiUrl
+		existing := existingOAuthState{APIURL: p.Configuration.ApiUrl}
 		switch {
 		case p.Configuration.OAuth == nil && p.Configuration.AuthToken == "":
-			return profileStateNoAuth, "", existingAPIURL, nil
+			existing.State = profileStateNoAuth
 		case p.Configuration.OAuth == nil:
-			return profileStateStatic, "", existingAPIURL, nil
+			existing.State = profileStateStatic
 		case p.Configuration.OAuth.RefreshToken == "":
-			return profileStateOAuthEmpty, "", existingAPIURL, nil
+			existing.State = profileStateOAuthEmpty
 		default:
-			return profileStateOAuthActive, p.Configuration.OAuth.RefreshToken, existingAPIURL, nil
+			existing.State = profileStateOAuthActive
+			existing.RefreshToken = p.Configuration.OAuth.RefreshToken
+			existing.ClientID = profiles.ResolveOAuthClientID(existing.APIURL, p.Configuration.OAuth.ClientID)
 		}
+		return existing, nil
 	}
-	return profileStateMissing, "", "", nil
+	return existingOAuthState{State: profileStateMissing}, nil
 }
 
 // resolveTargetAPIURL chooses the API URL to authenticate against. Precedence:
