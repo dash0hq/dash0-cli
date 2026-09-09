@@ -1,0 +1,32 @@
+{
+  "kind": "Dash0TimeSeriesAggregation",
+  "metadata": {
+    "annotations": {
+      "dash0.com/created-at": "2026-09-04T10:27:37.953723Z",
+      "dash0.com/updated-at": "2026-09-04T10:31:02.114905Z"
+    },
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "d54caa75-e94b-43c7-8470-23e4ab852ab6",
+      "dash0.com/origin": "http-server-request-duration",
+      "dash0.com/source": "api",
+      "dash0.com/version": "2"
+    },
+    "name": "http-server-request-duration"
+  },
+  "spec": {
+    "display": {
+      "name": "HTTP server request duration"
+    },
+    "enabled": true,
+    "match": {
+      "metricNameMatcher": {
+        "operator": "is",
+        "value": "http.server.request.duration"
+      }
+    },
+    "sample": {
+      "interval": "1m"
+    }
+  }
+}
