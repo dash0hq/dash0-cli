@@ -55,7 +55,7 @@ expression: up == 0
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no check rule ID provided as argument, and the file does not contain an ID")
+	assert.Contains(t, cmdErr.Error(), "no check rule id given: pass one as an argument")
 }
 
 func TestUpdateCheckRule_PrometheusRuleCRD_IDFromFile(t *testing.T) {
@@ -162,7 +162,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no check rule ID provided as argument, and the file does not contain an ID")
+	assert.Contains(t, cmdErr.Error(), "no check rule id given: pass one as an argument")
 }
 
 func TestUpdateCheckRule_PrometheusRuleCRD_MultipleRules(t *testing.T) {

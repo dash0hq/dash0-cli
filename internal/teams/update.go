@@ -106,25 +106,15 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 	fileOrigin := dash0api.GetTeamOrigin(&team)
 	fileID := dash0api.GetTeamID(&team)
 
-	var addressor string
-	if len(args) == 1 {
-		addressor = args[0]
-		// Consistency check: if the file names an origin or id, the positional
-		// argument must equal one of them. This is the analogue of the check
-		// in `views update` and `dashboards update`, adapted for the fact that
-		// a team YAML can carry two identifiers.
-		if (fileOrigin != "" || fileID != "") && addressor != fileOrigin && addressor != fileID {
-			return fmt.Errorf("the ID argument %q does not match the dash0.com/origin or dash0.com/id label in the file (origin=%q, id=%q)", addressor, fileOrigin, fileID)
-		}
-	} else {
-		// Origin wins over id, mirroring asset.ImportTeam's routing.
-		addressor = fileOrigin
-		if addressor == "" {
-			addressor = fileID
-		}
-		if addressor == "" {
-			return fmt.Errorf("no team ID provided as argument, and the file does not contain a dash0.com/origin or dash0.com/id label")
-		}
+	// Origin wins over id, mirroring asset.ImportTeam's routing.
+	addressor, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun:       "team",
+		UsesOrigin: true,
+		Origin:     fileOrigin,
+		ID:         fileID,
+	})
+	if err != nil {
+		return err
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)

@@ -59,5 +59,5 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no view ID provided as argument, and the file does not contain an ID")
+	assert.Contains(t, cmdErr.Error(), "no view id given: pass one as an argument")
 }

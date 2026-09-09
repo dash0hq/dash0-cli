@@ -77,5 +77,5 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no spam filter origin or ID provided as argument")
+	assert.Contains(t, cmdErr.Error(), "no spam filter origin or id given")
 }

@@ -69,18 +69,12 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
-	var id string
-	fileID := dash0api.GetNotificationChannelID(&channel)
-	if len(args) == 1 {
-		id = args[0]
-		if fileID != "" && fileID != id {
-			return fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
-		}
-	} else {
-		id = fileID
-		if id == "" {
-			return fmt.Errorf("no notification channel ID provided as argument, and the file does not contain an ID")
-		}
+	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun: "notification channel",
+		ID:   dash0api.GetNotificationChannelID(&channel),
+	})
+	if err != nil {
+		return err
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)

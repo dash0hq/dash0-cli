@@ -47,18 +47,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read synthetic check definition: %w", err)
 	}
 
-	var id string
-	fileID := dash0api.GetSyntheticCheckID(&check)
-	if len(args) == 1 {
-		id = args[0]
-		if fileID != "" && fileID != id {
-			return fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
-		}
-	} else {
-		id = fileID
-		if id == "" {
-			return fmt.Errorf("no synthetic check ID provided as argument, and the file does not contain an ID")
-		}
+	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun: "synthetic check",
+		ID:   dash0api.GetSyntheticCheckID(&check),
+	})
+	if err != nil {
+		return err
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
