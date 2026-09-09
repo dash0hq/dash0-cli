@@ -1,0 +1,20 @@
+change_type: enhancement
+component: dashboards, check-rules, views, synthetic-checks, recording-rules, notification-channels, spam-filters, teams, time-series-aggregations
+note: Make `update` speak with one voice about which asset it addresses
+issues: [281]
+subtext: |
+  Every `update` command resolves the same thing — whether to address the asset named by the
+  positional argument, the document's `dash0.com/origin`, or its id — and each one used to answer
+  it with its own wording. The same mistake produced a different message depending on which asset
+  type you typed.
+
+  The wording is now uniform, and more precise than what it replaces:
+
+  - A missing identifier reads `no <asset> id given: pass one as an argument, or set the id in the
+    file`, and for the kinds that upsert by origin (spam filters, teams, time series aggregations)
+    `no <asset> origin or id given: pass one as an argument, or set
+    metadata.labels["dash0.com/origin"] in the file`.
+  - A positional argument that matches neither identifier names only the identifiers the document
+    actually carries, instead of reporting an empty one it never had.
+
+  Only the message text changed; which asset each invocation resolves to is unchanged.

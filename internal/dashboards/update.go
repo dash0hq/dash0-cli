@@ -58,26 +58,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 
-	id, err := resolveDashboardID(args, dash0api.GetDashboardID(dashboard))
+	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun: "dashboard",
+		ID:   dash0api.GetDashboardID(dashboard),
+	})
 	if err != nil {
 		return err
 	}
 
 	return doUpdate(ctx, flags, id, dashboard)
-}
-
-func resolveDashboardID(args []string, fileID string) (string, error) {
-	if len(args) == 1 {
-		id := args[0]
-		if fileID != "" && fileID != id {
-			return "", fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
-		}
-		return id, nil
-	}
-	if fileID == "" {
-		return "", fmt.Errorf("no dashboard ID provided as argument, and the file does not contain an ID")
-	}
-	return fileID, nil
 }
 
 func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashboard *dash0api.DashboardDefinition) error {

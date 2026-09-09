@@ -141,7 +141,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no dashboard ID provided as argument, and the file does not contain an ID")
+	assert.Contains(t, cmdErr.Error(), "no dashboard id given: pass one as an argument")
 }
 
 func TestUpdateDashboard_PersesDashboardCRD_IDFromFile(t *testing.T) {
@@ -251,7 +251,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no dashboard ID provided as argument, and the file does not contain an ID")
+	assert.Contains(t, cmdErr.Error(), "no dashboard id given: pass one as an argument")
 }
 
 func TestUpdateDashboard_PersesDashboardCRD_IDMismatch(t *testing.T) {

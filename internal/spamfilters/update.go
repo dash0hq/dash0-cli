@@ -101,7 +101,12 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 	if filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil {
 		fileOrigin = *filter.Metadata.Labels.Dash0Comorigin
 	}
-	key, err := resolveUpdateKey(args, fileOrigin, dash0api.GetSpamFilterID(filter))
+	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun:       "spam filter",
+		UsesOrigin: true,
+		Origin:     fileOrigin,
+		ID:         dash0api.GetSpamFilterID(filter),
+	})
 	if err != nil {
 		return err
 	}
@@ -147,7 +152,12 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 		}
 	}
 
-	key, err := resolveUpdateKey(args, fileOrigin, fileID)
+	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun:       "spam filter",
+		UsesOrigin: true,
+		Origin:     fileOrigin,
+		ID:         fileID,
+	})
 	if err != nil {
 		return err
 	}
@@ -175,47 +185,6 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 	}
 
 	return asset.PrintDiff(os.Stdout, "Spam filter", result.Metadata.Name, before, result)
-}
-
-// resolveUpdateKey returns the value to pass as the originOrId URL parameter
-// for the PUT call. Precedence:
-//  1. The positional argument, if provided.
-//  2. The dash0.com/origin label in the file (origin is the preferred upsert
-//     key; the spam filter API uses it to route create-or-update through the
-//     same handler).
-//  3. The dash0.com/id label in the file (kept as a fallback for files that
-//     were exported before origin became a routine label, though apply
-//     idempotency is not guaranteed through ID alone).
-//
-// A positional argument that matches neither the file's origin nor its ID
-// is treated as a user error so the caller can fix one side before the PUT
-// lands at the wrong record.
-func resolveUpdateKey(args []string, fileOrigin, fileID string) (string, error) {
-	if len(args) == 1 {
-		arg := args[0]
-		if fileOrigin != "" && fileID != "" && arg != fileOrigin && arg != fileID {
-			return "", fmt.Errorf(
-				"the argument %q does not match the origin %q or the ID %q in the file",
-				arg, fileOrigin, fileID,
-			)
-		}
-		if fileOrigin != "" && fileID == "" && arg != fileOrigin {
-			return "", fmt.Errorf("the argument %q does not match the origin %q in the file", arg, fileOrigin)
-		}
-		if fileOrigin == "" && fileID != "" && arg != fileID {
-			return "", fmt.Errorf("the argument %q does not match the ID %q in the file", arg, fileID)
-		}
-		return arg, nil
-	}
-	if fileOrigin != "" {
-		return fileOrigin, nil
-	}
-	if fileID != "" {
-		return fileID, nil
-	}
-	return "", fmt.Errorf(
-		"no spam filter origin or ID provided as argument, and the file does not contain a 'dash0.com/origin' or 'dash0.com/id' label under metadata.labels",
-	)
 }
 
 // warnOnVersionMismatch prints a stderr note when the server-stored apiVersion
