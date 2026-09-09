@@ -21,7 +21,7 @@ func NormalizeKind(kind string) string {
 // (e.g. a stray Kubernetes ConfigMap) that happens to sit in a scanned scope.
 func IsValidKind(kind string) bool {
 	switch NormalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team":
+	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team", "timeseriesaggregation":
 		return true
 	default:
 		return false
@@ -54,6 +54,8 @@ func KindDisplayName(kind string) string {
 		return "Spam filter"
 	case "team":
 		return "Team"
+	case "timeseriesaggregation":
+		return "Time series aggregation"
 	default:
 		return kind
 	}

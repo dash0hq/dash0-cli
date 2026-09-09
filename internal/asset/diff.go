@@ -91,6 +91,22 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		dash0api.StripTeamServerFields(&t)
 		stripped = &t
+	case *dash0api.TimeSeriesAggregationDefinition:
+		var a dash0api.TimeSeriesAggregationDefinition
+		if err := sigsyaml.Unmarshal(jsonBytes, &a); err != nil {
+			return "", fmt.Errorf("failed to unmarshal time series aggregation: %w", err)
+		}
+		// Without this the diff churns on dash0.com/version, which the server
+		// increments on every PUT, so a reapply of unchanged content would
+		// never report "no changes".
+		dash0api.StripTimeSeriesAggregationServerFields(&a)
+		// Clear the id too, which the strip deliberately keeps. The diff
+		// compares the server's definition against a hand-authored file, and
+		// for this kind alone the id is never user-authored — the upsert key
+		// is the origin — so every such file lacks it and a kept id renders
+		// as a phantom removal in `update --dry-run`.
+		dash0api.ClearTimeSeriesAggregationID(&a)
+		stripped = &a
 	default:
 		stripped = asset
 	}
