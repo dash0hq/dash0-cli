@@ -127,6 +127,22 @@ var topics = []topicSpec{
 			"teams list-members", "teams add-members", "teams remove-members",
 		},
 	},
+	{
+		name:            "time-series-aggregations",
+		includeQuickRef: true,
+		assetYAMLLabels: []string{"Time series aggregation ("},
+		extraNote: "The command is also available under the shorter alias `tsa`, so `dash0 tsa list` and " +
+			"`dash0 time-series-aggregations list` are the same command.\n\n" +
+			"Every time series aggregation endpoint requires the organization admin role, which is stricter than any " +
+			"other asset type. A non-admin token gets a 403 naming the role.\n\n" +
+			"`metadata.labels[\"dash0.com/origin\"]` is mandatory and is the only upsert key. `create` and `apply` both " +
+			"PUT to that origin, so they are create-or-replace; a document without the label fails before any API " +
+			"call. A `dash0.com/id` in a document body is ignored, which is what makes an exported definition " +
+			"reapply cleanly.\n\n" +
+			"Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document " +
+			"therefore cannot be applied to two datasets the way it can for every other asset kind — the second " +
+			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.",
+	},
 	{name: "traces", sections: []string{"traces get"}},
 	{
 		name:            "views",
