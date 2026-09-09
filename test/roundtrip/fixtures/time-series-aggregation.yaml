@@ -1,0 +1,16 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: roundtrip-http-server-request-duration
+  labels:
+    dash0.com/origin: roundtrip-http-server-request-duration
+spec:
+  enabled: true
+  display:
+    name: Roundtrip HTTP server request duration
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.request.duration
+  sample:
+    interval: 5m
