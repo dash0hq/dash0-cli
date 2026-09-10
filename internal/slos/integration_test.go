@@ -1088,6 +1088,40 @@ spec:
       target: 0.99
 `
 
+// TestUpdateSLO_DryRunNamesTheSLOTheSameWayTheRealRunDoes is a regression test
+// for the dry run titling its output with metadata.name while the real run
+// used the dash0.com/display-name annotation, so the same operation on the
+// same document printed two different SLO names depending on --dry-run. The
+// name is only rendered on the "no changes" line, hence the unchanged input.
+func TestUpdateSLO_DryRunNamesTheSLOTheSameWayTheRealRunDoes(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloUpdateWithServerFieldsYAML), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken, "--dry-run"})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	// The exact line TestUpdateSLO_UnchangedDocumentReportsNoChanges asserts
+	// for the real run, on the same document.
+	assert.Contains(t, output, `SLO "Checkout availability": no changes`,
+		"--dry-run must name the SLO exactly as the real run does")
+}
+
 // TestUpdateSLO_UnchangedDocumentReportsNoChanges pins actual idempotency: a
 // re-apply of an unchanged SLO document must be a no-op from the user's point
 // of view, reported as "no changes" — not merely "no duplicate was created".
