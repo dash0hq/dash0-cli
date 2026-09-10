@@ -12,8 +12,9 @@ import (
 //
 //   - If the input has a user-defined origin (label `dash0.com/origin`), a
 //     preflight GetSLO runs against that origin. On hit, PUT is used to update
-//     in place. On miss, PUT is still used — the API treats an origin PUT as
-//     create-or-replace, so the SLO materializes at the requested origin.
+//     in place. On a genuine 404, PUT is still used — the API treats an origin
+//     PUT as create-or-replace, so the SLO materializes at the requested
+//     origin. Any other preflight error is surfaced.
 //   - If the input has a user-defined ID (label `dash0.com/id`) but no origin,
 //     a preflight GetSLO gates the choice: on hit, PUT (idempotent update); on
 //     a genuine 404, POST (create fresh with a server-assigned id). The miss
@@ -43,9 +44,18 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 	switch {
 	case origin != "":
 		upsertKey = origin
-		if existing, err := apiClient.GetSLO(ctx, origin, dataset); err == nil {
+		// The route is PUT either way, so the preflight only decides "created"
+		// vs "updated" — but swallowing a 5xx there reports a replace as a
+		// create with no diff, claiming a write the run did not make.
+		existing, err := apiClient.GetSLO(ctx, origin, dataset)
+		switch {
+		case err == nil:
 			action = ActionUpdated
 			before = existing
+		case dash0api.IsNotFound(err):
+			// Nothing at this origin yet; the PUT below creates it.
+		default:
+			return ImportResult{}, err
 		}
 	case id != "":
 		// The preflight GET's outcome decides the route, so the kind of error

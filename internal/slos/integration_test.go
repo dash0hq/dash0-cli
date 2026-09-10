@@ -790,6 +790,44 @@ func TestCreateSLOFromFile_UpsertByOrigin(t *testing.T) {
 	assertNoMethod(t, server.Requests(), http.MethodPost, "origin-only input must upsert via PUT, never POST a duplicate")
 }
 
+// TestCreateSLOFromFile_UpsertByOrigin_SurfacesNon404PreflightError asserts
+// that a preflight GET failing for any reason other than "not found" fails the
+// import, rather than reporting a replace as a create with no diff.
+func TestCreateSLOFromFile_UpsertByOrigin_SurfacesNon404PreflightError(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	// The client retries 5xx with backoff, which this test need not wait out.
+	t.Setenv("DASH0_MAX_RETRIES", "0")
+
+	const origin = "my-slo-origin"
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusInternalServerError,
+		Body:       map[string]any{"message": "internal error"},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels("    dash0.com/origin: "+origin+"\n")), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.Error(t, err, "a 5xx preflight leaves the create-or-update outcome unknown and must not be swallowed")
+	assertNoMethod(t, server.Requests(), http.MethodPut, "the write must not run on an inconclusive preflight")
+}
+
 // TestCreateSLOFromFile_UpsertByID asserts that an SLO YAML carrying only a
 // dash0.com/id label (a server-style slo_… id, no origin) routes to PUT
 // /api/slos/{id} when the preflight GET finds the SLO in the target env.
