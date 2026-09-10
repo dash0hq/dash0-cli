@@ -47,23 +47,28 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read SLO definition: %w", err)
 	}
 
-	var id string
 	fileID := dash0api.GetSLOID(&slo)
-	// Fall back to dash0.com/origin when the document carries no id. SLO ids are
-	// server-assigned (`slo_<ulid>`), so a hand-authored document can only ever
-	// pin an origin — without this fallback the `update -f <file>` form this
-	// command advertises is impossible for any SLO that was not first exported.
-	// GET/PUT accept an origin-or-id path segment, so routing on origin works.
-	if fileID == "" {
-		fileID = dash0api.GetSLOOrigin(&slo)
-	}
+	fileOrigin := dash0api.GetSLOOrigin(&slo)
+
+	var id string
 	if len(args) == 1 {
 		id = args[0]
-		if fileID != "" && fileID != id {
-			return fmt.Errorf("the ID argument %q does not match the ID or origin in the file %q", id, fileID)
+		// Checked against both labels independently: they are alternative
+		// handles on the same SLO, and an exported document carries both, so
+		// comparing against only the preferred one rejects the other.
+		if (fileID != "" || fileOrigin != "") && id != fileID && id != fileOrigin {
+			return fmt.Errorf("the ID argument %q does not match the dash0.com/id or dash0.com/origin label in the file (id=%q, origin=%q)", id, fileID, fileOrigin)
 		}
 	} else {
+		// Fall back to dash0.com/origin when the document carries no id. SLO ids are
+		// server-assigned (`slo_<ulid>`), so a hand-authored document can only ever
+		// pin an origin — without this fallback the `update -f <file>` form this
+		// command advertises is impossible for any SLO that was not first exported.
+		// GET/PUT accept an origin-or-id path segment, so routing on origin works.
 		id = fileID
+		if id == "" {
+			id = fileOrigin
+		}
 		if id == "" {
 			return fmt.Errorf("no SLO ID provided as argument, and the file contains neither an ID nor a dash0.com/origin label")
 		}

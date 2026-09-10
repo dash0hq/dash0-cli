@@ -410,6 +410,48 @@ func TestUpdateSLO_DatasetQueryParam(t *testing.T) {
 	assert.Equal(t, dash0api.SLO, sent.Kind)
 }
 
+// TestUpdateSLO_PositionalOriginMatchesFileCarryingBothLabels is a regression
+// test for a consistency check that compared the positional argument against
+// only the preferred identifier (the id, when present). An exported SLO
+// (`dash0 slos get -o yaml`) carries both labels, so `update <origin> -f <file>`
+// was rejected before any API call, even though `get <origin>` and
+// `delete <origin>` both accept that origin.
+func TestUpdateSLO_PositionalOriginMatchesFileCarryingBothLabels(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "my-slo-origin"
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels(
+		"    dash0.com/origin: "+origin+"\n    dash0.com/id: "+sloID+"\n")), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", origin, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+origin,
+		"the positional origin must address the SLO, not be rejected as mismatching the file's id")
+}
+
 func TestDeleteSLO_Success(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
