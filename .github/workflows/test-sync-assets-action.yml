@@ -21,7 +21,7 @@ on:
 
 jobs:
   test-since-none-omits-since:
-    name: 'since: none omits --since from both the preflight and the mutating call'
+    name: 'Since: none omits --since from both the preflight and the mutating call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -217,7 +217,7 @@ jobs:
           [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
 
   test-accept-non-ancestor-ref:
-    name: 'accept-non-ancestor-ref lets a non-ancestor since ref proceed'
+    name: 'Accept-non-ancestor-ref lets a non-ancestor since ref proceed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -274,7 +274,7 @@ jobs:
           grep -q -- "--since ${{ steps.orphan.outputs.sha }}" /tmp/dash0-captured-apply-args.txt
 
   test-dry-run-plan-outputs:
-    name: 'dry-run computes and reports the pending plan without applying it'
+    name: 'Dry-run computes and reports the pending plan without applying it'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -312,7 +312,7 @@ jobs:
           echo '${{ steps.sync.outputs.modifications }}' | grep -q '"originOrId":"sync-assets-plan-test"'
 
   test-max-deletions-blocks:
-    name: 'max-deletions fails the job before any mutating call'
+    name: 'Max-deletions fails the job before any mutating call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -432,9 +432,15 @@ jobs:
 
       - name: Verify the dashboard was deleted
         run: |
-          if dash0 dashboards get sync-assets-e2e-test >/tmp/get-output.txt 2>&1; then
+          # Dash0 soft-deletes assets (the dash0.com/deleted-at annotation), so a `get` by id
+          # still returns a deleted dashboard. `list` excludes soft-deleted assets, so that's
+          # the correct way to check absence -- mirrors test/roundtrip/test_dashboard_roundtrip.sh.
+          if ! LIST_JSON=$(dash0 dashboards list --all -o json); then
+            echo "Error: dashboards list -o json failed"
+            exit 1
+          fi
+          if echo "$LIST_JSON" | jq -e '.[] | select(.metadata.dash0Extensions.id == "sync-assets-e2e-test")' > /dev/null 2>&1; then
             echo "Error: dashboard still exists after --since sync"
-            cat /tmp/get-output.txt
             exit 1
           fi
 
@@ -449,6 +455,21 @@ jobs:
       - name: Verify CLI is not installed
         run: |
           ! command -v dash0 &>/dev/null || { echo "Error: dash0 should not be on PATH yet"; exit 1; }
+
+      - name: Create a scratch dashboard fixture
+        run: |
+          mkdir -p ci-scratch
+          cat > ci-scratch/dashboard.yaml <<'EOF'
+          apiVersion: dash0.com/v1alpha1
+          kind: Dashboard
+          metadata:
+            name: sync-assets-arm64-test
+            dash0Extensions:
+              id: sync-assets-arm64-test
+          spec:
+            display:
+              name: sync-assets arm64 test dashboard
+          EOF
 
       - name: Sync assets (standalone, dry-run)
         uses: ./.github/actions/sync-assets
