@@ -81,6 +81,94 @@ spec:
 	assert.Contains(t, output, "deleted")
 }
 
+// TestApply_Since_SLODeletion is a regression test for a bug where
+// deleteAssetByKindAndIdentifier had no case for the "slo" kind even though
+// asset.IsValidKind accepts it, so a removed SLO document was recorded as a
+// deletion candidate and then hit the default branch: the run failed with
+// "unsupported kind for deletion: slo" only after the surviving documents had
+// already been created or updated, leaving the sync half-applied.
+func TestApply_Since_SLODeletion(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "slo.yaml", `apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-availability
+  labels:
+    dash0.com/id: `+sloID+`
+    dash0.com/origin: cli-roundtrip-origin
+spec:
+  description: 99 percent of checkout HTTP requests succeed over a rolling 28-day window.
+  service: checkout
+  budgetingMethod: Occurrences
+  indicator:
+    metadata:
+      name: checkout-success-ratio
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add slo")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "slo.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove slo")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "SLO")
+	assert.Contains(t, output, sloID)
+	assert.Contains(t, output, "deleted")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathSLOs+"/"+sloID),
+		"a removed SLO document must be deleted via DELETE /api/slos/{originOrId}")
+}
+
 // TestApply_Since_ConcurrentlyDeletedAssetIsToleratedWithoutForce is a
 // regression test for a bug where an asset already deleted by someone else
 // (e.g. via the Dash0 UI) before --since's own delete call ran caused the

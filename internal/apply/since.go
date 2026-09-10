@@ -417,6 +417,8 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
 	case "syntheticcheck":
 		err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
+	case "slo":
+		err = apiClient.DeleteSLO(ctx, identifier, dataset)
 	case "recordingrule":
 		// A surviving PrometheusRule CRD whose recording-rule role
 		// disappeared entirely (see Diff's PrometheusRecordingRoleByIdentifier
