@@ -87,10 +87,15 @@ spec:
 // deletion candidate and then hit the default branch: the run failed with
 // "unsupported kind for deletion: slo" only after the surviving documents had
 // already been created or updated, leaving the sync half-applied.
+//
+// The document carries dash0.com/origin alone, the recommended form: SLO ids
+// are server-assigned, so origin is the only key a hand-authored document can
+// pin. asset.ExtractIdentifier used to read only dash0.com/id for SLOs, which
+// left that form identifier-less and hard-failed the run up front instead.
 func TestApply_Since_SLODeletion(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+	const sloOrigin = "cli-roundtrip-origin"
 
 	dir := t.TempDir()
 	runGitCmd(t, dir, "init", "-q", "-b", "main")
@@ -103,8 +108,7 @@ kind: SLO
 metadata:
   name: checkout-availability
   labels:
-    dash0.com/id: `+sloID+`
-    dash0.com/origin: cli-roundtrip-origin
+    dash0.com/origin: `+sloOrigin+`
 spec:
   description: 99 percent of checkout HTTP requests succeed over a rolling 28-day window.
   service: checkout
@@ -163,9 +167,9 @@ spec:
 
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "SLO")
-	assert.Contains(t, output, sloID)
+	assert.Contains(t, output, sloOrigin)
 	assert.Contains(t, output, "deleted")
-	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathSLOs+"/"+sloID),
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathSLOs+"/"+sloOrigin),
 		"a removed SLO document must be deleted via DELETE /api/slos/{originOrId}")
 }
 

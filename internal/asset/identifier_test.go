@@ -16,7 +16,7 @@ import (
 // printed "was already deleted" while the asset stayed live. Returning ""
 // instead routes it to the NoIdentifier hard-fail written for this case.
 //
-// Only Dash0Team and Dash0SpamFilter genuinely accept either field.
+// Only SLO, Dash0Team, and Dash0SpamFilter genuinely accept either field.
 func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -34,6 +34,12 @@ func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 		{"Dash0Team falls back to id", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dash0SpamFilter falls back to id", "kind: Dash0SpamFilter\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dash0Team prefers origin", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "o"},
+
+		// SLO ids are server-assigned, so an origin-only document is the
+		// recommended and most common hand-authored form -- reading only the id
+		// label left it identifier-less and hard-failed every --since run in
+		// which it was deleted.
+		{"SLO reads origin alone", "kind: SLO\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
 
 		{"View reads the id label", "kind: View\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dashboard reads dash0Extensions.id", "kind: Dashboard\nmetadata:\n  dash0Extensions:\n    id: i\n", "i"},

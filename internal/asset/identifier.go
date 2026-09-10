@@ -45,7 +45,7 @@ type identifierProbe struct {
 //   - Dashboard: metadata.dash0Extensions.id
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel: dash0.com/origin
-//   - Dash0SpamFilter, Dash0Team: dash0.com/origin, then dash0.com/id
+//   - SLO, Dash0SpamFilter, Dash0Team: dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View):
 //     dash0.com/id
 //
@@ -53,7 +53,7 @@ type identifierProbe struct {
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only teams and spam filters genuinely accept either field.
+// hard-fail. Only SLOs, teams, and spam filters genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := sigsyaml.Unmarshal(data, &probe); err != nil {
@@ -69,7 +69,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 		return probe.ID, nil
 	case "notificationchannel":
 		return origin, nil
-	case "spamfilter", "team":
+	case "slo", "spamfilter", "team":
 		if origin != "" {
 			return origin, nil
 		}
