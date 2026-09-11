@@ -53,10 +53,14 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	var id string
 	if len(args) == 1 {
 		id = args[0]
-		// Checked against both labels independently: they are alternative
-		// handles on the same SLO, and an exported document carries both, so
-		// comparing against only the preferred one rejects the other.
-		if (fileID != "" || fileOrigin != "") && id != fileID && id != fileOrigin {
+		// Only enforceable when the document pins both handles, in which case
+		// the argument has to be one of them. With just one label present the
+		// argument may legitimately be the other — GET/PUT take an
+		// origin-or-id path segment, and an origin-pinned document says
+		// nothing about the server-assigned id — and there is no offline way
+		// to tell a valid counterpart from a typo. A wrong value surfaces as a
+		// clean "SLO not found" from the GET below.
+		if fileID != "" && fileOrigin != "" && id != fileID && id != fileOrigin {
 			return fmt.Errorf("the ID argument %q does not match the dash0.com/id or dash0.com/origin label in the file (id=%q, origin=%q)", id, fileID, fileOrigin)
 		}
 	} else {

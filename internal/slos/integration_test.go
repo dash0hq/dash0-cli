@@ -1122,6 +1122,45 @@ func TestUpdateSLO_DryRunNamesTheSLOTheSameWayTheRealRunDoes(t *testing.T) {
 		"--dry-run must name the SLO exactly as the real run does")
 }
 
+// TestUpdateSLO_PositionalIDAgainstOriginOnlyFile asserts that the positional
+// argument is accepted when the document pins only dash0.com/origin. SLO ids
+// are server-assigned, so an origin-pinned document says nothing about the id,
+// and `slos update <id> -f <file>` — the form the command's own Example shows
+// — was rejected before any API call as a mismatch.
+func TestUpdateSLO_PositionalIDAgainstOriginOnlyFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels("    dash0.com/origin: my-slo-origin\n")), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", sloID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+sloID,
+		"the positional id must address the SLO even though the file pins only an origin")
+}
+
 // TestUpdateSLO_UnchangedDocumentReportsNoChanges pins actual idempotency: a
 // re-apply of an unchanged SLO document must be a no-op from the user's point
 // of view, reported as "no changes" — not merely "no duplicate was created".
