@@ -45,6 +45,8 @@ That makes `dash0.com/origin` the only key a hand-authored SLO document can pin,
 `dash0.com/origin` wins when present and PUTs unconditionally (create-or-replace at that origin).
 When only `dash0.com/id` is present the CLI preflights the SLO with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
 On that POST fallback the foreign `dash0.com/id` is removed from the request body, since the server assigns the ID.
+The fallback is therefore a one-way create, not an idempotent one: the newly assigned ID is not written back into the document, so a second apply preflights the same unknown ID, 404s again, and POSTs a second SLO.
+Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
 A document with neither label creates a new SLO on every apply.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
