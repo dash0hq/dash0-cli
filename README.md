@@ -390,7 +390,7 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 
 ### Asset CRUD commands
 
-Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) supports the same five subcommands.
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) supports the same five subcommands.
 Substitute the asset noun in the examples below.
 
 List all assets of a type:

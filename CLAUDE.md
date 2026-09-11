@@ -59,6 +59,7 @@ Detailed guidelines are split into focused documents:
   - PrometheusRule CRD (alerting and recording rules): `metadata.labels["dash0.com/id"]`
   - Spam filters (v1alpha1 and v1alpha2): `metadata.labels["dash0.com/id"]`, but `metadata.labels["dash0.com/origin"]` takes precedence as the upsert key when both are present
   - Notification channels: no user-settable ID field — `metadata.labels["dash0.com/origin"]` is the upsert key
+  - SLOs: `metadata.labels["dash0.com/origin"]` is the primary upsert key; `metadata.labels["dash0.com/id"]` is honored as a fallback when origin is absent. IDs are server-assigned (`slo_<ulid>`), so origin is the only key a hand-authored document can pin. The CLI preflights `GET /api/slos/{id}` on the id-only path and PUTs on hit, POSTs on 404 (cross-org apply), or surfaces other errors. That POST fallback is a one-way create, not an idempotent one — the new ID is never written back, so a repeated apply duplicates.
   - Teams: `metadata.labels["dash0.com/origin"]` is the primary upsert key; `metadata.labels["dash0.com/id"]` is honored as a fallback when origin is absent. The CLI preflights `GET /api/teams/{id}` and PUTs on hit, POSTs on 404 (cross-org apply), or surfaces other errors.
 
   The user-facing documentation of these fields, including the rationale for idempotent upsert, lives in the [Asset identifiers and idempotent upsert](docs/commands.md#asset-identifiers-and-idempotent-upsert) section of `docs/commands.md`.
