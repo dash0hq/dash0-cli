@@ -2,9 +2,31 @@ package asset
 
 import (
 	"context"
+	"fmt"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	sigsyaml "sigs.k8s.io/yaml"
 )
+
+// SLOUsesOrigin reports whether an SLO document carries a non-empty
+// dash0.com/origin label.
+//
+// --since uses this to warn when an SLO is about to be deleted by
+// dash0.com/id alone. SLO ids are server-assigned, so an id-only document
+// that was first applied against an organization not holding that id took
+// ImportSLO's POST fallback, and the live SLO is sitting at a fresh id the
+// document never learned. Deleting by the id recorded in git history then
+// either 404s (hard-failing without --force) or counts as already-deleted
+// (with --force), leaving the real SLO orphaned either way. There is no
+// local, API-free way to recover the live id from git history; origin is the
+// only identifier the server never reassigns.
+func SLOUsesOrigin(data []byte) (bool, error) {
+	var slo dash0api.SloDefinition
+	if err := sigsyaml.Unmarshal(data, &slo); err != nil {
+		return false, fmt.Errorf("failed to decode SLO: %w", err)
+	}
+	return dash0api.GetSLOOrigin(&slo) != "", nil
+}
 
 // ImportSLO creates or upserts an SLO via the standard CRUD APIs.
 //

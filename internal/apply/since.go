@@ -308,6 +308,9 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 			name = "<name>"
 		}
 		display := formatNameAndId(name, d.Identifier)
+		if d.Kind == "slo" && !d.SLOUsesOrigin {
+			fmt.Fprintf(os.Stderr, "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
+		}
 		if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
 			fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
 		}
