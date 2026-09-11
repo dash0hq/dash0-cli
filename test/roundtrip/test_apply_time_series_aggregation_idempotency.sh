@@ -52,6 +52,13 @@ ORIGIN="$ORIGIN" yq '
 
 cleanup() {
   "$DASH0" tsa delete "$ORIGIN" --force > /dev/null 2>&1 || true
+  # Step 5 expects the cross-dataset apply to be rejected, but if the API ever
+  # accepts it the aggregation lands in the other dataset, where the delete
+  # above cannot reach it. Origins are visible org-wide, so a leak is everyone's
+  # problem. OTHER_DATASET is set further down and is empty if we exited first.
+  if [ -n "${OTHER_DATASET:-}" ] && [ "${OTHER_DATASET}" != "${CURRENT_DATASET:-}" ]; then
+    "$DASH0" tsa delete "$ORIGIN" --force --dataset "$OTHER_DATASET" > /dev/null 2>&1 || true
+  fi
   rm -rf "$TMPDIR"
 }
 trap cleanup EXIT
