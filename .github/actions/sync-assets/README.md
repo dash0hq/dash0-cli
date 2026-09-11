@@ -3,8 +3,7 @@
 Sync a directory of [Dash0](https://www.dash0.com) configurations (dashboards, check rules, synthetic checks, etc.) YAML files (`dash0 apply -f <path>`) from GitHub Actions, and deleting by default assets removed since the last push.
 (The delete behavior is opt-out.)
 
-This action wraps `dash0 apply --since <ref>` and handles resolving `<ref>` from the triggering event on your behalf, handling for you [`github.event.before`'s corner cases](#github-event-corner-cases-this-action-handles).
-All deletion-detection logic lives in `dash0 apply --since` itself; this action decides whether `--since` is safe to pass, then invokes the CLI.
+This action wraps `dash0 apply --since <ref>` and resolves `<ref>` from the triggering event on your behalf, handling [`github.event.before`'s corner cases](#github-event-corner-cases-this-action-handles) for you.
 
 This action is standalone: it installs the Dash0 CLI automatically if it is not already on `PATH`.
 If the [setup](../setup/README.md) action has already run, the existing installation and profile are reused.
@@ -51,11 +50,14 @@ Wiring `--since` from `github.event.before` by hand has several sharp edges.
 This action handles all of them automatically:
 
 - **First push to a new branch.** `github.event.before` is git's all-zeros SHA sentinel. Deletion detection is skipped for the run; the job does not fail.
-- **No `before` at all.** `workflow_dispatch`, `schedule`, and `pull_request` triggers don't set `github.event.before`. Deletion detection is skipped the same way, unless you pass an explicit `since` value.
-- **Too-shallow checkout.** A comparison ref that resolves but isn't reachable in the checkout — most often because `actions/checkout` defaults to a shallow clone — fails the job with an error naming `fetch-depth: 0` as the fix (see the note above).
+- **No `before` at all.** `workflow_dispatch` and `schedule` triggers don't set `github.event.before`. Deletion detection is skipped the same way, unless you pass an explicit `since` value.
+- **`pull_request` events.** `since: auto` never derives a comparison ref here, even on `synchronize` (which does set `before`). Deletion detection is skipped unless you pass an explicit `since` value.
+- **Too-shallow checkout.** A comparison ref that resolves but isn't reachable in the checkout fails the job with an error naming `fetch-depth: 0` as the fix (see the note above).
 - **A force-pushed or rewritten branch.** A comparison ref that resolves but is not an ancestor of the current commit fails the job by default, naming the likely cause. `accept-non-ancestor-ref: true` is the explicit opt-out.
-- **A broken expression.** An explicit `since` value that is an empty string or the all-zeros sentinel fails the job immediately. Unlike `auto` finding no prior state, there's no routine reason to pass either explicitly, so it's treated as a likely mistake rather than silently doing nothing.
-- **Unsafe interpolation.** Because this action reads `github.event.before` itself, your workflow never has to interpolate it into a `--since` flag by hand — eliminating the unquoted/ungated-interpolation mistakes that pattern is prone to (a bare `--since` with nothing after it, or one that silently swallows a neighboring flag).
+- **A broken expression.** An explicit `since` value that is an empty string or the all-zeros sentinel fails the job immediately, rather than being treated like `auto` finding no prior state.
+- **Unsafe interpolation.** Because this action reads `github.event.before` itself, your workflow never has to interpolate it into a `--since` flag by hand.
+
+See `docs/github-actions-maintenance.md` for the rationale behind each of these.
 
 ## Inputs
 
@@ -63,7 +65,7 @@ This action handles all of them automatically:
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `cli-version` | No | latest | Dash0 CLI version to install (e.g., `1.1.0`). Minimum supported: `1.1.0`. Ignored if the CLI is already on `PATH`. |
+| `cli-version` | No | latest | Dash0 CLI version to install (e.g., `1.17.0`). Minimum supported: `1.17.0` (this action relies on `apply --since` and its `--dry-run --agent-mode` JSON output). Ignored if the CLI is already on `PATH`. |
 
 ### Connection
 
@@ -90,7 +92,7 @@ Connection inputs are not required for a `dry-run: true` invocation combined wit
 
 `since` has three options:
 
-- **`auto`** (default) — calculate the comparison from the ref included in triggering event's `github.event.before`.
+- **`auto`** (default) — derive the comparison ref from `github.event.before` on a `push` event. Never derives one on `pull_request`, `workflow_dispatch`, or `schedule`.
 - **`none`** — disable deletion detection, regardless of what the triggering event would otherwise supply; use this to guarantee a run never deletes anything, or on `workflow_dispatch`/`schedule` to run as a plain create/update sync.
 - **any other value** — used directly as the comparison ref, replacing event-derived resolution entirely. Lets a `workflow_dispatch` or `schedule` run (which has no `before` to derive from) opt into deletion detection against a caller-chosen ref, e.g. a tag:
 
@@ -127,7 +129,13 @@ These outputs are sourced from a `dash0 apply --dry-run --agent-mode` preflight 
 
 - name: Comment on planned deletions
   if: steps.sync.outputs.deletion-count != '0'
-  run: echo "Deleted ${{ steps.sync.outputs.deletion-count }} asset(s): ${{ steps.sync.outputs.deletions }}"
+  run: |
+    COUNT="${{ steps.sync.outputs.deletion-count }}"
+    if [ "$COUNT" = "1" ]; then
+      echo "Deleted 1 asset: ${{ steps.sync.outputs.deletions }}"
+    else
+      echo "Deleted $COUNT assets: ${{ steps.sync.outputs.deletions }}"
+    fi
 ```
 
 ## Supported runners

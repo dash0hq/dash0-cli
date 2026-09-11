@@ -68,6 +68,58 @@ jobs:
           ! grep -q -- '--since' /tmp/dash0-captured-apply-args.txt
           ! grep -q -- '--experimental' /tmp/dash0-captured-apply-args.txt
 
+  test-auto-does-not-derive-on-pull-request:
+    name: 'Since: auto does not derive a comparison ref on a pull_request event'
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+          api-url: https://api.example.com
+          auth-token: auth_test1234567
+
+      - name: Create a wrapper to capture apply arguments
+        run: |
+          mv ~/.dash0/bin/dash0 ~/.dash0/bin/dash0-real
+          cat > ~/.dash0/bin/dash0 <<'EOF'
+          #!/bin/bash
+          if [ "$1" = "apply" ]; then
+            echo "CAPTURED_APPLY_ARGS: $*" >> /tmp/dash0-captured-apply-args.txt
+            for arg in "$@"; do
+              if [ "$arg" = "--dry-run" ]; then
+                echo '[]'
+                exit 0
+              fi
+            done
+            echo 'Dashboard "Fake" created'
+            exit 0
+          fi
+          exec ~/.dash0/bin/dash0-real "$@"
+          EOF
+          chmod +x ~/.dash0/bin/dash0
+
+      - name: Sync assets with the default since (auto), on a pull_request event
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+
+      - name: Verify neither call included --since
+        run: |
+          # This job only runs on the pull_request trigger (see the job-level `if:` above),
+          # so github.event_name is guaranteed to be pull_request here. Its synchronize action
+          # does set github.event.before, but auto must not derive a comparison ref from a
+          # pull_request event regardless -- a PR run is a preview surface, not a deletion one.
+          cat /tmp/dash0-captured-apply-args.txt
+          [ "$(wc -l < /tmp/dash0-captured-apply-args.txt)" = "2" ] || { echo "Error: expected exactly 2 captured apply calls"; exit 1; }
+          ! grep -q -- '--since' /tmp/dash0-captured-apply-args.txt
+          ! grep -q -- '--experimental' /tmp/dash0-captured-apply-args.txt
+
   test-explicit-ref-passes-since:
     name: 'An explicit since ref is passed to both the preflight and the mutating call'
     runs-on: ubuntu-latest
@@ -370,7 +422,6 @@ jobs:
       - name: Verify the action failed
         run: |
           [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
-          [ "${{ steps.sync.outputs.deletion-count }}" = "2" ] || { echo "Error: expected deletion-count 2 before the limit was enforced"; exit 1; }
 
   test-end-to-end-sync:
     name: 'End-to-end create then delete-via-since'

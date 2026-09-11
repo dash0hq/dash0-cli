@@ -7,6 +7,8 @@
 # Environment variables:
 #   CLI_VERSION        - Desired version (empty = latest). A leading "v" is stripped.
 #   SKIP_IF_ON_PATH    - If "true", skip installation when `dash0` is already on PATH.
+#   MIN_VERSION        - Minimum acceptable CLI version (default: "1.1.0"). Callers that depend
+#                         on a feature introduced after 1.1.0 should set this explicitly.
 #
 # Outputs (via GITHUB_OUTPUT):
 #   version        - Resolved semver string (e.g., "1.2.0")
@@ -14,7 +16,7 @@
 
 set -euo pipefail
 
-MIN_SUPPORTED="1.1.0"
+MIN_SUPPORTED="${MIN_VERSION:-1.1.0}"
 INSTALL_DIR="$HOME/.dash0/bin"
 
 # --- Check for existing installation ---------------------------------------------------

@@ -16,25 +16,13 @@ issues: [277]
 # These lines will be padded with 2 spaces and then inserted directly into the document.
 # Use pipe (|) for multiline entries.
 subtext: |
-  This new GitHub action wraps `dash0 apply --since <ref>` and resolves whether `--since` is safe to pass
-  from the triggering GitHub Actions event, so a workflow does not have to hand-write the `github.event.before`
-  gating that pattern otherwise requires (git's all-zeros SHA sentinel on a branch's first push,
-  `before` being unset entirely on `workflow_dispatch`/`schedule`/`pull_request`, and correct quoting).
+  Wraps `dash0 apply --since <ref>`, deriving `<ref>` from the triggering event so a workflow does
+  not have to hand-write `github.event.before`'s corner cases itself. The `since` input has three
+  states: `auto` (default), `none` (always a plain create/update sync), or an explicit ref.
 
-  The `since` input has three states: `auto` (the default, derive from the triggering event),
-  `none` (unconditionally disable deletion detection for the run), or any other value (an explicit
-  comparison ref, for triggers with no `github.event.before`). Before ever invoking `dash0`, the
-  action verifies a resolved comparison ref both resolves in the checkout and is an ancestor of the
-  current commit, since the action always passes `--force` (no TTY to answer a confirmation prompt
-  in CI) — once `--force` is set, `apply --since`'s own non-ancestor handling degrades to a
-  stderr-only warning, so this preflight is what restores a real backstop against a force-pushed or
-  rewritten branch. `accept-non-ancestor-ref: true` is the explicit, workflow-diff-visible opt-out.
-
-  Regardless of the `dry-run` input, the action always runs a zero-API-call `apply --dry-run --agent-mode`
-  preflight first, exposing `deletions`/`modifications` (structured `{kind, name, originOrId}` arrays)
-  and their counts as action outputs, and enforcing an optional `max-deletions` circuit breaker before
-  any mutating call. `dry-run: true` combined with `since: none` needs no Dash0 credentials at all,
-  enabling a "preview pending changes on a pull request" workflow pattern.
+  Always runs a zero-API-call `apply --dry-run --agent-mode` preflight first, exposing
+  `deletions`/`modifications` as action outputs and enforcing an optional `max-deletions` circuit
+  breaker before any mutating call.
 
   See `.github/actions/sync-assets/README.md` for the full reference.
 

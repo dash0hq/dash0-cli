@@ -11,8 +11,9 @@ inputs:
 
   cli-version:
     description: >-
-      Dash0 CLI version to install (e.g., "1.1.0" or omit for latest).
-      Minimum supported version is 1.1.0.
+      Dash0 CLI version to install (e.g., "1.17.0" or omit for latest).
+      Minimum supported version is 1.17.0, since this action relies on `apply --since` and its
+      `--dry-run --agent-mode` JSON output, both introduced in that release.
       Ignored if the CLI is already on PATH (e.g., via the setup action).
     required: false
     default: ''
@@ -53,14 +54,16 @@ inputs:
   since:
     description: >-
       Controls deletion detection. Three states: "auto" (the default) derives the comparison
-      ref from the triggering event's github.event.before, omitting deletion detection when
-      there is no usable prior state (e.g. a first push to a new branch, or a workflow_dispatch
-      run); "none" unconditionally disables deletion detection for this run, regardless of what
-      the triggering event would otherwise supply; any other value is used directly as the
-      comparison ref, letting a workflow_dispatch or schedule run opt into deletion detection
-      against a caller-chosen ref (e.g. a tag). An explicit empty string or all-zeros SHA fails
-      the job (likely a broken expression) rather than being silently treated like "auto"
-      finding no prior state.
+      ref from github.event.before on a push event, omitting deletion detection when there is no
+      usable prior state (e.g. a first push to a new branch) or when the triggering event is not
+      a push (e.g. pull_request, workflow_dispatch, schedule) — pull_request is deliberately
+      excluded even though its synchronize action does set before, since that ref is the PR
+      branch's own prior push, not a state a force-applied deletion should ever run against
+      automatically; "none" unconditionally disables deletion detection for this run, regardless
+      of what the triggering event would otherwise supply; any other value is used directly as
+      the comparison ref, letting any trigger opt into deletion detection against a caller-chosen
+      ref (e.g. a tag). An explicit empty string or all-zeros SHA fails the job (likely a broken
+      expression) rather than being silently treated like "auto" finding no prior state.
     required: false
     default: 'auto'
 
@@ -115,6 +118,7 @@ runs:
       env:
         CLI_VERSION: ${{ inputs.cli-version }}
         SKIP_IF_ON_PATH: 'true'
+        MIN_VERSION: '1.17.0'
       run: bash "${{ github.action_path }}/../lib/resolve-cli-version.sh"
 
     - name: Restore Dash0 CLI from cache
@@ -162,11 +166,13 @@ runs:
 
         # If an active profile already exists (e.g., from the setup action),
         # update it with any connection inputs provided to this action.
-        # When no profile is configured, `dash0 config show` prints "Profile:    (none)".
-        PROFILE_LINE=$(dash0 config show 2>/dev/null | grep '^Profile:' || true)
-        if [ -n "$PROFILE_LINE" ] && ! echo "$PROFILE_LINE" | grep -q '(none)'; then
+        # `-o json` is used unconditionally (not the human-readable default) because agent mode
+        # -- auto-detected from env vars like GITHUB_COPILOT, which a runner may have set for
+        # unrelated reasons -- would otherwise switch `dash0 config show`'s own output to JSON
+        # too, and a plain-text `grep '^Profile:'` would then silently find nothing.
+        PROFILE_NAME=$(dash0 config show -o json 2>/dev/null | jq -r '.profile.value // empty')
+        if [ -n "$PROFILE_NAME" ]; then
           if [ ${#ARGS[@]} -gt 0 ]; then
-            PROFILE_NAME=$(echo "$PROFILE_LINE" | sed 's/^Profile:[[:space:]]*//' | sed 's/[[:space:]]*(.*//')
             dash0 config profiles update "$PROFILE_NAME" "${ARGS[@]}"
           fi
           exit 0
@@ -191,6 +197,7 @@ runs:
       env:
         INPUT_SINCE: ${{ inputs.since }}
         INPUT_ACCEPT_NON_ANCESTOR_REF: ${{ inputs.accept-non-ancestor-ref }}
+        EVENT_NAME: ${{ github.event_name }}
         EVENT_BEFORE: ${{ github.event.before }}
       run: |
         set -euo pipefail
@@ -205,11 +212,22 @@ runs:
         fi
 
         if [ "$INPUT_SINCE" = "auto" ]; then
+          # Only a push event's before is a trustworthy "state before this run" to force-apply
+          # a deletion against. pull_request's synchronize action also sets before, but that ref
+          # is the PR branch's own prior push -- not a signal this action should ever act on
+          # automatically, since a PR run is a preview surface, not a deletion surface.
+          if [ "$EVENT_NAME" != "push" ]; then
+            echo "event is '$EVENT_NAME', not push -- auto does not derive a comparison ref for it; omitting --since"
+            echo "applies=false" >> "$GITHUB_OUTPUT"
+            echo "candidate=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           CANDIDATE="$EVENT_BEFORE"
           # Event-derived: an empty/unset/all-zeros before is a routine, expected condition
-          # (first push to a new branch, or a trigger with no before at all) -- omit --since
-          # cleanly rather than failing the job. This is the whole reason this action exists
-          # instead of blindly passing github.event.before through to dash0 itself.
+          # (first push to a new branch) -- omit --since cleanly rather than failing the job.
+          # This is the whole reason this action exists instead of blindly passing
+          # github.event.before through to dash0 itself.
           if [ -z "$CANDIDATE" ] || [ "$CANDIDATE" = "$ALL_ZEROS" ]; then
             echo "no prior state to compare against -- omitting --since"
             echo "applies=false" >> "$GITHUB_OUTPUT"
@@ -235,11 +253,19 @@ runs:
         fi
 
         if ! git rev-parse --verify "${CANDIDATE}^{commit}" >/dev/null 2>&1; then
-          echo "::error::--since ref '$CANDIDATE' does not resolve in this checkout. This usually means the workflow's actions/checkout step did not fetch enough history -- set fetch-depth: 0."
+          echo "::error::--since ref '$CANDIDATE' does not resolve in this checkout. This usually means the workflow's actions/checkout step did not fetch enough history (set fetch-depth: 0), but it can also mean the ref belongs to history a force-push or rebase orphaned -- no checkout depth fetches commits that are no longer reachable from any branch or tag."
           exit 1
         fi
 
-        if ! git merge-base --is-ancestor "$CANDIDATE" HEAD 2>/dev/null; then
+        set +e
+        git merge-base --is-ancestor "$CANDIDATE" HEAD
+        ANCESTOR_RC=$?
+        set -e
+        if [ "$ANCESTOR_RC" -gt 1 ]; then
+          echo "::error::git merge-base --is-ancestor failed unexpectedly (exit code $ANCESTOR_RC) checking whether '$CANDIDATE' is an ancestor of HEAD. This is a git/checkout problem, not a force-push -- accept-non-ancestor-ref does not apply here."
+          exit 1
+        fi
+        if [ "$ANCESTOR_RC" -eq 1 ]; then
           if [ "$INPUT_ACCEPT_NON_ANCESTOR_REF" = "true" ]; then
             echo "::warning::--since ref '$CANDIDATE' is not an ancestor of HEAD (likely a force-push or history rewrite); accept-non-ancestor-ref is set, proceeding anyway."
           else
@@ -284,9 +310,19 @@ runs:
           echo "modifications=$MODIFICATIONS"
         } >> "$GITHUB_OUTPUT"
 
-        if [ -n "$INPUT_MAX_DELETIONS" ] && [ "$DELETION_COUNT" -gt "$INPUT_MAX_DELETIONS" ]; then
-          echo "::error::pending plan reports $DELETION_COUNT planned deletion(s), exceeding max-deletions ($INPUT_MAX_DELETIONS)"
-          exit 1
+        if [ -n "$INPUT_MAX_DELETIONS" ]; then
+          if ! [[ "$INPUT_MAX_DELETIONS" =~ ^[0-9]+$ ]]; then
+            echo "::error::max-deletions must be a non-negative integer, got '$INPUT_MAX_DELETIONS'"
+            exit 1
+          fi
+          if [ "$DELETION_COUNT" -gt "$INPUT_MAX_DELETIONS" ]; then
+            if [ "$DELETION_COUNT" -eq 1 ]; then
+              echo "::error::pending plan reports 1 planned deletion, exceeding max-deletions ($INPUT_MAX_DELETIONS)"
+            else
+              echo "::error::pending plan reports $DELETION_COUNT planned deletions, exceeding max-deletions ($INPUT_MAX_DELETIONS)"
+            fi
+            exit 1
+          fi
         fi
 
     # -- Apply the plan --
