@@ -652,6 +652,28 @@ func assertPOSTPath(t *testing.T, requests []testutil.RecordedRequest, wantPath,
 	t.Fatalf("%s\nwant: POST %s\ngot requests: %v", msg, wantPath, seen)
 }
 
+// assertGETPath finds a GET request in the recorded stream that targets the
+// given path.
+//
+// The upsert flow's preflight GET is what decides created-vs-updated and, on
+// the id path, whether the POST fallback fires — but sloIDPattern is
+// `^/api/slos/[^/]+$`, so the mock answers a preflight against *any* single
+// segment with the same fixture. Without this, a regression that preflighted
+// the wrong identifier would leave every other assertion green.
+func assertGETPath(t *testing.T, requests []testutil.RecordedRequest, wantPath, msg string) {
+	t.Helper()
+	for _, req := range requests {
+		if req.Method == http.MethodGet && req.Path == wantPath {
+			return
+		}
+	}
+	seen := make([]string, 0, len(requests))
+	for _, req := range requests {
+		seen = append(seen, req.Method+" "+req.Path)
+	}
+	t.Fatalf("%s\nwant: GET %s\ngot requests: %v", msg, wantPath, seen)
+}
+
 // assertNoMethod asserts that no request in the recorded stream used the given
 // method — e.g. that an upsert-by-PUT never fell through to POST.
 func assertNoMethod(t *testing.T, requests []testutil.RecordedRequest, method, msg string) {
@@ -796,6 +818,7 @@ func TestCreateSLOFromFile_UpsertByOrigin(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+origin, "the preflight must be issued against the origin, not some other identifier")
 	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+origin, "expected PUT to /api/slos/{origin}")
 	assertNoMethod(t, server.Requests(), http.MethodPost, "origin-only input must upsert via PUT, never POST a duplicate")
 }
@@ -871,8 +894,58 @@ func TestCreateSLOFromFile_UpsertByID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "the preflight must be issued against the id, not some other identifier")
 	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "expected PUT-by-id, got POST — the id label should route to upsert")
 	assertNoMethod(t, server.Requests(), http.MethodPost, "id present with a 200 preflight must upsert via PUT, never POST")
+}
+
+// TestCreateSLOFromFile_UpsertByID_SurfacesNon404PreflightError is the id-path
+// mirror of the origin-path test above, and guards the branch ImportSLO's own
+// comment exists for: only a genuine 404 may take the POST fallback, because a
+// 5xx or auth failure says nothing about whether the SLO exists, and POSTing on
+// one creates the duplicate the preflight is there to prevent.
+func TestCreateSLOFromFile_UpsertByID_SurfacesNon404PreflightError(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	// The client retries 5xx with backoff, which this test need not wait out.
+	t.Setenv("DASH0_MAX_RETRIES", "0")
+
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusInternalServerError,
+		Body:       map[string]any{"message": "internal error"},
+		Validator:  testutil.RequireHeaders,
+	})
+	// Both writes are registered so the assertions below fail loudly on a
+	// regression rather than on an unmatched route.
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPost, apiPathSLOs, testutil.MockResponse{
+		StatusCode: http.StatusCreated,
+		BodyFile:   fixtureCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels("    dash0.com/id: "+sloID+"\n")), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.Error(t, err, "a 5xx preflight says nothing about whether the SLO exists and must not be treated as a miss")
+	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "the preflight must be issued against the document's own id")
+	assertNoMethod(t, server.Requests(), http.MethodPost, "POSTing on an inconclusive preflight is exactly the duplicate this branch prevents")
+	assertNoMethod(t, server.Requests(), http.MethodPut, "the write must not run on an inconclusive preflight")
 }
 
 // TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound asserts that
@@ -913,6 +986,7 @@ func TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) 
 	require.NoError(t, err, "cross-env apply must not fail — an id from a different org should trigger POST fallback")
 
 	assertNoMethod(t, server.Requests(), http.MethodPut, "PUT to an unknown id would 404; expected POST fallback instead")
+	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "the 404 that triggers the POST fallback must come from a preflight against the document's own id")
 	assertPOSTPath(t, server.Requests(), apiPathSLOs, "expected POST fallback after GET 404")
 
 	// The POST body must not carry the source organization's id. SLO ids are
@@ -977,6 +1051,7 @@ func TestCreateSLOFromFile_OriginWinsOverID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+origin, "origin must win over id for the preflight too, not just the write")
 	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+origin, "origin must win over id when both are present")
 }
 
