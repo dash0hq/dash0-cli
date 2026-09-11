@@ -56,6 +56,13 @@ func runGet(ctx context.Context, originOrID string, flags *asset.GetFlags) error
 		})
 	}
 
+	// A 200 whose body the client cannot decode as JSON yields a nil
+	// aggregation and a nil error, and printSummary reads aggregation.Spec
+	// directly rather than through the nil-tolerant dash0api getters.
+	if aggregation == nil {
+		return fmt.Errorf("the API returned no time series aggregation for %q", originOrID)
+	}
+
 	dash0api.SetTimeSeriesAggregationIDIfAbsent(aggregation, originOrID)
 
 	format, err := output.ParseFormat(flags.Output)
