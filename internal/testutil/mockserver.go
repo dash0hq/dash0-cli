@@ -116,6 +116,10 @@ type MockResponse struct {
 	// Validator is an optional function to validate the incoming request.
 	// If it returns an error, the mock server returns a 400 Bad Request.
 	Validator func(r *http.Request) error
+	// ContentType overrides the response Content-Type, which defaults to
+	// application/json. Set it to reproduce a success status whose body the
+	// API client will not decode.
+	ContentType string
 }
 
 // RequireAuthHeader is a validator that checks for the presence of an Authorization header.
@@ -328,7 +332,11 @@ func (m *MockServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write response
-	w.Header().Set("Content-Type", "application/json")
+	contentType := resp.ContentType
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	w.Header().Set("Content-Type", contentType)
 	if resp.StatusCode != 0 {
 		w.WriteHeader(resp.StatusCode)
 	}

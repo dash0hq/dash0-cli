@@ -339,6 +339,30 @@ func TestGetTimeSeriesAggregation_Success(t *testing.T) {
 	assert.Contains(t, output, "Enabled: true")
 }
 
+// A 200 whose body the client cannot decode leaves the aggregation nil with a
+// nil error. The summary path reads aggregation.Spec directly, so without a
+// guard this panics instead of reporting anything.
+func TestGetTimeSeriesAggregation_UndecodableSuccessBodyIsAnError(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originPattern, testutil.MockResponse{
+		StatusCode:  http.StatusOK,
+		Body:        "not json",
+		ContentType: "text/html",
+		Validator:   testutil.RequireHeaders,
+	})
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"tsa", "get", testOrigin, "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "table"})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "returned no time series aggregation")
+	assert.Contains(t, err.Error(), testOrigin)
+}
+
 func TestGetTimeSeriesAggregation_NotFound(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
