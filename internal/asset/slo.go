@@ -42,11 +42,13 @@ func SLOUsesOrigin(data []byte) (bool, error) {
 //     a genuine 404, POST (create fresh with a server-assigned id). The miss
 //     path matters for cross-environment apply: a YAML downloaded from one
 //     Dash0 org carries an id that does not exist in a different org's backend,
-//     and PUT-to-unknown-id returns 404. Falling back to POST keeps `apply`
-//     idempotent — the identifier in the file becomes advisory when it cannot
-//     be honored. Any other preflight error (5xx, auth failure, network blip)
-//     is surfaced rather than silently POSTed, so a transient hiccup never
-//     spawns a duplicate.
+//     and PUT-to-unknown-id returns 404. Falling back to POST lets that YAML
+//     apply at all, but is a one-way create, not an idempotent one: the server
+//     assigns an id the document does not carry, so the next apply preflights
+//     the same unknown id, 404s again, and POSTs a second SLO. Only
+//     dash0.com/origin makes a repeated apply converge. Any other preflight
+//     error (5xx, auth failure, network blip) is surfaced rather than silently
+//     POSTed, so a transient hiccup never spawns a duplicate.
 //   - Otherwise, POST is used and the server assigns both id and origin.
 //
 // PUT is create-or-replace, so upserting on either key is idempotent across
