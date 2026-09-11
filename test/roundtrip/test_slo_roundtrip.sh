@@ -102,7 +102,19 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     echo "FAIL: slos list -o json failed"
     exit 1
   fi
-  if ! echo "$LIST_JSON" | jq -e --arg id "$ID" '.[] | select(.metadata.labels["dash0.com/id"] == $id)' > /dev/null 2>&1; then
+  # Establish the payload really is a list before reading absence from it. A
+  # bare `! jq -e '.[] | select(...)'` would send jq's parse and usage failures
+  # down the "is gone" branch exactly like a genuine absence, so the check could
+  # report PASS without ever showing the SLO was deleted. An object payload
+  # needs catching for the same reason: `.[]` iterates its values rather than
+  # erroring, so the select below would silently match nothing.
+  if ! echo "$LIST_JSON" | jq -e 'type == "array"' > /dev/null 2>&1; then
+    echo "FAIL: expected 'slos list -o json' to return a JSON array, got:"
+    echo "$LIST_JSON" | head -5
+    exit 1
+  fi
+  MATCHES=$(echo "$LIST_JSON" | jq --arg id "$ID" '[.[] | select(.metadata.labels["dash0.com/id"] == $id)] | length')
+  if [ "$MATCHES" -eq 0 ]; then
     echo "SLO '$ID' is gone (attempt $attempt)"
     break
   fi
