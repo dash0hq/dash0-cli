@@ -16,21 +16,23 @@ func newUpdateCmd() *cobra.Command {
 	var flags asset.FileInputFlags
 
 	cmd := &cobra.Command{
-		Use:   "update [origin-or-id] -f <file>",
+		Use:   "update [origin] -f <file>",
 		Short: "Update a time series aggregation from a file",
 		Long: `Update an existing time series aggregation from a YAML or JSON definition
 file. Use '-f -' to read from stdin.
 
 When the positional argument is omitted, the target is taken from the
-document's 'dash0.com/origin' label. When both are given, the argument must
-match the document's origin or its id.
+document's 'dash0.com/origin' label. When it is given, it must match that
+label. An id is accepted only when the document also carries that id, which
+is the case for a definition exported with 'tsa get -o yaml'; a hand-written
+document normally carries only the origin, because ids are server-assigned.
 
 The output is a unified diff of the before and after states.` + internal.CONFIG_HINT,
 		Example: `  # Update using the origin from the file
   dash0 tsa update -f aggregation.yaml
 
-  # Update by explicit origin or id
-  dash0 tsa update <origin-or-id> -f aggregation.yaml
+  # Update by explicit origin, which must match the file's origin label
+  dash0 tsa update <origin> -f aggregation.yaml
 
   # Preview the diff without applying
   dash0 tsa update -f aggregation.yaml --dry-run
