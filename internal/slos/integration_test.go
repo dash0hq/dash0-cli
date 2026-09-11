@@ -206,6 +206,7 @@ func TestListSLOs_AuthError(t *testing.T) {
 	server.On(http.MethodGet, apiPathSLOs, testutil.MockResponse{
 		StatusCode: http.StatusUnauthorized,
 		BodyFile:   fixtureUnauthorized,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewSlosCmd()
@@ -217,6 +218,10 @@ func TestListSLOs_AuthError(t *testing.T) {
 	})
 
 	require.Error(t, err)
+	// Asserting the error's content, not just its presence, is what gives the
+	// Validator above teeth: a failed validation is served as a plain 400, so
+	// a bare require.Error would pass even with the auth header missing.
+	assert.Contains(t, err.Error(), "authentication failed")
 }
 
 func TestGetSLO_JSONFormat(t *testing.T) {
@@ -326,6 +331,7 @@ func TestGetSLO_NotFound(t *testing.T) {
 	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   fixtureNotFound,
+		Validator:  testutil.RequireHeaders,
 	})
 
 	cmd := NewSlosCmd()
@@ -337,6 +343,10 @@ func TestGetSLO_NotFound(t *testing.T) {
 	})
 
 	require.Error(t, err)
+	// Asserting the error's content, not just its presence, is what gives the
+	// Validator above teeth: a failed validation is served as a plain 400, so
+	// a bare require.Error would pass even with the auth header missing.
+	assert.Contains(t, err.Error(), "not found")
 }
 
 func TestCreateSLO_DatasetQueryParam(t *testing.T) {
