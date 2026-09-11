@@ -43,6 +43,7 @@ var Manifest = []ManifestEntry{
 	{"notification-channels", "references/notification-channels.md"},
 	{"otlp", "references/otlp.md"},
 	{"recording-rules", "references/recording-rules.md"},
+	{"slos", "references/slos.md"},
 	{"spam-filters", "references/spam-filters.md"},
 	{"spans", "references/spans.md"},
 	{"synthetic-checks", "references/synthetic-checks.md"},

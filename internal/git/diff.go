@@ -24,6 +24,11 @@ type Deletion struct {
 	// since this identifier was recorded, so the delete dispatch warns
 	// rather than deleting silently.
 	SpamFilterUsesOrigin bool
+	// SLOUsesOrigin is the same signal for Kind "slo" (meaningless for every
+	// other kind). false means the SLO was identified by dash0.com/id alone,
+	// which for a server-assigned id may name no live SLO at all — see
+	// asset.SLOUsesOrigin.
+	SLOUsesOrigin bool
 	// PrometheusAlerts carries every alerting rule the CRD had at the
 	// "before" snapshot, when Kind is "prometheusrule" (nil for every other
 	// kind, and for a CRD with zero or one alert). A CRD with two or more
@@ -79,6 +84,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			Identifier:           key.Identifier,
 			Path:                 path,
 			SpamFilterUsesOrigin: before.SpamFilterUsesOriginByIdentifier[key.Identifier],
+			SLOUsesOrigin:        before.SLOUsesOriginByIdentifier[key.Identifier],
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]

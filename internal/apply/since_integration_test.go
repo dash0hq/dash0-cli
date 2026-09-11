@@ -81,6 +81,103 @@ spec:
 	assert.Contains(t, output, "deleted")
 }
 
+// sinceSLODoc renders a minimal SLO document carrying the given metadata
+// labels, for the --since tests below.
+func sinceSLODoc(labels string) string {
+	return `apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-availability
+  labels:
+` + labels + `spec:
+  description: 99 percent of checkout HTTP requests succeed over a rolling 28-day window.
+  service: checkout
+  budgetingMethod: Occurrences
+  indicator:
+    metadata:
+      name: checkout-success-ratio
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
+`
+}
+
+// TestApply_Since_SLODeletion is a regression test for a bug where
+// deleteAssetByKindAndIdentifier had no case for the "slo" kind even though
+// asset.IsValidKind accepts it, so a removed SLO document was recorded as a
+// deletion candidate and then hit the default branch: the run failed with
+// "unsupported kind for deletion: slo" only after the surviving documents had
+// already been created or updated, leaving the sync half-applied.
+//
+// The document carries dash0.com/origin alone, the recommended form: SLO ids
+// are server-assigned, so origin is the only key a hand-authored document can
+// pin. asset.ExtractIdentifier used to read only dash0.com/id for SLOs, which
+// left that form identifier-less and hard-failed the run up front instead.
+func TestApply_Since_SLODeletion(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sloOrigin = "cli-roundtrip-origin"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "slo.yaml", sinceSLODoc("    dash0.com/origin: "+sloOrigin+"\n"))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add slo")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "slo.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove slo")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "SLO")
+	assert.Contains(t, output, sloOrigin)
+	assert.Contains(t, output, "deleted")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathSLOs+"/"+sloOrigin),
+		"a removed SLO document must be deleted via DELETE /api/slos/{originOrId}")
+}
+
 // TestApply_Since_ConcurrentlyDeletedAssetIsToleratedWithoutForce is a
 // regression test for a bug where an asset already deleted by someone else
 // (e.g. via the Dash0 UI) before --since's own delete call ran caused the
@@ -1429,6 +1526,111 @@ spec:
 	assert.Contains(t, output, "  removed.yaml\n")
 	assert.NotContains(t, output, "dashboards/keep.yaml")
 	assert.NotContains(t, output, "dashboards/removed.yaml")
+}
+
+// TestApply_Since_SLOIDOnlyDeletionWarns is the SLO analogue of the
+// spam-filter warning below. SLO ids are server-assigned, so an id-only
+// document first applied to an organization without that id took ImportSLO's
+// POST fallback and the live SLO sits at an id the document never learned —
+// deleting by the recorded id then misses it silently.
+func TestApply_Since_SLOIDOnlyDeletionWarns(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "slo.yaml", sinceSLODoc("    dash0.com/id: "+sloID+"\n"))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add slo")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "slo.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove slo")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	stderr := testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, stderr, "SLO \"checkout-availability\" ("+sloID+") was identified by dash0.com/id alone")
+}
+
+// TestApply_Since_SLOOriginDeletionDoesNotWarn confirms the warning above is
+// precise: origin is never reassigned server-side, so it must not fire.
+func TestApply_Since_SLOOriginDeletionDoesNotWarn(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "slo.yaml", sinceSLODoc("    dash0.com/origin: cli-roundtrip-origin\n"))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add slo")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "slo.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove slo")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	stderr := testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	assert.NotContains(t, stderr, "identified by dash0.com/id alone")
 }
 
 // TestApply_Since_SpamFilterIDOnlyDeletionWarns is a regression test for a
