@@ -62,26 +62,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 	rule := rules[0]
 
-	id, err := resolveCheckRuleID(args, dash0api.GetCheckRuleID(rule))
+	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun: "check rule",
+		ID:   dash0api.GetCheckRuleID(rule),
+	})
 	if err != nil {
 		return err
 	}
 
 	return doUpdate(ctx, flags, id, rule)
-}
-
-func resolveCheckRuleID(args []string, fileID string) (string, error) {
-	if len(args) == 1 {
-		id := args[0]
-		if fileID != "" && fileID != id {
-			return "", fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
-		}
-		return id, nil
-	}
-	if fileID == "" {
-		return "", fmt.Errorf("no check rule ID provided as argument, and the file does not contain an ID")
-	}
-	return fileID, nil
 }
 
 func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule *dash0api.PrometheusAlertRule) error {

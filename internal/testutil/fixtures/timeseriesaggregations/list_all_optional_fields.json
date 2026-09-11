@@ -1,0 +1,58 @@
+{
+  "timeSeriesAggregations": [
+    {
+      "kind": "Dash0TimeSeriesAggregation",
+      "metadata": {
+        "annotations": {
+          "dash0.com/created-at": "2026-09-04T10:27:37.953723Z",
+          "dash0.com/updated-at": "2026-09-04T10:27:37.953723Z"
+        },
+        "labels": {
+          "dash0.com/dataset": "default",
+          "dash0.com/id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+          "dash0.com/origin": "full-shape",
+          "dash0.com/source": "api",
+          "dash0.com/version": "1"
+        },
+        "name": "full-shape"
+      },
+      "spec": {
+        "display": {
+          "name": "Full shape"
+        },
+        "enabled": true,
+        "match": {
+          "metricNameMatcher": {
+            "operator": "is",
+            "value": "system.cpu.utilization"
+          },
+          "otherFilters": [
+            {
+              "key": "service.name",
+              "operator": "is",
+              "value": "checkout"
+            }
+          ]
+        },
+        "sample": {
+          "interval": "5m",
+          "delay": "30s",
+          "staleAfter": "10m"
+        },
+        "priority": 10,
+        "attributeModifications": [
+          {
+            "kind": "drop_attributes",
+            "spec": {
+              "context": "datapoint",
+              "keyMatcher": {
+                "operator": "starts_with",
+                "value": "http.request.header."
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

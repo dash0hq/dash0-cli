@@ -415,5 +415,5 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no notification channel ID provided as argument, and the file does not contain an ID")
+	assert.Contains(t, cmdErr.Error(), "no notification channel id given: pass one as an argument")
 }

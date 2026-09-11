@@ -47,18 +47,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read recording rule definition: %w", err)
 	}
 
-	var id string
-	fileID := dash0api.GetRecordingRuleID(&rule)
-	if len(args) == 1 {
-		id = args[0]
-		if fileID != "" && fileID != id {
-			return fmt.Errorf("the ID argument %q does not match the ID in the file %q", id, fileID)
-		}
-	} else {
-		id = fileID
-		if id == "" {
-			return fmt.Errorf("no recording rule ID provided as argument, and the file does not contain an ID")
-		}
+	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
+		Noun: "recording rule",
+		ID:   dash0api.GetRecordingRuleID(&rule),
+	})
+	if err != nil {
+		return err
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)

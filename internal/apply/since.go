@@ -431,6 +431,16 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteNotificationChannel(ctx, identifier)
 	case "team":
 		err = apiClient.DeleteTeam(ctx, identifier)
+	case "timeseriesaggregation":
+		// The API returns 204 for an absent aggregation, so the tolerance
+		// below never fires for this kind. It does fire for the cross-dataset
+		// 400, which must not be mistaken for "already gone": the aggregation
+		// exists and belongs to another dataset, so reporting it as reconciled
+		// would be a lie in a CI log.
+		err = apiClient.DeleteTimeSeriesAggregation(ctx, identifier, dataset)
+		if asset.IsTimeSeriesAggregationWrongDataset(err) {
+			return false, asset.WrapTimeSeriesAggregationWrongDataset(err, identifier)
+		}
 	default:
 		return false, fmt.Errorf("unsupported kind for deletion: %s", kind)
 	}
