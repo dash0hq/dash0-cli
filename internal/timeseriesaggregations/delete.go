@@ -57,18 +57,15 @@ func runDelete(ctx context.Context, originOrID string, flags *asset.DeleteFlags)
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	ectx := client.ErrorContext{AssetType: assetType, AssetID: originOrID}
 
-	// The time series aggregation API returns 204 for an aggregation that does
-	// not exist, so deleting a typo'd origin reports success. That matches
-	// every other asset type in this CLI — the dashboard, check-rule, view,
-	// and spam-filter delete endpoints all return 2xx for a missing asset too
-	// — so no client-side existence check is done here. IsAlreadyDeleted stays
-	// wired per docs/cli-naming-conventions.md so the behavior is right if the
-	// API ever starts returning 404.
+	// The API returns 204 for an aggregation that does not exist, so deleting a
+	// typo'd origin reports success. Dashboards, check rules, views, and spam
+	// filters all behave the same way, so there is no existence check here.
+	// IsAlreadyDeleted stays wired per docs/cli-naming-conventions.md, in case
+	// the API starts returning 404.
 	if err := apiClient.DeleteTimeSeriesAggregation(ctx, originOrID, dataset); err != nil {
-		// A cross-dataset collision means the aggregation exists and belongs
-		// to another dataset. It arrives as a 400, so IsAlreadyDeleted would
-		// not swallow it anyway, but handling it first replaces a bare
-		// "invalid request" with an explanation.
+		// A cross-dataset collision means the aggregation exists in another
+		// dataset. It arrives as a 400, so IsAlreadyDeleted would not swallow
+		// it, but handling it first replaces "invalid request" with a reason.
 		if asset.IsTimeSeriesAggregationWrongDataset(err) {
 			return asset.WrapTimeSeriesAggregationWrongDataset(err, originOrID)
 		}

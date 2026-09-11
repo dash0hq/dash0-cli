@@ -7,9 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ResolveUpdateKey decides which identifier an `update -f <file>` invocation
-// addresses. Every branch is covered here, including the mismatch errors,
-// because a wrong answer PUTs one document's contents onto a different asset.
+// Every branch is covered here, mismatch errors included, because a wrong
+// answer PUTs one document's contents onto a different asset.
 func TestResolveUpdateKey(t *testing.T) {
 	originKeyed := func(origin, id string) UpdateKey {
 		return UpdateKey{Noun: "spam filter", UsesOrigin: true, Origin: origin, ID: id}
@@ -43,8 +42,8 @@ func TestResolveUpdateKey(t *testing.T) {
 		},
 		{
 			// Origin is the upsert key for the kinds that have one, so it wins
-			// whenever both labels are present — `update` then addresses
-			// whatever `apply` would have written.
+			// when both labels are present. `update` then addresses whatever
+			// `apply` would have written.
 			name:    "file origin preferred over file id",
 			key:     originKeyed("o2", "i2"),
 			wantKey: "o2",

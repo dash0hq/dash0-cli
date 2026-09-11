@@ -4,16 +4,14 @@ set -euo pipefail
 # Exercises the full CRUD cycle for time series aggregations against a real
 # Dash0 environment: create, get, list, update, export/reapply, delete.
 #
-# Every time series aggregation endpoint requires the organization admin role,
-# which is stricter than any other asset type, so this script skips rather
-# than fails when the resolved token lacks it. A CI matrix that runs the
-# round-trip suite under both a static and an OAuth token would otherwise fail
-# half its jobs for a reason that has nothing to do with the CLI.
+# Every endpoint requires the organization admin role, which is stricter than
+# any other asset type, so this script skips rather than fails when the token
+# lacks it. Otherwise a CI matrix running under both a static and an OAuth
+# token would fail half its jobs for a reason unrelated to the CLI.
 #
-# The fixture's origin is replaced with a unique one on every run. Origins are
-# unique per organization and the API upserts by PUT, so a fixed origin would
-# silently overwrite a real aggregation of the same name in whatever
-# organization the test runs against.
+# The fixture's origin is replaced with a unique one on every run, because
+# origins are unique per organization and the API upserts by PUT. A fixed
+# origin would overwrite a real aggregation of the same name.
 
 export DASH0_AGENT_MODE=0
 
