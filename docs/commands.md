@@ -691,7 +691,11 @@ $ echo $?
 0
 ```
 
-Without `--force`, a missing asset surfaces as a non-zero exit with a "not found" error.
+Without `--force`, an asset that is genuinely missing surfaces as a non-zero exit with a "not found" error.
+Most Dash0 delete endpoints rarely reach that branch, though, because they answer a missing asset with 2xx rather than 404.
+For `dashboards`, `check-rules`, `views`, `spam-filters`, and `time-series-aggregations`, `delete <typo>` therefore exits 0 whether or not you pass `--force`.
+The CLI does not preflight with a GET to close that gap, because one command that did would be the only one to error on a missing asset.
+
 The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
 In the multi-target `remove` variants the check runs per member, so one concurrently-removed member does not fail the whole `--force` call — the loop keeps going.
 See also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
