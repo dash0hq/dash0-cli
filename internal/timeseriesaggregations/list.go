@@ -92,9 +92,8 @@ func toInterfaceSlice(items []*dash0api.TimeSeriesAggregationDefinition) []inter
 
 // printTable renders the table, wide, and CSV formats.
 //
-// There is no URL column, unlike dashboards or views: the API client ships no
-// deeplink helper for this asset kind, so there is no URL to render. Spam
-// filters are in the same position and their wide output stops at ORIGIN.
+// There is no URL column, because the API client ships no deeplink helper for
+// this kind. Spam filters are the same, and their wide output stops at ORIGIN.
 func printTable(f *output.Formatter, items []*dash0api.TimeSeriesAggregationDefinition, format output.Format) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {

@@ -1891,11 +1891,9 @@ spec:
 		"a Terraform-managed check rule must never be deleted on behalf of an alert removed from -f")
 }
 
-// TestApply_Since_TimeSeriesAggregationDeletedByOrigin asserts that --since
-// resolves a removed aggregation by its dash0.com/origin label. Without a TSA
-// case in ExtractIdentifier the default returns dash0.com/id, which these
-// documents never carry, so the run would hard-fail on the no-identifier path
-// instead of deleting anything.
+// --since must resolve a removed aggregation by its dash0.com/origin label.
+// Without a case in ExtractIdentifier the default returns dash0.com/id, which
+// these documents never carry, so the run would hard-fail instead of deleting.
 func TestApply_Since_TimeSeriesAggregationDeletedByOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -1946,11 +1944,10 @@ func TestApply_Since_TimeSeriesAggregationDeletedByOrigin(t *testing.T) {
 		"expected DELETE by origin")
 }
 
-// TestApply_Since_TimeSeriesAggregationWrongDatasetFailsRun asserts the
-// cross-dataset 400 is not mistaken for "already gone". --since tolerates a
-// 404 unconditionally because an absent asset already matches the desired end
-// state; an aggregation that exists in another dataset does not, so reporting
-// it as reconciled would put a false claim in a CI log.
+// The cross-dataset 400 must not be mistaken for "already gone". --since
+// tolerates a 404 because an absent asset already matches the desired end
+// state. An aggregation in another dataset does not, so reporting it as
+// reconciled would put a false claim in a CI log.
 func TestApply_Since_TimeSeriesAggregationWrongDatasetFailsRun(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

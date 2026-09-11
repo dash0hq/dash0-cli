@@ -2227,9 +2227,8 @@ spec:
     interval: 5m
 `
 
-// TestApply_TimeSeriesAggregation_UpsertByOrigin asserts that apply routes the
-// kind through the same PUT-by-origin path the dedicated create command uses.
-// POST is unreachable for this kind: the API rejects an origin that already
+// apply must route this kind through the same PUT-by-origin path that create
+// uses. POST is unreachable, because the API rejects an origin that already
 // exists, so a second apply of the same document would fail.
 func TestApply_TimeSeriesAggregation_UpsertByOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
@@ -2265,9 +2264,8 @@ func TestApply_TimeSeriesAggregation_UpsertByOrigin(t *testing.T) {
 	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathTimeSeriesAggs), "did not expect POST")
 }
 
-// TestApply_TimeSeriesAggregation_MissingOriginFailsValidation asserts the
-// document is rejected during the validation phase, so a multi-document apply
-// never writes anything before hitting it.
+// The document must be rejected during validation, so a multi-document apply
+// never writes anything before reaching it.
 func TestApply_TimeSeriesAggregation_MissingOriginFailsValidation(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -2309,9 +2307,8 @@ spec:
 	assert.Empty(t, server.Requests(), "validation must fail before the dashboard in the same directory is written")
 }
 
-// TestApply_TimeSeriesAggregation_WrongDatasetHint asserts the cross-dataset
-// 400 keeps its explanation instead of being flattened into "invalid request"
-// by HandleAPIError.
+// The cross-dataset 400 must keep its explanation instead of being flattened
+// into "invalid request" by HandleAPIError.
 func TestApply_TimeSeriesAggregation_WrongDatasetHint(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -2334,9 +2331,8 @@ func TestApply_TimeSeriesAggregation_WrongDatasetHint(t *testing.T) {
 	assert.Contains(t, err.Error(), "unique per organization")
 }
 
-// TestApply_TimeSeriesAggregation_DryRun asserts the dry-run listing names the
-// origin, which is the key apply upserts by, rather than a server-assigned id
-// the document may not carry.
+// The dry-run listing must name the origin, which is the key apply upserts by,
+// not a server-assigned id the document may not carry.
 func TestApply_TimeSeriesAggregation_DryRun(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

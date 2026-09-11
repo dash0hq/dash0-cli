@@ -38,9 +38,8 @@ const (
 
 var originPattern = regexp.MustCompile(`^/api/time-series-aggregations/[^/]+$`)
 
-// newRootCmd builds a root command with the time-series-aggregations subcommand
-// attached, mirroring the real command tree. No --experimental flag is needed:
-// unlike spam filters and teams, this command is not gated.
+// newRootCmd mirrors the real command tree. This command is not gated behind
+// --experimental, unlike spam filters and teams.
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
@@ -282,11 +281,8 @@ func TestListTimeSeriesAggregations_Empty(t *testing.T) {
 	assert.Contains(t, output, "No time series aggregations found.")
 }
 
-// TestListTimeSeriesAggregations_AllOptionalFields guards the optional half of
-// the spec, which none of the wire-captured fixtures populate: priority,
-// sample.delay, sample.staleAfter, match.otherFilters, and
-// attributeModifications. A decode regression in any of them would otherwise
-// only surface against a real environment that happens to use them.
+// No wire-captured fixture populates the optional spec fields, so a decode
+// regression in one would only surface against a real environment that uses it.
 func TestListTimeSeriesAggregations_AllOptionalFields(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -339,9 +335,8 @@ func TestGetTimeSeriesAggregation_Success(t *testing.T) {
 	assert.Contains(t, output, "Enabled: true")
 }
 
-// A 200 whose body the client cannot decode leaves the aggregation nil with a
-// nil error. The summary path reads aggregation.Spec directly, so without a
-// guard this panics instead of reporting anything.
+// An undecodable 200 leaves the aggregation nil with a nil error, and the
+// summary path reads aggregation.Spec directly, so this used to panic.
 func TestGetTimeSeriesAggregation_UndecodableSuccessBodyIsAnError(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -384,9 +379,8 @@ func TestGetTimeSeriesAggregation_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-// TestTimeSeriesAggregations_Forbidden pins the 403 every endpoint returns for
-// a token without the organization admin role, which is the most likely
-// first-run failure for this asset type.
+// A token without the admin role is the most likely first-run failure for this
+// asset type, and every endpoint answers it with a 403.
 func TestTimeSeriesAggregations_Forbidden(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -447,10 +441,8 @@ func TestListTimeSeriesAggregations_MalformedResponse(t *testing.T) {
 	assert.Contains(t, err.Error(), "interval")
 }
 
-// TestCreateTimeSeriesAggregationFromFile_UpsertByOrigin_Creates asserts the
-// wire-level contract: create always PUTs by origin and never POSTs, because
-// the API rejects a POST whose origin already exists and rejects one without
-// an origin at all.
+// Create always PUTs by origin and never POSTs, because the API rejects a POST
+// without an origin, and one whose origin already exists.
 func TestCreateTimeSeriesAggregationFromFile_UpsertByOrigin_Creates(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -511,10 +503,8 @@ func TestCreateTimeSeriesAggregationFromFile_UpsertByOrigin_Updates(t *testing.T
 	assertNoPOST(t, server.Requests())
 }
 
-// TestCreateTimeSeriesAggregationFromFile_IDInBodyIgnored asserts that a
-// document carrying both labels still targets the origin. The server ignores
-// the body's id (verified against an own, a nonexistent, and a foreign id), so
-// the CLI must not switch its upsert key.
+// The server ignores the body's id and targets the path's origin, so a document
+// carrying both labels must still be upserted by origin.
 func TestCreateTimeSeriesAggregationFromFile_IDInBodyIgnored(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -538,10 +528,8 @@ func TestCreateTimeSeriesAggregationFromFile_IDInBodyIgnored(t *testing.T) {
 	assertNoPOST(t, server.Requests())
 }
 
-// TestCreateTimeSeriesAggregationFromFile_StripsOriginFromBody asserts the
-// outbound payload no longer carries the server-managed labels. The origin
-// travels in the URL path; leaving version/source/dataset in the body would
-// send server state back as if the user had authored it.
+// The origin travels in the URL path. Leaving version, source, or dataset in
+// the body would send server state back as if the user had authored it.
 func TestCreateTimeSeriesAggregationFromFile_StripsOriginFromBody(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -577,9 +565,8 @@ func TestCreateTimeSeriesAggregationFromFile_StripsOriginFromBody(t *testing.T) 
 	}
 }
 
-// TestCreateTimeSeriesAggregationFromFile_MissingOriginFails asserts the
-// document is rejected locally, with no HTTP request at all: origin is
-// mandatory and there is no create path to fall back to.
+// Origin is mandatory and there is no create path to fall back to, so this must
+// fail locally, with no HTTP request at all.
 func TestCreateTimeSeriesAggregationFromFile_MissingOriginFails(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -595,9 +582,7 @@ func TestCreateTimeSeriesAggregationFromFile_MissingOriginFails(t *testing.T) {
 	assert.Empty(t, server.Requests(), "the document must be rejected before any API call")
 }
 
-// TestCreateTimeSeriesAggregationFromFile_MissingOriginFailsDryRun asserts
-// --dry-run catches the same problem a real create would, rather than
-// reporting a valid document.
+// --dry-run must catch what a real create would, not report a valid document.
 func TestCreateTimeSeriesAggregationFromFile_MissingOriginFailsDryRun(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -612,11 +597,9 @@ func TestCreateTimeSeriesAggregationFromFile_MissingOriginFailsDryRun(t *testing
 	assert.Contains(t, err.Error(), `dash0.com/origin`)
 }
 
-// TestCreateTimeSeriesAggregationFromFile_WrongDatasetHint asserts the
-// cross-dataset 400 is translated into an actionable message. Origins are
-// unique per organization while each aggregation belongs to one dataset, so
-// this is the error a user hits the first time they apply one asset directory
-// to a second dataset.
+// Origins are unique per organization while each aggregation belongs to one
+// dataset, so this is the error a user hits the first time they apply one asset
+// directory to a second dataset. The bare 400 needs translating.
 func TestCreateTimeSeriesAggregationFromFile_WrongDatasetHint(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

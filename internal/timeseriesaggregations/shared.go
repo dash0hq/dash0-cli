@@ -25,7 +25,7 @@ func decode(raw []byte) (*dash0api.TimeSeriesAggregationDefinition, error) {
 }
 
 // interval renders spec.sample.interval, which is required, so an empty result
-// means the document is malformed rather than the field being optional.
+// means a malformed document.
 func interval(aggregation *dash0api.TimeSeriesAggregationDefinition) string {
 	if aggregation == nil {
 		return ""
@@ -33,8 +33,8 @@ func interval(aggregation *dash0api.TimeSeriesAggregationDefinition) string {
 	return string(aggregation.Spec.Sample.Interval)
 }
 
-// origin is a thin alias over the asset helper so the command files read the
-// same way they do for the other labels.
+// origin aliases the asset helper so the command files read the same way they
+// do for the other labels.
 func origin(aggregation *dash0api.TimeSeriesAggregationDefinition) string {
 	return asset.GetTimeSeriesAggregationOrigin(aggregation)
 }

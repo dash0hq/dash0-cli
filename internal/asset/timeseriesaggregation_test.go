@@ -55,10 +55,8 @@ func TestGetTimeSeriesAggregationOrigin(t *testing.T) {
 	}
 }
 
-// TestGetTimeSeriesAggregationOrigin_MustBeReadBeforeStrip pins the ordering
-// constraint the import helper depends on. StripTimeSeriesAggregationServerFields
-// clears the origin label, so reading it afterwards yields "" and would turn
-// every apply into a missing-origin validation failure.
+// StripTimeSeriesAggregationServerFields clears the origin label, so reading it
+// afterwards yields "" and would fail every apply on a missing origin.
 func TestGetTimeSeriesAggregationOrigin_MustBeReadBeforeStrip(t *testing.T) {
 	origin := "http-server-request-duration"
 	aggregation := &dash0api.TimeSeriesAggregationDefinition{
@@ -142,16 +140,15 @@ func TestWrapTimeSeriesAggregationWrongDataset(t *testing.T) {
 	// The advice must be reachable as a hint, not buried in the message, so
 	// agent mode lifts it into the JSON error's own hint field.
 	assert.Contains(t, err.Error(), "\nHint:")
-	// The error must not fabricate a replacement for the origin the user
-	// actually passed. The docs teach a naming convention; a runtime error
-	// has no basis for guessing what this second dataset should be called.
+	// The error must not invent a replacement origin. The docs teach a naming
+	// convention, but a runtime error cannot guess what to call this dataset.
 	assert.NotContains(t, err.Error(), "my-origin-staging")
 	// The wrapped cause must stay reachable so callers can still classify it.
 	assert.True(t, IsTimeSeriesAggregationWrongDataset(err))
 }
 
 func TestKindDisplayName_TimeSeriesAggregation(t *testing.T) {
-	// Every spelling apply accepts must render the same display name; without
+	// Every spelling apply accepts must render the same display name. Without
 	// the case, KindDisplayName echoes the raw kind back at the user.
 	for _, kind := range []string{
 		"Dash0TimeSeriesAggregation",
@@ -169,8 +166,8 @@ func TestIsValidKind_TimeSeriesAggregation(t *testing.T) {
 }
 
 func TestExtractIdentifier_TimeSeriesAggregation(t *testing.T) {
-	// Origin, not id: the API upserts by origin, and an id-only document has
-	// no key any live aggregation can be matched by.
+	// The API upserts by origin, so an id-only document has no key that
+	// matches a live aggregation.
 	identifier, err := ExtractIdentifier([]byte(`apiVersion: dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:

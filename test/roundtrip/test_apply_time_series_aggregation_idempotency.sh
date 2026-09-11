@@ -4,20 +4,19 @@ set -euo pipefail
 # Exercises `dash0 apply` for time series aggregations. Confirms that:
 #   - apply creates the aggregation on the first run;
 #   - a second apply of the same file reports "no changes" and creates no
-#     duplicate — this is the assertion that would fail if marshalForDiff
-#     stopped stripping dash0.com/version, which the server increments on
-#     every PUT;
+#     duplicate;
 #   - a document without dash0.com/origin fails during validation, before any
 #     API call;
 #   - applying the same document to a second dataset fails with the
 #     cross-dataset explanation rather than a bare 400.
 #
-# Asserting the second run's *output*, not only the record count, is what
-# makes this test capable of failing when the diff logic regresses: a
-# count-only check passes even when every reapply renders a spurious diff.
+# Step 2 asserts the output, not just the record count, so it fails if the diff
+# logic regresses. A count-only check would pass even when every reapply
+# rendered a spurious diff, which is what happens if marshalForDiff stops
+# stripping dash0.com/version.
 #
-# The origin is unique per run. Origins are unique per organization and apply
-# upserts by PUT, so a fixed origin would overwrite a real aggregation.
+# The origin is unique per run, because origins are unique per organization and
+# apply upserts by PUT, so a fixed one would overwrite a real aggregation.
 
 export DASH0_AGENT_MODE=0
 
@@ -52,10 +51,10 @@ ORIGIN="$ORIGIN" yq '
 
 cleanup() {
   "$DASH0" tsa delete "$ORIGIN" --force > /dev/null 2>&1 || true
-  # Step 5 expects the cross-dataset apply to be rejected, but if the API ever
-  # accepts it the aggregation lands in the other dataset, where the delete
-  # above cannot reach it. Origins are visible org-wide, so a leak is everyone's
-  # problem. OTHER_DATASET is set further down and is empty if we exited first.
+  # If the API ever accepts the cross-dataset apply in step 5, the aggregation
+  # lands in the other dataset, out of reach of the delete above. Origins are
+  # visible org-wide, so a leak is everyone's problem. OTHER_DATASET is set
+  # below this function and is empty if we exited first.
   if [ -n "${OTHER_DATASET:-}" ] && [ "${OTHER_DATASET}" != "${CURRENT_DATASET:-}" ]; then
     "$DASH0" tsa delete "$ORIGIN" --force --dataset "$OTHER_DATASET" > /dev/null 2>&1 || true
   fi

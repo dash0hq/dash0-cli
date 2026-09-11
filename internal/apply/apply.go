@@ -366,14 +366,10 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 				}
 			}
 		} else if normalizeKind(doc.kind) == "timeseriesaggregation" && doc.id == "" {
-			// Origin is mandatory for this kind — the API rejects a create
-			// without one, and there is no fallback create path — so a
-			// document missing it fails here rather than after the run has
-			// already written its other documents.
-			//
-			// parseDocumentHeader stores the origin in doc.id for this kind,
-			// precisely because origin is the key it upserts by, so there is
-			// nothing to re-parse here.
+			// Origin is mandatory for this kind and there is no fallback create
+			// path, so a document missing it fails here rather than after the
+			// run has written its other documents. parseDocumentHeader already
+			// stored the origin in doc.id, so there is nothing to re-parse.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrTimeSeriesAggregationMissingOrigin.Error()))
 		}
 	}
@@ -509,10 +505,9 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetTimeSeriesAggregationName(&aggregation)
-		// Origin, not id, is what this kind upserts by, and it is mandatory.
-		// Showing it as the ID in dry-run output names the aggregation the
-		// document will replace; an exported document's server-assigned id
-		// would name the same object but not the key being used.
+		// This kind upserts by origin, not id. Showing the origin as the ID in
+		// dry-run output names the key being used, which an exported
+		// document's server-assigned id would not.
 		id = asset.GetTimeSeriesAggregationOrigin(&aggregation)
 
 	case "team":

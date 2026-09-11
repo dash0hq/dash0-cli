@@ -100,11 +100,9 @@ func marshalForDiff(asset any) (string, error) {
 		// increments on every PUT, so a reapply of unchanged content would
 		// never report "no changes".
 		dash0api.StripTimeSeriesAggregationServerFields(&a)
-		// Clear the id too, which the strip deliberately keeps. The diff
-		// compares the server's definition against a hand-authored file, and
-		// for this kind alone the id is never user-authored — the upsert key
-		// is the origin — so every such file lacks it and a kept id renders
-		// as a phantom removal in `update --dry-run`.
+		// Clear the id too, which the strip keeps on purpose. The upsert key
+		// here is the origin, so a hand-authored file never carries an id, and
+		// keeping it would show up as a phantom removal in `update --dry-run`.
 		dash0api.ClearTimeSeriesAggregationID(&a)
 		stripped = &a
 	default:
