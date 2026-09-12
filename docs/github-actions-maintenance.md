@@ -10,6 +10,10 @@ Ensure that the constraints of `dash0 config profiles create` are enforced in th
 
 When modifying the flags of `dash0 logs send`, ensure that the [send-log-event](../.github/actions/send-log-event/action.yaml) GitHub Action inputs stay in sync.
 
+`send-log-event` and `sync-assets` both reuse-or-create a Dash0 CLI profile via the shared `.github/actions/lib/ensure-profile.sh` script, rather than duplicating that logic inline.
+It detects an existing active profile via `dash0 config show -o json`'s `.profile.value` field — a change to that field's name or shape (see `docs/commands.md`'s `config show` section) needs the equivalent change there.
+`REQUIRE_PROFILE` controls whether "no active profile and no connection inputs" is a hard error (`send-log-event`, which always needs credentials) or a soft warning (`sync-assets`, which has a credential-free dry-run path).
+
 When modifying `apply --since`'s ref-resolution error semantics (the all-zeros SHA sentinel, empty-string handling, non-ancestor warning, or the `--dry-run --agent-mode` JSON shape), ensure the [sync-assets](../.github/actions/sync-assets/action.yaml) GitHub Action's own preflight logic stays in sync:
 
 - The `Resolve --since comparison ref` step's all-zeros sentinel constant and its resolvability/ancestry `git` checks mirror `dash0 apply --since`'s own classification (`internal/git/ref.go`'s `ClassifyRef`) — a change to which values `dash0` treats as "no prior state" needs the equivalent change here.
