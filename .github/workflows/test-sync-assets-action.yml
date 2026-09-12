@@ -1,0 +1,535 @@
+name: Test sync-assets action
+
+on:
+  push:
+    branches:
+      - main
+    # Release-only artifacts: no CLI or action code changed, and the release binary
+    # may not be available yet when these commits land.
+    paths-ignore:
+      - 'Formula/**'
+      - 'CHANGELOG.md'
+      - .chloggen/**
+      - flake.nix
+  pull_request:
+    paths-ignore:
+      - 'Formula/**'
+      - 'CHANGELOG.md'
+      - .chloggen/**
+      - flake.nix
+  workflow_dispatch:
+
+jobs:
+  test-since-none-omits-since:
+    name: 'Since: none omits --since from both the preflight and the mutating call'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+          api-url: https://api.example.com
+          auth-token: auth_test1234567
+
+      - name: Create a wrapper to capture apply arguments
+        run: |
+          mv ~/.dash0/bin/dash0 ~/.dash0/bin/dash0-real
+          cat > ~/.dash0/bin/dash0 <<'EOF'
+          #!/bin/bash
+          if [ "$1" = "apply" ]; then
+            echo "CAPTURED_APPLY_ARGS: $*" >> /tmp/dash0-captured-apply-args.txt
+            for arg in "$@"; do
+              if [ "$arg" = "--dry-run" ]; then
+                echo '[]'
+                exit 0
+              fi
+            done
+            echo 'Dashboard "Fake" created'
+            exit 0
+          fi
+          exec ~/.dash0/bin/dash0-real "$@"
+          EOF
+          chmod +x ~/.dash0/bin/dash0
+
+      - name: Sync assets with since none
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: none
+
+      - name: Verify neither call included --since
+        run: |
+          cat /tmp/dash0-captured-apply-args.txt
+          [ "$(wc -l < /tmp/dash0-captured-apply-args.txt)" = "2" ] || { echo "Error: expected exactly 2 captured apply calls"; exit 1; }
+          ! grep -q -- '--since' /tmp/dash0-captured-apply-args.txt
+          ! grep -q -- '--experimental' /tmp/dash0-captured-apply-args.txt
+
+  test-auto-does-not-derive-on-pull-request:
+    name: 'Since: auto does not derive a comparison ref on a pull_request event'
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+          api-url: https://api.example.com
+          auth-token: auth_test1234567
+
+      - name: Create a wrapper to capture apply arguments
+        run: |
+          mv ~/.dash0/bin/dash0 ~/.dash0/bin/dash0-real
+          cat > ~/.dash0/bin/dash0 <<'EOF'
+          #!/bin/bash
+          if [ "$1" = "apply" ]; then
+            echo "CAPTURED_APPLY_ARGS: $*" >> /tmp/dash0-captured-apply-args.txt
+            for arg in "$@"; do
+              if [ "$arg" = "--dry-run" ]; then
+                echo '[]'
+                exit 0
+              fi
+            done
+            echo 'Dashboard "Fake" created'
+            exit 0
+          fi
+          exec ~/.dash0/bin/dash0-real "$@"
+          EOF
+          chmod +x ~/.dash0/bin/dash0
+
+      - name: Sync assets with the default since (auto), on a pull_request event
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+
+      - name: Verify neither call included --since
+        run: |
+          # This job only runs on the pull_request trigger (see the job-level `if:` above),
+          # so github.event_name is guaranteed to be pull_request here. Its synchronize action
+          # does set github.event.before, but auto must not derive a comparison ref from a
+          # pull_request event regardless -- a PR run is a preview surface, not a deletion one.
+          cat /tmp/dash0-captured-apply-args.txt
+          [ "$(wc -l < /tmp/dash0-captured-apply-args.txt)" = "2" ] || { echo "Error: expected exactly 2 captured apply calls"; exit 1; }
+          ! grep -q -- '--since' /tmp/dash0-captured-apply-args.txt
+          ! grep -q -- '--experimental' /tmp/dash0-captured-apply-args.txt
+
+  test-explicit-ref-passes-since:
+    name: 'An explicit since ref is passed to both the preflight and the mutating call'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+          api-url: https://api.example.com
+          auth-token: auth_test1234567
+
+      - name: Create a wrapper to capture apply arguments
+        run: |
+          mv ~/.dash0/bin/dash0 ~/.dash0/bin/dash0-real
+          cat > ~/.dash0/bin/dash0 <<'EOF'
+          #!/bin/bash
+          if [ "$1" = "apply" ]; then
+            echo "CAPTURED_APPLY_ARGS: $*" >> /tmp/dash0-captured-apply-args.txt
+            for arg in "$@"; do
+              if [ "$arg" = "--dry-run" ]; then
+                echo '[]'
+                exit 0
+              fi
+            done
+            echo 'Dashboard "Fake" created'
+            exit 0
+          fi
+          exec ~/.dash0/bin/dash0-real "$@"
+          EOF
+          chmod +x ~/.dash0/bin/dash0
+
+      - name: Sync assets with an explicit since ref
+        id: sync
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: HEAD~1
+
+      - name: Verify since output and captured arguments
+        run: |
+          [ "${{ steps.sync.outputs.since }}" = "HEAD~1" ] || { echo "Error: unexpected since output '${{ steps.sync.outputs.since }}'"; exit 1; }
+
+          cat /tmp/dash0-captured-apply-args.txt
+          [ "$(wc -l < /tmp/dash0-captured-apply-args.txt)" = "2" ] || { echo "Error: expected exactly 2 captured apply calls"; exit 1; }
+
+          # Preflight (--dry-run): --since and --experimental, no --force.
+          grep -- '--dry-run' /tmp/dash0-captured-apply-args.txt | grep -q -- '--since HEAD~1'
+          grep -- '--dry-run' /tmp/dash0-captured-apply-args.txt | grep -q -- '--experimental'
+          grep -- '--dry-run' /tmp/dash0-captured-apply-args.txt | { ! grep -q -- '--force'; }
+
+          # Mutating call: --since, --force, and --experimental, no --dry-run.
+          grep -v -- '--dry-run' /tmp/dash0-captured-apply-args.txt | grep -q -- '--since HEAD~1'
+          grep -v -- '--dry-run' /tmp/dash0-captured-apply-args.txt | grep -q -- '--force'
+          grep -v -- '--dry-run' /tmp/dash0-captured-apply-args.txt | grep -q -- '--experimental'
+
+  test-unresolvable-ref-fails:
+    name: 'An unresolvable since ref fails before dash0 is invoked'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Sync assets with an unresolvable since ref
+        id: sync
+        continue-on-error: true
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+
+      - name: Verify the action failed
+        run: |
+          [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
+
+  test-explicit-empty-since-fails:
+    name: 'An explicit empty since fails, unlike auto finding no prior state'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Sync assets with an explicit empty since
+        id: sync
+        continue-on-error: true
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: ''
+
+      - name: Verify the action failed
+        run: |
+          [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
+
+  test-explicit-all-zeros-since-fails:
+    name: 'An explicit all-zeros since fails, unlike auto finding no prior state'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Sync assets with an explicit all-zeros since
+        id: sync
+        continue-on-error: true
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: '0000000000000000000000000000000000000000'
+
+      - name: Verify the action failed
+        run: |
+          [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
+
+  test-non-ancestor-ref-fails:
+    name: 'A non-ancestor since ref fails by default'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create an orphan commit that is not an ancestor of HEAD
+        id: orphan
+        run: |
+          git config user.email test@example.com
+          git config user.name 'CI Test'
+          EMPTY_TREE=$(git hash-object -w -t tree /dev/null)
+          ORPHAN_SHA=$(git commit-tree "$EMPTY_TREE" -m 'orphan commit for non-ancestor test')
+          echo "sha=$ORPHAN_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Sync assets with a non-ancestor since ref
+        id: sync
+        continue-on-error: true
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: ${{ steps.orphan.outputs.sha }}
+
+      - name: Verify the action failed
+        run: |
+          [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
+
+  test-accept-non-ancestor-ref:
+    name: 'Accept-non-ancestor-ref lets a non-ancestor since ref proceed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create an orphan commit that is not an ancestor of HEAD
+        id: orphan
+        run: |
+          git config user.email test@example.com
+          git config user.name 'CI Test'
+          EMPTY_TREE=$(git hash-object -w -t tree /dev/null)
+          ORPHAN_SHA=$(git commit-tree "$EMPTY_TREE" -m 'orphan commit for accept-non-ancestor-ref test')
+          echo "sha=$ORPHAN_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Dash0 CLI
+        uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+          api-url: https://api.example.com
+          auth-token: auth_test1234567
+
+      - name: Create a wrapper to capture apply arguments
+        run: |
+          mv ~/.dash0/bin/dash0 ~/.dash0/bin/dash0-real
+          cat > ~/.dash0/bin/dash0 <<'EOF'
+          #!/bin/bash
+          if [ "$1" = "apply" ]; then
+            echo "CAPTURED_APPLY_ARGS: $*" >> /tmp/dash0-captured-apply-args.txt
+            for arg in "$@"; do
+              if [ "$arg" = "--dry-run" ]; then
+                echo '[]'
+                exit 0
+              fi
+            done
+            echo 'Dashboard "Fake" created'
+            exit 0
+          fi
+          exec ~/.dash0/bin/dash0-real "$@"
+          EOF
+          chmod +x ~/.dash0/bin/dash0
+
+      - name: Sync assets with accept-non-ancestor-ref
+        id: sync
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: ${{ steps.orphan.outputs.sha }}
+          accept-non-ancestor-ref: 'true'
+
+      - name: Verify the action succeeded and passed the ref through
+        run: |
+          [ "${{ steps.sync.outputs.since }}" = "${{ steps.orphan.outputs.sha }}" ] || { echo "Error: unexpected since output"; exit 1; }
+          grep -q -- "--since ${{ steps.orphan.outputs.sha }}" /tmp/dash0-captured-apply-args.txt
+
+  test-dry-run-plan-outputs:
+    name: 'Dry-run computes and reports the pending plan without applying it'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create a scratch dashboard fixture
+        run: |
+          mkdir -p ci-scratch
+          cat > ci-scratch/dashboard.yaml <<'EOF'
+          apiVersion: dash0.com/v1alpha1
+          kind: Dashboard
+          metadata:
+            name: sync-assets-plan-test
+            dash0Extensions:
+              id: sync-assets-plan-test
+          spec:
+            display:
+              name: sync-assets plan test dashboard
+          EOF
+
+      - name: Compute the pending plan
+        id: sync
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: none
+          dry-run: 'true'
+
+      - name: Verify outputs
+        run: |
+          [ "${{ steps.sync.outputs.deletion-count }}" = "0" ] || { echo "Error: expected deletion-count 0"; exit 1; }
+          [ "${{ steps.sync.outputs.modification-count }}" = "1" ] || { echo "Error: expected modification-count 1"; exit 1; }
+          echo '${{ steps.sync.outputs.modifications }}' | grep -q '"kind":"Dashboard"'
+          echo '${{ steps.sync.outputs.modifications }}' | grep -q '"originOrId":"sync-assets-plan-test"'
+
+  test-max-deletions-blocks:
+    name: 'Max-deletions fails the job before any mutating call'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Build a scratch git history with two dashboards, then remove both
+        id: history
+        run: |
+          git config user.email test@example.com
+          git config user.name 'CI Test'
+
+          mkdir -p ci-scratch
+          cat > ci-scratch/a.yaml <<'EOF'
+          apiVersion: dash0.com/v1alpha1
+          kind: Dashboard
+          metadata:
+            name: sync-assets-max-deletions-a
+            dash0Extensions:
+              id: sync-assets-max-deletions-a
+          spec:
+            display:
+              name: max-deletions test dashboard A
+          EOF
+          cat > ci-scratch/b.yaml <<'EOF'
+          apiVersion: dash0.com/v1alpha1
+          kind: Dashboard
+          metadata:
+            name: sync-assets-max-deletions-b
+            dash0Extensions:
+              id: sync-assets-max-deletions-b
+          spec:
+            display:
+              name: max-deletions test dashboard B
+          EOF
+          git add ci-scratch
+          git commit -q -m 'ci: add two dashboards for max-deletions test'
+          echo "before=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+          rm ci-scratch/a.yaml ci-scratch/b.yaml
+          touch ci-scratch/.gitkeep
+          git add ci-scratch
+          git commit -q -m 'ci: remove both dashboards for max-deletions test'
+
+      - name: Sync assets with max-deletions below the pending count
+        id: sync
+        continue-on-error: true
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: ${{ steps.history.outputs.before }}
+          dry-run: 'true'
+          max-deletions: '1'
+
+      - name: Verify the action failed
+        run: |
+          [ "${{ steps.sync.outcome }}" = "failure" ] || { echo "Error: expected failure but got ${{ steps.sync.outcome }}"; exit 1; }
+
+  test-end-to-end-sync:
+    name: 'End-to-end create then delete-via-since'
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Add the e2e dashboard fixture
+        id: before
+        run: |
+          git config user.email test@example.com
+          git config user.name 'CI Test'
+          mkdir -p ci-scratch
+          cat > ci-scratch/e2e-dashboard.yaml <<'EOF'
+          apiVersion: dash0.com/v1alpha1
+          kind: Dashboard
+          metadata:
+            name: sync-assets-e2e-test
+            dash0Extensions:
+              id: sync-assets-e2e-test
+          spec:
+            display:
+              name: sync-assets e2e test dashboard
+          EOF
+          git add ci-scratch
+          git commit -q -m 'ci: add e2e dashboard fixture'
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create the dashboard
+        uses: ./.github/actions/sync-assets
+        with:
+          api-url: ${{ secrets.DASH0_API_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ secrets.DASH0_DATASET }}
+          path: ci-scratch
+          since: none
+
+      - name: Verify the dashboard was created
+        run: dash0 dashboards get sync-assets-e2e-test
+
+      - name: Remove the e2e dashboard fixture
+        run: |
+          rm ci-scratch/e2e-dashboard.yaml
+          touch ci-scratch/.gitkeep
+          git add ci-scratch
+          git commit -q -m 'ci: remove e2e dashboard fixture'
+
+      - name: Sync since the fixture was added
+        uses: ./.github/actions/sync-assets
+        with:
+          api-url: ${{ secrets.DASH0_API_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: ${{ secrets.DASH0_DATASET }}
+          path: ci-scratch
+          since: ${{ steps.before.outputs.sha }}
+
+      - name: Verify the dashboard was deleted
+        run: |
+          # Dash0 soft-deletes assets (the dash0.com/deleted-at annotation), so a `get` by id
+          # still returns a deleted dashboard. `list` excludes soft-deleted assets, so that's
+          # the correct way to check absence -- mirrors test/roundtrip/test_dashboard_roundtrip.sh.
+          if ! LIST_JSON=$(dash0 dashboards list --all -o json); then
+            echo "Error: dashboards list -o json failed"
+            exit 1
+          fi
+          if echo "$LIST_JSON" | jq -e '.[] | select(.metadata.dash0Extensions.id == "sync-assets-e2e-test")' > /dev/null 2>&1; then
+            echo "Error: dashboard still exists after --since sync"
+            exit 1
+          fi
+
+  test-arm64:
+    name: 'Standalone install and dry-run on arm64'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify CLI is not installed
+        run: |
+          ! command -v dash0 &>/dev/null || { echo "Error: dash0 should not be on PATH yet"; exit 1; }
+
+      - name: Create a scratch dashboard fixture
+        run: |
+          mkdir -p ci-scratch
+          cat > ci-scratch/dashboard.yaml <<'EOF'
+          apiVersion: dash0.com/v1alpha1
+          kind: Dashboard
+          metadata:
+            name: sync-assets-arm64-test
+            dash0Extensions:
+              id: sync-assets-arm64-test
+          spec:
+            display:
+              name: sync-assets arm64 test dashboard
+          EOF
+
+      - name: Sync assets (standalone, dry-run)
+        uses: ./.github/actions/sync-assets
+        with:
+          path: ci-scratch
+          since: none
+          dry-run: 'true'
+          cli-version: '1.17.0'
+
+      - name: Verify binary is arm64
+        run: |
+          file ~/.dash0/bin/dash0 | grep 'aarch64\|ARM'
