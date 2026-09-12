@@ -17,12 +17,7 @@ issues: [277]
 # Use pipe (|) for multiline entries.
 subtext: |
   Wraps `dash0 apply --since <ref>`, deriving `<ref>` from the triggering event so a workflow does
-  not have to hand-write `github.event.before`'s corner cases itself. The `since` input has three
-  states: `auto` (default), `none` (always a plain create/update sync), or an explicit ref.
-
-  Always runs a zero-API-call `apply --dry-run --agent-mode` preflight first, exposing
-  `deletions`/`modifications` as action outputs and enforcing an optional `max-deletions` circuit
-  breaker before any mutating call.
+  not have to hand-write `github.event.before`'s corner cases itself.
 
   See `.github/actions/sync-assets/README.md` for the full reference.
 
