@@ -20,12 +20,31 @@ ARGS=()
 [ -n "${INPUT_DATASET:-}" ] && ARGS+=(--dataset "$INPUT_DATASET")
 
 # If an active profile already exists (e.g., from the setup action), update it with any
-# connection inputs provided to this action. `-o json` is used unconditionally (not the
-# human-readable default) because agent mode -- auto-detected from env vars like GITHUB_COPILOT,
-# which a runner may have set for unrelated reasons -- would otherwise switch `dash0 config
-# show`'s own output to JSON too, and a plain-text `grep '^Profile:'` would then silently find
-# nothing, causing this script to overwrite an existing profile instead of updating it.
-PROFILE_NAME=$(dash0 config show -o json 2>/dev/null | jq -r '.profile.value // empty')
+# connection inputs provided to this action. `-o json` is preferred over the human-readable
+# default because agent mode -- auto-detected from env vars like GITHUB_COPILOT, which a runner
+# may have set for unrelated reasons -- would otherwise switch `dash0 config show`'s own output
+# to JSON too, and a plain-text `grep '^Profile:'` would then silently find nothing, causing this
+# script to overwrite an existing profile instead of updating it.
+set +e
+JSON_OUT=$(dash0 config show -o json 2>/dev/null)
+JSON_RC=$?
+set -e
+
+if [ "$JSON_RC" -eq 0 ]; then
+  PROFILE_NAME=$(echo "$JSON_OUT" | jq -r '.profile.value // empty')
+else
+  # Fall back to parsing human-readable output for CLI versions that predate `config show -o
+  # json` (introduced alongside agent mode itself in v1.8.0) -- a CLI that old cannot have
+  # auto-detected agent mode either, so the JSON-output trap this whole function guards against
+  # cannot occur here.
+  PROFILE_LINE=$(dash0 config show 2>/dev/null | grep '^Profile:' || true)
+  if [ -n "$PROFILE_LINE" ] && ! echo "$PROFILE_LINE" | grep -q '(none)'; then
+    PROFILE_NAME=$(echo "$PROFILE_LINE" | sed 's/^Profile:[[:space:]]*//' | sed 's/[[:space:]]*(.*//')
+  else
+    PROFILE_NAME=""
+  fi
+fi
+
 if [ -n "$PROFILE_NAME" ]; then
   if [ ${#ARGS[@]} -gt 0 ]; then
     dash0 config profiles update "$PROFILE_NAME" "${ARGS[@]}"

@@ -12,6 +12,7 @@ When modifying the flags of `dash0 logs send`, ensure that the [send-log-event](
 
 `send-log-event` and `sync-assets` both reuse-or-create a Dash0 CLI profile via the shared `.github/actions/lib/ensure-profile.sh` script, rather than duplicating that logic inline.
 It detects an existing active profile via `dash0 config show -o json`'s `.profile.value` field — a change to that field's name or shape (see `docs/commands.md`'s `config show` section) needs the equivalent change there.
+`send-log-event` still supports CLI versions back to 1.1.0 (unlike `sync-assets`, floored at 1.17.0), which predate `config show -o json` (introduced alongside agent mode in v1.8.0) — the script falls back to parsing `config show`'s human-readable output when `-o json` itself fails, so this compatibility must be preserved if the fallback is ever touched.
 `REQUIRE_PROFILE` controls whether "no active profile and no connection inputs" is a hard error (`send-log-event`, which always needs credentials) or a soft warning (`sync-assets`, which has a credential-free dry-run path).
 
 When modifying `apply --since`'s ref-resolution error semantics (the all-zeros SHA sentinel, empty-string handling, non-ancestor warning, or the `--dry-run --agent-mode` JSON shape), ensure the [sync-assets](../.github/actions/sync-assets/action.yaml) GitHub Action's own preflight logic stays in sync:
