@@ -1,0 +1,5 @@
+change_type: bug_fix
+component: dashboards
+note: Show <error> names and stderr warnings when individual dashboard lookups fail in table, wide, or CSV list output.
+issues: []
+subtext: Successful rows remain visible and name lookup failures do not change the exit status. JSON and YAML exports continue to return fetch errors.
