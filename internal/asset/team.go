@@ -47,6 +47,8 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 		if existing, err := apiClient.GetTeam(ctx, origin); err == nil {
 			action = ActionUpdated
 			before = existing
+		} else if !dash0api.IsNotFound(err) {
+			return ImportResult{}, err
 		}
 	case id != "":
 		// The preflight GET's outcome decides the route, so the kind of
@@ -97,4 +99,3 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 	}
 	return ImportResult{Name: name, ID: resultID, Action: action, Before: beforeAny, After: result}, nil
 }
-

@@ -25,6 +25,8 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 		if err == nil {
 			action = ActionUpdated
 			before = existing
+		} else if !dash0api.IsNotFound(err) {
+			return ImportResult{}, err
 		}
 	}
 

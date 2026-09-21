@@ -119,6 +119,8 @@ func ImportSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *da
 		if err == nil {
 			action = ActionUpdated
 			before = existing
+		} else if !dash0api.IsNotFound(err) {
+			return ImportResult{}, err
 		}
 	}
 
@@ -163,6 +165,8 @@ func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, fi
 		if err == nil {
 			action = ActionUpdated
 			before = existing
+		} else if !dash0api.IsNotFound(err) {
+			return ImportResult{}, err
 		}
 	}
 
