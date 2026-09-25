@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -59,6 +60,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		dash0api.WithUserAgent(version.UserAgent()),
 		dash0api.WithMaxRetries(maxRetries),
 		dash0api.WithRetryOnConflict(),
+		dash0api.WithHTTPClient(&http.Client{Transport: &assetResponseTransport{base: http.DefaultTransport}}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API client: %w", err)
@@ -504,4 +506,3 @@ func capitalizeFirst(s string) string {
 	runes[0] = unicode.ToUpper(runes[0])
 	return string(runes)
 }
-

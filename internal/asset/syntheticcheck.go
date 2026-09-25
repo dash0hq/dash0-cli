@@ -23,6 +23,8 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		if err == nil {
 			action = ActionUpdated
 			before = existing
+		} else if !dash0api.IsNotFound(err) {
+			return ImportResult{}, err
 		}
 	}
 
