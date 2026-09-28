@@ -119,7 +119,7 @@ These flags are available on every command:
 | `--agent-mode` | | `DASH0_AGENT_MODE` | Enable agent mode for AI coding agents (see below) |
 | `--color` | | `DASH0_COLOR` | `semantic` (default) or `none` |
 | `--experimental` | `-X` | | Enable experimental commands |
-| | | `DASH0_CONFIG_DIR` | Override config directory (default: `~/.dash0`) |
+| `--config-dir` | | `DASH0_CONFIG_DIR` | Override config directory (default: `~/.dash0`); the flag takes precedence over the environment variable |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Maximum number of retries for failed API requests (default: `3`, max: `5`; set to `0` to disable retries) |
 | `--no-skill-hint` | | `DASH0_NO_SKILL_HINT` | Suppress the agent-mode error hint pointing at `dash0 skill install` / `dash0 skill show` (see [Agent tooling commands](#agent-tooling-commands)) |
 

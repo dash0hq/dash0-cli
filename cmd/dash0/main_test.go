@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/skill"
 	"github.com/stretchr/testify/assert"
@@ -253,6 +254,27 @@ func TestFlagValue(t *testing.T) {
 			if got != tc.want {
 				t.Errorf("flagValue(%v, %q) = %q, want %q", tc.args, tc.flag, got, tc.want)
 			}
+		})
+	}
+}
+
+func TestApplyConfigDirFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		args    []string
+		wantEnv string
+	}{
+		{name: "flag overrides env var", env: "/env", args: []string{"--config-dir", "/flag", "config", "show"}, wantEnv: "/flag"},
+		{name: "flag in equals form", env: "/env", args: []string{"config", "show", "--config-dir=/flag"}, wantEnv: "/flag"},
+		{name: "env var kept without flag", env: "/env", args: []string{"config", "show"}, wantEnv: "/env"},
+		{name: "empty flag is not set", env: "/env", args: []string{"--config-dir", "", "config", "show"}, wantEnv: "/env"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(profiles.EnvConfigDir, tt.env)
+			require.NoError(t, applyConfigDirFlag(tt.args))
+			assert.Equal(t, tt.wantEnv, os.Getenv(profiles.EnvConfigDir))
 		})
 	}
 }

@@ -104,6 +104,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
 	rootCmd.PersistentFlags().String("color", "", `Color mode for output: "semantic" or "none" (env: DASH0_COLOR)`)
 	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
+	rootCmd.PersistentFlags().String("config-dir", "", "Configuration directory (default: ~/.dash0; env: DASH0_CONFIG_DIR)")
 	rootCmd.PersistentFlags().String("profile", "", "Profile to use for this invocation; overrides the active profile on disk (env: DASH0_PROFILE)")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		return client.ApplyAuthTokenFile(cmd)
@@ -246,6 +247,19 @@ func loadConfig() *profiles.Configuration {
 	return cfg
 }
 
+// applyConfigDirFlag makes --config-dir take precedence over DASH0_CONFIG_DIR
+// by overwriting the environment variable before any profile store is opened.
+// The profiles library resolves the directory from DASH0_CONFIG_DIR on every
+// store open, so this covers every call site, including library-internal ones.
+// An empty flag value is treated as "not set".
+func applyConfigDirFlag(args []string) error {
+	dir := flagValue(args, "config-dir")
+	if dir == "" {
+		return nil
+	}
+	return os.Setenv(profiles.EnvConfigDir, dir)
+}
+
 // flagValue returns the value of the named long-form flag in args, or empty
 // string if it is not present. It supports both `--name value` and
 // `--name=value` forms. It stops scanning after "--" (end of flags).
@@ -336,6 +350,12 @@ func main() {
 	// but cannot import internal/color directly (cycle: color → otlp for
 	// the severity range type), so main bridges the value here.
 	otlp.SetTailColorEnabled(!dashcolor.NoColor)
+
+	// Apply --config-dir before any profile store is opened.
+	if err := applyConfigDirFlag(os.Args[1:]); err != nil {
+		printError(fmt.Errorf("failed to apply --config-dir: %w", err))
+		os.Exit(1)
+	}
 
 	// Resolve the per-invocation profile selector (--profile flag or
 	// DASH0_PROFILE env var) before loading config so the selection flows

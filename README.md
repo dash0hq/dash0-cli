@@ -318,6 +318,13 @@ export DASH0_CONFIG_DIR=~/.local/dash0
 dash0 config profiles create dev --api-url https://api.us-west-2.aws.dash0.com
 ```
 
+To use a different directory for a single invocation, pass the `--config-dir` flag.
+The flag takes precedence over `DASH0_CONFIG_DIR`:
+
+```bash
+dash0 --config-dir ~/.local/dash0-staging config show
+```
+
 ### Agent mode
 
 Agent mode optimizes every aspect of the CLI for machine consumption.
@@ -754,7 +761,7 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 | `--profile` | | `DASH0_PROFILE` | Use a named profile for this invocation without changing the active profile. |
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
-| | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`) |
+| `--config-dir` | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`). The flag takes precedence over the environment variable. |
 | | | `DASH0_OTLP_PROXY_GRPC_PORT` | Override `dash0 otlp proxy --grpc-port` |
 | | | `DASH0_OTLP_PROXY_HTTP_PORT` | Override `dash0 otlp proxy --http-port` |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |

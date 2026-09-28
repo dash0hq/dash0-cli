@@ -74,7 +74,7 @@ Configuration is resolved in the following order (highest priority first):
 
 When an environment variable overrides a profile value, config show annotates the field with "(from <VAR> environment variable)".
 
-The DASH0_CONFIG_DIR environment variable changes the configuration directory (default: ~/.dash0).`,
+The --config-dir flag or the DASH0_CONFIG_DIR environment variable changes the configuration directory (default: ~/.dash0). The flag takes precedence over the environment variable.`,
 		Example: `  # Show the active profile and its settings
   dash0 config show
 
@@ -82,7 +82,7 @@ The DASH0_CONFIG_DIR environment variable changes the configuration directory (d
   DASH0_API_URL='https://api.example.com' dash0 config show
 
   # Use a different configuration directory
-  DASH0_CONFIG_DIR=/tmp/dash0-test dash0 config show`,
+  dash0 --config-dir /tmp/dash0-test config show`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			profileSelector := ProfileSelectorFromContext(cmd.Context())
 
