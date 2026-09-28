@@ -55,7 +55,7 @@ Every command that talks to the Dash0 API or OTLP endpoint needs credentials.
 The CLI resolves each individual setting (`api-url`, `otlp-url`, `auth-token`, `dataset`) in this order (first match wins):
 
 1. Environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`)
-2. CLI flags (`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`)
+2. CLI flags (`--api-url`, `--otlp-url`, `--auth-token` or `--auth-token-file`, `--dataset`)
 3. The selected profile (see below)
 
 Each setting is resolved independently.
@@ -75,6 +75,35 @@ If the selected profile does not exist, the command fails before making any API 
 Commands that read from the API (asset CRUD, `logs query`, `spans query`, `traces get`, `metrics instant`) require `api-url` and `auth-token`.
 Commands that write via OTLP (`logs send`, `spans send`) require `otlp-url` and `auth-token`.
 
+### Read the auth token from a file
+
+`--auth-token-file <path>` reads the auth token from a file that contains only the token.
+Use it with secrets that are mounted as files, such as [Kubernetes secrets](https://kubernetes.io/docs/concepts/configuration/secret/), [Docker secrets](https://docs.docker.com/compose/how-tos/use-secrets/), or [systemd credentials](https://systemd.io/CREDENTIALS/).
+The token then does not appear in the process list or in the shell history.
+
+The CLI removes leading and trailing whitespace, such as a trailing newline, from the file content.
+An empty file, or a file with more than one line, is an error.
+The token from the file resolves in the same way as a token from `--auth-token`, and the two flags are mutually exclusive.
+The CLI reads the file only when the command calls the Dash0 API or the OTLP endpoint.
+
+Query logs with a token from a Kubernetes secret mounted at `/var/run/secrets/dash0`:
+
+```bash
+dash0 logs query --auth-token-file /var/run/secrets/dash0/auth-token
+```
+
+Apply assets with a token from a Docker secret:
+
+```bash
+dash0 apply -f assets/ --auth-token-file /run/secrets/dash0_auth_token
+```
+
+Send a log record with a token from a systemd credential (`LoadCredential=dash0-auth-token:...` in the unit file):
+
+```bash
+dash0 logs send "Backup completed" --auth-token-file "$CREDENTIALS_DIRECTORY/dash0-auth-token"
+```
+
 ## Global flags
 
 These flags are available on every command:
@@ -84,6 +113,7 @@ These flags are available on every command:
 | `--api-url` | | `DASH0_API_URL` | API endpoint URL |
 | `--otlp-url` | | `DASH0_OTLP_URL` | OTLP HTTP endpoint URL |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Authentication token |
+| `--auth-token-file` | | | Read the authentication token from a file (see [Read the auth token from a file](#read-the-auth-token-from-a-file)); mutually exclusive with `--auth-token` |
 | `--dataset` | | `DASH0_DATASET` | Dataset identifier (not display name) |
 | `--profile` | | `DASH0_PROFILE` | Profile to use for this invocation; overrides the active profile on disk |
 | `--agent-mode` | | `DASH0_AGENT_MODE` | Enable agent mode for AI coding agents (see below) |

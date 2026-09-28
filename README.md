@@ -747,6 +747,7 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 | `--api-url` | | `DASH0_API_URL` | Override API URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=api_http). |
 | `--otlp-url` | | `DASH0_OTLP_URL` | Override OTLP URL from profile. Find yours [here](https://app.dash0.com/goto/settings/endpoints?endpoint_type=otlp_http). |
 | `--auth-token` | | `DASH0_AUTH_TOKEN` | Override auth token from profile. Find yours [here](https://app.dash0.com/goto/settings/auth-tokens). |
+| `--auth-token-file` | | | Read the auth token from a file that contains only the token (for example a Kubernetes secret, Docker secret, or systemd credential). Mutually exclusive with `--auth-token`. |
 | `--color` | | `DASH0_COLOR` | Color mode for output: `semantic` (default) or `none`. Ignored when piping output. |
 | `--dataset` | | `DASH0_DATASET` | Override dataset from profile. Use the `identifier`, not `Name`. |
 | `--experimental` | `-X` | | Enable experimental features (required for commands marked `[experimental]`) |

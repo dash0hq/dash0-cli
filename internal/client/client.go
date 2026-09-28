@@ -228,6 +228,14 @@ func oauthShadowed(cfg *profiles.Configuration, resolvedAuthToken string) bool {
 	return resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken
 }
 
+// useProfileProvider reports whether the auth token must come from the
+// profile's provider: only an OAuth profile that no static token shadows.
+// Anything else uses the resolved token as-is, so a flag override is never
+// replaced by the profile's own token.
+func useProfileProvider(cfg *profiles.Configuration, resolvedAuthToken string) bool {
+	return cfg != nil && cfg.OAuth != nil && !oauthShadowed(cfg, resolvedAuthToken)
+}
+
 // authTokenOption picks how the API client authenticates.
 //
 // An OAuth profile goes through a provider, so the access token is refreshed
@@ -236,7 +244,7 @@ func oauthShadowed(cfg *profiles.Configuration, resolvedAuthToken string) bool {
 // Anything else authenticates with the resolved token directly, because a
 // static auth_* token does not expire.
 func authTokenOption(cfg *profiles.Configuration, resolvedAuthToken string) dash0api.ClientOption {
-	if cfg != nil && cfg.OAuth != nil && !oauthShadowed(cfg, resolvedAuthToken) {
+	if useProfileProvider(cfg, resolvedAuthToken) {
 		return dash0api.WithAuthTokenProvider(cfg.AuthTokenProvider())
 	}
 	return dash0api.WithAuthToken(resolvedAuthToken)

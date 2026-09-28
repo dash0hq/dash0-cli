@@ -105,6 +105,10 @@ func init() {
 	rootCmd.PersistentFlags().String("color", "", `Color mode for output: "semantic" or "none" (env: DASH0_COLOR)`)
 	rootCmd.PersistentFlags().Bool("agent-mode", false, "Enable agent mode for AI coding agents (env: DASH0_AGENT_MODE)")
 	rootCmd.PersistentFlags().String("profile", "", "Profile to use for this invocation; overrides the active profile on disk (env: DASH0_PROFILE)")
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		return client.ApplyAuthTokenFile(cmd)
+	}
+	rootCmd.PersistentFlags().String("auth-token-file", "", "Read the auth token from this file, which must contain only the token (e.g. a Kubernetes secret, Docker secret, or systemd credential); mutually exclusive with --auth-token")
 	rootCmd.PersistentFlags().String("max-retries", "", "Maximum number of retries for failed API requests (0-5; default: 3; env: DASH0_MAX_RETRIES)")
 	rootCmd.PersistentFlags().Bool("no-skill-hint", false, "Suppress the agent-mode error hint pointing at dash0 skill install / dash0 skill show (env: DASH0_NO_SKILL_HINT)")
 }

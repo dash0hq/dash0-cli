@@ -27,11 +27,11 @@ description: Use when working with Dash0 observability data or configuration via
 
 ## Prerequisites
 
-Every command that talks to the Dash0 API or OTLP endpoint needs credentials, resolved in this order (first match wins): environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`), CLI flags (`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`), then the selected profile (`--profile` flag → `DASH0_PROFILE` env var → the active profile on disk). See the `config` and `login` topics for profile management and OAuth authentication.
+Every command that talks to the Dash0 API or OTLP endpoint needs credentials, resolved in this order (first match wins): environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`), CLI flags (`--api-url`, `--otlp-url`, `--auth-token` or `--auth-token-file <path>`, `--dataset`), then the selected profile (`--profile` flag → `DASH0_PROFILE` env var → the active profile on disk). See the `config` and `login` topics for profile management and OAuth authentication.
 
 ## Global flags
 
-`--api-url`, `--otlp-url`, `--auth-token`, `--dataset`, `--profile`, `--agent-mode` (env: `DASH0_AGENT_MODE`), `--color` (`semantic` or `none`), `--experimental`/`-X`, `--max-retries`, `--no-skill-hint` (env: `DASH0_NO_SKILL_HINT` — suppress the "start with `dash0 skill show` … or run `dash0 skill install`" hint stitched onto errors; `dash0 skill show` (no arg) prints the entry point with a full topic index, `dash0 skill show <topic>` drills into one topic without writing files, and `dash0 skill install` adds a persistent bundle to the project). Run `dash0 --agent-mode --help` for the full, current list.
+`--api-url`, `--otlp-url`, `--auth-token`, `--auth-token-file` (read the token from a file that contains only the token, e.g. a mounted Kubernetes or Docker secret), `--dataset`, `--profile`, `--agent-mode` (env: `DASH0_AGENT_MODE`), `--color` (`semantic` or `none`), `--experimental`/`-X`, `--max-retries`, `--no-skill-hint` (env: `DASH0_NO_SKILL_HINT` — suppress the "start with `dash0 skill show` … or run `dash0 skill install`" hint stitched onto errors; `dash0 skill show` (no arg) prints the entry point with a full topic index, `dash0 skill show <topic>` drills into one topic without writing files, and `dash0 skill install` adds a persistent bundle to the project). Run `dash0 --agent-mode --help` for the full, current list.
 
 ### Agent mode
 

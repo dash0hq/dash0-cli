@@ -69,7 +69,7 @@ func NewRawHTTPConfig(ctx context.Context, apiUrl, authToken string) (*RawHTTPCo
 	// One resolution up front is enough here. Raw commands issue a single short
 	// request, unlike the typed client, which consults its provider per request
 	// because it drives multi-page operations.
-	if cfg := profiles.FromContext(ctx); cfg != nil && !oauthShadowed(cfg, resolvedAuthToken) {
+	if cfg := profiles.FromContext(ctx); useProfileProvider(cfg, resolvedAuthToken) {
 		refreshed, err := cfg.AuthTokenProvider().AuthToken(ctx)
 		if err != nil {
 			return nil, translateConfigError(ctx, err)
