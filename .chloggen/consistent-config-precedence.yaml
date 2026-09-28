@@ -1,0 +1,8 @@
+change_type: breaking
+component: agent-mode
+note: "`--agent-mode` now takes precedence over `DASH0_AGENT_MODE`, so `--agent-mode=false` disables agent mode and `DASH0_AGENT_MODE=0` no longer overrides `--agent-mode`."
+issues: [296]
+subtext: |
+  All settings now follow one precedence order: CLI flags, then environment variables, then the profile, then the default.
+  The documentation for connection settings (`api-url`, `otlp-url`, `auth-token`, `dataset`) incorrectly listed environment variables above CLI flags and is now corrected; their behavior is unchanged.
+change_logs: []

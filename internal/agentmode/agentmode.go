@@ -47,9 +47,10 @@ var agentMatchers = []agentMatcher{
 // Init resolves whether agent mode should be active according to the following
 // priority (first match wins):
 //
-//  1. DASH0_AGENT_MODE=0|false  → disabled (overrides everything)
-//  2. --agent-mode flag          → enabled  (passed as flagValue)
-//  3. DASH0_AGENT_MODE=1|true   → enabled
+//  1. --agent-mode flag           → enabled, or disabled with --agent-mode=false
+//     (passed as flagValue; flagSet reports whether the flag was given)
+//  2. DASH0_AGENT_MODE=0|false   → disabled
+//  3. DASH0_AGENT_MODE=1|true    → enabled
 //  4. Any known AI-agent env var → enabled
 //
 // Independently of which path enables agent mode, the environment is
@@ -58,42 +59,26 @@ var agentMatchers = []agentMatcher{
 // active anyway).
 //
 // Call Init once from main, before any output.
-func Init(flagValue bool) {
-	envVal := os.Getenv("DASH0_AGENT_MODE")
-	lower := strings.ToLower(envVal)
-
-	// Explicit disable overrides everything.
-	if lower == "0" || lower == "false" {
-		Enabled = false
-		Detected = ""
-		return
-	}
-
+func Init(flagValue, flagSet bool) {
+	lower := strings.ToLower(os.Getenv("DASH0_AGENT_MODE"))
 	slug := DetectAgentSlug()
 
-	// --agent-mode flag.
-	if flagValue {
+	switch {
+	case flagSet:
+		Enabled = flagValue
+	case lower == "0" || lower == "false":
+		Enabled = false
+	case lower == "1" || lower == "true":
 		Enabled = true
-		Detected = slugOrUnknown(slug)
-		return
+	default:
+		// Auto-detect known AI agent environments.
+		Enabled = slug != ""
 	}
 
-	// Explicit enable via env var.
-	if lower == "1" || lower == "true" {
-		Enabled = true
-		Detected = slugOrUnknown(slug)
-		return
-	}
-
-	// Auto-detect known AI agent environments.
-	if slug != "" {
-		Enabled = true
-		Detected = slug
-		return
-	}
-
-	Enabled = false
 	Detected = ""
+	if Enabled {
+		Detected = slugOrUnknown(slug)
+	}
 }
 
 // DetectAgentSlug scans the environment for known AI-agent markers and

@@ -250,7 +250,7 @@ For the full command reference with detailed flags, output examples, and AI-agen
 
 ### Configuration
 
-The CLI resolves connection settings from profiles stored on disk, [environment variables](#common-settings), and CLI flags, in that order.
+The CLI resolves each connection setting from CLI flags first, then [environment variables](#common-settings), then the profile stored on disk.
 Profiles are the recommended way to manage credentials locally; environment variables are convenient for CI/CD and agentic workflows.
 
 #### Profiles
@@ -342,8 +342,8 @@ When agent mode is active, the CLI:
 - **Skips confirmation prompts** — destructive operations (`delete`, `remove`) proceed without asking, equivalent to `--force`.
 - **Disables colored output** — no ANSI escape codes in any output.
 
-To explicitly disable agent mode (for example, when running inside an agent environment but wanting human-readable output), set `DASH0_AGENT_MODE=0` or `DASH0_AGENT_MODE=false`.
-This overrides all other activation methods.
+To explicitly disable agent mode (for example, when running inside an agent environment but wanting human-readable output), pass `--agent-mode=false`, or set `DASH0_AGENT_MODE=0` or `DASH0_AGENT_MODE=false`.
+The flag overrides the environment variable, and both override auto-detection.
 
 See the [agent mode specification](docs/commands.md#agent-mode) for the full priority order and details.
 

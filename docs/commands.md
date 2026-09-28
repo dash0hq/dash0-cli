@@ -54,8 +54,8 @@ Unlike every other command, their output is always plain markdown, in both human
 Every command that talks to the Dash0 API or OTLP endpoint needs credentials.
 The CLI resolves each individual setting (`api-url`, `otlp-url`, `auth-token`, `dataset`) in this order (first match wins):
 
-1. Environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`)
-2. CLI flags (`--api-url`, `--otlp-url`, `--auth-token` or `--auth-token-file`, `--dataset`)
+1. CLI flags (`--api-url`, `--otlp-url`, `--auth-token` or `--auth-token-file`, `--dataset`)
+2. Environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`)
 3. The selected profile (see below)
 
 Each setting is resolved independently.
@@ -136,8 +136,8 @@ When active, the CLI:
 
 Agent mode is resolved in this priority order (first match wins):
 
-1. `DASH0_AGENT_MODE=0|false` — explicitly disabled, overrides everything.
-2. `--agent-mode` flag — explicitly enabled.
+1. `--agent-mode` flag — explicitly enabled, or explicitly disabled with `--agent-mode=false`.
+2. `DASH0_AGENT_MODE=0|false` — explicitly disabled via environment variable.
 3. `DASH0_AGENT_MODE=1|true` — explicitly enabled via environment variable.
 4. Auto-detection via known AI agent environment variables: `AIDER`, `CLAUDE_CODE`, `CLAUDECODE`, `CLINE`, `CLINE_TASK_ID`, `CODEX`, `CURSOR_AGENT`, `CURSOR_SESSION_ID`, `GITHUB_COPILOT`, `MCP_SESSION_ID`, `OPENAI_CODEX`, `WINDSURF_AGENT`, `WINDSURF_SESSION_ID`.
 

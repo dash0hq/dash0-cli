@@ -27,7 +27,7 @@ description: Use when working with Dash0 observability data or configuration via
 
 ## Prerequisites
 
-Every command that talks to the Dash0 API or OTLP endpoint needs credentials, resolved in this order (first match wins): environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`), CLI flags (`--api-url`, `--otlp-url`, `--auth-token` or `--auth-token-file <path>`, `--dataset`), then the selected profile (`--profile` flag → `DASH0_PROFILE` env var → the active profile on disk). See the `config` and `login` topics for profile management and OAuth authentication.
+Every command that talks to the Dash0 API or OTLP endpoint needs credentials, resolved in this order (first match wins): CLI flags (`--api-url`, `--otlp-url`, `--auth-token` or `--auth-token-file <path>`, `--dataset`), environment variables (`DASH0_API_URL`, `DASH0_OTLP_URL`, `DASH0_AUTH_TOKEN`, `DASH0_DATASET`), then the selected profile (`--profile` flag → `DASH0_PROFILE` env var → the active profile on disk). See the `config` and `login` topics for profile management and OAuth authentication.
 
 ## Global flags
 

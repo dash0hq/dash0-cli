@@ -312,8 +312,8 @@ func main() {
 
 	// Resolve agent mode before any output.
 	// Flags are not yet parsed at this point, so scan os.Args directly.
-	agentModeFlag := hasFlag(os.Args[1:], "--agent-mode")
-	agentmode.Init(agentModeFlag)
+	agentModeFlag, agentModeFlagSet := flagBoolValue(os.Args[1:], "--agent-mode")
+	agentmode.Init(agentModeFlag, agentModeFlagSet)
 
 	// In agent mode, force colors off and install a JSON help function.
 	if agentmode.Enabled {
@@ -391,16 +391,6 @@ func installJSONHelp(cmd *cobra.Command) {
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		_ = help.PrintJSONHelp(os.Stdout, cmd)
 	})
-}
-
-// hasFlag reports whether a boolean flag (e.g. "--agent-mode") is set to a
-// truthy value in args. Recognizes the bareword form and every value form
-// cobra itself accepts: --name, --name=true, --name=1 are truthy;
-// --name=false, --name=0 are false. This is used before cobra has parsed
-// flags, so we scan manually.
-func hasFlag(args []string, name string) bool {
-	v, ok := flagBoolValue(args, name)
-	return ok && v
 }
 
 // flagBoolValue returns (value, explicit) for a boolean flag. explicit is
