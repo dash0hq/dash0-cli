@@ -8,7 +8,7 @@ component: config
 note: "Add the global `--auth-token-file` flag to read the auth token from a file."
 
 # Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
-issues: []
+issues: [299]
 
 # (Optional) One or more lines of additional information to render under the main note.
 # Use pipe (|) for multiline entries.
