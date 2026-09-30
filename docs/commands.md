@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply`, `diff` (experimental) | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -1188,6 +1188,68 @@ Quote the interpolated ref and gate the whole step on the event actually providi
 ```
 
 `fetch-depth: 0` (or a depth covering `github.event.before`) is required on the preceding `actions/checkout` step — a shallow clone makes `<ref>` unresolvable, which `--since` treats as a plain error, not a fallback.
+
+### `diff` (experimental)
+
+Show what `apply` would change, without creating, updating, or deleting anything.
+Unlike `apply --dry-run`, which only validates locally, `diff` queries Dash0 for each document's current state, so it tells creates apart from updates and shows the unified diff for updates.
+Requires the `-X` (or `--experimental`) flag.
+
+```bash
+dash0 -X diff -f <file|directory> [--since <ref>]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Path to a YAML/JSON file, a directory, or `-` for stdin |
+| `--since` | | Also report assets removed from `-f`'s contents since this git ref as would-be-deleted |
+
+`-f` accepts the same input as [`apply`](#apply), and `--since` follows the same detection and ref-resolution rules as [`apply --since`](#apply---since-experimental).
+A `--since` ref that is not an ancestor of `HEAD` prints a warning and still shows the plan, since `diff` never deletes.
+If fetching any document's current state fails, `diff` aborts instead of reporting a partial plan.
+
+The diff compares the current state in Dash0 with the document as `apply` would send it, so it does not include fields the server fills in on write.
+
+Exit codes follow `kubectl diff`, a deliberate exception to the CLI's usual 0/1 convention:
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Nothing would change |
+| `1` | At least one create, update, or deletion is pending |
+| `2` | An error occurred, such as a usage error, a validation failure, an unresolvable `--since` ref, or a failed fetch |
+
+Exit code 1 means "changes pending", not failure, so agents should read the JSON plan on stdout.
+Creates are inferred from a 404 response, so a plan made only of creates can still be produced with an invalid token, while a real `apply` would fail.
+
+Preview a file against Dash0:
+
+```bash
+$ dash0 -X diff -f dashboard.yaml
+--- Dashboard (before)
++++ Dashboard (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Old Dashboard Name
++    name: New Dashboard Name
+```
+
+Assets that do not exist yet, and deletions from `--since`, are listed as one line each:
+
+```bash
+$ dash0 -X diff -f dashboards/ --since HEAD~1
+new.yaml: Dashboard "New Dashboard" (b2c3d4e5-...) would be created
+Dashboard "Old Dashboard" (c3d4e5f6-...) would be deleted
+```
+
+In agent mode the output is an array of `{path, changes: [{op, kind, name, originOrId, since, diff}]}`, where `op` is `create`, `update`, `unchanged`, or `delete`.
+`diff` holds the unified diff for `update`, and `since` is present only for `delete`.
+
+Use it in CI to gate on pending changes:
+
+```bash
+dash0 -X diff -f dashboards/ || [ $? -eq 1 ]
+```
 
 ### Asset YAML formats
 
@@ -3252,7 +3314,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: apply, api, check-rules, config, dashboards, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: apply, diff, api, check-rules, config, dashboards, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

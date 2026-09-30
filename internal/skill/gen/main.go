@@ -52,6 +52,7 @@ type topicSpec struct {
 var topics = []topicSpec{
 	{name: "apply", sections: []string{"apply", "prometheusrule annotation merge"}},
 	{name: "api", sections: []string{"api"}},
+	{name: "diff", sections: []string{"diff"}},
 	{
 		name:            "check-rules",
 		includeQuickRef: true,

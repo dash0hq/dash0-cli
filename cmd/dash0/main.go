@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -74,6 +75,7 @@ func init() {
 
 	// Register subcommands
 	rootCmd.AddCommand(apply.NewApplyCmd())
+	rootCmd.AddCommand(apply.NewDiffCmd())
 	rootCmd.AddCommand(rawapi.NewAPICmd())
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())
@@ -370,6 +372,13 @@ func main() {
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
+		var exitErr *apply.ExitError
+		if errors.As(err, &exitErr) {
+			if exitErr.Err != nil {
+				printError(exitErr.Err)
+			}
+			os.Exit(exitErr.Code)
+		}
 		printError(err)
 		// Show usage only for flag/argument errors, not for runtime errors.
 		// Commands set SilenceUsage = true once past flag validation.

@@ -1,0 +1,9 @@
+change_type: new_component
+component: diff
+note: "Add the experimental `dash0 diff` command to preview what `apply` would change"
+issues: [232]
+subtext: |
+  `dash0 -X diff -f <file|directory>` compares documents with their current state in Dash0, reporting creates and showing a unified diff for updates, without writing anything.
+  `--since <ref>` also reports assets that `apply --since` would delete.
+  Exit codes follow `kubectl diff`: 0 for no changes, 1 for pending changes, 2 for errors.
+change_logs: [user]

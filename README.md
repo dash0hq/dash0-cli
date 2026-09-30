@@ -383,6 +383,12 @@ Sync a directory to match its state as of a git ref, deleting assets removed sin
 dash0 -X apply -f dashboards/ --since HEAD~1 --force
 ```
 
+Preview what `apply` would change against Dash0, without changing anything (experimental; exits 1 when changes are pending):
+
+```bash
+dash0 -X diff -f dashboards/
+```
+
 See [Command Reference](docs/commands.md#apply---since-experimental) for the full `--since` reference, including the ref-resolution edge cases and the GitHub Actions invocation pattern.
 
 **Note:** In Dash0, dashboards, views, synthetic checks and check rules are called "assets", rather than the more common "resources".

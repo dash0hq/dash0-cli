@@ -44,6 +44,8 @@ type dryRunChangeJSON struct {
 	// this is, and that a deletion this consequential was derived from
 	// comparing against a specific git ref, not inferred from -f alone.
 	Since string `json:"since,omitempty"`
+	// Diff is the unified diff of an "update" change (`dash0 diff` only).
+	Diff string `json:"diff,omitempty"`
 }
 
 type dryRunFileJSON struct {

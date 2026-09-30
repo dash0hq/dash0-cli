@@ -176,9 +176,9 @@ type applyResult struct {
 	after  any // asset state after update/create
 }
 
-func runApply(ctx context.Context, flags *applyFlags) error {
-	var documents []assetDocument
-	var fromDirectory bool
+// loadDocumentsAndPlan reads and validates -f's documents and, when --since was
+// passed, computes the deletion plan. Shared by apply and diff.
+func loadDocumentsAndPlan(ctx context.Context, flags *applyFlags) (documents []assetDocument, fromDirectory bool, deletionPlan *deletionPlan, err error) {
 	// targetVanished records that fromDirectory was only a guess (always
 	// true) because the target no longer exists on disk at all, so os.Stat
 	// couldn't say whether it used to be a file or a directory. Once
@@ -187,13 +187,12 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	// single-file target would render like a multi-file directory scan
 	// (grouped by its git-recorded path instead of the literal -f argument).
 	var targetVanished bool
-	var err error
 
 	if flags.File == "-" {
 		// Read from stdin
 		documents, err = readMultiDocumentYAML("-", os.Stdin)
 		if err != nil {
-			return validationError(err.Error())
+			return nil, false, nil, validationError(err.Error())
 		}
 	} else {
 		info, statErr := os.Stat(flags.File)
@@ -209,7 +208,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			fromDirectory = true
 			targetVanished = true
 		case statErr != nil:
-			return fmt.Errorf("failed to read input: %w", statErr)
+			return nil, false, nil, fmt.Errorf("failed to read input: %w", statErr)
 		case info.IsDir():
 			fromDirectory = true
 			documents, err = readDirectory(flags.File)
@@ -220,39 +219,47 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 					// itself survives. Same all-deletions case as above.
 					documents = nil
 				} else {
-					return validationError(err.Error())
+					return nil, false, nil, validationError(err.Error())
 				}
 			}
 		default:
 			documents, err = readMultiDocumentYAML(flags.File, nil)
 			if err != nil {
-				return validationError(err.Error())
+				return nil, false, nil, validationError(err.Error())
 			}
 		}
 	}
 
 	if len(documents) == 0 && !flags.SinceFlagSet {
-		return validationError("no documents found in input")
+		return nil, false, nil, validationError("no documents found in input")
 	}
 
 	validationErrors, validationWarnings := validateDocuments(documents)
 	if len(validationErrors) > 0 {
-		return validationError(validationErrors...)
+		return nil, false, nil, validationError(validationErrors...)
 	}
 	for _, warning := range validationWarnings {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
-	var deletionPlan *deletionPlan
 	if flags.SinceFlagSet {
-		plan, err := computeDeletionPlan(ctx, flags)
-		if err != nil {
-			return err
+		plan, planErr := computeDeletionPlan(ctx, flags)
+		if planErr != nil {
+			return nil, false, nil, planErr
 		}
 		deletionPlan = plan
 		if targetVanished {
 			fromDirectory = plan.targetWasDirectoryAtRef
 		}
+	}
+
+	return documents, fromDirectory, deletionPlan, nil
+}
+
+func runApply(ctx context.Context, flags *applyFlags) error {
+	documents, fromDirectory, deletionPlan, err := loadDocumentsAndPlan(ctx, flags)
+	if err != nil {
+		return err
 	}
 
 	if flags.DryRun {

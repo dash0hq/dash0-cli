@@ -165,6 +165,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | Topic | Covers |
 |-------|--------|
 | `apply` | Create-or-update asset definitions from files, directories, or stdin |
+| `diff` | Preview what `apply` would change against Dash0 (experimental; exit code 1 when changes are pending) |
 | `api` | Raw HTTP passthrough to any Dash0 API endpoint |
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
