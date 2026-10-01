@@ -68,8 +68,8 @@ func newShowCmd() *cobra.Command {
 
 Configuration is resolved in the following order (highest priority first):
 
-  1. Environment variables (DASH0_API_URL, DASH0_OTLP_URL, DASH0_AUTH_TOKEN, DASH0_DATASET)
-  2. CLI flags (--api-url, --otlp-url, --auth-token, --dataset)
+  1. CLI flags (--api-url, --otlp-url, --auth-token or --auth-token-file, --dataset)
+  2. Environment variables (DASH0_API_URL, DASH0_OTLP_URL, DASH0_AUTH_TOKEN, DASH0_DATASET)
   3. Active profile settings
 
 When an environment variable overrides a profile value, config show annotates the field with "(from <VAR> environment variable)".
