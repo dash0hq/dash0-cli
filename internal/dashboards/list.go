@@ -19,8 +19,8 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short: "List dashboards",
-		Long: `List all dashboards in the specified dataset.` + internal.CONFIG_HINT,
+		Short:   "List dashboards",
+		Long:    `List all dashboards in the specified dataset.` + internal.CONFIG_HINT,
 		Example: `  # List dashboards (default: up to 50)
   dash0 dashboards list
 
@@ -109,7 +109,11 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		// Fetch full dashboard details to get display names
 		dashboards := make([]dashboardListItem, 0, len(listItems))
 		for _, item := range listItems {
-			displayName := getDisplayName(ctx, apiClient, item.Id, dataset)
+			displayName, err := getDisplayName(ctx, apiClient, item.Id, dataset)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to resolve dashboard %s: %v\n", item.Id, err)
+				displayName = "<error>"
+			}
 			dashboards = append(dashboards, dashboardListItem{
 				Id:          item.Id,
 				DisplayName: displayName,
@@ -142,14 +146,13 @@ func fetchFullDashboards(
 	return definitions, nil
 }
 
-
 // getDisplayName fetches the full dashboard and extracts spec.display.name
-func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, dataset *string) string {
+func getDisplayName(ctx context.Context, apiClient dash0api.Client, id string, dataset *string) (string, error) {
 	dashboard, err := apiClient.GetDashboard(ctx, id, dataset)
 	if err != nil {
-		return "" // Fall back to empty if we can't fetch
+		return "", err
 	}
-	return dash0api.GetDashboardName(dashboard)
+	return dash0api.GetDashboardName(dashboard), nil
 }
 
 func printDashboardTable(f *output.Formatter, dashboards []dashboardListItem, format output.Format, apiUrl string, dataset *string) error {
