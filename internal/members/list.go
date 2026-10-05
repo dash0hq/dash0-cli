@@ -37,6 +37,7 @@ const (
 var MemberListDefaultColumns = []query.ColumnDef{
 	{Key: "name", Aliases: []string{"member name"}, Header: internal.HEADER_NAME, Width: 30},
 	{Key: "email", Header: internal.HEADER_EMAIL, Width: 40},
+	{Key: "role", Header: internal.HEADER_ROLE, Width: 16},
 	{Key: "id", Aliases: []string{"member id"}, Header: internal.HEADER_ID, Width: 36},
 	{Key: "url", Header: internal.HEADER_URL, Width: 70},
 }
@@ -167,9 +168,14 @@ func MemberValues(m *dash0api.MemberDefinition, apiUrl string) map[string]string
 	if m.Metadata.Labels != nil && m.Metadata.Labels.Dash0Comid != nil {
 		id = *m.Metadata.Labels.Dash0Comid
 	}
+	role := ""
+	if m.Metadata.Labels != nil && m.Metadata.Labels.Dash0Comrole != nil {
+		role = *m.Metadata.Labels.Dash0Comrole
+	}
 	return map[string]string{
 		"name":  name,
 		"email": email,
+		"role":  role,
 		"id":    id,
 		"url":   dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeMember, id, nil),
 	}

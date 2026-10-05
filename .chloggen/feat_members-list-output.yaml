@@ -1,0 +1,5 @@
+change_type: enhancement
+component: members
+note: "Display organization roles in members list and teams list-members output."
+issues: [69]
+subtext: "The role column is blank when the API does not provide a role."

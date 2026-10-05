@@ -29,7 +29,8 @@
         "name": "user-1",
         "labels": {
           "dash0.com/id": "m1-0000-0000-0000-000000000001",
-          "dash0.com/joinedAt": "2025-06-15T10:00:00Z"
+          "dash0.com/joinedAt": "2025-06-15T10:00:00Z",
+          "dash0.com/role": "admin"
         }
       },
       "spec": {
@@ -46,7 +47,8 @@
         "name": "user-2",
         "labels": {
           "dash0.com/id": "m2-0000-0000-0000-000000000002",
-          "dash0.com/joinedAt": "2025-07-01T14:30:00Z"
+          "dash0.com/joinedAt": "2025-07-01T14:30:00Z",
+          "dash0.com/role": "basic_member"
         }
       },
       "spec": {
