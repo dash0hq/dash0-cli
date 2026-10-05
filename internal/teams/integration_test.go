@@ -659,6 +659,9 @@ func TestListTeamMembers_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "NAME")
 	assert.Contains(t, output, "EMAIL")
+	assert.Contains(t, output, "ROLE")
+	assert.Contains(t, output, "admin")
+	assert.Contains(t, output, "basic_member")
 	assert.Contains(t, output, "Alice Smith")
 	assert.Contains(t, output, "Bob Jones")
 }
@@ -708,8 +711,9 @@ func TestListTeamMembers_CSV(t *testing.T) {
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	require.GreaterOrEqual(t, len(lines), 3) // header + 2 members
-	assert.Equal(t, "name,email,id,url", lines[0])
-	assert.Contains(t, lines[1], "Alice Smith")
+	assert.Equal(t, "name,email,role,id,url", lines[0])
+	assert.Contains(t, lines[1], "Alice Smith,alice@example.com,admin,")
+	assert.Contains(t, lines[2], "Bob Jones,bob@example.com,basic_member,")
 }
 
 func TestRemoveMembers_Success(t *testing.T) {

@@ -4,7 +4,8 @@
 
 ### `members list` (experimental)
 
-List all members of the organization.
+List all members of the organization, including their organization role.
+The role column is blank when the API does not provide a role.
 
 ```bash
 dash0 -X members list [-o <format>] [--skip-header] [--column <col>]
@@ -16,13 +17,13 @@ Example:
 
 ```bash
 $ dash0 -X members list
-NAME              EMAIL                  ID
-Alice Smith       alice@example.com      m1-0000-0000-0000-000000000001
-Bob Jones         bob@example.com        m2-0000-0000-0000-000000000002
+NAME              EMAIL                  ROLE             ID                              URL
+Alice Smith       alice@example.com      admin            m1-0000-0000-0000-000000000001   ...
+Bob Jones         bob@example.com        basic_member     m2-0000-0000-0000-000000000002   ...
 ...
 ```
 
-Column aliases: `name` / `member name`, `email`, `id` / `member id`.
+Column aliases: `name` / `member name`, `email`, `role`, `id` / `member id`, `url`.
 
 Aliases: `ls`
 
