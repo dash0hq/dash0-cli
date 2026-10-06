@@ -214,7 +214,8 @@ Log in to a Dash0 region different from the active profile:
 dash0 login --profile eu --api-url https://api.eu-west-1.aws.dash0.com
 ```
 
-The OAuth client registration (RFC 7591) is cached per API URL in `~/.dash0/oauth-clients.json`, so re-running `login` against the same Dash0 region does not re-register a new client every time.
+Against Dash0-hosted API URLs (`*.dash0.com`, `*.dash0-dev.com`), `login` uses the OAuth client Dash0 provisions for the CLI, so the browser consent screen shows it as an official Dash0 application.
+Against any other API URL, such as a local stack, the CLI registers its own OAuth client (RFC 7591) and caches the registration per API URL in `~/.dash0/oauth-clients.json`, so re-running `login` does not re-register a new client every time.
 The cache is invalidated automatically when the server reports `invalid_client` during token exchange.
 
 OAuth access tokens are organization-scoped: each token is bound to whichever Dash0 organization the user picks during the browser consent step.
