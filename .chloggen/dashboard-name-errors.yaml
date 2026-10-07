@@ -1,0 +1,5 @@
+change_type: bug_fix
+component: dashboards
+note: Show `<name>` placeholders in table and wide output, empty names in CSV, and stderr warnings when individual dashboard name lookups fail.
+issues: [286]
+subtext: Other rows remain visible and name lookup failures do not change the exit status. JSON and YAML exports continue to return fetch errors.
