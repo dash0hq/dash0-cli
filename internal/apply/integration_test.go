@@ -421,6 +421,52 @@ spec:
 	assert.NotContains(t, item, "true")
 }
 
+func TestApply_SyntheticCheck_UnquotedYLabelKey(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "syntheticcheck.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: SyntheticCheck
+metadata:
+  name: test-synthetic-check
+spec:
+  display:
+    name: Test Synthetic Check
+  labels:
+    y: a
+  http:
+    url: https://example.com/health
+    method: GET
+  scheduling:
+    interval: 1m
+    timeout: 30s
+  locations:
+    - eu-west-1
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, syntheticCheckIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
+	})
+	server.WithSyntheticChecksCreate(testutil.FixtureSyntheticChecksImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathSyntheticChecks)
+	require.NotNil(t, createReq, "expected a create request for synthetic check")
+
+	var check dash0api.SyntheticCheckDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &check))
+	require.NotNil(t, check.Spec.Labels)
+	assert.Equal(t, map[string]string{"y": "a"}, *check.Spec.Labels)
+}
+
 func TestApply_MultipleDocuments(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
