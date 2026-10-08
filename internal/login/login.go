@@ -696,7 +696,7 @@ func ensureRegisteredClient(ctx context.Context, oauthClient dash0api.OAuthClien
 		}
 	}
 
-	authMethod := dash0api.None
+	authMethod := dash0api.OAuthTokenEndpointAuthMethodNone
 	clientURI := "https://github.com/dash0hq/dash0-cli"
 	resp, err := oauthClient.RegisterClient(ctx, &dash0api.OAuthClientRegistrationRequest{
 		ClientName:              clientName,
