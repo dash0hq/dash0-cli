@@ -14,5 +14,5 @@ issues: [306]
 # Use pipe (|) for multiline entries.
 subtext: |
   YAML generators such as PyYAML write these words without quotes.
-  Values keep their meaning, so `enabled: yes` is still `true`.
+  Values are not changed by this fix.
   This affects `apply` and every `create` and `update` command.

@@ -64,6 +64,7 @@ All lint issues must be resolved before merging.
 - Decode YAML with `dash0yaml.Unmarshal` (`github.com/dash0hq/dash0-api-client-go/yaml`), never with `sigs.k8s.io/yaml`'s `Unmarshal`.
   `sigs.k8s.io/yaml` reads plain `y`, `n`, `yes`, `no`, `on`, and `off` keys as booleans, so a dashboard grid item's `y: 0` would reach the API as `"true": 0`.
   `gopkg.in/yaml.v3` is not a replacement: it ignores the `json:` struct tags of the API types.
+  `make lint` enforces this rule outside test files.
 - Never introduce test-specific behavior (env var checks, test flags, etc.) in production code.
   Tests must exercise the real code paths.
   Use proper configuration (profiles via `DASH0_CONFIG_DIR`, environment variables, or CLI flags) to set up the state tests need.

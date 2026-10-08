@@ -153,8 +153,20 @@ id: "123"
 }
 
 func TestReadDefinition_KeepsYAML11BoolKeysAsStrings(t *testing.T) {
-	var got map[string]interface{}
-	err := ReadDefinition("-", &got, strings.NewReader("x: 0\ny: 0\nenabled: yes\n"))
-	assert.NoError(t, err)
-	assert.Equal(t, map[string]interface{}{"x": float64(0), "y": float64(0), "enabled": true}, got)
+	content := "x: 0\ny: 0\nenabled: yes\n"
+	want := map[string]interface{}{"x": float64(0), "y": float64(0), "enabled": true}
+
+	for _, name := range []string{"def.yaml", "def.yml", "def", "-"} {
+		t.Run(name, func(t *testing.T) {
+			path, stdin := name, strings.NewReader(content)
+			if name != "-" {
+				path = filepath.Join(t.TempDir(), name)
+				assert.NoError(t, os.WriteFile(path, []byte(content), 0644))
+			}
+
+			var got map[string]interface{}
+			assert.NoError(t, ReadDefinition(path, &got, stdin))
+			assert.Equal(t, want, got)
+		})
+	}
 }
