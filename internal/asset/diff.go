@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/muesli/termenv"
 	"github.com/pmezard/go-difflib/difflib"
@@ -25,21 +26,21 @@ func marshalForDiff(asset any) (string, error) {
 	switch asset.(type) {
 	case *dash0api.DashboardDefinition:
 		var d dash0api.DashboardDefinition
-		if err := sigsyaml.Unmarshal(jsonBytes, &d); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &d); err != nil {
 			return "", fmt.Errorf("failed to unmarshal dashboard: %w", err)
 		}
 		dash0api.StripDashboardServerFields(&d)
 		stripped = &d
 	case *dash0api.PrometheusAlertRule:
 		var r dash0api.PrometheusAlertRule
-		if err := sigsyaml.Unmarshal(jsonBytes, &r); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &r); err != nil {
 			return "", fmt.Errorf("failed to unmarshal check rule: %w", err)
 		}
 		dash0api.StripCheckRuleServerFields(&r)
 		stripped = &r
 	case *dash0api.ViewDefinition:
 		var v dash0api.ViewDefinition
-		if err := sigsyaml.Unmarshal(jsonBytes, &v); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &v); err != nil {
 			return "", fmt.Errorf("failed to unmarshal view: %w", err)
 		}
 		dash0api.StripViewServerFields(&v)
@@ -47,7 +48,7 @@ func marshalForDiff(asset any) (string, error) {
 		stripped = &v
 	case *dash0api.SyntheticCheckDefinition:
 		var c dash0api.SyntheticCheckDefinition
-		if err := sigsyaml.Unmarshal(jsonBytes, &c); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &c); err != nil {
 			return "", fmt.Errorf("failed to unmarshal synthetic check: %w", err)
 		}
 		dash0api.StripSyntheticCheckServerFields(&c)
@@ -55,14 +56,14 @@ func marshalForDiff(asset any) (string, error) {
 		stripped = &c
 	case *dash0api.SpamFilter:
 		var s dash0api.SpamFilter
-		if err := sigsyaml.Unmarshal(jsonBytes, &s); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &s); err != nil {
 			return "", fmt.Errorf("failed to unmarshal spam filter: %w", err)
 		}
 		dash0api.StripSpamFilterServerFields(&s)
 		stripped = &s
 	case *dash0api.SpamFilterV1Alpha2:
 		var s dash0api.SpamFilterV1Alpha2
-		if err := sigsyaml.Unmarshal(jsonBytes, &s); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &s); err != nil {
 			return "", fmt.Errorf("failed to unmarshal spam filter: %w", err)
 		}
 		// No v1alpha2-specific Strip helper exists yet; the v1alpha1 helper
@@ -72,28 +73,28 @@ func marshalForDiff(asset any) (string, error) {
 		stripped = &s
 	case *dash0api.NotificationChannelDefinition:
 		var c dash0api.NotificationChannelDefinition
-		if err := sigsyaml.Unmarshal(jsonBytes, &c); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &c); err != nil {
 			return "", fmt.Errorf("failed to unmarshal notification channel: %w", err)
 		}
 		dash0api.StripNotificationChannelServerFields(&c)
 		stripped = &c
 	case *dash0api.RecordingRule:
 		var r dash0api.RecordingRule
-		if err := sigsyaml.Unmarshal(jsonBytes, &r); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &r); err != nil {
 			return "", fmt.Errorf("failed to unmarshal recording rule: %w", err)
 		}
 		dash0api.StripRecordingRuleServerFields(&r)
 		stripped = &r
 	case *dash0api.TeamDefinitionV1Alpha1:
 		var t dash0api.TeamDefinitionV1Alpha1
-		if err := sigsyaml.Unmarshal(jsonBytes, &t); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &t); err != nil {
 			return "", fmt.Errorf("failed to unmarshal team: %w", err)
 		}
 		dash0api.StripTeamServerFields(&t)
 		stripped = &t
 	case *dash0api.SloDefinition:
 		var s dash0api.SloDefinition
-		if err := sigsyaml.Unmarshal(jsonBytes, &s); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &s); err != nil {
 			return "", fmt.Errorf("failed to unmarshal SLO: %w", err)
 		}
 		// Without this the SLO fell through to the default branch and neither
@@ -108,7 +109,7 @@ func marshalForDiff(asset any) (string, error) {
 		stripped = &s
 	case *dash0api.TimeSeriesAggregationDefinition:
 		var a dash0api.TimeSeriesAggregationDefinition
-		if err := sigsyaml.Unmarshal(jsonBytes, &a); err != nil {
+		if err := dash0yaml.Unmarshal(jsonBytes, &a); err != nil {
 			return "", fmt.Errorf("failed to unmarshal time series aggregation: %w", err)
 		}
 		// Without this the diff churns on dash0.com/version, which the server

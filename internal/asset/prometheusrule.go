@@ -7,7 +7,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"gopkg.in/yaml.v3"
-	sigsyaml "sigs.k8s.io/yaml"
 )
 
 // ParseCheckRules parses a CheckRule or PrometheusRule CRD document into one or
@@ -53,7 +52,7 @@ func PrometheusRuleHasRecordingRule(data []byte) (bool, error) {
 	}
 
 	var crd dash0api.RecordingRule
-	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
+	if err := dash0yaml.Unmarshal(data, &crd); err != nil {
 		return false, fmt.Errorf("failed to parse PrometheusRule: %w", err)
 	}
 	return RecordingOnlyPrometheusRule(&crd) != nil, nil

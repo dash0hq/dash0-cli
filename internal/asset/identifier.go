@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	sigsyaml "sigs.k8s.io/yaml"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 )
 
 // PrometheusAlertName identifies a single alerting rule inside a PrometheusRule
@@ -56,7 +56,7 @@ type identifierProbe struct {
 // hard-fail. Only SLOs, teams, and spam filters genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
-	if err := sigsyaml.Unmarshal(data, &probe); err != nil {
+	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
 		return "", fmt.Errorf("failed to extract identifier: %w", err)
 	}
 
