@@ -8,7 +8,7 @@ component: apply
 note: "Keep unquoted `y`, `n`, `yes`, `no`, `on`, and `off` keys as strings in YAML input, so a dashboard grid item's `y` key is no longer sent as `\"true\"`."
 
 # Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
-issues: []
+issues: [306]
 
 # (Optional) One or more lines of additional information to render under the main note.
 # Use pipe (|) for multiline entries.
