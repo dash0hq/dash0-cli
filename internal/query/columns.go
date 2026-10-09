@@ -25,10 +25,10 @@ type ColumnSpec struct {
 
 // ColumnDef defines a single output column.
 type ColumnDef struct {
-	Key     string              // canonical attribute key, e.g. "otel.log.time"
-	Aliases []string            // short aliases, e.g. ["timestamp", "time"]; case-insensitive
-	Header  string              // table header, e.g. "TIMESTAMP"
-	Width   int                 // max width for table (upper bound); 0 = unlimited (last col)
+	Key     string                   // canonical attribute key, e.g. "otel.log.time"
+	Aliases []string                 // short aliases, e.g. ["timestamp", "time"]; case-insensitive
+	Header  string                   // table header, e.g. "TIMESTAMP"
+	Width   int                      // max width for table (upper bound); 0 = unlimited
 	ColorFn func(string, int) string // optional color+pad formatter: (value, width) → styled string
 }
 
@@ -78,7 +78,7 @@ func ResolveColumns(specs []ColumnSpec, defaults []ColumnDef) []ColumnDef {
 }
 
 // widthForHeader returns a width that is at least as wide as the header text.
-// A width of 0 means unlimited (last column) and is never adjusted.
+// A width of 0 means unlimited and is never adjusted.
 func widthForHeader(header string, width int) int {
 	if width > 0 && len(header) > width {
 		return len(header)
@@ -125,7 +125,7 @@ func ValidateColumnFormat(columns []string, outputFormat string) error {
 // an upper bound), and renders the complete table. For each non-zero-width
 // column, the effective width is min(maxWidth, max(headerLen, maxValueLen)).
 // When skipHeader is true, header length is excluded from the computation.
-// Width 0 (unlimited, typically the last column) stays unlimited.
+// Width 0 fits the full header and values without truncation.
 func RenderTable(w io.Writer, cols []ColumnDef, rows []map[string]string, skipHeader bool) {
 	effectiveWidths := computeEffectiveWidths(cols, rows, skipHeader)
 
@@ -175,21 +175,20 @@ func RenderTable(w io.Writer, cols []ColumnDef, rows []map[string]string, skipHe
 func computeEffectiveWidths(cols []ColumnDef, rows []map[string]string, skipHeader bool) []int {
 	widths := make([]int, len(cols))
 	for i, col := range cols {
-		if col.Width == 0 {
-			continue
-		}
 		var ew int
 		if !skipHeader {
 			ew = len(col.Header)
 		}
 		for _, row := range rows {
 			val := row[col.Key]
-			truncated := output.Truncate(val, col.Width)
-			if len(truncated) > ew {
-				ew = len(truncated)
+			if col.Width > 0 {
+				val = output.Truncate(val, col.Width)
+			}
+			if len(val) > ew {
+				ew = len(val)
 			}
 		}
-		if ew > col.Width {
+		if col.Width > 0 && ew > col.Width {
 			ew = col.Width
 		}
 		widths[i] = ew
