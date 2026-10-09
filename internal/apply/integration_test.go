@@ -360,6 +360,113 @@ spec:
 	assert.Nil(t, dashboard.Metadata.Version)
 }
 
+func TestApply_Dashboard_UnquotedYGridKey(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: Test Dashboard
+  dash0Extensions:
+    id: existing-dashboard-id
+spec:
+  display:
+    name: Test Dashboard
+  layouts:
+    - kind: Grid
+      spec:
+        items:
+          - content:
+              $ref: '#/spec/panels/p1'
+            x: 0
+            y: 3
+            width: 4
+            height: 4
+  panels: {}
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/existing-dashboard-id", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDashboardsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	updateReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards)
+	require.NotNil(t, updateReq, "expected an update request for dashboard")
+
+	var body struct {
+		Spec struct {
+			Layouts []struct {
+				Spec struct {
+					Items []map[string]interface{} `json:"items"`
+				} `json:"spec"`
+			} `json:"layouts"`
+		} `json:"spec"`
+	}
+	require.NoError(t, json.Unmarshal(updateReq.Body, &body))
+	require.Len(t, body.Spec.Layouts, 1)
+	require.Len(t, body.Spec.Layouts[0].Spec.Items, 1)
+	item := body.Spec.Layouts[0].Spec.Items[0]
+	assert.Equal(t, float64(3), item["y"])
+	assert.NotContains(t, item, "true")
+}
+
+func TestApply_SyntheticCheck_UnquotedYLabelKey(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "syntheticcheck.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: SyntheticCheck
+metadata:
+  name: test-synthetic-check
+spec:
+  display:
+    name: Test Synthetic Check
+  labels:
+    y: a
+  http:
+    url: https://example.com/health
+    method: GET
+  scheduling:
+    interval: 1m
+    timeout: 30s
+  locations:
+    - eu-west-1
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, syntheticCheckIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
+	})
+	server.WithSyntheticChecksCreate(testutil.FixtureSyntheticChecksImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr)
+
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathSyntheticChecks)
+	require.NotNil(t, createReq, "expected a create request for synthetic check")
+
+	var check dash0api.SyntheticCheckDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &check))
+	require.NotNil(t, check.Spec.Labels)
+	assert.Equal(t, map[string]string{"y": "a"}, *check.Spec.Labels)
+}
+
 func TestApply_MultipleDocuments(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

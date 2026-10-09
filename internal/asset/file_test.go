@@ -151,3 +151,22 @@ id: "123"
 	assert.Equal(t, "test-dashboard", result["name"])
 	assert.Equal(t, "123", result["id"])
 }
+
+func TestReadDefinition_YAML11BoolKeysStayStringsAndValuesStayBools(t *testing.T) {
+	content := "x: 0\ny: 0\nenabled: yes\n"
+	want := map[string]interface{}{"x": float64(0), "y": float64(0), "enabled": true}
+
+	for _, name := range []string{"def.yaml", "def.yml", "def", "-"} {
+		t.Run(name, func(t *testing.T) {
+			path, stdin := name, strings.NewReader(content)
+			if name != "-" {
+				path = filepath.Join(t.TempDir(), name)
+				assert.NoError(t, os.WriteFile(path, []byte(content), 0644))
+			}
+
+			var got map[string]interface{}
+			assert.NoError(t, ReadDefinition(path, &got, stdin))
+			assert.Equal(t, want, got)
+		})
+	}
+}

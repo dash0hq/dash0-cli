@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"sigs.k8s.io/yaml"
 )
 
@@ -52,7 +53,7 @@ func ReadDefinitionFile(path string, target interface{}) error {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".yaml", ".yml":
-		if err := yaml.Unmarshal(data, target); err != nil {
+		if err := dash0yaml.Unmarshal(data, target); err != nil {
 			return fmt.Errorf("failed to parse YAML from %s: %w", path, err)
 		}
 	case ".json":
@@ -61,7 +62,7 @@ func ReadDefinitionFile(path string, target interface{}) error {
 		}
 	default:
 		// Try YAML first, then JSON
-		if err := yaml.Unmarshal(data, target); err != nil {
+		if err := dash0yaml.Unmarshal(data, target); err != nil {
 			if jsonErr := json.Unmarshal(data, target); jsonErr != nil {
 				return fmt.Errorf("failed to parse file %s (tried YAML and JSON): yaml error: %v, json error: %v", path, err, jsonErr)
 			}
@@ -84,7 +85,7 @@ func readFromStdin(stdin io.Reader, target interface{}) error {
 	}
 
 	// Try YAML first, then JSON
-	if err := yaml.Unmarshal(data, target); err != nil {
+	if err := dash0yaml.Unmarshal(data, target); err != nil {
 		if jsonErr := json.Unmarshal(data, target); jsonErr != nil {
 			return fmt.Errorf("failed to parse stdin (tried YAML and JSON): yaml error: %v, json error: %v", err, jsonErr)
 		}

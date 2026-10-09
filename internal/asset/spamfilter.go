@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	sigsyaml "sigs.k8s.io/yaml"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 )
 
 // SpamFilterSupportedAPIVersions lists the spam filter apiVersion values the
@@ -26,7 +26,7 @@ func DetectSpamFilterAPIVersion(data []byte) (string, error) {
 	var disc struct {
 		ApiVersion string `json:"apiVersion"`
 	}
-	if err := sigsyaml.Unmarshal(data, &disc); err != nil {
+	if err := dash0yaml.Unmarshal(data, &disc); err != nil {
 		return "", fmt.Errorf("failed to detect spam filter apiVersion: %w", err)
 	}
 	normalized, ok := dash0api.NormalizeDash0ApiVersion(disc.ApiVersion)
@@ -75,7 +75,7 @@ func DetectSpamFilterAPIVersion(data []byte) (string, error) {
 // label is the only identifier that never gets reassigned.
 func SpamFilterUsesOrigin(data []byte) (bool, error) {
 	var filter dash0api.SpamFilter
-	if err := sigsyaml.Unmarshal(data, &filter); err != nil {
+	if err := dash0yaml.Unmarshal(data, &filter); err != nil {
 		return false, fmt.Errorf("failed to decode Dash0SpamFilter: %w", err)
 	}
 	return filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil && *filter.Metadata.Labels.Dash0Comorigin != "", nil

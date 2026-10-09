@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	sigsyaml "sigs.k8s.io/yaml"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 )
 
 // SLOUsesOrigin reports whether an SLO document carries a non-empty
@@ -22,7 +22,7 @@ import (
 // only identifier the server never reassigns.
 func SLOUsesOrigin(data []byte) (bool, error) {
 	var slo dash0api.SloDefinition
-	if err := sigsyaml.Unmarshal(data, &slo); err != nil {
+	if err := dash0yaml.Unmarshal(data, &slo); err != nil {
 		return false, fmt.Errorf("failed to decode SLO: %w", err)
 	}
 	return dash0api.GetSLOOrigin(&slo) != "", nil

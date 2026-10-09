@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/asset"
-	sigsyaml "sigs.k8s.io/yaml"
 )
 
 // detectAPIVersion is a local alias for asset.DetectSpamFilterAPIVersion.
@@ -132,7 +132,7 @@ func objectFilterCount(obj dash0api.SpamFilterObject) int {
 // malformed v1alpha1 document from a version-mismatch.
 func decodeV1Alpha1(data []byte) (*dash0api.SpamFilter, error) {
 	var filter dash0api.SpamFilter
-	if err := sigsyaml.Unmarshal(data, &filter); err != nil {
+	if err := dash0yaml.Unmarshal(data, &filter); err != nil {
 		return nil, fmt.Errorf("failed to parse v1alpha1 spam filter: %w", err)
 	}
 	return &filter, nil
@@ -142,9 +142,8 @@ func decodeV1Alpha1(data []byte) (*dash0api.SpamFilter, error) {
 // type. Same error-tagging rationale as decodeV1Alpha1.
 func decodeV1Alpha2(data []byte) (*dash0api.SpamFilterV1Alpha2, error) {
 	var filter dash0api.SpamFilterV1Alpha2
-	if err := sigsyaml.Unmarshal(data, &filter); err != nil {
+	if err := dash0yaml.Unmarshal(data, &filter); err != nil {
 		return nil, fmt.Errorf("failed to parse v1alpha2 spam filter: %w", err)
 	}
 	return &filter, nil
 }
-

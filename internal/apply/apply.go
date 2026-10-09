@@ -20,7 +20,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
-	sigsyaml "sigs.k8s.io/yaml"
 )
 
 // Flags for the apply command
@@ -361,7 +360,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			// usual. Parse errors are already caught during metadata extraction in
 			// readMultiDocumentYAML.
 			var channel dash0api.NotificationChannelDefinition
-			if err := sigsyaml.Unmarshal(doc.raw, &channel); err == nil {
+			if err := dash0yaml.Unmarshal(doc.raw, &channel); err == nil {
 				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
 					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
 				}
@@ -421,7 +420,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 	switch normalizeKind(kind) {
 	case "dashboard":
 		var dashboard dash0api.DashboardDefinition
-		if err := sigsyaml.Unmarshal(data, &dashboard); err != nil {
+		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetDashboardName(&dashboard)
@@ -432,7 +431,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "checkrule":
 		var rule dash0api.PrometheusAlertRule
-		if err := sigsyaml.Unmarshal(data, &rule); err != nil {
+		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetCheckRuleName(&rule)
@@ -440,7 +439,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "view":
 		var view dash0api.ViewDefinition
-		if err := sigsyaml.Unmarshal(data, &view); err != nil {
+		if err := dash0yaml.Unmarshal(data, &view); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetViewName(&view)
@@ -448,7 +447,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
-		if err := sigsyaml.Unmarshal(data, &check); err != nil {
+		if err := dash0yaml.Unmarshal(data, &check); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSyntheticCheckName(&check)
@@ -456,7 +455,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "slo":
 		var slo dash0api.SloDefinition
-		if err := sigsyaml.Unmarshal(data, &slo); err != nil {
+		if err := dash0yaml.Unmarshal(data, &slo); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSLOName(&slo)
@@ -471,7 +470,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		var partial struct {
 			Metadata dash0api.PrometheusRulesMetadata `json:"metadata"`
 		}
-		if err := sigsyaml.Unmarshal(data, &partial); err != nil {
+		if err := dash0yaml.Unmarshal(data, &partial); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = partial.Metadata.Name
@@ -479,7 +478,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "persesdashboard":
 		var perses dash0api.PersesDashboard
-		if err := sigsyaml.Unmarshal(data, &perses); err != nil {
+		if err := dash0yaml.Unmarshal(data, &perses); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetPersesDashboardName(&perses)
@@ -491,7 +490,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// peek regardless of the document's apiVersion. The apiVersion-aware
 		// dispatch happens in applyDocument.
 		var filter dash0api.SpamFilter
-		if err := sigsyaml.Unmarshal(data, &filter); err != nil {
+		if err := dash0yaml.Unmarshal(data, &filter); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSpamFilterName(&filter)
@@ -499,7 +498,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "notificationchannel":
 		var channel dash0api.NotificationChannelDefinition
-		if err := sigsyaml.Unmarshal(data, &channel); err != nil {
+		if err := dash0yaml.Unmarshal(data, &channel); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetNotificationChannelName(&channel)
@@ -513,7 +512,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "timeseriesaggregation":
 		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := sigsyaml.Unmarshal(data, &aggregation); err != nil {
+		if err := dash0yaml.Unmarshal(data, &aggregation); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetTimeSeriesAggregationName(&aggregation)
@@ -524,7 +523,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
-		if err := sigsyaml.Unmarshal(data, &team); err != nil {
+		if err := dash0yaml.Unmarshal(data, &team); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetTeamDisplayName(&team)
@@ -539,7 +538,7 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 
 	default:
 		var raw map[string]any
-		if err := sigsyaml.Unmarshal(data, &raw); err != nil {
+		if err := dash0yaml.Unmarshal(data, &raw); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = yamlStringFromMap(raw, "metadata", "name")
@@ -759,7 +758,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &check); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &check); err != nil {
 			return nil, fmt.Errorf("failed to parse SyntheticCheck: %w", err)
 		}
 		result, err := asset.ImportSyntheticCheck(ctx, apiClient, &check, dataset)
@@ -773,7 +772,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "slo":
 		var slo dash0api.SloDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &slo); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &slo); err != nil {
 			return nil, fmt.Errorf("failed to parse SLO: %w", err)
 		}
 		result, err := asset.ImportSLO(ctx, apiClient, &slo, dataset)
@@ -787,7 +786,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "view":
 		var view dash0api.ViewDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &view); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &view); err != nil {
 			return nil, fmt.Errorf("failed to parse View: %w", err)
 		}
 		result, err := asset.ImportView(ctx, apiClient, &view, dataset)
@@ -804,7 +803,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "notificationchannel":
 		var channel dash0api.NotificationChannelDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &channel); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &channel); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0NotificationChannel: %w", err)
 		}
 		result, err := asset.ImportNotificationChannel(ctx, apiClient, &channel)
@@ -818,7 +817,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "timeseriesaggregation":
 		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := sigsyaml.Unmarshal(doc.raw, &aggregation); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &aggregation); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0TimeSeriesAggregation: %w", err)
 		}
 		result, err := asset.ImportTimeSeriesAggregation(ctx, apiClient, &aggregation, dataset)
@@ -837,7 +836,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
-		if err := sigsyaml.Unmarshal(doc.raw, &team); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &team); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0Team: %w", err)
 		}
 		result, err := asset.ImportTeam(ctx, apiClient, &team)
@@ -932,7 +931,7 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc ass
 // captures both Alert and Record per rule).
 func parsePrometheusRuleCRD(data []byte) (*dash0api.RecordingRule, error) {
 	var crd dash0api.RecordingRule
-	if err := sigsyaml.Unmarshal(data, &crd); err != nil {
+	if err := dash0yaml.Unmarshal(data, &crd); err != nil {
 		return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
 	}
 	return &crd, nil
@@ -971,7 +970,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 	switch apiVersion {
 	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
 		var filter dash0api.SpamFilter
-		if err := sigsyaml.Unmarshal(doc.raw, &filter); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)
 		}
 		result, importErr := asset.ImportSpamFilter(ctx, apiClient, &filter, dataset)
@@ -984,7 +983,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 	case string(dash0api.V1alpha2):
 		var filter dash0api.SpamFilterV1Alpha2
-		if err := sigsyaml.Unmarshal(doc.raw, &filter); err != nil {
+		if err := dash0yaml.Unmarshal(doc.raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)
 		}
 		result, importErr := asset.ImportSpamFilterV1Alpha2(ctx, apiClient, &filter, dataset)

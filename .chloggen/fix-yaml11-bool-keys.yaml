@@ -1,0 +1,18 @@
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: bug_fix
+
+# The name of the component, or a single word describing the area of concern, (e.g. dashboards, config, apply)
+component: apply
+
+# A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: "Keep unquoted `y`, `n`, `yes`, `no`, `on`, and `off` keys as strings in YAML input, so a dashboard grid item's `y` key is no longer sent as `\"true\"`."
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: [306]
+
+# (Optional) One or more lines of additional information to render under the main note.
+# Use pipe (|) for multiline entries.
+subtext: |
+  YAML generators such as PyYAML write these words without quotes.
+  Values are not changed by this fix.
+  This affects `apply` and every `create` and `update` command.

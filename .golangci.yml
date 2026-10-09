@@ -1,0 +1,17 @@
+linters:
+  enable:
+    - forbidigo
+
+linters-settings:
+  forbidigo:
+    analyze-types: true
+    forbid:
+      - p: ^yaml\.Unmarshal$
+        pkg: ^sigs\.k8s\.io/yaml$
+        msg: "use dash0yaml.Unmarshal: sigs.k8s.io/yaml reads plain y/n/yes/no/on/off keys as booleans (see docs/code-style.md)"
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - forbidigo
