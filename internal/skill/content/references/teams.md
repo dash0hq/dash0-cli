@@ -199,7 +199,7 @@ Alice Smith       alice@example.com      m1-0000-0000-0000-000000000001
 Bob Jones         bob@example.com        m2-0000-0000-0000-000000000002
 ```
 
-Column aliases are the same as for `members list`: `name` / `member name`, `email`, `id` / `member id`.
+Column aliases: `name` / `member name`, `email`, `id` / `member id`.
 
 ### `teams add-members` (experimental)
 

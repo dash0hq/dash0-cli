@@ -37,6 +37,7 @@ const (
 var MemberListDefaultColumns = []query.ColumnDef{
 	{Key: "name", Aliases: []string{"member name"}, Header: internal.HEADER_NAME, Width: 30},
 	{Key: "email", Header: internal.HEADER_EMAIL, Width: 40},
+	{Key: "role", Header: internal.HEADER_ROLE, Width: 0},
 	{Key: "id", Aliases: []string{"member id"}, Header: internal.HEADER_ID, Width: 36},
 	{Key: "url", Header: internal.HEADER_URL, Width: 70},
 }
@@ -66,7 +67,7 @@ func newListCmd() *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "[experimental] List organization members",
-		Long:    `List all members of your Dash0 organization.` + internal.CONFIG_HINT,
+		Long:    `List all members of your Dash0 organization, including their organization role. The role column is blank when the API does not provide a role.` + internal.CONFIG_HINT,
 		Example: `  # List all members
   dash0 --experimental members list
 
@@ -76,8 +77,8 @@ func newListCmd() *cobra.Command {
   # Output as CSV
   dash0 --experimental members list -o csv
 
-  # Show only specific columns
-  dash0 --experimental members list --column name --column email`,
+  # Show names, email addresses, and organization roles
+  dash0 --experimental members list --column name --column email --column role`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {
@@ -164,12 +165,19 @@ func MemberValues(m *dash0api.MemberDefinition, apiUrl string) map[string]string
 		email = *m.Spec.Display.Email
 	}
 	id := ""
-	if m.Metadata.Labels != nil && m.Metadata.Labels.Dash0Comid != nil {
-		id = *m.Metadata.Labels.Dash0Comid
+	role := ""
+	if labels := m.Metadata.Labels; labels != nil {
+		if labels.Dash0Comid != nil {
+			id = *labels.Dash0Comid
+		}
+		if labels.Dash0Comrole != nil {
+			role = *labels.Dash0Comrole
+		}
 	}
 	return map[string]string{
 		"name":  name,
 		"email": email,
+		"role":  role,
 		"id":    id,
 		"url":   dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeMember, id, nil),
 	}
