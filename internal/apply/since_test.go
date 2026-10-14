@@ -814,27 +814,3 @@ func TestComputeDeletionPlan_SparseCheckoutRefuses(t *testing.T) {
 	assert.Contains(t, err.Error(), "sparse checkout")
 	assert.Contains(t, err.Error(), "\nHint:")
 }
-
-func TestSkipDatasetDeletions(t *testing.T) {
-	before := gitutil.Snapshot{NoIdentifier: map[string]gitutil.NoIdentifierDoc{
-		"slugless.yaml": {Kind: "dataset", FilePath: "slugless.yaml"},
-		"other.yaml":    {Kind: "view", FilePath: "other.yaml"},
-	}}
-	plan := gitutil.DeletionPlan{
-		ByIdentifier: []gitutil.Deletion{
-			{Kind: "dashboard", Identifier: "dash-a"},
-			{Kind: "dataset", Identifier: "staging"},
-		},
-		NoIdentifier: []string{"other.yaml", "slugless.yaml"},
-	}
-
-	var got gitutil.DeletionPlan
-	stderr := testutil.CaptureStderr(t, func() {
-		got = skipDatasetDeletions(before, plan, "HEAD~1")
-	})
-
-	assert.Equal(t, []gitutil.Deletion{{Kind: "dashboard", Identifier: "dash-a"}}, got.ByIdentifier)
-	assert.Equal(t, []string{"other.yaml"}, got.NoIdentifier)
-	assert.Contains(t, stderr, `Dataset "staging"`)
-	assert.Contains(t, stderr, "slugless.yaml")
-}

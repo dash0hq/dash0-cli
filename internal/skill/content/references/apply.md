@@ -59,7 +59,7 @@ Only the creation time and the version reset, and the settings come from the req
 `spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when a document carries it.
 Change filters in the Dash0 UI.
 Requires `--experimental`.
-`apply --since` never deletes datasets (see [`apply --since`](#apply---since-experimental)).
+`apply --since` deletes a dataset whose document was removed from git, like any other kind (see [`apply --since`](#apply---since-experimental)).
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -237,10 +237,15 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
-`apply --since` never deletes a `Dash0Dataset`.
-Deleting a dataset starts a 30-day countdown after which Dash0 purges its telemetry, which is too destructive to trigger from a removed file.
-When a dataset document is removed since `<ref>`, the CLI prints a warning to stderr that names the slug and points at `dash0 -X datasets delete <id>`, then skips it.
-The skipped dataset does not appear in the `--dry-run` listing, and it does not count toward the "no identifier" failure below.
+A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
+The delete is a 30-day soft delete.
+The dataset's evaluators pause at once.
+Applying the same slug again within 30 days restores the dataset, and the restore also brings back assets made in the UI.
+After 30 days, Dash0 purges the dataset and its telemetry.
+
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), a `--since` run that would delete a dataset requires an explicit `--force`, as `datasets delete` does.
+Without it, the run refuses with an error before it applies anything.
+A dataset that is already gone counts as deleted, and a removed dataset document with no slug fails the "no identifier" check below, like any other kind.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 

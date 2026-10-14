@@ -16,4 +16,4 @@ issues: [309]
 subtext: |
   `datasets list`, `get`, `create`, `update`, and `delete` require `--experimental`.
   Deleting a dataset purges it and its telemetry after 30 days.
-  `apply --since` never deletes datasets.
+  `apply --since` deletes a dataset removed from git as a 30-day soft delete, and needs `--force` in agent mode.

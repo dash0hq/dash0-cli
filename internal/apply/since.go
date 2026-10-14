@@ -192,7 +192,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 		return nil, fmt.Errorf("failed to read current Git state: %w", err)
 	}
 
-	plan := skipDatasetDeletions(before, gitutil.Diff(before, after), flags.Since)
+	plan := gitutil.Diff(before, after)
 	if len(plan.NoIdentifier) > 0 {
 		return nil, fmt.Errorf("--since '%s' found %s deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
 			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
@@ -201,35 +201,6 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
 	return &deletionPlan{plan: plan, warning: warning, names: names, scope: scope, declaredCheckRuleIDs: declaredCheckRuleIDs(after), targetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
-}
-
-// skipDatasetDeletions removes datasets from plan and warns about each one on
-// stderr. --since never deletes a dataset: Dash0 purges the dataset and its
-// telemetry 30 days after deletion, which is too destructive for a sync that
-// is driven by git history. A dataset document without a slug cannot have been
-// applied, so it is skipped too, rather than failing the run as a document
-// with no identifier.
-func skipDatasetDeletions(before gitutil.Snapshot, plan gitutil.DeletionPlan, since string) gitutil.DeletionPlan {
-	kept := plan.ByIdentifier[:0:0]
-	for _, d := range plan.ByIdentifier {
-		if d.Kind != "dataset" {
-			kept = append(kept, d)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "warning: Dataset %q was removed since --since '%s' but is not deleted: --since never deletes datasets, because Dash0 purges a deleted dataset and its telemetry after 30 days\nHint: to delete it, run `dash0 -X datasets delete %s`\n", d.Identifier, since, d.Identifier)
-	}
-	plan.ByIdentifier = kept
-
-	keptDocs := plan.NoIdentifier[:0:0]
-	for _, path := range plan.NoIdentifier {
-		if before.NoIdentifier[path].Kind != "dataset" {
-			keptDocs = append(keptDocs, path)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "warning: a Dataset document without a slug (%s) was removed since --since '%s'; --since never deletes datasets, so it is skipped\n", path, since)
-	}
-	plan.NoIdentifier = keptDocs
-	return plan
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that
@@ -465,6 +436,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteNotificationChannel(ctx, identifier)
 	case "team":
 		err = apiClient.DeleteTeam(ctx, identifier)
+	case "dataset":
+		// A soft delete: Dash0 keeps the dataset for 30 days, then purges it
+		// with its telemetry. The same path as `datasets delete`.
+		err = apiClient.DeleteDataset(ctx, identifier)
 	case "timeseriesaggregation":
 		// The API returns 204 for an absent aggregation, so the tolerance
 		// below never fires for this kind. It does fire for the cross-dataset
