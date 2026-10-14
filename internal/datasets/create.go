@@ -78,13 +78,23 @@ func runCreate(ctx context.Context, flags *createFlags) error {
 		return err
 	}
 
+	// Must run before ImportDataset, which strips the field.
+	if warning := asset.TelemetryFiltersWarning(&dataset); warning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+	}
+
 	result, err := asset.ImportDataset(ctx, apiClient, &dataset)
 	if err != nil {
-		return client.HandleAPIError(err, client.ErrorContext{
+		err = client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dataset",
 			AssetID:   dash0api.GetDatasetID(&dataset),
 			AssetName: dash0api.GetDatasetName(&dataset),
 		})
+		if result.After != nil {
+			fmt.Printf("Dataset %q %s (id: %s)\n", result.Name, result.Action, result.ID)
+			return asset.DatasetPermissionsNotApplied(err)
+		}
+		return err
 	}
 
 	fmt.Printf("Dataset %q %s (id: %s)\n", result.Name, result.Action, result.ID)

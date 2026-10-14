@@ -1,4 +1,3 @@
-apiVersion: dash0.com/v1alpha1
 kind: Dash0Dataset
 metadata:
   name: __NAME__

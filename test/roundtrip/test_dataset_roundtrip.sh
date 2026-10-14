@@ -110,4 +110,23 @@ if ! "$DASH0" -X datasets delete "$SLUG" --force; then
   exit 1
 fi
 
+# Step 9: Creating the same slug again restores the dataset (Dash0 keeps a deleted dataset for 30 days)
+echo "--- Step 9: Create the same slug again (expect: dataset is back) ---"
+if ! "$DASH0" -X datasets create -f "$FIXTURE" > /dev/null; then
+  echo "FAIL: datasets create after delete failed"
+  exit 1
+fi
+RESTORED=$("$DASH0" -X datasets list -o json | jq -r --arg slug "$SLUG" '[.[] | select(.metadata.labels["dash0.com/id"] == $slug)][0].metadata.name // empty')
+if [ "$RESTORED" != "$NAME" ]; then
+  echo "FAIL: dataset '$SLUG' is not back after create (found name: '$RESTORED')"
+  exit 1
+fi
+
+# Step 10: Clean up the restored dataset
+echo "--- Step 10: Delete the restored dataset ---"
+if ! "$DASH0" -X datasets delete "$SLUG" --force; then
+  echo "FAIL: deleting the restored dataset failed"
+  exit 1
+fi
+
 echo "=== Dataset round-trip test PASSED ==="

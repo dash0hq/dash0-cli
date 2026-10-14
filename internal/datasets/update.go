@@ -87,6 +87,9 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: "dataset", AssetID: id})
 	}
 
+	if warning := asset.TelemetryFiltersWarning(&dataset); warning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+	}
 	dash0api.StripDatasetServerFields(&dataset)
 
 	if flags.DryRun {

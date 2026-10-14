@@ -27,7 +27,7 @@ Without `--force`, a 404 must surface as a clean "asset not found" error (via `c
 
 > [!NOTE]
 > In practice the without-`--force` branch is rarely reached, because most Dash0 delete endpoints answer a missing asset with 2xx rather than 404.
-> Tested against dash0-development, `dashboards`, `check-rules`, `views`, `spam-filters`, and `time-series-aggregations` all return success for an id or origin that does not exist, so `delete <typo>` exits 0 with or without `--force`.
+> Tested against dash0-development, `dashboards`, `check-rules`, `views`, `spam-filters`, `time-series-aggregations`, and `datasets` all return success for an id or origin that does not exist, so `delete <typo>` exits 0 with or without `--force`.
 > No delete path preflights with a GET to close that gap.
 > One command that did would then be the only one that errors on a missing asset, which is a worse inconsistency than the one it fixes.
 > Wire `client.IsAlreadyDeleted` into every delete path anyway, so the behavior stays right for the endpoints that do return 404, and for any endpoint that starts to.

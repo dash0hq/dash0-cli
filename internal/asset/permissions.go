@@ -50,3 +50,15 @@ func SortSyntheticCheckPermissions(check *dash0api.SyntheticCheckDefinition) {
 			permissionSortKey(perms[j].Role, perms[j].TeamId, perms[j].UserId)
 	})
 }
+
+// SortDatasetPermissions is the Dataset equivalent of SortViewPermissions.
+func SortDatasetPermissions(dataset *dash0api.DatasetDefinition) {
+	if dataset == nil || dataset.Spec.Permissions == nil {
+		return
+	}
+	perms := *dataset.Spec.Permissions
+	sort.SliceStable(perms, func(i, j int) bool {
+		return permissionSortKey(perms[i].Role, perms[i].TeamId, perms[i].UserId) <
+			permissionSortKey(perms[j].Role, perms[j].TeamId, perms[j].UserId)
+	})
+}

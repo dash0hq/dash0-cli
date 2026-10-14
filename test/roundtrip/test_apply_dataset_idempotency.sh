@@ -48,11 +48,16 @@ if ! echo "$APPLY1" | grep -q "created"; then
   exit 1
 fi
 
-# Step 3: Second apply — must not create a duplicate.
-echo "--- Step 3: Second apply (expect: no duplicate created) ---"
+# Step 3: Second apply — must be a no-op. Asserting only the absence of "created"
+# would prove no duplicate was made, not that the apply changed nothing.
+echo "--- Step 3: Second apply (expect: no changes) ---"
 APPLY2=$("$DASH0" -X apply -f "$YAML_FILE")
 echo "$APPLY2"
-if echo "$APPLY2" | grep -q "created"; then
+if ! echo "$APPLY2" | grep -q 'no changes'; then
+  echo "FAIL: second apply did not report 'no changes' — re-applying an unchanged dataset is not a no-op"
+  exit 1
+fi
+if echo "$APPLY2" | grep -qE 'created[[:space:]]*$'; then
   echo "FAIL: unexpected 'created' on second apply"
   exit 1
 fi

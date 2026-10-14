@@ -38,8 +38,8 @@ Output formats are `table`, `json`, and `csv`.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
 **Organizational commands** manage entities (teams, members, notification channels, datasets) scoped to the organization, not to a dataset.
-They use flag-based input (no `-f`, no `--dry-run`, no `apply` integration) and are all experimental.
-Notification channels and datasets are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
+Notification channels and datasets are exceptions: they use file-based input (`-f`), support `--dry-run`, and are wired into `apply`, but are still organization-level (no `--dataset`).
 
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
@@ -524,8 +524,8 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All ten of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, and the organization-level `teams`) share the same CRUD subcommands.
-Eight of them are dataset-scoped assets; `notification-channels` and `teams` are organization-level (no `--dataset`) but share the same subcommand shape.
+All eleven of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
+Eight of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
 The examples below use `dashboards`, but the same patterns apply to every command group.
 
 ### `list`
@@ -724,7 +724,8 @@ $ echo $?
 
 Without `--force`, an asset that is genuinely missing surfaces as a non-zero exit with a "not found" error.
 Most Dash0 delete endpoints rarely reach that branch, though, because they answer a missing asset with 2xx rather than 404.
-For `dashboards`, `check-rules`, `views`, `spam-filters`, and `time-series-aggregations`, `delete <typo>` therefore exits 0 whether or not you pass `--force`.
+For `dashboards`, `check-rules`, `views`, `spam-filters`, `time-series-aggregations`, and `datasets`, `delete <typo>` therefore exits 0 whether or not you pass `--force`.
+For `datasets`, a mistyped slug prints `Dataset "<typo>" deleted`, and no dataset is deleted.
 The CLI does not preflight with a GET to close that gap, because one command that did would be the only one to error on a missing asset.
 
 The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
@@ -985,7 +986,11 @@ A document with neither label creates a new SLO on every apply.
 The slug in `metadata.labels["dash0.com/id"]` is required: a document without it fails during the validation phase, before any document in the run is applied.
 The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
 The server ignores `spec.permissions` on create, so a create that carries permissions is followed by an update.
-Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset.
+Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
+`apply` prints `created` for a restore, as it does for a new dataset.
+`spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when a document carries it.
+Change filters in the Dash0 UI.
 Requires `--experimental`.
 `apply --since` never deletes datasets (see [`apply --since`](#apply---since-experimental)).
 
@@ -1462,6 +1467,9 @@ spec:
 It is required and cannot change after creation.
 `metadata.name` is the display name.
 The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
+`spec.telemetryFilters` is not managed by the CLI.
+`get -o yaml` exports it, but `create`, `update`, and `apply` do not send it, and they print a warning to stderr when a document carries it.
+Change filters in the Dash0 UI.
 
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
@@ -2612,14 +2620,14 @@ The proxy's stats block updates in place as the data flows through, then the rec
 
 ## Organizational commands
 
-Organizational commands manage entities (teams, members, notification channels) that are scoped to the organization, not to a dataset.
+Organizational commands manage entities (teams, members, notification channels, datasets) that are scoped to the organization, not to a dataset.
 They share a common set of characteristics:
 - No `--dataset` flag.
 - All are experimental and require the `-X` flag.
 - Use `api-url` and `auth-token`.
 
 Most organizational commands use flag-based input.
-Notification channels are an exception: they use file-based input (`-f`) and support `--dry-run`.
+Notification channels and datasets are exceptions: they use file-based input (`-f`) and support `--dry-run`.
 
 ### `notification-channels list` (experimental)
 
@@ -2778,7 +2786,7 @@ dash0 -X datasets list [-o <format>] [--skip-header] [--column <col>]
 |------|---------|-------------|
 | `-o` | `table` | Output format: `table`, `wide`, `json`, `yaml`, or `csv` |
 | `--skip-header` | `false` | Omit the header row from `table`, `wide`, and `csv` output |
-| `--column` | | Column to display (repeatable; `table` and `csv` only) |
+| `--column` | | Column to display (repeatable; `table`, `wide`, and `csv` only) |
 
 The `wide` and `csv` formats add an `ORIGIN` column.
 
@@ -2805,7 +2813,7 @@ Example:
 
 ```bash
 $ dash0 -X datasets get <id>
-Kind:   Dataset
+Kind:   Dash0Dataset
 Name:   Staging
 ID:     staging
 Origin: api-0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90
@@ -2818,8 +2826,11 @@ Use `-o yaml` to get the full definition, suitable for editing and re-applying.
 Create a dataset from a YAML or JSON definition file.
 The slug in `metadata.labels["dash0.com/id"]` is required and cannot change after creation.
 If a dataset with that slug already exists, the command updates it.
-If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset.
+If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset: a view created in it before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
 The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
+`spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when the file carries it.
+Change filters in the Dash0 UI.
 
 ```bash
 dash0 -X datasets create -f <file> [--dry-run]
@@ -2867,10 +2878,14 @@ dash0 -X datasets update -f dataset.yaml
 
 Delete a dataset by slug or origin.
 Prompts for confirmation unless `--force` is passed.
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`, also auto-detected from agent env vars like `CLAUDE_CODE`), `datasets delete` requires an explicit `--force` and otherwise refuses with an error.
+A delete starts the 30-day countdown to purging the dataset's telemetry, so, like [`logout`](#logout), it needs deliberate intent instead of the usual agent-mode auto-confirmation.
 The `default` dataset cannot be deleted: the API answers with a 400 error.
+The API answers a slug that does not exist with 2xx, so `delete <typo>` prints `deleted` and exits 0.
 
 Deletion is soft.
-Dash0 keeps the dataset for 30 days, and creating a dataset with the same slug in that time restores it.
+Dash0 keeps the dataset for 30 days, and creating a dataset with the same slug in that time restores it: a view created in the dataset before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
 After 30 days, Dash0 permanently purges the dataset and its telemetry.
 
 ```bash

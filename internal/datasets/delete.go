@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/dash0hq/dash0-cli/internal"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
@@ -52,6 +53,17 @@ The default dataset cannot be deleted.` + internal.CONFIG_HINT,
 
 func runDelete(cmd *cobra.Command, originOrID string, flags *deleteFlags) error {
 	ctx := cmd.Context()
+
+	// Agent mode normally auto-confirms deletes. A dataset delete starts the
+	// 30-day countdown to purging its telemetry, so an agent must pass --force
+	// deliberately, as `dash0 logout` requires.
+	if agentmode.Enabled && !flags.Force {
+		return fmt.Errorf(
+			"dash0 datasets delete requires --force when run in agent mode\n"+
+				"Hint: re-run with `dash0 -X datasets delete %s --force` to confirm. Dash0 purges the dataset and its telemetry after 30 days.",
+			originOrID,
+		)
+	}
 
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
 		ctx,

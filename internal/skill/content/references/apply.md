@@ -53,7 +53,11 @@ A document with neither label creates a new SLO on every apply.
 The slug in `metadata.labels["dash0.com/id"]` is required: a document without it fails during the validation phase, before any document in the run is applied.
 The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
 The server ignores `spec.permissions` on create, so a create that carries permissions is followed by an update.
-Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset.
+Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
+`apply` prints `created` for a restore, as it does for a new dataset.
+`spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when a document carries it.
+Change filters in the Dash0 UI.
 Requires `--experimental`.
 `apply --since` never deletes datasets (see [`apply --since`](#apply---since-experimental)).
 

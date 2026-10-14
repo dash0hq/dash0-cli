@@ -55,6 +55,12 @@ func newGetCmd() *cobra.Command {
 func runGet(cmd *cobra.Command, originOrID string, flags *getFlags) error {
 	ctx := cmd.Context()
 
+	switch strings.ToLower(flags.Output) {
+	case "", "table", "json", "yaml", "yml":
+	default:
+		return fmt.Errorf("unknown output format: %s (valid formats: table, json, yaml)", flags.Output)
+	}
+
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err

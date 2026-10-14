@@ -37,7 +37,7 @@ Example:
 
 ```bash
 $ dash0 -X datasets get <id>
-Kind:   Dataset
+Kind:   Dash0Dataset
 Name:   Staging
 ID:     staging
 Origin: api-0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90
@@ -50,8 +50,11 @@ Use `-o yaml` to get the full definition, suitable for editing and re-applying.
 Create a dataset from a YAML or JSON definition file.
 The slug in `metadata.labels["dash0.com/id"]` is required and cannot change after creation.
 If a dataset with that slug already exists, the command updates it.
-If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset.
+If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset: a view created in it before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
 The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
+`spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when the file carries it.
+Change filters in the Dash0 UI.
 
 ```bash
 dash0 -X datasets create -f <file> [--dry-run]
@@ -96,10 +99,14 @@ dash0 -X datasets update -f dataset.yaml
 
 Delete a dataset by slug or origin.
 Prompts for confirmation unless `--force` is passed.
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`, also auto-detected from agent env vars like `CLAUDE_CODE`), `datasets delete` requires an explicit `--force` and otherwise refuses with an error.
+A delete starts the 30-day countdown to purging the dataset's telemetry, so, like [`logout`](#logout), it needs deliberate intent instead of the usual agent-mode auto-confirmation.
 The `default` dataset cannot be deleted: the API answers with a 400 error.
+The API answers a slug that does not exist with 2xx, so `delete <typo>` prints `deleted` and exits 0.
 
 Deletion is soft.
-Dash0 keeps the dataset for 30 days, and creating a dataset with the same slug in that time restores it.
+Dash0 keeps the dataset for 30 days, and creating a dataset with the same slug in that time restores it: a view created in the dataset before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
 After 30 days, Dash0 permanently purges the dataset and its telemetry.
 
 ```bash

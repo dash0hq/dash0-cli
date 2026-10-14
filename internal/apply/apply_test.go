@@ -736,3 +736,19 @@ func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
 	require.Len(t, validationErrors, 1)
 	assert.Contains(t, validationErrors[0], "dash0.com/id")
 }
+
+func TestValidateDocuments_DatasetTelemetryFiltersWarning(t *testing.T) {
+	withFilters := "kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec:\n  telemetryFilters:\n    - key: service.name\n      operator: is\n      value: noisy\n"
+	docs, err := readMultiDocumentYAML("-", strings.NewReader(withFilters))
+	require.NoError(t, err)
+
+	validationErrors, warnings := validateDocuments(docs)
+	assert.Empty(t, validationErrors)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "spec.telemetryFilters is not managed by the CLI")
+
+	docs, err = readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n"))
+	require.NoError(t, err)
+	_, warnings = validateDocuments(docs)
+	assert.Empty(t, warnings)
+}

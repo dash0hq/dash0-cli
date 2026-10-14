@@ -372,10 +372,20 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
 				}
 			}
-		} else if normalizeKind(doc.kind) == "dataset" && doc.id == "" {
-			// The slug is the path id and the server cannot assign one, so a
-			// document without it fails here, before any document is applied.
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrDatasetSlugRequired.Error()))
+		} else if normalizeKind(doc.kind) == "dataset" {
+			if doc.id == "" {
+				// The slug is the path id and the server cannot assign one, so a
+				// document without it fails here, before any document is applied.
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrDatasetSlugRequired.Error()))
+			}
+			// spec.telemetryFilters is stripped before every write, so edits to it
+			// are silently dropped. Warn here, before the import strips the field.
+			var dataset dash0api.DatasetDefinition
+			if err := dash0yaml.Unmarshal(doc.raw, &dataset); err == nil {
+				if warning := asset.TelemetryFiltersWarning(&dataset); warning != "" {
+					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+				}
+			}
 		} else if normalizeKind(doc.kind) == "timeseriesaggregation" && doc.id == "" {
 			// Origin is mandatory for this kind and there is no fallback create
 			// path, so a document missing it fails here rather than after the
@@ -889,10 +899,17 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		result, err := asset.ImportDataset(ctx, apiClient, &dataset)
 		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
+			err = client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dataset",
+				AssetID:   dash0api.GetDatasetID(&dataset),
 				AssetName: dash0api.GetDatasetName(&dataset),
 			})
+			if result.After != nil {
+				// Created, but the permissions update failed: report the dataset in the
+				// "Applied before error" list.
+				return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, asset.DatasetPermissionsNotApplied(err)
+			}
+			return nil, err
 		}
 		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 

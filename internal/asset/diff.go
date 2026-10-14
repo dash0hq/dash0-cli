@@ -84,6 +84,7 @@ func marshalForDiff(asset any) (string, error) {
 			return "", fmt.Errorf("failed to unmarshal dataset: %w", err)
 		}
 		dash0api.StripDatasetServerFields(&d)
+		SortDatasetPermissions(&d)
 		stripped = &d
 	case *dash0api.RecordingRule:
 		var r dash0api.RecordingRule

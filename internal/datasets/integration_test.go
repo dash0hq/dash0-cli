@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
@@ -23,6 +24,19 @@ const (
 	apiPathDatasets = "/api/datasets"
 	testAuthToken   = "auth_test_token"
 	deletePrompt    = `Are you sure you want to delete dataset "staging"? Dash0 keeps it for 30 days, so creating a dataset with the same slug restores it. After that, the dataset and its telemetry are permanently purged. [y/N]: `
+
+	telemetryFiltersWarning = "spec.telemetryFilters is not managed by the CLI"
+
+	datasetWithFiltersYAML = `kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec:
+  telemetryFilters:
+    - context: log
+      condition: "true"
+`
 
 	datasetYAML = `kind: Dash0Dataset
 metadata:
@@ -312,6 +326,17 @@ func TestGetDataset_YAML(t *testing.T) {
 	assert.Contains(t, output, "dash0.com/id: production")
 }
 
+func TestGetDataset_InvalidFormatMakesNoAPICall(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production", "-o", "xml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown output format")
+	assert.Empty(t, server.Requests())
+}
+
 func TestGetDataset_NotFound(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -456,6 +481,90 @@ spec:
 	assert.Equal(t, []dash0api.DatasetAction{dash0api.DatasetRead}, (*body.Spec.Permissions)[0].Actions)
 }
 
+func TestCreateDataset_WarnsAboutTelemetryFilters(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, stderr, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetWithFiltersYAML))
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, telemetryFiltersWarning)
+	assert.NotContains(t, output, telemetryFiltersWarning)
+	posts := requestsFor(server, http.MethodPost, apiPathDatasets)
+	require.Len(t, posts, 1)
+	assert.Nil(t, decodeDataset(t, posts[0]).Spec.TelemetryFilters, "telemetryFilters must be stripped from the request")
+}
+
+func TestCreateDataset_NoTelemetryFiltersNoWarning(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, stderr, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetYAML))
+
+	require.NoError(t, err)
+	assert.NotContains(t, stderr, "telemetryFilters")
+}
+
+func TestCreateDataset_PermissionsPutFailureStillReportsCreated(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusBadRequest,
+		BodyFile:   testutil.FixtureDatasetsBadRequest,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, `kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec:
+  permissions:
+    - role: admin
+      actions:
+        - dataset:read
+`)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", yamlFile)
+
+	require.Error(t, err)
+	assert.Contains(t, output, `Dataset "Production" created (id: production)`)
+	assert.Contains(t, err.Error(), "spec.permissions were not applied")
+	assert.Contains(t, err.Error(), "rerun")
+	require.Len(t, requestsFor(server, http.MethodPost, apiPathDatasets), 1)
+	require.Len(t, requestsFor(server, http.MethodPut, "/api/datasets/production"), 1)
+}
+
 func TestCreateDataset_SlugRequired(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	yamlFile := writeYAML(t, `kind: Dash0Dataset
@@ -511,7 +620,19 @@ func TestUpdateDataset_Success(t *testing.T) {
 		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
-	yamlFile := writeYAML(t, strings.Replace(datasetYAML, "name: Production", "name: Production (renamed)", 1))
+	// The input carries server-managed fields, as an export from get -o yaml does.
+	yamlFile := writeYAML(t, `kind: Dash0Dataset
+metadata:
+  name: Production (renamed)
+  labels:
+    dash0.com/id: production
+    dash0.com/source: ui
+    dash0.com/version: "7"
+  annotations:
+    dash0.com/created-at: "2020-01-01T00:00:00Z"
+    dash0.com/updated-at: "2020-01-02T00:00:00Z"
+spec: {}
+`)
 
 	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", yamlFile)
 
@@ -526,9 +647,13 @@ func TestUpdateDataset_Success(t *testing.T) {
 	body := decodeDataset(t, puts[0])
 	assert.Equal(t, "Production (renamed)", body.Metadata.Name)
 	assert.Nil(t, body.Metadata.Annotations, "server-managed annotations must be stripped")
+	require.NotNil(t, body.Metadata.Labels)
+	assert.Nil(t, body.Metadata.Labels.Dash0Comversion, "server-managed version label must be stripped")
+	assert.Nil(t, body.Metadata.Labels.Dash0Comsource, "server-managed source label must be stripped")
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body), "the slug label must survive")
 }
 
-func TestUpdateDataset_PositionalIDWins(t *testing.T) {
+func TestUpdateDataset_WarnsAboutTelemetryFilters(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
@@ -542,9 +667,36 @@ func TestUpdateDataset_PositionalIDWins(t *testing.T) {
 		Validator:  testutil.RequireHeaders,
 	})
 
-	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", writeYAML(t, datasetYAML))
+	_, stderr, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", writeYAML(t, datasetWithFiltersYAML))
 
 	require.NoError(t, err)
+	assert.Contains(t, stderr, telemetryFiltersWarning)
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/production")
+	require.Len(t, puts, 1)
+	assert.Nil(t, decodeDataset(t, puts[0]).Spec.TelemetryFilters, "telemetryFilters must be stripped from the request")
+}
+
+func TestUpdateDataset_PositionalIDTargetsPathWhenFileHasNoID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	// The file names no slug, so the positional id is the only key and must pick the URL path.
+	yamlFile := writeYAML(t, "kind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
+
+	require.NoError(t, err)
+	assert.Len(t, requestsFor(server, http.MethodGet, "/api/datasets/production"), 1)
 	assert.Len(t, requestsFor(server, http.MethodPut, "/api/datasets/production"), 1)
 }
 
@@ -567,13 +719,15 @@ func TestUpdateDataset_DryRun(t *testing.T) {
 
 func TestUpdateDataset_IDMismatch(t *testing.T) {
 	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
 
-	_, _, err := runCmd(t, "http://unused", "-X", "datasets", "update", "other", "-f", writeYAML(t, datasetYAML))
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "other", "-f", writeYAML(t, datasetYAML))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not match")
 	assert.Contains(t, err.Error(), "other")
 	assert.Contains(t, err.Error(), "production")
+	assert.Empty(t, server.Requests(), "a mismatched id must not reach the API")
 }
 
 func TestUpdateDataset_NoIDAnywhere(t *testing.T) {
@@ -588,6 +742,40 @@ func TestUpdateDataset_NoIDAnywhere(t *testing.T) {
 
 func TestDeleteDataset_Force(t *testing.T) {
 	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging", "--force")
+
+	require.NoError(t, err)
+	assert.Equal(t, "Dataset \"staging\" deleted\n", output)
+	assert.Len(t, requestsFor(server, http.MethodDelete, "/api/datasets/staging"), 1)
+}
+
+func TestDeleteDataset_AgentModeRequiresForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires --force when run in agent mode")
+	assert.Contains(t, err.Error(), "datasets delete staging --force")
+	assert.Empty(t, server.Requests())
+}
+
+func TestDeleteDataset_AgentModeWithForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
