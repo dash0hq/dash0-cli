@@ -23,7 +23,7 @@ import (
 const (
 	apiPathDatasets = "/api/datasets"
 	testAuthToken   = "auth_test_token"
-	deletePrompt    = `Are you sure you want to delete dataset "staging"? Dash0 keeps it for 30 days, so creating a dataset with the same slug restores it. After that, the dataset and its telemetry are permanently purged. [y/N]: `
+	deletePrompt    = `Are you sure you want to delete dataset "staging"? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: `
 
 	telemetryFiltersWarning = "spec.telemetryFilters is not managed by the CLI"
 

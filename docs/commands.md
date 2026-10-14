@@ -747,7 +747,7 @@ Aliases: `remove`
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
-| Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]`. Deleting a dataset purges its telemetry after 30 days; see [`datasets delete`](#datasets-delete-experimental) |
+| Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 ### Asset identifiers and idempotent upsert
@@ -1174,7 +1174,9 @@ A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any ot
 The delete is a 30-day soft delete.
 The dataset's evaluators pause at once.
 Applying the same slug again within 30 days restores the dataset, and the restore also brings back assets made in the UI.
-After 30 days, Dash0 purges the dataset and its telemetry.
+Dashboards, check rules, synthetic checks, and views are kept for 30 days; creating the same slug within that time restores them.
+After 30 days, Dash0 removes the dataset and those assets.
+Telemetry is removed as its retention expires, not by the delete.
 
 In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), a `--since` run that would delete a dataset requires an explicit `--force`, as `datasets delete` does.
 Without it, the run refuses with an error before it applies anything.
@@ -2884,14 +2886,16 @@ dash0 -X datasets update -f dataset.yaml
 Delete a dataset by slug or origin.
 Prompts for confirmation unless `--force` is passed.
 In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`, also auto-detected from agent env vars like `CLAUDE_CODE`), `datasets delete` requires an explicit `--force` and otherwise refuses with an error.
-A delete starts the 30-day countdown to purging the dataset's telemetry, so, like [`logout`](#logout), it needs deliberate intent instead of the usual agent-mode auto-confirmation.
+A delete starts the 30-day countdown to removing the dataset and its assets, so, like `dash0 logout`, it needs deliberate intent instead of the usual agent-mode auto-confirmation.
 The `default` dataset cannot be deleted: the API answers with a 400 error.
 The API answers a slug that does not exist with 2xx, so `delete <typo>` prints `deleted` and exits 0.
 
 Deletion is soft.
 Dash0 keeps the dataset for 30 days, and creating a dataset with the same slug in that time restores it: a view created in the dataset before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
-After 30 days, Dash0 permanently purges the dataset and its telemetry.
+After 30 days, Dash0 removes the dataset row, its permissions, and its assets.
+Dashboards, check rules, synthetic checks, and views are kept for 30 days; creating the same slug within that time restores them.
+Telemetry is removed as its retention expires, not by the delete.
 
 ```bash
 dash0 -X datasets delete <id> [--force]
@@ -2901,7 +2905,7 @@ Example:
 
 ```bash
 $ dash0 -X datasets delete <id>
-Are you sure you want to delete dataset "<id>"? Dash0 keeps it for 30 days, so creating a dataset with the same slug restores it. After that, the dataset and its telemetry are permanently purged. [y/N]: y
+Are you sure you want to delete dataset "<id>"? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: y
 Dataset "<id>" deleted
 ```
 

@@ -437,8 +437,8 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	case "team":
 		err = apiClient.DeleteTeam(ctx, identifier)
 	case "dataset":
-		// A soft delete: Dash0 keeps the dataset for 30 days, then purges it
-		// with its telemetry. The same path as `datasets delete`.
+		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
+		// The same path as `datasets delete`.
 		err = apiClient.DeleteDataset(ctx, identifier)
 	case "timeseriesaggregation":
 		// The API returns 204 for an absent aggregation, so the tolerance

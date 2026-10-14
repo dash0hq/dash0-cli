@@ -170,7 +170,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |
-| `datasets` | Dataset CRUD (organization-level, experimental; deleting purges telemetry after 30 days) |
+| `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
 | `failed-checks` | Query active and historical alerting issues |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
 | `logs` | Query and send log records |

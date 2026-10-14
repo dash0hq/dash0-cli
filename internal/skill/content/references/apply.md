@@ -241,7 +241,9 @@ A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any ot
 The delete is a 30-day soft delete.
 The dataset's evaluators pause at once.
 Applying the same slug again within 30 days restores the dataset, and the restore also brings back assets made in the UI.
-After 30 days, Dash0 purges the dataset and its telemetry.
+Dashboards, check rules, synthetic checks, and views are kept for 30 days; creating the same slug within that time restores them.
+After 30 days, Dash0 removes the dataset and those assets.
+Telemetry is removed as its retention expires, not by the delete.
 
 In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), a `--since` run that would delete a dataset requires an explicit `--force`, as `datasets delete` does.
 Without it, the run refuses with an error before it applies anything.

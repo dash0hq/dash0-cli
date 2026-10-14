@@ -26,9 +26,9 @@ func newDeleteCmd() *cobra.Command {
 		Short:   "[experimental] Delete a dataset",
 		Long: `Delete a dataset by its ID (slug) or origin. Use --force to skip the confirmation prompt.
 
-Dash0 keeps a deleted dataset for 30 days.
-Creating a dataset with the same slug in that time restores it.
-After that, the dataset and its telemetry are permanently purged.
+Dashboards, check rules, synthetic checks and views are kept for 30 days.
+Creating the same slug within that time restores them.
+Telemetry is removed as its retention expires.
 The default dataset cannot be deleted.` + internal.CONFIG_HINT,
 		Example: `  # Delete with confirmation prompt
   dash0 --experimental datasets delete <id>
@@ -55,19 +55,19 @@ func runDelete(cmd *cobra.Command, originOrID string, flags *deleteFlags) error 
 	ctx := cmd.Context()
 
 	// Agent mode normally auto-confirms deletes. A dataset delete starts the
-	// 30-day countdown to purging its telemetry, so an agent must pass --force
+	// 30-day countdown to removing its assets, so an agent must pass --force
 	// deliberately, as `dash0 logout` requires.
 	if agentmode.Enabled && !flags.Force {
 		return fmt.Errorf(
 			"dash0 datasets delete requires --force when run in agent mode\n"+
-				"Hint: re-run with `dash0 -X datasets delete %s --force` to confirm. Dash0 purges the dataset and its telemetry after 30 days.",
+				"Hint: re-run with `dash0 -X datasets delete %s --force` to confirm. Telemetry is removed as its retention expires.",
 			originOrID,
 		)
 	}
 
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
 		ctx,
-		fmt.Sprintf("Are you sure you want to delete dataset %q? Dash0 keeps it for 30 days, so creating a dataset with the same slug restores it. After that, the dataset and its telemetry are permanently purged. [y/N]: ", originOrID),
+		fmt.Sprintf("Are you sure you want to delete dataset %q? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: ", originOrID),
 		flags.Force,
 	)
 	if err != nil {

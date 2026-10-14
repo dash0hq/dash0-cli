@@ -82,7 +82,7 @@ A PrometheusRule CRD that mixes alerting and recording rules is dispatched to bo
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.
 
-[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. A removed Dash0Dataset is deleted like any other kind, as a 30-day soft delete: applying the same slug again within 30 days restores it, and after that Dash0 purges it with its telemetry. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. A removed Dash0Dataset is deleted like any other kind, as a 30-day soft delete: dashboards, check rules, synthetic checks and views are kept for 30 days, and applying the same slug again within that time restores them; telemetry is removed as its retention expires. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -266,7 +266,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
-	// A dataset delete starts the 30-day countdown to purging its telemetry.
+	// A dataset delete starts the 30-day countdown to removing its assets.
 	// Like `datasets delete`, agent mode must pass --force deliberately instead
 	// of getting the usual agent-mode auto-confirmation. Checked before any
 	// document is applied, so a refusal leaves the run untouched.
@@ -274,7 +274,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		for _, d := range deletionPlan.plan.ByIdentifier {
 			if d.Kind == "dataset" {
 				return fmt.Errorf("--since would delete Dataset %q, which requires --force when run in agent mode\n"+
-					"Hint: re-run with --force to confirm. Dash0 purges a deleted dataset and its telemetry after 30 days.", d.Identifier)
+					"Hint: re-run with --force to confirm. Dashboards, check rules, synthetic checks and views are kept for 30 days; telemetry is removed as its retention expires.", d.Identifier)
 			}
 		}
 	}

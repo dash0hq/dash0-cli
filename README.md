@@ -674,7 +674,7 @@ dash0 -X datasets create -f dataset.yaml
 ```
 
 ```bash
-# Delete a dataset (Dash0 purges its telemetry after 30 days)
+# Delete a dataset (its assets are kept for 30 days; telemetry follows its retention)
 dash0 -X datasets delete <id>
 ```
 
