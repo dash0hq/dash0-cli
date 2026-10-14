@@ -1,6 +1,7 @@
 {
   "datasets": [
     {
+      "apiVersion": "dash0.com/v1alpha1",
       "kind": "Dash0Dataset",
       "metadata": {
         "name": "Default",
@@ -18,6 +19,7 @@
       }
     },
     {
+      "apiVersion": "dash0.com/v1alpha1",
       "kind": "Dash0Dataset",
       "metadata": {
         "name": "Production",
@@ -34,6 +36,7 @@
       "spec": {}
     },
     {
+      "apiVersion": "dash0.com/v1alpha1",
       "kind": "Dash0Dataset",
       "metadata": {
         "name": "Staging",

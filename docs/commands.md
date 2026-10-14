@@ -984,13 +984,13 @@ A document with neither label creates a new SLO on every apply.
 
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug in `metadata.labels["dash0.com/id"]` is required: a document without it fails during the validation phase, before any document in the run is applied.
+So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
 The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
 The server ignores `spec.permissions` on create, so a create that carries permissions is followed by an update.
 Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 `apply` prints `created` for a restore, as it does for a new dataset.
-`spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when a document carries it.
-Change filters in the Dash0 UI.
+A dataset document has no telemetry filters: spam filters own them, and creating or updating a dataset never changes them.
 Requires `--experimental`.
 `apply --since` deletes a dataset whose document was removed from git, like any other kind (see [`apply --since`](#apply---since-experimental)).
 
@@ -1458,25 +1458,42 @@ spec:
 Dataset (organization-level, no `--dataset`, requires `--experimental`):
 
 ```yaml
+apiVersion: dash0.com/v1alpha1
 kind: Dash0Dataset
 metadata:
   name: Staging
   labels:
     dash0.com/id: staging
 spec:
+  retention:
+    traces: 30d
+    logs: 60d
+  privacy:
+    ipAddresses:
+      endUser:
+        storage: anonymize
+    geoLocation:
+      endUser:
+        storage: up_to_country
+  processing:
+    spanEventsToLogs: false
   permissions:
     - role: basic_member
       actions:
         - dataset:read
 ```
 
+`apiVersion` is required, and `dash0.com/v1alpha1` is the only supported value.
 `metadata.labels["dash0.com/id"]` is the dataset slug.
 It is required and cannot change after creation.
 `metadata.name` is the display name.
+Every `spec` field is optional: a field left out on create takes the server default, and a field left out on update keeps its stored value.
+`spec.retention` sets how long each signal is kept (`traces`, `logs`, `metrics`, `profiles`, `webEvents`).
+A retention class is the total number of days: `30d`, `60d`, `90d`, `120d`, `210d`, or `390d`.
+`spec.privacy` sets IP address storage, geolocation storage, and redaction.
+`spec.processing` sets span-event conversion, semantic convention upgrades, and darkplane opt-ins.
 The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
-`spec.telemetryFilters` is not managed by the CLI.
-`get -o yaml` exports it, but `create`, `update`, and `apply` do not send it, and they print a warning to stderr when a document carries it.
-Change filters in the Dash0 UI.
+A dataset document has no telemetry filters; spam filters own them.
 
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
@@ -2836,8 +2853,8 @@ If a dataset with that slug already exists, the command updates it.
 If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
-`spec.telemetryFilters` is not managed by the CLI: the CLI strips it before it sends the dataset, so the stored filters stay unchanged, and it prints a warning to stderr when the file carries it.
-Change filters in the Dash0 UI.
+`apiVersion: dash0.com/v1alpha1` is required.
+A dataset document has no telemetry filters, and creating or updating a dataset never changes them.
 
 ```bash
 dash0 -X datasets create -f <file> [--dry-run]
@@ -2869,6 +2886,9 @@ Aliases: `add`
 Update an existing dataset from a YAML or JSON definition file.
 If the ID argument is omitted, the slug is extracted from the file content.
 The dataset must already exist: the command fails with a "not found" error instead of creating it.
+A `spec` field left out of the file keeps its stored value, so a file with only `spec.retention.logs` changes only that field.
+`--dry-run` shows the same result: the file merged onto the stored dataset.
+A missing or unknown `apiVersion` fails before any API call.
 The output is a unified diff of the before and after states.
 
 ```bash

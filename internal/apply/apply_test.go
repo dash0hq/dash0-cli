@@ -718,7 +718,7 @@ spec:
 }
 
 func TestValidateExperimentalKinds_Dataset(t *testing.T) {
-	docs, err := readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: production\nspec: {}\n"))
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: production\nspec: {}\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "production", docs[0].id)
 
@@ -729,7 +729,7 @@ func TestValidateExperimentalKinds_Dataset(t *testing.T) {
 }
 
 func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
-	docs, err := readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Dataset\nmetadata:\n  name: P\nspec: {}\n"))
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: P\nspec: {}\n"))
 	require.NoError(t, err)
 
 	validationErrors, _ := validateDocuments(docs)
@@ -737,18 +737,27 @@ func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
 	assert.Contains(t, validationErrors[0], "dash0.com/id")
 }
 
-func TestValidateDocuments_DatasetTelemetryFiltersWarning(t *testing.T) {
-	withFilters := "kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec:\n  telemetryFilters:\n    - key: service.name\n      operator: is\n      value: noisy\n"
-	docs, err := readMultiDocumentYAML("-", strings.NewReader(withFilters))
-	require.NoError(t, err)
+func TestValidateDocuments_DatasetAPIVersion(t *testing.T) {
+	cases := map[string]struct {
+		doc     string
+		wantErr string
+	}{
+		"valid":   {"apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n", ""},
+		"missing": {"kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n", "dataset definition requires apiVersion: dash0.com/v1alpha1"},
+		"unknown": {"apiVersion: dash0.com/v2\nkind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n", `unsupported dataset apiVersion "dash0.com/v2" (supported: dash0.com/v1alpha1)`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			docs, err := readMultiDocumentYAML("-", strings.NewReader(c.doc))
+			require.NoError(t, err)
 
-	validationErrors, warnings := validateDocuments(docs)
-	assert.Empty(t, validationErrors)
-	require.Len(t, warnings, 1)
-	assert.Contains(t, warnings[0], "spec.telemetryFilters is not managed by the CLI")
-
-	docs, err = readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n"))
-	require.NoError(t, err)
-	_, warnings = validateDocuments(docs)
-	assert.Empty(t, warnings)
+			validationErrors, _ := validateDocuments(docs)
+			if c.wantErr == "" {
+				assert.Empty(t, validationErrors)
+				return
+			}
+			require.Len(t, validationErrors, 1)
+			assert.Contains(t, validationErrors[0], c.wantErr)
+		})
+	}
 }

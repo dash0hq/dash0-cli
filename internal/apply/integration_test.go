@@ -2632,12 +2632,25 @@ func TestApply_TimeSeriesAggregation_DryRun(t *testing.T) {
 	assert.Contains(t, output, "http-server-request-duration")
 }
 
-const datasetDoc = `kind: Dash0Dataset
+const datasetDoc = `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
 metadata:
   name: Production
   labels:
     dash0.com/id: production
-spec: {}
+spec:
+  retention:
+    traces: 60d
+    logs: 90d
+  privacy:
+    ipAddresses:
+      endUser:
+        storage: anonymize
+    geoLocation:
+      endUser:
+        storage: up_to_country
+  processing:
+    spanEventsToLogs: true
 `
 
 // newDatasetApplyCmd returns an apply command with a local --experimental flag,
@@ -2687,6 +2700,19 @@ func TestApply_Dataset_Created(t *testing.T) {
 	var body dash0api.DatasetDefinition
 	require.NoError(t, json.Unmarshal([]byte(createReq.Body), &body))
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assert.Equal(t, "dash0.com/v1alpha1", body.ApiVersion)
+	require.NotNil(t, body.Spec.Retention)
+	require.NotNil(t, body.Spec.Retention.Traces)
+	assert.Equal(t, dash0api.N60d, *body.Spec.Retention.Traces)
+	require.NotNil(t, body.Spec.Retention.Logs)
+	assert.Equal(t, dash0api.N90d, *body.Spec.Retention.Logs)
+	require.NotNil(t, body.Spec.Privacy)
+	require.NotNil(t, body.Spec.Privacy.IpAddresses.EndUser.Storage)
+	assert.Equal(t, dash0api.IpAddressStorageStrategyAnonymize, *body.Spec.Privacy.IpAddresses.EndUser.Storage)
+	require.NotNil(t, body.Spec.Privacy.GeoLocation.EndUser.Storage)
+	assert.Equal(t, dash0api.GeoLocationStorageStrategyUpToCountry, *body.Spec.Privacy.GeoLocation.EndUser.Storage)
+	require.NotNil(t, body.Spec.Processing.SpanEventsToLogs)
+	assert.True(t, *body.Spec.Processing.SpanEventsToLogs)
 }
 
 func TestApply_Dataset_UpdatedShowsDiff(t *testing.T) {
@@ -2743,7 +2769,7 @@ func TestApply_Dataset_MissingSlugFailsValidation(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	yamlFile := filepath.Join(t.TempDir(), "dataset.yaml")
-	require.NoError(t, os.WriteFile(yamlFile, []byte("kind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n"), 0644))
+	require.NoError(t, os.WriteFile(yamlFile, []byte("apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n"), 0644))
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 
@@ -2759,6 +2785,39 @@ func TestApply_Dataset_MissingSlugFailsValidation(t *testing.T) {
 	assert.Contains(t, cmdErr.Error(), "validation failed")
 	assert.Contains(t, cmdErr.Error(), "dash0.com/id")
 	assert.Empty(t, server.Requests(), "validation must fail before any API call")
+}
+
+func TestApply_Dataset_APIVersionFailsValidation(t *testing.T) {
+	cases := map[string]struct {
+		apiVersionLine string
+		wantErr        string
+	}{
+		"missing": {"", "dataset definition requires apiVersion: dash0.com/v1alpha1"},
+		"unknown": {"apiVersion: dash0.com/v2\n", `unsupported dataset apiVersion "dash0.com/v2" (supported: dash0.com/v1alpha1)`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "dataset.yaml")
+			doc := c.apiVersionLine + "kind: Dash0Dataset\nmetadata:\n  name: Production\n  labels:\n    dash0.com/id: production\nspec: {}\n"
+			require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+			cmd := newDatasetApplyCmd()
+			cmd.SetArgs([]string{"-f", yamlFile, "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+			var cmdErr error
+			testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.Error(t, cmdErr)
+			assert.Contains(t, cmdErr.Error(), "validation failed")
+			assert.Contains(t, cmdErr.Error(), c.wantErr)
+			assert.Empty(t, server.Requests(), "validation must fail before any API call")
+		})
+	}
 }
 
 func TestApply_Dataset_RequiresExperimental(t *testing.T) {

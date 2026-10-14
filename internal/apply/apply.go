@@ -392,12 +392,12 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 				// document without it fails here, before any document is applied.
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrDatasetSlugRequired.Error()))
 			}
-			// spec.telemetryFilters is stripped before every write, so edits to it
-			// are silently dropped. Warn here, before the import strips the field.
+			// An unknown apiVersion fails here, before any document is applied,
+			// instead of as a server 400 mid-run.
 			var dataset dash0api.DatasetDefinition
 			if err := dash0yaml.Unmarshal(doc.raw, &dataset); err == nil {
-				if warning := asset.TelemetryFiltersWarning(&dataset); warning != "" {
-					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+				if err := asset.ValidateDatasetAPIVersion(&dataset); err != nil {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 				}
 			}
 		} else if normalizeKind(doc.kind) == "timeseriesaggregation" && doc.id == "" {

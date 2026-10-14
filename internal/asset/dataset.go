@@ -12,16 +12,19 @@ import (
 // The slug is the dataset's only identifier: it is the path id and cannot be assigned by the server.
 var ErrDatasetSlugRequired = errors.New(`dataset definition requires metadata.labels["dash0.com/id"] (the dataset slug)`)
 
-// TelemetryFiltersWarning returns a user-facing warning when the dataset definition carries a
-// non-empty spec.telemetryFilters, and an empty string otherwise.
-// StripDatasetServerFields clears the field before every write, so the stored filters stay unchanged.
-// Call it before ImportDataset, which strips the field.
-func TelemetryFiltersWarning(dataset *dash0api.DatasetDefinition) string {
-	if dataset == nil || dataset.Spec.TelemetryFilters == nil || len(*dataset.Spec.TelemetryFilters) == 0 {
-		return ""
+// DatasetAPIVersion is the only dataset document format the API accepts.
+const DatasetAPIVersion = "dash0.com/v1alpha1"
+
+// ValidateDatasetAPIVersion rejects a dataset definition whose apiVersion is missing or unknown,
+// so a typo fails before any API call instead of as a server 400.
+func ValidateDatasetAPIVersion(dataset *dash0api.DatasetDefinition) error {
+	switch {
+	case dataset.ApiVersion == "":
+		return fmt.Errorf("dataset definition requires apiVersion: %s", DatasetAPIVersion)
+	case dataset.ApiVersion != DatasetAPIVersion:
+		return fmt.Errorf("unsupported dataset apiVersion %q (supported: %s)", dataset.ApiVersion, DatasetAPIVersion)
 	}
-	return "spec.telemetryFilters is not managed by the CLI and is ignored on write: " +
-		"the Dash0 CLI strips it so the stored filters stay unchanged. Change filters in the Dash0 UI."
+	return nil
 }
 
 // DatasetPermissionsNotApplied wraps err for a dataset that was created but whose follow-up
@@ -45,6 +48,9 @@ func ImportDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash
 	slug := dash0api.GetDatasetID(dataset)
 	if slug == "" {
 		return ImportResult{}, ErrDatasetSlugRequired
+	}
+	if err := ValidateDatasetAPIVersion(dataset); err != nil {
+		return ImportResult{}, err
 	}
 	dash0api.StripDatasetServerFields(dataset)
 

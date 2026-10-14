@@ -12,16 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTelemetryFiltersWarning(t *testing.T) {
-	assert.Empty(t, TelemetryFiltersWarning(nil))
-	assert.Empty(t, TelemetryFiltersWarning(&dash0api.DatasetDefinition{}))
-	assert.Empty(t, TelemetryFiltersWarning(&dash0api.DatasetDefinition{Spec: dash0api.DatasetSpec{TelemetryFilters: &[]dash0api.TelemetryFilter{}}}))
-
-	d := &dash0api.DatasetDefinition{Spec: dash0api.DatasetSpec{TelemetryFilters: &[]dash0api.TelemetryFilter{{}}}}
-	assert.Equal(t, "spec.telemetryFilters is not managed by the CLI and is ignored on write: "+
-		"the Dash0 CLI strips it so the stored filters stay unchanged. Change filters in the Dash0 UI.", TelemetryFiltersWarning(d))
-}
-
 func TestSortDatasetPermissions(t *testing.T) {
 	d := &dash0api.DatasetDefinition{Spec: dash0api.DatasetSpec{Permissions: &[]dash0api.DatasetPermission{
 		{UserId: strPtr("alice@example.com")},
@@ -46,9 +36,10 @@ func TestPrintDiff_Dataset_PermissionOrderIsNotAChange(t *testing.T) {
 
 	build := func(perms ...dash0api.DatasetPermission) *dash0api.DatasetDefinition {
 		return &dash0api.DatasetDefinition{
-			Kind:     "Dash0Dataset",
-			Metadata: dash0api.DatasetMetadata{Name: "P", Labels: &dash0api.DatasetLabels{Dash0Comid: "p"}},
-			Spec:     dash0api.DatasetSpec{Permissions: &perms},
+			ApiVersion: DatasetAPIVersion,
+			Kind:       "Dash0Dataset",
+			Metadata:   dash0api.DatasetMetadata{Name: "P", Labels: &dash0api.DatasetLabels{Dash0Comid: "p"}},
+			Spec:       dash0api.DatasetSpec{Permissions: &perms},
 		}
 	}
 	admin := dash0api.DatasetPermission{Role: strPtr("admin")}
@@ -79,8 +70,9 @@ func (s datasetStub) UpdateDataset(context.Context, string, *dash0api.DatasetDef
 
 func TestImportDataset_PermissionsUpdateFailureReturnsCreatedDataset(t *testing.T) {
 	d := &dash0api.DatasetDefinition{
-		Metadata: dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: "prod"}},
-		Spec:     dash0api.DatasetSpec{Permissions: &[]dash0api.DatasetPermission{{Role: strPtr("admin")}}},
+		ApiVersion: DatasetAPIVersion,
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: "prod"}},
+		Spec:       dash0api.DatasetSpec{Permissions: &[]dash0api.DatasetPermission{{Role: strPtr("admin")}}},
 	}
 	boom := errors.New("boom")
 
@@ -92,4 +84,72 @@ func TestImportDataset_PermissionsUpdateFailureReturnsCreatedDataset(t *testing.
 	assert.Equal(t, "Prod", result.Name)
 	assert.NotNil(t, result.After)
 	assert.Contains(t, DatasetPermissionsNotApplied(err).Error(), "rerun the same command")
+}
+
+func TestValidateDatasetAPIVersion(t *testing.T) {
+	assert.NoError(t, ValidateDatasetAPIVersion(&dash0api.DatasetDefinition{ApiVersion: "dash0.com/v1alpha1"}))
+	assert.EqualError(t, ValidateDatasetAPIVersion(&dash0api.DatasetDefinition{}),
+		"dataset definition requires apiVersion: dash0.com/v1alpha1")
+	assert.EqualError(t, ValidateDatasetAPIVersion(&dash0api.DatasetDefinition{ApiVersion: "v1"}),
+		`unsupported dataset apiVersion "v1" (supported: dash0.com/v1alpha1)`)
+}
+
+// datasetRecorder records what ImportDataset sends.
+type datasetRecorder struct {
+	dash0api.Client
+	created *dash0api.DatasetDefinition
+}
+
+func (datasetRecorder) GetDataset(context.Context, string) (*dash0api.DatasetDefinition, error) {
+	return nil, &dash0api.APIError{StatusCode: 404}
+}
+
+func (r *datasetRecorder) CreateDataset(_ context.Context, d *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
+	r.created = d
+	return d, nil
+}
+
+func TestImportDataset_APIVersionRejectedBeforeAnyCall(t *testing.T) {
+	for _, v := range []string{"", "dash0.com/v2"} {
+		d := &dash0api.DatasetDefinition{
+			ApiVersion: v,
+			Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: "prod"}},
+		}
+		// A nil embedded Client panics on any call, proving none is made.
+		_, err := ImportDataset(context.Background(), &datasetRecorder{}, d)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "apiVersion")
+	}
+}
+
+func TestImportDataset_SendsNewSpecFields(t *testing.T) {
+	logs, traces := dash0api.N90d, dash0api.N60d
+	anonymize := dash0api.IpAddressStorageStrategyAnonymize
+	upToCountry := dash0api.GeoLocationStorageStrategyUpToCountry
+	spanEvents := true
+	d := &dash0api.DatasetDefinition{
+		ApiVersion: DatasetAPIVersion,
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: "prod"}},
+		Spec: dash0api.DatasetSpec{
+			Retention: &dash0api.DatasetRetention{Logs: &logs, Traces: &traces},
+			Privacy: &dash0api.DatasetPrivacy{
+				IpAddresses: &dash0api.DatasetIpAddressPrivacy{EndUser: &dash0api.DatasetIpAddressStorage{Storage: &anonymize}},
+				GeoLocation: &dash0api.DatasetGeoLocationPrivacy{EndUser: &dash0api.DatasetGeoLocationStorage{Storage: &upToCountry}},
+			},
+			Processing: &dash0api.DatasetProcessing{SpanEventsToLogs: &spanEvents},
+		},
+	}
+	rec := &datasetRecorder{}
+
+	result, err := ImportDataset(context.Background(), rec, d)
+
+	require.NoError(t, err)
+	assert.Equal(t, ActionCreated, result.Action)
+	require.NotNil(t, rec.created)
+	assert.Equal(t, DatasetAPIVersion, rec.created.ApiVersion)
+	assert.Equal(t, dash0api.N90d, *rec.created.Spec.Retention.Logs)
+	assert.Equal(t, dash0api.N60d, *rec.created.Spec.Retention.Traces)
+	assert.Equal(t, anonymize, *rec.created.Spec.Privacy.IpAddresses.EndUser.Storage)
+	assert.Equal(t, upToCountry, *rec.created.Spec.Privacy.GeoLocation.EndUser.Storage)
+	assert.True(t, *rec.created.Spec.Processing.SpanEventsToLogs)
 }

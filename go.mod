@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/cli/browser v1.3.0
-	github.com/dash0hq/dash0-api-client-go v1.24.0
+	github.com/dash0hq/dash0-api-client-go v1.24.1-0.20261014175129-7a8ca703a29f
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0

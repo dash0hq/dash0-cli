@@ -2,6 +2,7 @@ package datasets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -67,6 +68,10 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return fmt.Errorf("failed to read dataset definition: %w", err)
 	}
 
+	if err := asset.ValidateDatasetAPIVersion(&dataset); err != nil {
+		return err
+	}
+
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun: "dataset",
 		ID:   dash0api.GetDatasetID(&dataset),
@@ -87,13 +92,16 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: "dataset", AssetID: id})
 	}
 
-	if warning := asset.TelemetryFiltersWarning(&dataset); warning != "" {
-		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
-	}
 	dash0api.StripDatasetServerFields(&dataset)
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Dataset", dataset.Metadata.Name, before, &dataset)
+		// A spec field left out of the file keeps its stored value, so the preview
+		// merges the file onto the stored dataset instead of showing omissions as removals.
+		preview, err := previewUpdate(before, &dataset)
+		if err != nil {
+			return err
+		}
+		return asset.PrintDiff(os.Stdout, "Dataset", dataset.Metadata.Name, before, preview)
 	}
 
 	result, err := apiClient.UpdateDataset(ctx, id, &dataset)
@@ -106,4 +114,52 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 
 	return asset.PrintDiff(os.Stdout, "Dataset", dash0api.GetDatasetName(result), before, result)
+}
+
+// previewUpdate returns the dataset as it would look after update: the file's values win,
+// and anything the file leaves out keeps its stored value.
+func previewUpdate(stored, update *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
+	base, err := toMap(stored)
+	if err != nil {
+		return nil, err
+	}
+	over, err := toMap(update)
+	if err != nil {
+		return nil, err
+	}
+	var merged dash0api.DatasetDefinition
+	data, err := json.Marshal(mergeMaps(base, over))
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &merged); err != nil {
+		return nil, fmt.Errorf("failed to build the update preview: %w", err)
+	}
+	return &merged, nil
+}
+
+func toMap(d *dash0api.DatasetDefinition) (map[string]any, error) {
+	data, err := json.Marshal(d)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// mergeMaps overlays over onto base: nested objects merge, everything else is replaced.
+func mergeMaps(base, over map[string]any) map[string]any {
+	for k, v := range over {
+		if vm, ok := v.(map[string]any); ok {
+			if bm, ok := base[k].(map[string]any); ok {
+				base[k] = mergeMaps(bm, vm)
+				continue
+			}
+		}
+		base[k] = v
+	}
+	return base
 }

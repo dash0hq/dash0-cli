@@ -67,6 +67,9 @@ func runCreate(ctx context.Context, flags *createFlags) error {
 	if dash0api.GetDatasetID(&dataset) == "" {
 		return asset.ErrDatasetSlugRequired
 	}
+	if err := asset.ValidateDatasetAPIVersion(&dataset); err != nil {
+		return err
+	}
 
 	if flags.DryRun {
 		fmt.Println("Dry run: dataset definition is valid")
@@ -76,11 +79,6 @@ func runCreate(ctx context.Context, flags *createFlags) error {
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
-	}
-
-	// Must run before ImportDataset, which strips the field.
-	if warning := asset.TelemetryFiltersWarning(&dataset); warning != "" {
-		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
 	result, err := asset.ImportDataset(ctx, apiClient, &dataset)

@@ -2208,7 +2208,7 @@ func sinceDatasetRepo(t *testing.T) (dir, before string) {
 	runGitCmd(t, dir, "config", "user.name", "Test")
 	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
 
-	writeFileFixture(t, dir, "dataset.yaml", "kind: Dash0Dataset\nmetadata:\n  name: Staging\n  labels:\n    dash0.com/id: staging\nspec: {}\n")
+	writeFileFixture(t, dir, "dataset.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Staging\n  labels:\n    dash0.com/id: staging\nspec: {}\n")
 	runGitCmd(t, dir, "add", "-A")
 	runGitCmd(t, dir, "commit", "-q", "-m", "add dataset")
 	before = strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))

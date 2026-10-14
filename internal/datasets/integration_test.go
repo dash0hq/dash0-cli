@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -25,25 +26,25 @@ const (
 	testAuthToken   = "auth_test_token"
 	deletePrompt    = `Are you sure you want to delete dataset "staging"? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: `
 
-	telemetryFiltersWarning = "spec.telemetryFilters is not managed by the CLI"
-
-	datasetWithFiltersYAML = `kind: Dash0Dataset
+	datasetYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
 metadata:
   name: Production
   labels:
     dash0.com/id: production
 spec:
-  telemetryFilters:
-    - context: log
-      condition: "true"
-`
-
-	datasetYAML = `kind: Dash0Dataset
-metadata:
-  name: Production
-  labels:
-    dash0.com/id: production
-spec: {}
+  retention:
+    traces: 60d
+    logs: 90d
+  privacy:
+    ipAddresses:
+      endUser:
+        storage: anonymize
+    geoLocation:
+      endUser:
+        storage: up_to_country
+  processing:
+    spanEventsToLogs: true
 `
 )
 
@@ -94,6 +95,29 @@ func decodeDataset(t *testing.T, req testutil.RecordedRequest) dash0api.DatasetD
 	var d dash0api.DatasetDefinition
 	require.NoError(t, json.Unmarshal(req.Body, &d))
 	return d
+}
+
+// assertNewShapeSpec checks the spec carried by the fixtures and datasetYAML.
+func assertNewShapeSpec(t *testing.T, d *dash0api.DatasetDefinition, logsRetention dash0api.RetentionClass) {
+	t.Helper()
+	assert.Equal(t, "dash0.com/v1alpha1", d.ApiVersion)
+	require.NotNil(t, d.Spec.Retention)
+	require.NotNil(t, d.Spec.Retention.Traces)
+	assert.Equal(t, dash0api.N60d, *d.Spec.Retention.Traces)
+	require.NotNil(t, d.Spec.Retention.Logs)
+	assert.Equal(t, logsRetention, *d.Spec.Retention.Logs)
+	require.NotNil(t, d.Spec.Privacy)
+	require.NotNil(t, d.Spec.Privacy.IpAddresses)
+	require.NotNil(t, d.Spec.Privacy.IpAddresses.EndUser)
+	require.NotNil(t, d.Spec.Privacy.IpAddresses.EndUser.Storage)
+	assert.Equal(t, dash0api.IpAddressStorageStrategyAnonymize, *d.Spec.Privacy.IpAddresses.EndUser.Storage)
+	require.NotNil(t, d.Spec.Privacy.GeoLocation)
+	require.NotNil(t, d.Spec.Privacy.GeoLocation.EndUser)
+	require.NotNil(t, d.Spec.Privacy.GeoLocation.EndUser.Storage)
+	assert.Equal(t, dash0api.GeoLocationStorageStrategyUpToCountry, *d.Spec.Privacy.GeoLocation.EndUser.Storage)
+	require.NotNil(t, d.Spec.Processing)
+	require.NotNil(t, d.Spec.Processing.SpanEventsToLogs)
+	assert.True(t, *d.Spec.Processing.SpanEventsToLogs)
 }
 
 func mockListSuccess(t *testing.T) *testutil.MockServer {
@@ -308,6 +332,7 @@ func TestGetDataset_JSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
 	assert.Equal(t, "production", dash0api.GetDatasetID(&parsed))
 	assert.Equal(t, "Production", parsed.Metadata.Name)
+	assertNewShapeSpec(t, &parsed, dash0api.N90d)
 }
 
 func TestGetDataset_YAML(t *testing.T) {
@@ -324,6 +349,11 @@ func TestGetDataset_YAML(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "kind: Dash0Dataset")
 	assert.Contains(t, output, "dash0.com/id: production")
+	assert.Contains(t, output, "apiVersion: dash0.com/v1alpha1")
+
+	var parsed dash0api.DatasetDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte(output), &parsed))
+	assertNewShapeSpec(t, &parsed, dash0api.N90d)
 }
 
 func TestGetDataset_InvalidFormatMakesNoAPICall(t *testing.T) {
@@ -392,6 +422,7 @@ func TestCreateDataset_PostsWhenPreflightIs404(t *testing.T) {
 	assert.Equal(t, dash0api.Dash0Dataset, body.Kind)
 	assert.Equal(t, "Production", body.Metadata.Name)
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assertNewShapeSpec(t, &body, dash0api.N90d)
 	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
 }
 
@@ -419,6 +450,7 @@ func TestCreateDataset_PutsWhenPreflightHits(t *testing.T) {
 	body := decodeDataset(t, puts[0])
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
 	assert.Equal(t, "Production", body.Metadata.Name)
+	assertNewShapeSpec(t, &body, dash0api.N90d)
 	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
 }
 
@@ -456,7 +488,8 @@ func TestCreateDataset_PermissionsFollowedByPut(t *testing.T) {
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
-	yamlFile := writeYAML(t, `kind: Dash0Dataset
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
 metadata:
   name: Production
   labels:
@@ -481,50 +514,6 @@ spec:
 	assert.Equal(t, []dash0api.DatasetAction{dash0api.DatasetRead}, (*body.Spec.Permissions)[0].Actions)
 }
 
-func TestCreateDataset_WarnsAboutTelemetryFilters(t *testing.T) {
-	testutil.SetupTestEnv(t)
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusNotFound,
-		BodyFile:   testutil.FixtureDatasetsNotFound,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-
-	output, stderr, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetWithFiltersYAML))
-
-	require.NoError(t, err)
-	assert.Contains(t, stderr, telemetryFiltersWarning)
-	assert.NotContains(t, output, telemetryFiltersWarning)
-	posts := requestsFor(server, http.MethodPost, apiPathDatasets)
-	require.Len(t, posts, 1)
-	assert.Nil(t, decodeDataset(t, posts[0]).Spec.TelemetryFilters, "telemetryFilters must be stripped from the request")
-}
-
-func TestCreateDataset_NoTelemetryFiltersNoWarning(t *testing.T) {
-	testutil.SetupTestEnv(t)
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusNotFound,
-		BodyFile:   testutil.FixtureDatasetsNotFound,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-
-	_, stderr, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetYAML))
-
-	require.NoError(t, err)
-	assert.NotContains(t, stderr, "telemetryFilters")
-}
-
 func TestCreateDataset_PermissionsPutFailureStillReportsCreated(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -543,7 +532,8 @@ func TestCreateDataset_PermissionsPutFailureStillReportsCreated(t *testing.T) {
 		BodyFile:   testutil.FixtureDatasetsBadRequest,
 		Validator:  testutil.RequireHeaders,
 	})
-	yamlFile := writeYAML(t, `kind: Dash0Dataset
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
 metadata:
   name: Production
   labels:
@@ -567,7 +557,8 @@ spec:
 
 func TestCreateDataset_SlugRequired(t *testing.T) {
 	testutil.SetupTestEnv(t)
-	yamlFile := writeYAML(t, `kind: Dash0Dataset
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
 metadata:
   name: Production
 spec: {}
@@ -621,7 +612,8 @@ func TestUpdateDataset_Success(t *testing.T) {
 		Validator:  testutil.RequireHeaders,
 	})
 	// The input carries server-managed fields, as an export from get -o yaml does.
-	yamlFile := writeYAML(t, `kind: Dash0Dataset
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
 metadata:
   name: Production (renamed)
   labels:
@@ -631,7 +623,19 @@ metadata:
   annotations:
     dash0.com/created-at: "2020-01-01T00:00:00Z"
     dash0.com/updated-at: "2020-01-02T00:00:00Z"
-spec: {}
+spec:
+  retention:
+    traces: 60d
+    logs: 120d
+  privacy:
+    ipAddresses:
+      endUser:
+        storage: anonymize
+    geoLocation:
+      endUser:
+        storage: up_to_country
+  processing:
+    spanEventsToLogs: true
 `)
 
 	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", yamlFile)
@@ -651,29 +655,8 @@ spec: {}
 	assert.Nil(t, body.Metadata.Labels.Dash0Comversion, "server-managed version label must be stripped")
 	assert.Nil(t, body.Metadata.Labels.Dash0Comsource, "server-managed source label must be stripped")
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body), "the slug label must survive")
-}
-
-func TestUpdateDataset_WarnsAboutTelemetryFilters(t *testing.T) {
-	testutil.SetupTestEnv(t)
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureDatasetsGetSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-
-	_, stderr, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", writeYAML(t, datasetWithFiltersYAML))
-
-	require.NoError(t, err)
-	assert.Contains(t, stderr, telemetryFiltersWarning)
-	puts := requestsFor(server, http.MethodPut, "/api/datasets/production")
-	require.Len(t, puts, 1)
-	assert.Nil(t, decodeDataset(t, puts[0]).Spec.TelemetryFilters, "telemetryFilters must be stripped from the request")
+	assertNewShapeSpec(t, &body, dash0api.N120d)
+	assert.Contains(t, output, "+    logs: 120d")
 }
 
 func TestUpdateDataset_PositionalIDTargetsPathWhenFileHasNoID(t *testing.T) {
@@ -691,7 +674,7 @@ func TestUpdateDataset_PositionalIDTargetsPathWhenFileHasNoID(t *testing.T) {
 	})
 
 	// The file names no slug, so the positional id is the only key and must pick the URL path.
-	yamlFile := writeYAML(t, "kind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
 
 	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
 
@@ -717,6 +700,92 @@ func TestUpdateDataset_DryRun(t *testing.T) {
 	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
 }
 
+const (
+	datasetNoAPIVersionYAML = `kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec: {}
+`
+	datasetUnknownAPIVersionYAML = `apiVersion: dash0.com/v2
+kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec: {}
+`
+)
+
+func TestDatasetsWrite_APIVersionRejectedWithoutAPICall(t *testing.T) {
+	cases := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{"missing", datasetNoAPIVersionYAML, "dataset definition requires apiVersion: dash0.com/v1alpha1"},
+		{"unknown", datasetUnknownAPIVersionYAML, `unsupported dataset apiVersion "dash0.com/v2" (supported: dash0.com/v1alpha1)`},
+	}
+	commands := map[string][]string{
+		"create":         {"create", "-f"},
+		"create dry-run": {"create", "--dry-run", "-f"},
+		"update":         {"update", "-f"},
+		"update dry-run": {"update", "--dry-run", "-f"},
+	}
+	for _, c := range cases {
+		for cmdName, base := range commands {
+			t.Run(c.name+"/"+cmdName, func(t *testing.T) {
+				testutil.SetupTestEnv(t)
+				server := testutil.NewMockServer(t, testutil.FixturesDir())
+				args := append([]string{"-X", "datasets"}, base...)
+				args = append(args, writeYAML(t, c.yaml))
+
+				_, _, err := runCmd(t, server.URL, args...)
+
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), c.wantErr)
+				assert.Empty(t, server.Requests())
+			})
+		}
+	}
+}
+
+func TestUpdateDataset_DryRunPartialFileShowsOnlyTheChange(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec:
+  retention:
+    logs: 120d
+`)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", yamlFile, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "-    logs: 90d")
+	assert.Contains(t, output, "+    logs: 120d")
+	// Only the logs line changes; context lines may name other fields but none is removed or added.
+	var changed []string
+	for _, line := range strings.Split(output, "\n") {
+		if (strings.HasPrefix(line, "-") || strings.HasPrefix(line, "+")) && !strings.HasPrefix(line, "---") && !strings.HasPrefix(line, "+++") {
+			changed = append(changed, line)
+		}
+	}
+	assert.Equal(t, []string{"-    logs: 90d", "+    logs: 120d"}, changed)
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
 func TestUpdateDataset_IDMismatch(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -732,7 +801,7 @@ func TestUpdateDataset_IDMismatch(t *testing.T) {
 
 func TestUpdateDataset_NoIDAnywhere(t *testing.T) {
 	testutil.SetupTestEnv(t)
-	yamlFile := writeYAML(t, "kind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
 
 	_, _, err := runCmd(t, "http://unused", "-X", "datasets", "update", "-f", yamlFile)
 

@@ -1,4 +1,5 @@
 {
+  "apiVersion": "dash0.com/v1alpha1",
   "kind": "Dash0Dataset",
   "metadata": {
     "name": "Production",
@@ -14,6 +15,25 @@
     }
   },
   "spec": {
-    "preferred": false
+    "preferred": false,
+    "retention": {
+      "traces": "60d",
+      "logs": "90d"
+    },
+    "privacy": {
+      "ipAddresses": {
+        "endUser": {
+          "storage": "anonymize"
+        }
+      },
+      "geoLocation": {
+        "endUser": {
+          "storage": "up_to_country"
+        }
+      }
+    },
+    "processing": {
+      "spanEventsToLogs": true
+    }
   }
 }
