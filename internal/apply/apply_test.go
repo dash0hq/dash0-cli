@@ -716,3 +716,23 @@ spec:
 	require.Len(t, validationWarnings, 1)
 	assert.Contains(t, validationWarnings[0], "spec.routing.assets is API-managed and ignored on write")
 }
+
+func TestValidateExperimentalKinds_Dataset(t *testing.T) {
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: production\nspec: {}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "production", docs[0].id)
+
+	assert.Empty(t, validateExperimentalKinds(docs, true))
+	errs := validateExperimentalKinds(docs, false)
+	require.Len(t, errs, 1)
+	assert.Contains(t, errs[0], "Dash0Dataset is an experimental kind")
+}
+
+func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Dataset\nmetadata:\n  name: P\nspec: {}\n"))
+	require.NoError(t, err)
+
+	validationErrors, _ := validateDocuments(docs)
+	require.Len(t, validationErrors, 1)
+	assert.Contains(t, validationErrors[0], "dash0.com/id")
+}

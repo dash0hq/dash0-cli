@@ -1,0 +1,7 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: __NAME__
+  labels:
+    dash0.com/id: __SLUG__
+spec: {}

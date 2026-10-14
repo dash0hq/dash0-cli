@@ -1,0 +1,17 @@
+{
+  "kind": "Dash0Dataset",
+  "metadata": {
+    "name": "Production",
+    "labels": {
+      "dash0.com/id": "production",
+      "dash0.com/origin": "api-5b0c3a8e-1d2f-4c6b-9a7e-3f4d5e6a7b8c",
+      "dash0.com/source": "api",
+      "dash0.com/version": "1"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-04-17T10:00:00Z",
+      "dash0.com/updated-at": "2026-04-17T10:00:00Z"
+    }
+  },
+  "spec": {}
+}

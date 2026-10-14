@@ -82,6 +82,13 @@ var topics = []topicSpec{
 		extraNote: "`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and " +
 			"`perses.dev/v1alpha2`).",
 	},
+	{
+		name: "datasets",
+		sections: []string{
+			"datasets list", "datasets get", "datasets create", "datasets update", "datasets delete",
+		},
+		assetYAMLLabels: []string{"Dataset ("},
+	},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},
 	{name: "logs", sections: []string{"logs query", "logs send"}},

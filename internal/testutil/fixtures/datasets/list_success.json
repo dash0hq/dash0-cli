@@ -1,0 +1,51 @@
+{
+  "datasets": [
+    {
+      "kind": "Dash0Dataset",
+      "metadata": {
+        "name": "Default",
+        "labels": {
+          "dash0.com/id": "default",
+          "dash0.com/source": "ui"
+        },
+        "annotations": {
+          "dash0.com/created-at": "2026-01-10T09:00:00Z",
+          "dash0.com/updated-at": "2026-01-10T09:00:00Z"
+        }
+      },
+      "spec": {
+        "preferred": true
+      }
+    },
+    {
+      "kind": "Dash0Dataset",
+      "metadata": {
+        "name": "Production",
+        "labels": {
+          "dash0.com/id": "production",
+          "dash0.com/origin": "dash0-cli",
+          "dash0.com/source": "dash0-cli"
+        },
+        "annotations": {
+          "dash0.com/created-at": "2026-02-01T10:00:00Z",
+          "dash0.com/updated-at": "2026-02-01T10:00:00Z"
+        }
+      },
+      "spec": {}
+    },
+    {
+      "kind": "Dash0Dataset",
+      "metadata": {
+        "name": "Staging",
+        "labels": {
+          "dash0.com/id": "staging"
+        },
+        "annotations": {
+          "dash0.com/created-at": "2026-02-02T11:00:00Z",
+          "dash0.com/updated-at": "2026-02-02T11:00:00Z"
+        }
+      },
+      "spec": {}
+    }
+  ]
+}

@@ -30,6 +30,9 @@ type applyFlags struct {
 	File      string
 	DryRun    bool
 	Since     string
+	// Experimental records whether --experimental (-X) is enabled, for the
+	// document kinds that are still experimental.
+	Experimental bool
 	// SinceFlagSet records whether --since was actually passed on the
 	// command line, as opposed to left at its "" zero value. This is
 	// distinct from Since != "": a CI script building
@@ -72,12 +75,13 @@ Supported asset types:
   - Dash0NotificationChannel
   - Dash0Team
   - Dash0TimeSeriesAggregation
+  - Dash0Dataset (requires --experimental/-X)
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.
 
-[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --since never deletes a Dash0Dataset, because deletion purges its telemetry after 30 days; it prints a warning and skips it. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -114,6 +118,8 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 			if err := experimental.RequireExperimentalFlag(cmd, "since"); err != nil {
 				return err
 			}
+			// Missing flag registration means "not enabled", as in experimental.RequireExperimental.
+			flags.Experimental, _ = cmd.Flags().GetBool("experimental")
 			flags.SinceFlagSet = cmd.Flags().Changed("since")
 			if flags.SinceFlagSet && flags.File == "-" {
 				return fmt.Errorf("--since '%s' cannot be used with -f - (stdin)\nHint: --since needs a file or directory path to compare against git history; pass -f <path> instead", flags.Since)
@@ -235,6 +241,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	validationErrors, validationWarnings := validateDocuments(documents)
+	validationErrors = append(validationErrors, validateExperimentalKinds(documents, flags.Experimental)...)
 	if len(validationErrors) > 0 {
 		return validationError(validationErrors...)
 	}
@@ -338,7 +345,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -365,6 +372,10 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
 				}
 			}
+		} else if normalizeKind(doc.kind) == "dataset" && doc.id == "" {
+			// The slug is the path id and the server cannot assign one, so a
+			// document without it fails here, before any document is applied.
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrDatasetSlugRequired.Error()))
 		} else if normalizeKind(doc.kind) == "timeseriesaggregation" && doc.id == "" {
 			// Origin is mandatory for this kind and there is no fallback create
 			// path, so a document missing it fails here rather than after the
@@ -374,6 +385,21 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		}
 	}
 	return validationErrors, validationWarnings
+}
+
+// validateExperimentalKinds rejects documents whose kind is still experimental
+// when --experimental (-X) is not set. It runs in the validation phase, so no
+// document of the run is applied.
+func validateExperimentalKinds(documents []assetDocument, experimentalEnabled bool) (validationErrors []string) {
+	if experimentalEnabled {
+		return nil
+	}
+	for _, doc := range documents {
+		if normalizeKind(doc.kind) == "dataset" {
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: Dash0Dataset is an experimental kind; pass --experimental (or -X) to enable it", doc.location()))
+		}
+	}
+	return validationErrors
 }
 
 // validationError formats one or more validation issues into a consistent
@@ -535,6 +561,14 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			// Teams use origin as the upsert key.
 			id = dash0api.GetTeamOrigin(&team)
 		}
+
+	case "dataset":
+		var dataset dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(data, &dataset); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetDatasetName(&dataset)
+		id = dash0api.GetDatasetID(&dataset)
 
 	default:
 		var raw map[string]any
@@ -847,6 +881,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			})
 		}
 		return []applyResult{{kind: "Dash0Team", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "dataset":
+		var dataset dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(doc.raw, &dataset); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0Dataset: %w", err)
+		}
+		result, err := asset.ImportDataset(ctx, apiClient, &dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "dataset",
+				AssetName: dash0api.GetDatasetName(&dataset),
+			})
+		}
+		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)

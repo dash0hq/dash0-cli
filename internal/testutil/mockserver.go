@@ -75,6 +75,16 @@ const (
 	FixtureNotificationChannelsNotFound      = "notificationchannels/error_not_found.json"
 	FixtureNotificationChannelsUnauthorized  = "notificationchannels/error_unauthorized.json"
 
+	// Datasets fixtures
+	FixtureDatasetsListSuccess   = "datasets/list_success.json"
+	FixtureDatasetsListEmpty     = "datasets/list_empty.json"
+	FixtureDatasetsGetSuccess    = "datasets/get_success.json"
+	FixtureDatasetsCreateSuccess = "datasets/create_success.json"
+	FixtureDatasetsUpdateSuccess = "datasets/update_success.json"
+	FixtureDatasetsNotFound      = "datasets/error_not_found.json"
+	FixtureDatasetsUnauthorized  = "datasets/error_unauthorized.json"
+	FixtureDatasetsBadRequest    = "datasets/error_bad_request.json"
+
 	// Recording rules fixtures
 	FixtureRecordingRulesListSuccess   = "recordingrules/list_success.json"
 	FixtureRecordingRulesListEmpty     = "recordingrules/list_empty.json"

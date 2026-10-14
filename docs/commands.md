@@ -17,7 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
@@ -37,9 +37,9 @@ Output formats are `table`, `json`, and `csv`.
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
-**Organizational commands** manage entities (teams, members, notification channels) scoped to the organization, not to a dataset.
+**Organizational commands** manage entities (teams, members, notification channels, datasets) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`, no `apply` integration) and are all experimental.
-Notification channels are an exception: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+Notification channels and datasets are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
 
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
@@ -746,6 +746,7 @@ Aliases: `remove`
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
+| Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]`. Deleting a dataset purges its telemetry after 30 days; see [`datasets delete`](#datasets-delete-experimental) |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 ### Asset identifiers and idempotent upsert
@@ -771,6 +772,7 @@ The identifier field location varies by asset kind:
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
+| `Dash0Dataset` | `metadata.labels["dash0.com/id"]` (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. A PUT to an unknown slug would create a dataset, so the preflight keeps a mistyped slug from doing that. Requires `--experimental` |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
@@ -951,7 +953,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -978,6 +980,14 @@ On that POST fallback the foreign `dash0.com/id` is removed from the request bod
 The fallback is therefore a one-way create, not an idempotent one: the newly assigned ID is not written back into the document, so a second apply preflights the same unknown ID, 404s again, and POSTs a second SLO.
 Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
 A document with neither label creates a new SLO on every apply.
+
+`Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
+The slug in `metadata.labels["dash0.com/id"]` is required: a document without it fails during the validation phase, before any document in the run is applied.
+The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
+The server ignores `spec.permissions` on create, so a create that carries permissions is followed by an update.
+Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset.
+Requires `--experimental`.
+`apply --since` never deletes datasets (see [`apply --since`](#apply---since-experimental)).
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -1154,6 +1164,11 @@ keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
 Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
+
+`apply --since` never deletes a `Dash0Dataset`.
+Deleting a dataset starts a 30-day countdown after which Dash0 purges its telemetry, which is too destructive to trigger from a removed file.
+When a dataset document is removed since `<ref>`, the CLI prints a warning to stderr that names the slug and points at `dash0 -X datasets delete <id>`, then skips it.
+The skipped dataset does not appear in the `--dry-run` listing, and it does not count toward the "no identifier" failure below.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
@@ -1427,6 +1442,26 @@ spec:
     # check rule via its dash0.com/notification-channel-ids annotation, or a synthetic check via
     # its spec.notifications.channels.
 ```
+
+Dataset (organization-level, no `--dataset`, requires `--experimental`):
+
+```yaml
+kind: Dash0Dataset
+metadata:
+  name: Staging
+  labels:
+    dash0.com/id: staging
+spec:
+  permissions:
+    - role: basic_member
+      actions:
+        - dataset:read
+```
+
+`metadata.labels["dash0.com/id"]` is the dataset slug.
+It is required and cannot change after creation.
+`metadata.name` is the display name.
+The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
 
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
@@ -2731,6 +2766,127 @@ Notification channel deleted (id: <id>).
 
 Aliases: `remove`
 
+### `datasets list` (experimental)
+
+List all datasets in the organization.
+
+```bash
+dash0 -X datasets list [-o <format>] [--skip-header] [--column <col>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `wide`, `json`, `yaml`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table`, `wide`, and `csv` output |
+| `--column` | | Column to display (repeatable; `table` and `csv` only) |
+
+The `wide` and `csv` formats add an `ORIGIN` column.
+
+Example:
+
+```bash
+$ dash0 -X datasets list
+NAME        ID
+Default     default
+Staging     staging
+```
+
+Aliases: `ls`
+
+### `datasets get` (experimental)
+
+Get a dataset definition by slug or origin.
+
+```bash
+dash0 -X datasets get <id> [-o <format>]
+```
+
+Example:
+
+```bash
+$ dash0 -X datasets get <id>
+Kind:   Dataset
+Name:   Staging
+ID:     staging
+Origin: api-0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90
+```
+
+Use `-o yaml` to get the full definition, suitable for editing and re-applying.
+
+### `datasets create` (experimental)
+
+Create a dataset from a YAML or JSON definition file.
+The slug in `metadata.labels["dash0.com/id"]` is required and cannot change after creation.
+If a dataset with that slug already exists, the command updates it.
+If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset.
+The server ignores `spec.permissions` on create, so the CLI follows a create that carries permissions with an update.
+
+```bash
+dash0 -X datasets create -f <file> [--dry-run]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--dry-run` | Validate without creating |
+
+Create from a YAML file:
+
+```bash
+$ dash0 -X datasets create -f dataset.yaml
+Dataset "Staging" created (id: staging)
+```
+
+Validate without creating:
+
+```bash
+$ dash0 -X datasets create -f dataset.yaml --dry-run
+Dry run: dataset definition is valid
+```
+
+Aliases: `add`
+
+### `datasets update` (experimental)
+
+Update an existing dataset from a YAML or JSON definition file.
+If the ID argument is omitted, the slug is extracted from the file content.
+The dataset must already exist: the command fails with a "not found" error instead of creating it.
+The output is a unified diff of the before and after states.
+
+```bash
+dash0 -X datasets update [id] -f <file> [--dry-run]
+```
+
+Update a dataset from a file:
+
+```bash
+dash0 -X datasets update -f dataset.yaml
+```
+
+### `datasets delete` (experimental)
+
+Delete a dataset by slug or origin.
+Prompts for confirmation unless `--force` is passed.
+The `default` dataset cannot be deleted: the API answers with a 400 error.
+
+Deletion is soft.
+Dash0 keeps the dataset for 30 days, and creating a dataset with the same slug in that time restores it.
+After 30 days, Dash0 permanently purges the dataset and its telemetry.
+
+```bash
+dash0 -X datasets delete <id> [--force]
+```
+
+Example:
+
+```bash
+$ dash0 -X datasets delete <id>
+Are you sure you want to delete dataset "<id>"? Dash0 keeps it for 30 days, so creating a dataset with the same slug restores it. After that, the dataset and its telemetry are permanently purged. [y/N]: y
+Dataset "<id>" deleted
+```
+
+Aliases: `remove`
+
 ### `teams list` (experimental)
 
 List all teams in the organization.
@@ -3282,7 +3438,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: apply, api, check-rules, config, dashboards, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: apply, api, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

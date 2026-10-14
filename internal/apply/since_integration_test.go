@@ -2195,3 +2195,94 @@ func TestApply_Since_TimeSeriesAggregationWrongDatasetFailsRun(t *testing.T) {
 	require.Error(t, cmdErr)
 	assert.Contains(t, cmdErr.Error(), "unique per organization")
 }
+
+// TestApply_Since_SkipsRemovedDataset checks that --since never deletes a
+// dataset: it warns, makes no API call, does not fail on the dataset (which
+// has a slug), and still applies the surviving documents.
+func TestApply_Since_SkipsRemovedDataset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dataset.yaml", "kind: Dash0Dataset\nmetadata:\n  name: Staging\n  labels:\n    dash0.com/id: staging\nspec: {}\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dataset")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "dataset.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove dataset")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	var output string
+	stderr := testutil.CaptureStderr(t, func() {
+		output = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "View")
+	assert.Contains(t, stderr, `warning: Dataset "staging" was removed since --since`)
+	assert.Contains(t, stderr, "dash0 -X datasets delete staging")
+	for _, req := range server.Requests() {
+		assert.NotContains(t, req.Path, apiPathDatasets, "--since must not call the datasets API")
+	}
+}
+
+func TestApply_Since_DryRunOmitsRemovedDataset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dataset.yaml", "kind: Dash0Dataset\nmetadata:\n  name: Staging\n  labels:\n    dash0.com/id: staging\nspec: {}\n")
+	writeFileFixture(t, dir, "dashboard.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: d\n  dash0Extensions:\n    id: dash-id\nspec:\n  display:\n    name: D\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dataset and dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "dataset.yaml")))
+	require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove both")
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{"-f", dir, "--since", before, "--dry-run", "--experimental"})
+
+	var cmdErr error
+	var output string
+	stderr := testutil.CaptureStderr(t, func() {
+		output = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "1 deletion pending")
+	assert.Contains(t, output, "Delete Dashboard")
+	assert.NotContains(t, output, "Dataset")
+	assert.Contains(t, stderr, `Dataset "staging"`)
+}

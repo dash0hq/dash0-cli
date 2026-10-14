@@ -13,6 +13,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +30,7 @@ const (
 	apiPathNotificationChannels = "/api/notification-channels"
 	apiPathSLOs                 = "/api/slos"
 	apiPathTimeSeriesAggs       = "/api/time-series-aggregations"
+	apiPathDatasets             = "/api/datasets"
 
 	fixtureSLOsGetSuccess    = "slos/get_success.json"
 	fixtureSLOsCreateSuccess = "slos/create_success.json"
@@ -47,6 +49,7 @@ var (
 	recordingRuleIDPattern       = regexp.MustCompile(`^/api/recording-rules/[^/]+$`)
 	notificationChannelIDPattern = regexp.MustCompile(`^/api/notification-channels/[^/]+$`)
 	sloIDPattern                 = regexp.MustCompile(`^/api/slos/[^/]+$`)
+	datasetIDPattern             = regexp.MustCompile(`^/api/datasets/[^/]+$`)
 	timeSeriesAggOriginPattern   = regexp.MustCompile(`^/api/time-series-aggregations/[^/]+$`)
 )
 
@@ -2627,4 +2630,153 @@ func TestApply_TimeSeriesAggregation_DryRun(t *testing.T) {
 	assert.Contains(t, output, "Dry run")
 	assert.Contains(t, output, "Time series aggregation")
 	assert.Contains(t, output, "http-server-request-duration")
+}
+
+const datasetDoc = `kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec: {}
+`
+
+// newDatasetApplyCmd returns an apply command with a local --experimental flag,
+// standing in for the persistent flag main.go registers on the root command.
+func newDatasetApplyCmd() *cobra.Command {
+	cmd := NewApplyCmd()
+	withExperimentalFlag(cmd)
+	return cmd
+}
+
+func writeDatasetDoc(t *testing.T) string {
+	t.Helper()
+	yamlFile := filepath.Join(t.TempDir(), "dataset.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(datasetDoc), 0644))
+	return yamlFile
+}
+
+func TestApply_Dataset_Created(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeDatasetDoc(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+	})
+	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newDatasetApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `Dataset "Production" (production) created`)
+
+	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDatasets)
+	require.NotNil(t, createReq, "expected a create request for the dataset")
+	assert.NotContains(t, createReq.Query, "dataset=", "datasets are org-level and must not carry a dataset query parameter")
+	var body dash0api.DatasetDefinition
+	require.NoError(t, json.Unmarshal([]byte(createReq.Body), &body))
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+}
+
+func TestApply_Dataset_UpdatedShowsDiff(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeDatasetDoc(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newDatasetApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "--- Dataset (before)")
+	assert.Contains(t, output, "+++ Dataset (after)")
+	assert.Contains(t, output, "Production (renamed)")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDatasets+"/production"), "expected PUT to datasets/production")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathDatasets), "did not expect POST")
+}
+
+func TestApply_Dataset_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeDatasetDoc(t)
+
+	// No mock server: --dry-run must not call the API.
+	cmd := newDatasetApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run", "--experimental"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "Dry run")
+	assert.Contains(t, output, `Apply Dataset "Production" (production)`)
+}
+
+func TestApply_Dataset_MissingSlugFailsValidation(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dataset.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte("kind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n"), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := newDatasetApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), "validation failed")
+	assert.Contains(t, cmdErr.Error(), "dash0.com/id")
+	assert.Empty(t, server.Requests(), "validation must fail before any API call")
+}
+
+func TestApply_Dataset_RequiresExperimental(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeDatasetDoc(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := newDatasetApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), "Dash0Dataset is an experimental kind")
+	assert.Contains(t, cmdErr.Error(), "--experimental")
+	assert.Empty(t, server.Requests(), "validation must fail before any API call")
 }

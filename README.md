@@ -661,6 +661,23 @@ dash0 failed-checks query --active -o json
 
 See the [filter syntax reference](docs/commands.md#filter-syntax) for the full list of operators.
 
+### Datasets (experimental)
+
+```bash
+# List all datasets
+dash0 -X datasets list
+```
+
+```bash
+# Create a dataset from a definition file
+dash0 -X datasets create -f dataset.yaml
+```
+
+```bash
+# Delete a dataset (Dash0 purges its telemetry after 30 days)
+dash0 -X datasets delete <id>
+```
+
 ### Teams (experimental)
 
 ```bash
