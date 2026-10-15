@@ -21,7 +21,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| Organizational | `teams`, `members`, `notification-channels` | Flag-based input, no dataset, experimental |
+| Organizational | `teams`, `members`, `notification-channels`, `datasets` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
 
@@ -58,6 +58,7 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `SLO` | `metadata.labels["dash0.com/origin"]` — SLO IDs are server-assigned (`slo_<ulid>`), so origin is the only client-settable key; `metadata.labels["dash0.com/id"]` is used only when origin is absent |
 | `Dash0SpamFilter` | `metadata.labels["dash0.com/id"]` (`dash0.com/origin` takes precedence when both are present) |
 | `Dash0NotificationChannel` | no ID field — `metadata.labels["dash0.com/origin"]` is the upsert key |
+| `Dash0Dataset` | `metadata.labels["dash0.com/id"]` (the dataset slug — required and immutable); `dash0.com/origin` is optional |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]`, and it is **mandatory** — the API rejects an aggregation without one, so there is no POST fallback. A `dash0.com/id` in the body is ignored. Origins are unique per organization while each aggregation belongs to one dataset, so one document cannot serve two datasets |
 
@@ -169,6 +170,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |
+| `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
 | `failed-checks` | Query active and historical alerting issues |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
 | `logs` | Query and send log records |

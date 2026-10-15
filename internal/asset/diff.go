@@ -78,6 +78,14 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		dash0api.StripNotificationChannelServerFields(&c)
 		stripped = &c
+	case *dash0api.DatasetDefinition:
+		var d dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &d); err != nil {
+			return "", fmt.Errorf("failed to unmarshal dataset: %w", err)
+		}
+		dash0api.StripDatasetServerFields(&d)
+		SortDatasetPermissions(&d)
+		stripped = &d
 	case *dash0api.RecordingRule:
 		var r dash0api.RecordingRule
 		if err := dash0yaml.Unmarshal(jsonBytes, &r); err != nil {

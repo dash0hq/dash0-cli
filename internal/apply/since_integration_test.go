@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
@@ -2194,4 +2195,136 @@ func TestApply_Since_TimeSeriesAggregationWrongDatasetFailsRun(t *testing.T) {
 
 	require.Error(t, cmdErr)
 	assert.Contains(t, cmdErr.Error(), "unique per organization")
+}
+
+// sinceDatasetRepo builds a repo where a dataset and a view were committed and
+// the dataset document was then removed. It returns the repo dir and the ref
+// from before the removal.
+func sinceDatasetRepo(t *testing.T) (dir, before string) {
+	t.Helper()
+	dir = t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "dataset.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Staging\n  labels:\n    dash0.com/id: staging\nspec: {}\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dataset")
+	before = strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "dataset.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove dataset")
+	return dir, before
+}
+
+func sinceDatasetServer(t *testing.T, deleteStatus int) *testutil.MockServer {
+	t.Helper()
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	resp := testutil.MockResponse{StatusCode: deleteStatus, Body: map[string]any{}, Validator: testutil.RequireHeaders}
+	if deleteStatus == http.StatusNotFound {
+		resp = testutil.MockResponse{StatusCode: deleteStatus, BodyFile: testutil.FixtureDatasetsNotFound}
+	}
+	server.OnPattern(http.MethodDelete, datasetIDPattern, resp)
+	return server
+}
+
+func runSinceDataset(t *testing.T, args []string) (output, stderr string, err error) {
+	t.Helper()
+	cmd := newSinceTestCmd()
+	cmd.SetArgs(args)
+	stderr = testutil.CaptureStderr(t, func() {
+		output = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+	return output, stderr, err
+}
+
+// A dataset removed from git is deleted like any other kind, and the
+// surviving documents are still applied.
+func TestApply_Since_DeletesRemovedDataset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir, before := sinceDatasetRepo(t)
+	server := sinceDatasetServer(t, http.StatusOK)
+
+	output, _, err := runSinceDataset(t, []string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "View")
+	assert.Contains(t, output, `Dataset "Staging" (staging) deleted`)
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathDatasets+"/staging"))
+}
+
+// A dataset the server no longer has is the desired end state, not a failure.
+func TestApply_Since_RemovedDatasetAlreadyDeleted(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir, before := sinceDatasetRepo(t)
+	server := sinceDatasetServer(t, http.StatusNotFound)
+
+	_, stderr, err := runSinceDataset(t, []string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "already deleted")
+}
+
+func TestApply_Since_DryRunListsRemovedDataset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir, before := sinceDatasetRepo(t)
+
+	output, _, err := runSinceDataset(t, []string{"-f", dir, "--since", before, "--dry-run", "--experimental"})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "1 deletion pending")
+	assert.Contains(t, output, `Delete Dataset "Staging" (staging)`)
+}
+
+// In agent mode a dataset deletion needs an explicit --force, as in
+// `datasets delete`, and the refusal leaves the whole run untouched.
+func TestApply_Since_AgentModeDatasetDeletionRequiresForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	dir, before := sinceDatasetRepo(t)
+	server := sinceDatasetServer(t, http.StatusOK)
+
+	_, _, err := runSinceDataset(t, []string{
+		"-f", dir, "--since", before, "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires --force when run in agent mode")
+	assert.Empty(t, server.Requests())
+}
+
+func TestApply_Since_AgentModeDatasetDeletionWithForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	dir, before := sinceDatasetRepo(t)
+	server := sinceDatasetServer(t, http.StatusOK)
+
+	_, _, err := runSinceDataset(t, []string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathDatasets+"/staging"))
 }

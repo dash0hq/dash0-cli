@@ -18,6 +18,7 @@ import (
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
+	"github.com/dash0hq/dash0-cli/internal/datasets"
 	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
@@ -79,6 +80,7 @@ func init() {
 	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
+	rootCmd.AddCommand(datasets.NewDatasetsCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
 	rootCmd.AddCommand(login.NewLoginCmd())
 	rootCmd.AddCommand(login.NewLogoutCmd())

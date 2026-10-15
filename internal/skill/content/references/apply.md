@@ -21,7 +21,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -48,6 +48,18 @@ On that POST fallback the foreign `dash0.com/id` is removed from the request bod
 The fallback is therefore a one-way create, not an idempotent one: the newly assigned ID is not written back into the document, so a second apply preflights the same unknown ID, 404s again, and POSTs a second SLO.
 Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
 A document with neither label creates a new SLO on every apply.
+
+`Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
+The slug in `metadata.labels["dash0.com/id"]` is required: a document without it fails during the validation phase, before any document in the run is applied.
+So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
+The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
+The server ignores `spec.permissions` on create, so a create that carries permissions is followed by an update.
+Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
+Only the creation time and the version reset, and the settings come from the request.
+`apply` prints `created` for a restore, as it does for a new dataset.
+A dataset document has no telemetry filters: spam filters own them, and creating or updating a dataset never changes them.
+Requires `--experimental`.
+`apply --since` deletes a dataset whose document was removed from git, like any other kind (see [`apply --since`](#apply---since-experimental)).
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -224,6 +236,18 @@ keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
 Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
+
+A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
+The delete is a 30-day soft delete.
+The dataset's evaluators pause at once.
+Applying the same slug again within 30 days restores the dataset, and the restore also brings back assets made in the UI.
+Dashboards, check rules, synthetic checks, and views are kept for 30 days; creating the same slug within that time restores them.
+After 30 days, Dash0 removes the dataset and those assets.
+Telemetry is removed as its retention expires, not by the delete.
+
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), a `--since` run that would delete a dataset requires an explicit `--force`, as `datasets delete` does.
+Without it, the run refuses with an error before it applies anything.
+A dataset that is already gone counts as deleted, and a removed dataset document with no slug fails the "no identifier" check below, like any other kind.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
