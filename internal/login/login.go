@@ -23,6 +23,15 @@ import (
 // dynamic client registration.
 const clientName = "Dash0 CLI"
 
+// firstPartyClientID is the OAuth client Dash0 provisions for this CLI on
+// every Dash0-hosted authorization server. Logging in with it, rather than
+// with a dynamically registered client, is what lets the consent screen mark
+// the CLI as an official Dash0 application: a dynamically registered
+// "Dash0 CLI" is indistinguishable from anything else that registers under
+// that name. The server only accepts loopback redirect URIs for it, which is
+// why it can be shipped in a public binary.
+const firstPartyClientID = "dash0-cli"
+
 type loginOptions struct {
 	APIURL      string
 	ProfileName string
@@ -685,10 +694,16 @@ func requirePKCEs256(meta *dash0api.OAuthAuthorizationServerMetadata) error {
 	return errors.New("the authorization server does not advertise S256 PKCE support, which dash0 requires")
 }
 
-// ensureRegisteredClient returns a DCR cache record for apiURL, registering
-// a fresh client when there is no cached entry or when the cached entry's
-// redirect URI does not match the listener we just bound.
+// ensureRegisteredClient returns the client to log in with. Dash0-hosted
+// API URLs use the first-party client and never register; anything else
+// (local stacks, custom deployments) gets a DCR cache record for apiURL,
+// registering a fresh client when there is no cached entry or when the
+// cached entry's redirect URI does not match the listener we just bound.
 func ensureRegisteredClient(ctx context.Context, oauthClient dash0api.OAuthClient, apiURL, redirectURI string) (profiles.OAuthClientRecord, error) {
+	if deriveAppHost(apiURL) != "" {
+		return profiles.OAuthClientRecord{ClientID: firstPartyClientID, RedirectURI: redirectURI}, nil
+	}
+
 	store, storeErr := profiles.NewOAuthClientStore()
 	if storeErr == nil {
 		if rec, ok, err := store.Get(apiURL); err == nil && ok && rec.RedirectURI == redirectURI {
