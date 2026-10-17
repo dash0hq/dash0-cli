@@ -91,6 +91,8 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 		if err == nil {
 			action = ActionUpdated
 			before = existing
+		} else if !dash0api.IsNotFound(err) {
+			return ImportResult{}, err
 		}
 	}
 
