@@ -102,5 +102,9 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 		})
 	}
 
+	if asset.CheckRuleDeletedAt(before) != nil {
+		fmt.Printf("Check rule %q %s\n", result.Name, asset.ActionRestored)
+		return nil
+	}
 	return asset.PrintDiff(os.Stdout, "Check rule", result.Name, before, result)
 }

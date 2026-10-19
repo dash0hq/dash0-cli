@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -223,4 +224,74 @@ spec:
 
 	require.Error(t, cmdErr)
 	assert.Contains(t, cmdErr.Error(), "does not match")
+}
+
+func TestUpdateCheckRule_Deleted(t *testing.T) {
+	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
+	tests := []struct {
+		name       string
+		extraArgs  []string
+		wantOutput string
+		wantDiff   bool
+		wantPut    bool
+	}{
+		{
+			name:       "update",
+			wantOutput: `Check rule "test-check-rule" restored`,
+			wantPut:    true,
+		},
+		{
+			name:       "dry run",
+			extraArgs:  []string{"--dry-run"},
+			wantOutput: `-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`,
+			wantDiff:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
+				Validator:  testutil.RequireHeaders,
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesGetDeleted,
+			})
+			server.On(http.MethodPut, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
+				Validator:  testutil.RequireHeaders,
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+			})
+
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
+id: `+ruleID+`
+name: test-check-rule
+expression: up == 0
+`), 0644))
+
+			cmd := NewCheckRulesCmd()
+			cmd.SetArgs(append([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken}, tt.extraArgs...))
+
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.NoError(t, cmdErr)
+			assert.Contains(t, output, tt.wantOutput)
+			assert.Equal(t, tt.wantDiff, strings.Contains(output, "--- Check rule (before)"), "diff in output:\n%s", output)
+			assert.Equal(t, tt.wantPut, countRequests(server.Requests(), http.MethodPut) > 0, "PUT sent")
+		})
+	}
+}
+
+func countRequests(requests []testutil.RecordedRequest, method string) int {
+	count := 0
+	for _, request := range requests {
+		if request.Method == method {
+			count++
+		}
+	}
+	return count
 }
