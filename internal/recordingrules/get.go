@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -68,6 +69,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		fmt.Printf("Kind: %s\n", rule.Kind)
 		fmt.Printf("Name: %s\n", dash0api.GetRecordingRuleName(rule))
 		fmt.Printf("Dataset: %s\n", dash0api.GetRecordingRuleDataset(rule))
+		if deletedAt := asset.RecordingRuleDeletedAt(rule); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format(time.RFC3339))
+		}
 		origin := ""
 		if rule.Metadata.Labels != nil {
 			origin = (*rule.Metadata.Labels)["dash0.com/origin"]

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -279,3 +280,58 @@ spec:
 	require.Error(t, cmdErr)
 	assert.Contains(t, cmdErr.Error(), "does not match")
 }
+
+func TestCreateAndUpdateDashboard_Deleted(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		wantRestored bool
+	}{
+		{name: "create", args: []string{"create"}, wantRestored: true},
+		{name: "update", args: []string{"update"}, wantRestored: true},
+		{name: "update dry run", args: []string{"update", "--dry-run"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathDashboards+"/"+testDashboardID, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureDashboardsGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodPut, apiPathDashboards+"/"+testDashboardID, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureDashboardsImportSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(deletedDashboardYAML), 0644))
+
+			cmd := NewDashboardsCmd()
+			cmd.SetArgs(append(tt.args, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken))
+
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.NoError(t, cmdErr)
+			assert.Equal(t, tt.wantRestored, strings.Contains(output, `Dashboard "Test Dashboard" restored`), "restored in output:\n%s", output)
+			puts := server.RequestBodies(t, http.MethodPut, apiPathDashboards+"/"+testDashboardID)
+			assert.Equal(t, tt.wantRestored, len(puts) > 0, "PUT sent")
+		})
+	}
+}
+
+const deletedDashboardYAML = `kind: Dashboard
+metadata:
+  name: test-dashboard
+  dash0Extensions:
+    id: ` + testDashboardID + `
+spec:
+  display:
+    name: Test Dashboard
+`

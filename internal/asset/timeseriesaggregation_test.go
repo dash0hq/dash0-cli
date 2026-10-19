@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/stretchr/testify/assert"
@@ -71,6 +72,31 @@ func TestGetTimeSeriesAggregationOrigin_MustBeReadBeforeStrip(t *testing.T) {
 
 	assert.Empty(t, GetTimeSeriesAggregationOrigin(aggregation),
 		"Strip clears the origin label; the import helper must read it first")
+}
+
+func TestTimeSeriesAggregationDeletedAt(t *testing.T) {
+	deletedAt := time.Date(2026, 10, 13, 12, 50, 57, 0, time.UTC)
+
+	tests := []struct {
+		name        string
+		aggregation *dash0api.TimeSeriesAggregationDefinition
+		want        *time.Time
+	}{
+		{name: "nil aggregation"},
+		{name: "no annotations", aggregation: &dash0api.TimeSeriesAggregationDefinition{}},
+		{
+			name: "deleted",
+			aggregation: &dash0api.TimeSeriesAggregationDefinition{Metadata: dash0api.TimeSeriesAggregationMetadata{
+				Annotations: &dash0api.TimeSeriesAggregationAnnotations{Dash0ComdeletedAt: &deletedAt},
+			}},
+			want: &deletedAt,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, TimeSeriesAggregationDeletedAt(tt.aggregation))
+		})
+	}
 }
 
 func TestIsTimeSeriesAggregationWrongDataset(t *testing.T) {

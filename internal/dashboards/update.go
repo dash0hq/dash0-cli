@@ -108,5 +108,9 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	if resultDisplayName == "" {
 		resultDisplayName = result.Metadata.Name
 	}
+	if asset.DashboardDeletedAt(before) != nil {
+		fmt.Printf("Dashboard %q %s\n", resultDisplayName, asset.ActionRestored)
+		return nil
+	}
 	return asset.PrintDiff(os.Stdout, "Dashboard", resultDisplayName, before, result)
 }

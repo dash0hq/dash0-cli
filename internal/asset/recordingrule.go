@@ -2,11 +2,15 @@ package asset
 
 import (
 	"context"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
-const labelVersion = "dash0.com/version"
+const (
+	labelVersion        = "dash0.com/version"
+	annotationDeletedAt = "dash0.com/deleted-at"
+)
 
 // RecordingOnlyPrometheusRule returns a copy of the input PrometheusRule CRD
 // stripped of alerting rules so it can be sent to the recording-rules API.
@@ -78,6 +82,8 @@ func CarryRecordingRuleVersion(src, dst *dash0api.RecordingRule) {
 // create-or-replace semantics, so this is idempotent regardless of whether the
 // rule already exists.
 // When the input has no ID, CREATE is used and the server assigns an ID.
+// A PUT to the ID of a deleted recording rule brings it back, which is reported
+// as ActionRestored.
 func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.RecordingRule, dataset *string) (ImportResult, error) {
 	// Capture the user-defined ID before stripping; StripRecordingRuleServerFields
 	// clears the dash0.com/id label, so a later read would always return "".
@@ -89,13 +95,9 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	if id != "" {
 		existing, err := apiClient.GetRecordingRule(ctx, id, dataset)
 		if err == nil {
-			action = ActionUpdated
-			before = existing
+			action, before = actionForExisting(existing, RecordingRuleDeletedAt(existing))
+			CarryRecordingRuleVersion(existing, rule)
 		}
-	}
-
-	if before != nil {
-		CarryRecordingRuleVersion(before.(*dash0api.RecordingRule), rule)
 	}
 
 	var (
@@ -113,4 +115,22 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 
 	resultID := dash0api.GetRecordingRuleID(result)
 	return ImportResult{Name: dash0api.GetRecordingRuleName(result), ID: resultID, Action: action, Before: before, After: result}, nil
+}
+
+// RecordingRuleDeletedAt returns when the recording rule was deleted, or nil
+// when it is not deleted. The PrometheusRule type keeps annotations as plain
+// strings, so the timestamp is parsed here.
+func RecordingRuleDeletedAt(rule *dash0api.RecordingRule) *time.Time {
+	if rule == nil || rule.Metadata.Annotations == nil {
+		return nil
+	}
+	value := (*rule.Metadata.Annotations)[annotationDeletedAt]
+	if value == "" {
+		return nil
+	}
+	deletedAt, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil
+	}
+	return &deletedAt
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -81,6 +82,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 			}
 		}
 		fmt.Printf("Dataset: %s\n", checkDataset)
+		if deletedAt := asset.SyntheticCheckDeletedAt(check); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format(time.RFC3339))
+		}
 		fmt.Printf("Origin: %s\n", origin)
 		if check.Metadata.Description != nil {
 			fmt.Printf("Description: %s\n", *check.Metadata.Description)

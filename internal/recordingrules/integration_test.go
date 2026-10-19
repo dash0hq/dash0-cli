@@ -242,6 +242,41 @@ func TestGetRecordingRule_NotFound(t *testing.T) {
 }
 
 // TestGetRecordingRule_Unauthorized pins the clean-message contract on 401.
+func TestGetRecordingRule_Deleted(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "table", output: "table", want: "Deleted: 2026-10-13T12:50:57Z"},
+		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathRecordingRules+"/"+testRecordingRuleID, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureRecordingRulesGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := NewRecordingRulesCmd()
+			cmd.SetArgs([]string{"get", testRecordingRuleID, "--api-url", server.URL, "--auth-token", testAuthToken, "-o", tt.output})
+
+			var err error
+			output := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, tt.want)
+		})
+	}
+}
+
 func TestGetRecordingRule_Unauthorized(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

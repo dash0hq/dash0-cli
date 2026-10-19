@@ -3,6 +3,7 @@ package asset
 import (
 	"context"
 	"fmt"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
@@ -52,7 +53,8 @@ func SLOUsesOrigin(data []byte) (bool, error) {
 //   - Otherwise, POST is used and the server assigns both id and origin.
 //
 // PUT is create-or-replace, so upserting on either key is idempotent across
-// repeated applies. Both labels are captured before StripSLOServerFields runs,
+// repeated applies. A PUT to a deleted SLO brings it back, which is reported as
+// ActionRestored. Both labels are captured before StripSLOServerFields runs,
 // because that helper clears dash0.com/origin and dash0.com/id.
 func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportResult, error) {
 	// Capture identifiers before stripping — StripSLOServerFields clears both
@@ -74,8 +76,7 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 		existing, err := apiClient.GetSLO(ctx, origin, dataset)
 		switch {
 		case err == nil:
-			action = ActionUpdated
-			before = existing
+			action, before = actionForExisting(existing, SLODeletedAt(existing))
 		case dash0api.IsNotFound(err):
 			// Nothing at this origin yet; the PUT below creates it.
 		default:
@@ -91,8 +92,7 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 		switch {
 		case err == nil:
 			upsertKey = id
-			action = ActionUpdated
-			before = existing
+			action, before = actionForExisting(existing, SLODeletedAt(existing))
 		case dash0api.IsNotFound(err):
 			// Fall through to POST.
 		default:
@@ -118,4 +118,12 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 		id = resultID
 	}
 	return ImportResult{Name: dash0api.GetSLOName(result), ID: id, Action: action, Before: before, After: result}, nil
+}
+
+// SLODeletedAt returns when the SLO was deleted, or nil when it is not deleted.
+func SLODeletedAt(slo *dash0api.SloDefinition) *time.Time {
+	if slo == nil || slo.Metadata.Annotations == nil {
+		return nil
+	}
+	return slo.Metadata.Annotations.Dash0ComdeletedAt
 }

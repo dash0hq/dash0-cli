@@ -91,5 +91,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if asset.ViewDeletedAt(before) != nil {
+		fmt.Printf("View %q %s\n", dash0api.GetViewName(result), asset.ActionRestored)
+		return nil
+	}
 	return asset.PrintDiff(os.Stdout, "View", dash0api.GetViewName(result), before, result)
 }

@@ -108,6 +108,41 @@ func TestGetSyntheticCheck_NotFound(t *testing.T) {
 }
 
 // TestGetSyntheticCheck_Unauthorized pins the clean-message contract on 401.
+func TestGetSyntheticCheck_Deleted(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "table", output: "table", want: "Deleted: 2026-10-13T12:50:57Z"},
+		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathSyntheticChecks+"/"+testSyntheticCheckID, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureSyntheticChecksGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := NewSyntheticChecksCmd()
+			cmd.SetArgs([]string{"get", testSyntheticCheckID, "--api-url", server.URL, "--auth-token", testAuthToken, "-o", tt.output})
+
+			var err error
+			output := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, tt.want)
+		})
+	}
+}
+
 func TestGetSyntheticCheck_Unauthorized(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

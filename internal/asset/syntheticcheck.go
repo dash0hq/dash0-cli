@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
@@ -11,6 +12,8 @@ import (
 // create-or-replace semantics, so this is idempotent regardless of whether the
 // check already exists.
 // When the input has no ID, CREATE is used and the server assigns an ID.
+// A PUT to the ID of a deleted synthetic check brings it back, which is
+// reported as ActionRestored.
 func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportResult, error) {
 	dash0api.StripSyntheticCheckServerFields(check)
 
@@ -21,8 +24,7 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		id = *check.Metadata.Labels.Dash0Comid
 		existing, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
 		if err == nil {
-			action = ActionUpdated
-			before = existing
+			action, before = actionForExisting(existing, SyntheticCheckDeletedAt(existing))
 		}
 	}
 
@@ -43,4 +45,13 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		id = *result.Metadata.Labels.Dash0Comid
 	}
 	return ImportResult{Name: dash0api.GetSyntheticCheckName(result), ID: id, Action: action, Before: before, After: result}, nil
+}
+
+// SyntheticCheckDeletedAt returns when the synthetic check was deleted, or nil
+// when it is not deleted.
+func SyntheticCheckDeletedAt(check *dash0api.SyntheticCheckDefinition) *time.Time {
+	if check == nil || check.Metadata.Annotations == nil {
+		return nil
+	}
+	return check.Metadata.Annotations.Dash0ComdeletedAt
 }

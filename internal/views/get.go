@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -81,6 +82,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 			}
 		}
 		fmt.Printf("Dataset: %s\n", viewDataset)
+		if deletedAt := asset.ViewDeletedAt(view); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format(time.RFC3339))
+		}
 		fmt.Printf("Origin: %s\n", origin)
 		if deeplinkURL := dash0api.ViewDeeplinkURL(apiUrl, view.Spec.Type, id, dataset); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)

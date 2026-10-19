@@ -351,6 +351,41 @@ func TestGetDashboard_JSONFormat(t *testing.T) {
 	assert.Contains(t, output, `"metadata"`)
 }
 
+func TestGetDashboard_Deleted(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "table", output: "table", want: "Deleted: 2026-10-13T12:50:57Z"},
+		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathDashboards+"/"+testDashboardID, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureDashboardsGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := NewDashboardsCmd()
+			cmd.SetArgs([]string{"get", testDashboardID, "--api-url", server.URL, "--auth-token", testAuthToken, "-o", tt.output})
+
+			var err error
+			output := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, tt.want)
+		})
+	}
+}
+
 func TestListDashboards_RequestRecording(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

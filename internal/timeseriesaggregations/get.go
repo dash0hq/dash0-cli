@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -86,6 +87,9 @@ func printSummary(aggregation *dash0api.TimeSeriesAggregationDefinition) {
 	fmt.Printf("Name: %s\n", dash0api.GetTimeSeriesAggregationName(aggregation))
 	fmt.Printf("ID: %s\n", dash0api.GetTimeSeriesAggregationID(aggregation))
 	fmt.Printf("Dataset: %s\n", dash0api.GetTimeSeriesAggregationDataset(aggregation))
+	if deletedAt := asset.TimeSeriesAggregationDeletedAt(aggregation); deletedAt != nil {
+		fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format(time.RFC3339))
+	}
 	fmt.Printf("Origin: %s\n", origin(aggregation))
 	fmt.Printf("Interval: %s\n", interval(aggregation))
 	fmt.Printf("Enabled: %t\n", aggregation.Spec.Enabled)

@@ -85,5 +85,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if asset.RecordingRuleDeletedAt(before) != nil {
+		fmt.Printf("Recording rule %q %s\n", dash0api.GetRecordingRuleName(result), asset.ActionRestored)
+		return nil
+	}
 	return asset.PrintDiff(os.Stdout, "Recording rule", dash0api.GetRecordingRuleName(result), before, result)
 }

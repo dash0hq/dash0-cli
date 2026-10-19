@@ -26,6 +26,7 @@ const (
 	FixtureDashboardsListEmpty     = "dashboards/list_empty.json"
 	FixtureDashboardsGetSuccess    = "dashboards/get_success.json"
 	FixtureDashboardsImportSuccess = "dashboards/import_success.json"
+	FixtureDashboardsGetDeleted    = "dashboards/get_deleted.json"
 	FixtureDashboardsNotFound      = "dashboards/error_not_found.json"
 	FixtureDashboardsUnauthorized  = "dashboards/error_unauthorized.json"
 
@@ -42,6 +43,7 @@ const (
 	FixtureViewsListEmpty     = "views/list_empty.json"
 	FixtureViewsGetSuccess    = "views/get_success.json"
 	FixtureViewsImportSuccess = "views/import_success.json"
+	FixtureViewsGetDeleted    = "views/get_deleted.json"
 	FixtureViewsNotFound      = "views/error_not_found.json"
 
 	// Logs fixtures
@@ -66,6 +68,7 @@ const (
 	FixtureSyntheticChecksListEmpty     = "syntheticchecks/list_empty.json"
 	FixtureSyntheticChecksGetSuccess    = "syntheticchecks/get_success.json"
 	FixtureSyntheticChecksImportSuccess = "syntheticchecks/import_success.json"
+	FixtureSyntheticChecksGetDeleted    = "syntheticchecks/get_deleted.json"
 	FixtureSyntheticChecksNotFound      = "syntheticchecks/error_not_found.json"
 
 	// Notification channels fixtures
@@ -81,6 +84,7 @@ const (
 	FixtureRecordingRulesListEmpty     = "recordingrules/list_empty.json"
 	FixtureRecordingRulesGetSuccess    = "recordingrules/get_success.json"
 	FixtureRecordingRulesCreateSuccess = "recordingrules/create_success.json"
+	FixtureRecordingRulesGetDeleted    = "recordingrules/get_deleted.json"
 	FixtureRecordingRulesNotFound      = "recordingrules/error_not_found.json"
 
 	// Teams fixtures

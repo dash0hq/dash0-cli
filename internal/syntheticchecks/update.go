@@ -83,5 +83,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if asset.SyntheticCheckDeletedAt(before) != nil {
+		fmt.Printf("Synthetic check %q %s\n", dash0api.GetSyntheticCheckName(result), asset.ActionRestored)
+		return nil
+	}
 	return asset.PrintDiff(os.Stdout, "Synthetic check", dash0api.GetSyntheticCheckName(result), before, result)
 }

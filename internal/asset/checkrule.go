@@ -24,12 +24,7 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 		id = *rule.Id
 		existing, err := apiClient.GetCheckRule(ctx, id, dataset)
 		if err == nil {
-			if CheckRuleDeletedAt(existing) != nil {
-				action = ActionRestored
-			} else {
-				action = ActionUpdated
-				before = existing
-			}
+			action, before = actionForExisting(existing, CheckRuleDeletedAt(existing))
 		}
 	}
 
