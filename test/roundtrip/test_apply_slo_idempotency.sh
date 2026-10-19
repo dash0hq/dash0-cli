@@ -112,16 +112,34 @@ if ! echo "$DELETE4" | grep -qE 'deleted[[:space:]]*$'; then
   exit 1
 fi
 
-# Step 5: Apply again after deletion — the asset is restored under the same origin.
-# The API soft-deletes assets, so apply (PUT upsert) restores the record.
-echo "--- Step 5: Apply after delete (expect: asset restored) ---"
-APPLY5=$("$DASH0" apply -f "$YAML_FILE")
-echo "$APPLY5"
+# Step 5: The API soft-deletes SLOs, so GET still returns the record
+# after delete. `slos get` must show it as deleted.
+echo "--- Step 5: Get after delete (expect: Deleted line) ---"
+GET5=$("$DASH0" slos get "$ORIGIN")
+echo "$GET5"
+if ! echo "$GET5" | grep -q "^Deleted: "; then
+  echo "FAIL: expected a 'Deleted:' line in slos get output after delete"
+  exit 1
+fi
 
-# Step 6: Verify the restored asset is active (reachable by origin and listed once).
-echo "--- Step 6: Verify restored asset is active ---"
-if ! "$DASH0" slos get "$ORIGIN" > /dev/null; then
+# Step 6: Apply again after deletion. Apply calls PUT (upsert), which restores
+# the soft-deleted SLO and reports it as "restored".
+echo "--- Step 6: Apply after delete (expect: restored) ---"
+APPLY6=$("$DASH0" apply -f "$YAML_FILE")
+echo "$APPLY6"
+if ! echo "$APPLY6" | grep -qE 'restored[[:space:]]*$'; then
+  echo "FAIL: expected 'restored' in apply output after delete"
+  exit 1
+fi
+
+# Step 7: Verify the restored asset is active (not marked deleted, and listed once).
+echo "--- Step 7: Verify restored asset is active ---"
+if ! GET7=$("$DASH0" slos get "$ORIGIN"); then
   echo "FAIL: slos get '$ORIGIN' failed after re-apply"
+  exit 1
+fi
+if echo "$GET7" | grep -q "^Deleted: "; then
+  echo "FAIL: slos get still shows '$ORIGIN' as deleted after re-apply"
   exit 1
 fi
 if ! wait_for_origin_count 1; then

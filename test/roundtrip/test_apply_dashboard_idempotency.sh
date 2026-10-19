@@ -68,19 +68,40 @@ if ! echo "$DELETE4" | grep -q "deleted"; then
   exit 1
 fi
 
-# Step 5: Apply again after deletion — the asset is restored with the same ID.
-# The API soft-deletes assets, so GET still returns the record after delete.
-# Apply calls PUT (upsert), which restores the asset — output shows "no changes"
-# (not "created") because the data is unchanged, but the asset is active again.
-echo "--- Step 5: Apply after delete (expect: asset restored, ID in output) ---"
-APPLY5=$("$DASH0" apply -f "$YAML_FILE")
-echo "$APPLY5"
-# Step 6: Verify the restored asset is reachable by origin.
+# Step 5: The API soft-deletes dashboards, so GET still returns the record
+# after delete. `dashboards get` must show it as deleted.
+echo "--- Step 5: Get after delete (expect: Deleted line) ---"
+GET5=$("$DASH0" dashboards get "$ID")
+echo "$GET5"
+if ! echo "$GET5" | grep -q "^Deleted: "; then
+  echo "FAIL: expected a 'Deleted:' line in dashboards get output after delete"
+  exit 1
+fi
+
+# Step 6: Apply again after deletion. Apply calls PUT (upsert), which restores
+# the soft-deleted dashboard and reports it as "restored".
+echo "--- Step 6: Apply after delete (expect: restored) ---"
+APPLY6=$("$DASH0" apply -f "$YAML_FILE")
+echo "$APPLY6"
+if ! echo "$APPLY6" | grep -qE 'restored[[:space:]]*$'; then
+  echo "FAIL: expected 'restored' in apply output after delete"
+  exit 1
+fi
+if ! echo "$APPLY6" | grep -q "$ID"; then
+  echo "FAIL: expected ID '$ID' in apply output after delete"
+  exit 1
+fi
+
+# Step 7: Verify the restored asset is active (reachable and not marked deleted).
 # Note: dashboards list shows server-assigned primary IDs, not user-defined origins,
 # so we verify via GET by origin instead.
-echo "--- Step 6: Verify restored asset is reachable ---"
-if ! "$DASH0" dashboards get "$ID" > /dev/null; then
+echo "--- Step 7: Verify restored asset is active ---"
+if ! GET7=$("$DASH0" dashboards get "$ID"); then
   echo "FAIL: dashboards get '$ID' failed after re-apply"
+  exit 1
+fi
+if echo "$GET7" | grep -q "^Deleted: "; then
+  echo "FAIL: dashboards get still shows '$ID' as deleted after re-apply"
   exit 1
 fi
 

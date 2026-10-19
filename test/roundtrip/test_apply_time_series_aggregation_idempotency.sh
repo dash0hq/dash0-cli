@@ -8,7 +8,8 @@ set -euo pipefail
 #   - a document without dash0.com/origin fails during validation, before any
 #     API call;
 #   - applying the same document to a second dataset fails with the
-#     cross-dataset explanation rather than a bare 400.
+#     cross-dataset explanation rather than a bare 400;
+#   - get shows a deleted aggregation as deleted, and apply restores it.
 #
 # Step 2 asserts the output, not just the record count, so it fails if the diff
 # logic regresses. A count-only check would pass even when every reapply
@@ -131,6 +132,43 @@ else
 fi
 
 echo "--- Step 6: Delete ---"
+if ! "$DASH0" tsa delete "$ORIGIN" --force > /dev/null; then
+  echo "FAIL: delete failed"
+  exit 1
+fi
+
+# Step 7: The API soft-deletes time series aggregations, so GET still returns the record
+# after delete. `tsa get` must show it as deleted.
+echo "--- Step 7: Get after delete (expect: Deleted line) ---"
+GET7=$("$DASH0" tsa get "$ORIGIN")
+echo "$GET7"
+if ! echo "$GET7" | grep -q "^Deleted: "; then
+  echo "FAIL: expected a 'Deleted:' line in tsa get output after delete"
+  exit 1
+fi
+
+# Step 8: Apply again after deletion. Apply calls PUT (upsert), which restores
+# the soft-deleted time series aggregation and reports it as "restored".
+echo "--- Step 8: Apply after delete (expect: restored) ---"
+APPLY8=$("$DASH0" apply -f "$YAML_FILE")
+echo "$APPLY8"
+if ! echo "$APPLY8" | grep -qE 'restored[[:space:]]*$'; then
+  echo "FAIL: expected 'restored' in apply output after delete"
+  exit 1
+fi
+
+# Step 9: Verify the restored asset is active (not marked deleted).
+echo "--- Step 9: Verify restored asset is active ---"
+if ! GET9=$("$DASH0" tsa get "$ORIGIN"); then
+  echo "FAIL: tsa get '$ORIGIN' failed after re-apply"
+  exit 1
+fi
+if echo "$GET9" | grep -q "^Deleted: "; then
+  echo "FAIL: tsa get still shows '$ORIGIN' as deleted after re-apply"
+  exit 1
+fi
+
+echo "--- Step 10: Delete ---"
 if ! "$DASH0" tsa delete "$ORIGIN" --force > /dev/null; then
   echo "FAIL: cleanup delete failed"
   exit 1

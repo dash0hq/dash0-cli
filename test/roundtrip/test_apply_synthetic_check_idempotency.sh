@@ -56,20 +56,43 @@ if ! echo "$DELETE4" | grep -q "deleted"; then
   exit 1
 fi
 
-# Step 5: Apply again after deletion — the asset is restored with the same ID.
-# The API soft-deletes assets, so GET still returns the record after delete.
-# Apply calls PUT (upsert), which restores the asset — output shows "no changes"
-# (not "created") because the data is unchanged, but the asset is active again.
-echo "--- Step 5: Apply after delete (expect: asset restored, ID in output) ---"
-APPLY5=$("$DASH0" apply -f "$YAML_FILE")
-echo "$APPLY5"
-# Step 6: Verify the restored asset is active (appears in list and is reachable by GET).
-echo "--- Step 6: Verify restored asset is active ---"
-if ! "$DASH0" synthetic-checks get "$ID" > /dev/null; then
+# Step 5: The API soft-deletes synthetic checks, so GET still returns the record
+# after delete. `synthetic-checks get` must show it as deleted.
+echo "--- Step 5: Get after delete (expect: Deleted line) ---"
+GET5=$("$DASH0" synthetic-checks get "$ID")
+echo "$GET5"
+if ! echo "$GET5" | grep -q "^Deleted: "; then
+  echo "FAIL: expected a 'Deleted:' line in synthetic-checks get output after delete"
+  exit 1
+fi
+
+# Step 6: Apply again after deletion. Apply calls PUT (upsert), which restores
+# the soft-deleted synthetic check and reports it as "restored".
+echo "--- Step 6: Apply after delete (expect: restored) ---"
+APPLY6=$("$DASH0" apply -f "$YAML_FILE")
+echo "$APPLY6"
+if ! echo "$APPLY6" | grep -qE 'restored[[:space:]]*$'; then
+  echo "FAIL: expected 'restored' in apply output after delete"
+  exit 1
+fi
+if ! echo "$APPLY6" | grep -q "$ID"; then
+  echo "FAIL: expected ID '$ID' in apply output after delete"
+  exit 1
+fi
+
+# Step 7: Verify the restored asset is active (not marked deleted, and listed).
+echo "--- Step 7: Verify restored asset is active ---"
+if ! GET7=$("$DASH0" synthetic-checks get "$ID"); then
   echo "FAIL: synthetic-checks get '$ID' failed after re-apply"
   exit 1
 fi
-if ! "$DASH0" synthetic-checks list --all 2>/dev/null | grep -q "$ID"; then
+if echo "$GET7" | grep -q "^Deleted: "; then
+  echo "FAIL: synthetic-checks get still shows '$ID' as deleted after re-apply"
+  exit 1
+fi
+# Capture the list before searching it: with pipefail, `list | grep -q` fails
+# when grep exits on an early match and the CLI dies on the closed pipe.
+if ! LIST7=$("$DASH0" synthetic-checks list --all 2>/dev/null) || ! grep -q "$ID" <<< "$LIST7"; then
   echo "FAIL: synthetic-checks list does not contain '$ID' after re-apply"
   exit 1
 fi

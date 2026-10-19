@@ -5,6 +5,7 @@ set -euo pipefail
 # Confirms that:
 #   - apply -f <record-only CRD> creates a recording rule (not a check rule);
 #   - apply is idempotent on a second run when dash0.com/id is set;
+#   - get shows a deleted recording rule as deleted, and apply restores it;
 #   - apply -f <mixed CRD> creates both a check rule and a recording rule;
 #   - apply -f <empty CRD> fails validation before any API call.
 
@@ -91,7 +92,45 @@ if [ "$COUNT" != "1" ]; then
   exit 1
 fi
 
-echo "--- Step 1.4: Cleanup ---"
+echo "--- Step 1.4: Delete ---"
+DELETE14=$("$DASH0" recording-rules delete "$RECORDING_ID" --force)
+echo "$DELETE14"
+if ! echo "$DELETE14" | grep -q "deleted"; then
+  echo "FAIL: expected 'deleted' in delete output"
+  exit 1
+fi
+
+# The API soft-deletes recording rules, so GET by the dash0.com/id label still
+# returns the record after delete. `recording-rules get` must show it as deleted.
+echo "--- Step 1.5: Get after delete (expect: Deleted line) ---"
+GET15=$("$DASH0" recording-rules get "$RECORDING_ID")
+echo "$GET15"
+if ! echo "$GET15" | grep -q "^Deleted: "; then
+  echo "FAIL: expected a 'Deleted:' line in recording-rules get output after delete"
+  exit 1
+fi
+
+# Apply calls PUT (upsert), which restores the soft-deleted recording rule and
+# reports it as "restored". The ID in the output is the server-assigned one.
+echo "--- Step 1.6: Apply after delete (expect: restored) ---"
+APPLY16=$("$DASH0" apply -f "$RECORDING_YAML")
+echo "$APPLY16"
+if ! echo "$APPLY16" | grep -qE 'restored[[:space:]]*$'; then
+  echo "FAIL: expected 'restored' in apply output after delete"
+  exit 1
+fi
+
+echo "--- Step 1.7: Verify restored asset is active ---"
+if ! GET17=$("$DASH0" recording-rules get "$RECORDING_ID"); then
+  echo "FAIL: recording-rules get '$RECORDING_ID' failed after re-apply"
+  exit 1
+fi
+if echo "$GET17" | grep -q "^Deleted: "; then
+  echo "FAIL: recording-rules get still shows '$RECORDING_ID' as deleted after re-apply"
+  exit 1
+fi
+
+echo "--- Step 1.8: Cleanup ---"
 cleanup_recording
 
 # Stage 2: Mixed PrometheusRule CRD — apply hits both endpoints.

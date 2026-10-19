@@ -90,7 +90,9 @@ if echo "$GET7" | grep -q "^Deleted: "; then
   echo "FAIL: check-rules get still shows '$ID' as deleted after re-apply"
   exit 1
 fi
-if ! "$DASH0" check-rules list --all 2>/dev/null | grep -q "$ID"; then
+# Capture the list before searching it: with pipefail, `list | grep -q` fails
+# when grep exits on an early match and the CLI dies on the closed pipe.
+if ! LIST7=$("$DASH0" check-rules list --all 2>/dev/null) || ! grep -q "$ID" <<< "$LIST7"; then
   echo "FAIL: check-rules list does not contain '$ID' after re-apply"
   exit 1
 fi
