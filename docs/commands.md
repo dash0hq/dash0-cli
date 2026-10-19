@@ -611,9 +611,23 @@ spec:
   ...
 ```
 
-`check-rules get` also returns a deleted check rule, because the API keeps deleted check rules instead of removing them.
-The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`.
-`list` does not show deleted check rules.
+`get` also returns a deleted asset, because the API keeps deleted assets instead of removing them.
+This applies to dashboards, check rules, synthetic checks, SLOs, views, recording rules, and time series aggregations.
+The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`:
+
+```bash
+$ dash0 dashboards get a1b2c3d4-5678-90ab-cdef-1234567890ab
+Kind: Dashboard
+Name: Production Overview
+Dataset: default
+Deleted: 2026-01-21T09:15:00Z
+Origin: gitops/prod
+URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
+Created: 2026-01-15 10:30:00
+Updated: 2026-01-20 14:45:00
+```
+
+`list` does not show deleted assets.
 
 ### `create`
 
@@ -650,12 +664,12 @@ $ dash0 check-rules create -f prometheus-rules.yaml
 Check rule "High Error Rate Alert" created
 ```
 
-`check-rules create` with the ID of a deleted check rule brings that rule back.
+`create` with the identifier of a deleted asset brings that asset back (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
 It then prints `restored` instead of `created`:
 
 ```bash
-$ dash0 check-rules create -f prometheus-rules.yaml
-Check rule "High Error Rate Alert" restored
+$ dash0 dashboards create -f dashboard.yaml
+Dashboard "My Dashboard" restored
 ```
 
 Aliases: `add`
@@ -704,8 +718,16 @@ $ dash0 dashboards update -f dashboard.yaml
 Dashboard "My Dashboard": no changes
 ```
 
-`check-rules update` on a deleted check rule brings it back, and prints `restored` instead of a diff.
-With `--dry-run`, the diff shows the `dash0.com/deleted-at` annotation going away, and the rule stays deleted.
+`update` on a deleted asset brings it back, and prints `restored` instead of a diff:
+
+```bash
+$ dash0 dashboards update -f dashboard.yaml
+Dashboard "My Dashboard" restored
+```
+
+With `--dry-run`, the asset stays deleted and the output is a diff, as for any other update.
+For check rules, that diff shows the `dash0.com/deleted-at` annotation going away.
+For the other kinds, the diff leaves out the `dash0.com/deleted-at` annotation and shows only content changes.
 
 ### `delete`
 
@@ -964,7 +986,7 @@ dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-n
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
-A check rule whose ID belongs to a deleted check rule brings that rule back, and shows `restored` instead of a diff.
+A document whose identifier belongs to a deleted asset brings that asset back, and shows `restored` instead of a diff.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.
