@@ -1,11 +1,12 @@
 package asset
 
-// ImportAction indicates whether an asset was created or updated.
+// ImportAction indicates whether an asset was created, updated, or restored.
 type ImportAction string
 
 const (
-	ActionCreated ImportAction = "created"
-	ActionUpdated ImportAction = "updated"
+	ActionCreated  ImportAction = "created"
+	ActionUpdated  ImportAction = "updated"
+	ActionRestored ImportAction = "restored"
 )
 
 // ImportResult holds the outcome of importing an asset.

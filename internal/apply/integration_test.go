@@ -133,6 +133,38 @@ expression: up == 0
 	assert.Equal(t, "47b6ccbe-82ab-47c6-a613-ce0d7f34353e", *rule.Id)
 }
 
+func TestApply_CheckRule_Restored(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
+id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+name: test-check-rule
+expression: up == 0
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/alerting/check-rules/47b6ccbe-82ab-47c6-a613-ce0d7f34353e", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureCheckRulesGetDeleted,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `"test-check-rule" (47b6ccbe-82ab-47c6-a613-ce0d7f34353e) restored`)
+	assert.NotContains(t, output, "no changes")
+}
+
 func TestApply_CheckRule_PreservesAnnotations(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

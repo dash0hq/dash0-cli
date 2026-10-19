@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -69,6 +70,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	default:
 		fmt.Printf("Name: %s\n", dash0api.GetCheckRuleName(rule))
 		fmt.Printf("Dataset: %s\n", dash0api.GetCheckRuleDataset(rule))
+		if deletedAt := asset.CheckRuleDeletedAt(rule); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format(time.RFC3339))
+		}
 		fmt.Printf("Expression: %s\n", rule.Expression)
 		if rule.Enabled != nil {
 			fmt.Printf("Enabled: %t\n", *rule.Enabled)

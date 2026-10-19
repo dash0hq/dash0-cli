@@ -611,6 +611,10 @@ spec:
   ...
 ```
 
+`check-rules get` also returns a deleted check rule until it is purged.
+The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`.
+`list` does not show deleted check rules.
+
 ### `create`
 
 Create a new asset from a YAML or JSON file.
@@ -949,6 +953,7 @@ dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-n
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
+A check rule whose ID belongs to a deleted check rule brings that rule back, and shows `restored` instead of a diff.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.

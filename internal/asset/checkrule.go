@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
@@ -11,6 +12,8 @@ import (
 // create-or-replace semantics, so this is idempotent regardless of whether the
 // rule already exists.
 // When the input has no ID, CREATE is used and the server assigns an ID.
+// A PUT to the ID of a deleted check rule brings it back, which is reported as
+// ActionRestored.
 func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
 	dash0api.StripCheckRuleServerFields(rule)
 
@@ -21,8 +24,12 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 		id = *rule.Id
 		existing, err := apiClient.GetCheckRule(ctx, id, dataset)
 		if err == nil {
-			action = ActionUpdated
-			before = existing
+			if CheckRuleDeletedAt(existing) != nil {
+				action = ActionRestored
+			} else {
+				action = ActionUpdated
+				before = existing
+			}
 		}
 	}
 
@@ -43,4 +50,13 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 		id = *result.Id
 	}
 	return ImportResult{Name: result.Name, ID: id, Action: action, Before: before, After: result}, nil
+}
+
+// CheckRuleDeletedAt returns when the check rule was deleted, or nil when it is
+// not deleted.
+func CheckRuleDeletedAt(rule *dash0api.PrometheusAlertRule) *time.Time {
+	if rule == nil || rule.Metadata == nil || rule.Metadata.Annotations == nil {
+		return nil
+	}
+	return rule.Metadata.Annotations.Dash0ComdeletedAt
 }
