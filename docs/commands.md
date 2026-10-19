@@ -611,7 +611,7 @@ spec:
   ...
 ```
 
-`check-rules get` also returns a deleted check rule until it is purged.
+`check-rules get` also returns a deleted check rule, because the API keeps deleted check rules instead of removing them.
 The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`.
 `list` does not show deleted check rules.
 
@@ -648,6 +648,14 @@ The CRD's top-level `metadata.annotations` are merged into every rule it contain
 ```bash
 $ dash0 check-rules create -f prometheus-rules.yaml
 Check rule "High Error Rate Alert" created
+```
+
+`check-rules create` with the ID of a deleted check rule brings that rule back.
+It then prints `restored` instead of `created`:
+
+```bash
+$ dash0 check-rules create -f prometheus-rules.yaml
+Check rule "High Error Rate Alert" restored
 ```
 
 Aliases: `add`
@@ -695,6 +703,9 @@ When nothing changed:
 $ dash0 dashboards update -f dashboard.yaml
 Dashboard "My Dashboard": no changes
 ```
+
+`check-rules update` on a deleted check rule brings it back, and prints `restored` instead of a diff.
+With `--dry-run`, the diff shows the `dash0.com/deleted-at` annotation going away, and the rule stays deleted.
 
 ### `delete`
 
