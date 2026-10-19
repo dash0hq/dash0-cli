@@ -115,6 +115,7 @@ func TestGetCheckRule_Deleted(t *testing.T) {
 	}{
 		{name: "table", output: "table", want: "Deleted: 2026-10-13T12:50:57Z"},
 		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
