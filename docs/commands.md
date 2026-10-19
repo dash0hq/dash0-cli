@@ -570,6 +570,10 @@ name,id,dataset,origin,url
 Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,gitops/prod,https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
+For dashboards, a failed name lookup emits a warning to stderr and shows `<name>` in `table` and `wide` output, or an empty name in `csv` output.
+Listing continues with the remaining dashboards, and name lookup failures do not change the exit status.
+JSON and YAML exports fail on any dashboard fetch error instead of producing incomplete definitions.
+
 Aliases: `ls`
 
 ### `get`
