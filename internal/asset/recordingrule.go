@@ -95,7 +95,7 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	if id != "" {
 		existing, err := apiClient.GetRecordingRule(ctx, id, dataset)
 		if err == nil {
-			action, before = actionForExisting(existing, RecordingRuleDeletedAt(existing))
+			action, before = actionForExisting(RecordingRuleDeletedAt(existing)), existing
 			CarryRecordingRuleVersion(existing, rule)
 		}
 	}
@@ -110,6 +110,9 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 		result, err = apiClient.CreateRecordingRule(ctx, rule, dataset)
 	}
 	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := RequireNotDeleted("recording rule", dash0api.GetRecordingRuleName(result), RecordingRuleDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 
@@ -133,4 +136,14 @@ func RecordingRuleDeletedAt(rule *dash0api.RecordingRule) *time.Time {
 		return nil
 	}
 	return &deletedAt
+}
+
+// ClearRecordingRuleDeletedAt removes the deletion timestamp from a recording
+// rule, for example from a file exported with `recording-rules get -o yaml`
+// while the rule was deleted.
+func ClearRecordingRuleDeletedAt(rule *dash0api.RecordingRule) {
+	if rule == nil || rule.Metadata.Annotations == nil {
+		return
+	}
+	delete(*rule.Metadata.Annotations, annotationDeletedAt)
 }

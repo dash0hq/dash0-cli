@@ -24,7 +24,7 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		id = *check.Metadata.Labels.Dash0Comid
 		existing, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
 		if err == nil {
-			action, before = actionForExisting(existing, SyntheticCheckDeletedAt(existing))
+			action, before = actionForExisting(SyntheticCheckDeletedAt(existing)), existing
 		}
 	}
 
@@ -38,6 +38,9 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 		result, err = apiClient.CreateSyntheticCheck(ctx, check, dataset)
 	}
 	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := RequireNotDeleted("synthetic check", dash0api.GetSyntheticCheckName(result), SyntheticCheckDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 
@@ -54,4 +57,14 @@ func SyntheticCheckDeletedAt(check *dash0api.SyntheticCheckDefinition) *time.Tim
 		return nil
 	}
 	return check.Metadata.Annotations.Dash0ComdeletedAt
+}
+
+// ClearSyntheticCheckDeletedAt removes the deletion timestamp from a synthetic
+// check, for example from a file exported with `synthetic-checks get -o yaml`
+// while the check was deleted.
+func ClearSyntheticCheckDeletedAt(check *dash0api.SyntheticCheckDefinition) {
+	if check == nil || check.Metadata.Annotations == nil {
+		return
+	}
+	check.Metadata.Annotations.Dash0ComdeletedAt = nil
 }

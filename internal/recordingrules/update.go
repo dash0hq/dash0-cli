@@ -61,6 +61,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	asset.ClearRecordingRuleDeletedAt(&rule)
 
 	before, err := apiClient.GetRecordingRule(ctx, id, dataset)
 	if err != nil {
@@ -85,9 +86,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if err := asset.RequireNotDeleted("recording rule", dash0api.GetRecordingRuleName(result), asset.RecordingRuleDeletedAt(result)); err != nil {
+		return err
+	}
+
 	if asset.RecordingRuleDeletedAt(before) != nil {
 		fmt.Printf("Recording rule %q %s\n", dash0api.GetRecordingRuleName(result), asset.ActionRestored)
-		return nil
+		return asset.PrintChanges(os.Stdout, "Recording rule", before, result)
 	}
 	return asset.PrintDiff(os.Stdout, "Recording rule", dash0api.GetRecordingRuleName(result), before, result)
 }

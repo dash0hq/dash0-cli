@@ -76,7 +76,7 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 		existing, err := apiClient.GetSLO(ctx, origin, dataset)
 		switch {
 		case err == nil:
-			action, before = actionForExisting(existing, SLODeletedAt(existing))
+			action, before = actionForExisting(SLODeletedAt(existing)), existing
 		case dash0api.IsNotFound(err):
 			// Nothing at this origin yet; the PUT below creates it.
 		default:
@@ -92,7 +92,7 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 		switch {
 		case err == nil:
 			upsertKey = id
-			action, before = actionForExisting(existing, SLODeletedAt(existing))
+			action, before = actionForExisting(SLODeletedAt(existing)), existing
 		case dash0api.IsNotFound(err):
 			// Fall through to POST.
 		default:
@@ -111,6 +111,9 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 		result, err = apiClient.CreateSLO(ctx, slo, dataset)
 	}
 	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := RequireNotDeleted("SLO", dash0api.GetSLOName(result), SLODeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 

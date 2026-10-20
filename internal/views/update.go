@@ -91,9 +91,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if err := asset.RequireNotDeleted("view", dash0api.GetViewName(result), asset.ViewDeletedAt(result)); err != nil {
+		return err
+	}
+
 	if asset.ViewDeletedAt(before) != nil {
 		fmt.Printf("View %q %s\n", dash0api.GetViewName(result), asset.ActionRestored)
-		return nil
+		return asset.PrintChanges(os.Stdout, "View", before, result)
 	}
 	return asset.PrintDiff(os.Stdout, "View", dash0api.GetViewName(result), before, result)
 }

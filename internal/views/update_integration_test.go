@@ -3,9 +3,11 @@
 package views
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,14 +70,35 @@ spec:
 }
 
 func TestCreateAndUpdateView_Deleted(t *testing.T) {
+	file := deletedViewYAML
+	exportedFile := strings.Replace(file, "metadata:\n", "metadata:\n  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
+
 	tests := []struct {
 		name         string
 		args         []string
+		file         string
+		putFixture   string
 		wantRestored bool
+		wantErr      string
 	}{
-		{name: "create", args: []string{"create"}, wantRestored: true},
-		{name: "update", args: []string{"update"}, wantRestored: true},
-		{name: "update dry run", args: []string{"update", "--dry-run"}},
+		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantRestored: true},
+		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantRestored: true},
+		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureViewsImportSuccess, wantRestored: true},
+		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureViewsImportSuccess},
+		{
+			name:       "create that leaves the view deleted",
+			args:       []string{"create"},
+			file:       file,
+			putFixture: testutil.FixtureViewsGetDeleted,
+			wantErr:    `view "Test View" is still deleted after the update`,
+		},
+		{
+			name:       "update that leaves the view deleted",
+			args:       []string{"update"},
+			file:       file,
+			putFixture: testutil.FixtureViewsGetDeleted,
+			wantErr:    `view "Test View" is still deleted after the update`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -89,12 +112,12 @@ func TestCreateAndUpdateView_Deleted(t *testing.T) {
 			})
 			server.On(http.MethodPut, apiPathViews+"/"+testViewID, testutil.MockResponse{
 				StatusCode: http.StatusOK,
-				BodyFile:   testutil.FixtureViewsImportSuccess,
+				BodyFile:   tt.putFixture,
 				Validator:  testutil.RequireHeaders,
 			})
 
 			yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
-			require.NoError(t, os.WriteFile(yamlFile, []byte(deletedViewYAML), 0644))
+			require.NoError(t, os.WriteFile(yamlFile, []byte(tt.file), 0644))
 
 			cmd := NewViewsCmd()
 			cmd.SetArgs(append(tt.args, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken))
@@ -104,10 +127,19 @@ func TestCreateAndUpdateView_Deleted(t *testing.T) {
 				cmdErr = cmd.Execute()
 			})
 
-			require.NoError(t, cmdErr)
+			if tt.wantErr != "" {
+				require.EqualError(t, cmdErr, tt.wantErr)
+			} else {
+				require.NoError(t, cmdErr)
+			}
 			assert.Equal(t, tt.wantRestored, strings.Contains(output, `View "Test View" restored`), "restored in output:\n%s", output)
 			puts := server.RequestBodies(t, http.MethodPut, apiPathViews+"/"+testViewID)
-			assert.Equal(t, tt.wantRestored, len(puts) > 0, "PUT sent")
+			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
+			for _, put := range puts {
+				body, err := json.Marshal(put)
+				require.NoError(t, err)
+				assert.NotContains(t, string(body), "deleted-at", "PUT body")
+			}
 		})
 	}
 }

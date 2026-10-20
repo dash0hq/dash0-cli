@@ -24,7 +24,7 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 		id = *view.Metadata.Labels.Dash0Comid
 		existing, err := apiClient.GetView(ctx, id, dataset)
 		if err == nil {
-			action, before = actionForExisting(existing, ViewDeletedAt(existing))
+			action, before = actionForExisting(ViewDeletedAt(existing)), existing
 		}
 	}
 
@@ -38,6 +38,9 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 		result, err = apiClient.CreateView(ctx, view, dataset)
 	}
 	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := RequireNotDeleted("view", dash0api.GetViewName(result), ViewDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 

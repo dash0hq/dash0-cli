@@ -26,7 +26,7 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if id != "" {
 		existing, err := apiClient.GetDashboard(ctx, id, dataset)
 		if err == nil {
-			action, before = actionForExisting(existing, DashboardDeletedAt(existing))
+			action, before = actionForExisting(DashboardDeletedAt(existing)), existing
 		}
 	}
 
@@ -53,6 +53,9 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if name == "" {
 		name = result.Metadata.Name
 	}
+	if err := RequireNotDeleted("dashboard", name, DashboardDeletedAt(result)); err != nil {
+		return ImportResult{}, err
+	}
 	return ImportResult{Name: name, ID: id, Action: action, Before: before, After: result}, nil
 }
 
@@ -63,4 +66,14 @@ func DashboardDeletedAt(dashboard *dash0api.DashboardDefinition) *time.Time {
 		return nil
 	}
 	return dashboard.Metadata.Annotations.Dash0ComdeletedAt
+}
+
+// ClearDashboardDeletedAt removes the deletion timestamp from a dashboard, for
+// example from a file exported with `dashboards get -o yaml` while the
+// dashboard was deleted.
+func ClearDashboardDeletedAt(dashboard *dash0api.DashboardDefinition) {
+	if dashboard == nil || dashboard.Metadata.Annotations == nil {
+		return
+	}
+	dashboard.Metadata.Annotations.Dash0ComdeletedAt = nil
 }

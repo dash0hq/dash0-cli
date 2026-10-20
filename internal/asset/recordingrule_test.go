@@ -41,3 +41,32 @@ func TestRecordingRuleDeletedAt(t *testing.T) {
 		})
 	}
 }
+
+func TestClearRecordingRuleDeletedAt(t *testing.T) {
+	withAnnotations := func(annotations map[string]string) *dash0api.RecordingRule {
+		return &dash0api.RecordingRule{Metadata: dash0api.PrometheusRuleMetadata{Annotations: &annotations}}
+	}
+
+	tests := []struct {
+		name string
+		rule *dash0api.RecordingRule
+		want *dash0api.RecordingRule
+	}{
+		{name: "nil rule"},
+		{name: "no annotations", rule: &dash0api.RecordingRule{}, want: &dash0api.RecordingRule{}},
+		{
+			name: "deleted",
+			rule: withAnnotations(map[string]string{
+				"dash0.com/deleted-at": "2026-10-13T12:50:57Z",
+				"summary":              "kept",
+			}),
+			want: withAnnotations(map[string]string{"summary": "kept"}),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ClearRecordingRuleDeletedAt(tt.rule)
+			assert.Equal(t, tt.want, tt.rule)
+		})
+	}
+}

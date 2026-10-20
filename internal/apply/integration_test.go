@@ -2734,6 +2734,8 @@ func TestApply_Restored(t *testing.T) {
 		deletedFixture string
 		putFixture     string
 		want           string
+		wantDiff       bool
+		wantErr        string
 	}{
 		{
 			name: "dashboard",
@@ -2750,6 +2752,7 @@ spec:
 			deletedFixture: testutil.FixtureDashboardsGetDeleted,
 			putFixture:     testutil.FixtureDashboardsImportSuccess,
 			want:           `Dashboard "Test Dashboard" (test-dashboard-id) restored`,
+			wantErr:        `dashboard "Test Dashboard" is still deleted after the update`,
 		},
 		{
 			name: "view",
@@ -2767,6 +2770,7 @@ spec:
 			deletedFixture: testutil.FixtureViewsGetDeleted,
 			putFixture:     testutil.FixtureViewsImportSuccess,
 			want:           `View "Test View" (test-view-id) restored`,
+			wantErr:        `view "Test View" is still deleted after the update`,
 		},
 		{
 			name: "synthetic check",
@@ -2783,6 +2787,7 @@ spec:
 			deletedFixture: testutil.FixtureSyntheticChecksGetDeleted,
 			putFixture:     testutil.FixtureSyntheticChecksImportSuccess,
 			want:           `Synthetic check "Test Synthetic Check" (test-synthetic-check-id) restored`,
+			wantErr:        `synthetic check "Test Synthetic Check" is still deleted after the update`,
 		},
 		{
 			name:           "SLO",
@@ -2791,6 +2796,8 @@ spec:
 			deletedFixture: "slos/get_deleted.json",
 			putFixture:     "slos/update_success.json",
 			want:           `SLO "Checkout availability" (00000000-0000-0000-0000-000000000001) restored`,
+			wantDiff:       true,
+			wantErr:        `SLO "Checkout availability" is still deleted after the update`,
 		},
 		{
 			name: "recording rule",
@@ -2811,6 +2818,8 @@ spec:
 			deletedFixture: testutil.FixtureRecordingRulesGetDeleted,
 			putFixture:     testutil.FixtureRecordingRulesCreateSuccess,
 			want:           `Recording rule "CPU Usage Average" (f47ac10b-58cc-4372-a567-0e02b2c3d479) restored`,
+			wantDiff:       true,
+			wantErr:        `recording rule "CPU Usage Average" is still deleted after the update`,
 		},
 		{
 			name:           "time series aggregation",
@@ -2819,39 +2828,56 @@ spec:
 			deletedFixture: "timeseriesaggregations/get_deleted.json",
 			putFixture:     "timeseriesaggregations/update_response.json",
 			want:           `Time series aggregation "HTTP server request duration" (d54caa75-e94b-43c7-8470-23e4ab852ab6) restored`,
+			wantDiff:       true,
+			wantErr:        `time series aggregation "HTTP server request duration" is still deleted after the update`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testutil.SetupTestEnv(t)
+			t.Run("restored", func(t *testing.T) {
+				output, server, err := applyToDeletedAsset(t, tt.yaml, tt.path, tt.deletedFixture, tt.putFixture)
 
-			yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
-			require.NoError(t, os.WriteFile(yamlFile, []byte(tt.yaml), 0644))
-
-			server := testutil.NewMockServer(t, testutil.FixturesDir())
-			server.On(http.MethodGet, tt.path, testutil.MockResponse{
-				StatusCode: http.StatusOK,
-				BodyFile:   tt.deletedFixture,
-				Validator:  testutil.RequireHeaders,
+				require.NoError(t, err)
+				assert.Contains(t, output, tt.want)
+				assert.NotContains(t, output, "no changes")
+				assert.Equal(t, tt.wantDiff, strings.Contains(output, " (before)\n"), "diff in output:\n%s", output)
+				assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, tt.path), "expected a PUT to %s", tt.path)
 			})
-			server.On(http.MethodPut, tt.path, testutil.MockResponse{
-				StatusCode: http.StatusOK,
-				BodyFile:   tt.putFixture,
-				Validator:  testutil.RequireHeaders,
+			t.Run("still deleted", func(t *testing.T) {
+				output, _, err := applyToDeletedAsset(t, tt.yaml, tt.path, tt.deletedFixture, tt.deletedFixture)
+
+				require.ErrorContains(t, err, tt.wantErr)
+				assert.NotContains(t, output, "restored")
 			})
-
-			cmd := NewApplyCmd()
-			cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
-
-			var cmdErr error
-			output := testutil.CaptureStdout(t, func() {
-				cmdErr = cmd.Execute()
-			})
-
-			require.NoError(t, cmdErr)
-			assert.Contains(t, output, tt.want)
-			assert.NotContains(t, output, "no changes")
-			assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, tt.path), "expected a PUT to %s", tt.path)
 		})
 	}
+}
+
+func applyToDeletedAsset(t *testing.T, yaml, path, deletedFixture, putFixture string) (string, *testutil.MockServer, error) {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(yaml), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, path, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   deletedFixture,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPut, path, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   putFixture,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	return output, server, cmdErr
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
@@ -85,7 +84,7 @@ func runGet(ctx context.Context, originOrID string, flags *asset.GetFlags) error
 		fmt.Printf("Name: %s\n", dash0api.GetSLOName(slo))
 		fmt.Printf("Dataset: %s\n", dash0api.GetSLODataset(slo))
 		if deletedAt := asset.SLODeletedAt(slo); deletedAt != nil {
-			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format(time.RFC3339))
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format("2006-01-02 15:04:05"))
 		}
 		// Origin is the SLO upsert key, so it is the field users script
 		// against — print it whenever the SLO has one.

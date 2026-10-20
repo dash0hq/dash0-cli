@@ -115,9 +115,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if err := asset.RequireNotDeleted("SLO", dash0api.GetSLOName(result), asset.SLODeletedAt(result)); err != nil {
+		return err
+	}
+
 	if asset.SLODeletedAt(before) != nil {
 		fmt.Printf("SLO %q %s\n", dash0api.GetSLOName(result), asset.ActionRestored)
-		return nil
+		return asset.PrintChanges(os.Stdout, "SLO", before, result)
 	}
 	return asset.PrintDiff(os.Stdout, "SLO", dash0api.GetSLOName(result), before, result)
 }

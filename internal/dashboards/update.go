@@ -76,6 +76,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	asset.ClearDashboardDeletedAt(dashboard)
 
 	before, err := apiClient.GetDashboard(ctx, id, dataset)
 	if err != nil {
@@ -108,9 +109,13 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	if resultDisplayName == "" {
 		resultDisplayName = result.Metadata.Name
 	}
+	if err := asset.RequireNotDeleted("dashboard", resultDisplayName, asset.DashboardDeletedAt(result)); err != nil {
+		return err
+	}
+
 	if asset.DashboardDeletedAt(before) != nil {
 		fmt.Printf("Dashboard %q %s\n", resultDisplayName, asset.ActionRestored)
-		return nil
+		return asset.PrintChanges(os.Stdout, "Dashboard", before, result)
 	}
 	return asset.PrintDiff(os.Stdout, "Dashboard", resultDisplayName, before, result)
 }

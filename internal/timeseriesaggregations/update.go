@@ -108,9 +108,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	if err := asset.RequireNotDeleted(assetType, dash0api.GetTimeSeriesAggregationName(result), asset.TimeSeriesAggregationDeletedAt(result)); err != nil {
+		return err
+	}
+
 	if asset.TimeSeriesAggregationDeletedAt(before) != nil {
 		fmt.Printf("%s %q %s\n", displayKind, dash0api.GetTimeSeriesAggregationName(result), asset.ActionRestored)
-		return nil
+		return asset.PrintChanges(os.Stdout, displayKind, before, result)
 	}
 	return asset.PrintDiff(os.Stdout, displayKind, dash0api.GetTimeSeriesAggregationName(result), before, result)
 }

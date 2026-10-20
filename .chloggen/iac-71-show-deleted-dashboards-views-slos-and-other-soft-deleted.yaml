@@ -17,7 +17,8 @@ issues: [313]
 # Use pipe (|) for multiline entries.
 subtext: |
   `get` shows a `Deleted:` line in table output, and the `dash0.com/deleted-at` annotation in YAML and JSON output.
-  `apply`, `create`, and `update` print `restored` when they bring back a deleted asset.
+  `apply`, `create`, and `update` print `restored` when they bring back a deleted asset, and fail if the API keeps it deleted.
+  `apply` and `update` also show a diff of any other fields that changed.
 
 # If your change doesn't affect end users or the exported elements of any package,
 # you should instead start your pull request title with "chore" or use the "Skip Changelog" label.

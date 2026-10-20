@@ -357,7 +357,7 @@ func TestGetDashboard_Deleted(t *testing.T) {
 		output string
 		want   string
 	}{
-		{name: "table", output: "table", want: "Deleted: 2026-10-13T12:50:57Z"},
+		{name: "table", output: "table", want: "Deleted: 2026-10-13 12:50:57"},
 		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
 		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
 	}

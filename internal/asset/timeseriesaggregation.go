@@ -64,7 +64,7 @@ func ImportTimeSeriesAggregation(
 	existing, err := apiClient.GetTimeSeriesAggregation(ctx, origin, dataset)
 	switch {
 	case err == nil:
-		action, before = actionForExisting(existing, TimeSeriesAggregationDeletedAt(existing))
+		action, before = actionForExisting(TimeSeriesAggregationDeletedAt(existing)), existing
 	case dash0api.IsNotFound(err):
 		// The aggregation does not exist yet, so the PUT below creates it and
 		// ActionCreated is correct.
@@ -80,6 +80,9 @@ func ImportTimeSeriesAggregation(
 	result, err := apiClient.UpdateTimeSeriesAggregation(ctx, origin, aggregation, dataset)
 	if err != nil {
 		return ImportResult{}, wrapIfWrongDataset(err, origin)
+	}
+	if err := RequireNotDeleted("time series aggregation", dash0api.GetTimeSeriesAggregationName(result), TimeSeriesAggregationDeletedAt(result)); err != nil {
+		return ImportResult{}, err
 	}
 
 	return ImportResult{

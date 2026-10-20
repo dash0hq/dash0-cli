@@ -29,3 +29,5 @@ metadata:
 spec:
   query: "severity >= ERROR"
 ```
+
+`views get` also returns a deleted view: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `views list` does not show deleted views. `apply`, `views create`, and `views update` with the ID of a deleted view bring it back and print `restored`; `apply` and `views update` then show a diff of any other fields that changed.
