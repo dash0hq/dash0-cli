@@ -93,6 +93,18 @@ The `nix flake check` warning `unknown flake output 'homeManagerModules'` is ben
 The source package version is pinned in [`flake.nix`](flake.nix) (the `version` binding) and feeds the `-X main.version` ldflag.
 The release automation keeps it in step (see [Releasing](#releasing)) — you do not bump it by hand.
 
+## Issues, branches, and pull requests
+
+This repository is public, so everything in it must make sense to readers outside Dash0.
+Do not put internal references, such as ticket IDs from Dash0's internal tracker (for example `ABC-123`) or links to internal tools, in branch names, commit messages, pull request titles and descriptions, code, or changelog entries.
+
+- If a change comes from an internal ticket, open a GitHub issue for it first, and reference that issue instead of the ticket.
+  The issue describes the problem and the expected behavior, not the implementation.
+- Name the branch after the change, for example `fix/show-deleted-assets`.
+  `make chlog-new` names the changelog entry after the branch, so an internal ID in a branch name ends up in the repository.
+- Link the issue in the pull request description with `Fixes #<issue>`, and put the issue number in the changelog entry's `issues` field.
+  If there is no issue, use the pull request number.
+
 ## Changelog
 
 Every pull request that affects end users must include a changelog entry.

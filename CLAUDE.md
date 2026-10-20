@@ -93,3 +93,6 @@ These are user-provided and must not be stripped.
 
 When creating GitHub issues, describe **what** and **why** — not **how**.
 Issues should only contain the problem statement, user-facing behavior, and acceptance criteria.
+
+This repository is public: never put internal ticket IDs or links to internal tools in branch names, commit messages, pull requests, code, or changelog entries.
+When a change comes from an internal ticket, open a GitHub issue and reference it instead (see the "Issues, branches, and pull requests" section of CONTRIBUTING.md).
