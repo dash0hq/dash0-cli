@@ -57,12 +57,18 @@ if ! echo "$DELETE4" | grep -q "deleted"; then
 fi
 
 # Step 5: The API soft-deletes check rules, so GET still returns the record
-# after delete. `check-rules get` must show it as deleted.
-echo "--- Step 5: Get after delete (expect: Deleted line) ---"
+# after delete. `check-rules get` must show it as deleted, and `list` must not
+# show it. `list | grep -q` can fail under pipefail, so capture the output first.
+echo "--- Step 5: Get and list after delete (expect: Deleted line, not listed) ---"
 GET5=$("$DASH0" check-rules get "$ID")
 echo "$GET5"
-if ! echo "$GET5" | grep -q "^Deleted: "; then
+if ! grep -q "^Deleted: " <<< "$GET5"; then
   echo "FAIL: expected a 'Deleted:' line in check-rules get output after delete"
+  exit 1
+fi
+LIST5=$("$DASH0" check-rules list --all 2>/dev/null)
+if grep -q "$ID" <<< "$LIST5"; then
+  echo "FAIL: check-rules list still contains '$ID' after delete"
   exit 1
 fi
 
@@ -86,11 +92,12 @@ if ! GET7=$("$DASH0" check-rules get "$ID"); then
   echo "FAIL: check-rules get '$ID' failed after re-apply"
   exit 1
 fi
-if echo "$GET7" | grep -q "^Deleted: "; then
+if grep -q "^Deleted: " <<< "$GET7"; then
   echo "FAIL: check-rules get still shows '$ID' as deleted after re-apply"
   exit 1
 fi
-if ! "$DASH0" check-rules list --all 2>/dev/null | grep -q "$ID"; then
+LIST7=$("$DASH0" check-rules list --all 2>/dev/null)
+if ! grep -q "$ID" <<< "$LIST7"; then
   echo "FAIL: check-rules list does not contain '$ID' after re-apply"
   exit 1
 fi
