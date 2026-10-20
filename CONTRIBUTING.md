@@ -95,15 +95,14 @@ The release automation keeps it in step (see [Releasing](#releasing)) — you do
 
 ## Issues, branches, and pull requests
 
-This repository is public, so everything in it must make sense to readers outside Dash0.
-Do not put internal references, such as ticket IDs from Dash0's internal tracker (for example `ABC-123`) or links to internal tools, in branch names, commit messages, pull request titles and descriptions, code, or changelog entries.
+Every pull request links to a GitHub issue.
 
-- If a change comes from an internal ticket, open a GitHub issue for it first, and reference that issue instead of the ticket.
+- Before you open a pull request, find or open the issue it addresses.
   The issue describes the problem and the expected behavior, not the implementation.
-- Name the branch after the change, for example `fix/show-deleted-assets`.
-  `make chlog-new` names the changelog entry after the branch, so an internal ID in a branch name ends up in the repository.
-- Link the issue in the pull request description with `Fixes #<issue>`, and put the issue number in the changelog entry's `issues` field.
-  If there is no issue, use the pull request number.
+- Name the branch after the issue, for example `123-show-deleted-assets`.
+  `make chlog-new` names the changelog entry after the branch.
+- Link the issue in the pull request description with `Fixes #123`.
+- Put the issue number in the changelog entry's `issues` field.
 
 ## Changelog
 
