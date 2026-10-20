@@ -1190,6 +1190,33 @@ metadata:
 	assert.Contains(t, cmdErr.Error(), "unsupported kind")
 }
 
+func TestApply_Directory_CheckRuleIDCollision(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.yaml"), []byte(`kind: CheckRule
+id: shared-id
+name: Rule A
+expression: up == 0
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.yaml"), []byte(`kind: CheckRule
+id: shared-id
+name: Rule B
+expression: up == 1
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `check rule id "shared-id" is used more than once`)
+	assert.Empty(t, server.Requests(), "apply must not call the API when check rule ids collide")
+}
+
 func TestApply_Directory_EmptyDirectory(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
