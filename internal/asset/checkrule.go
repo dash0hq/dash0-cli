@@ -74,8 +74,13 @@ func ClearCheckRuleDeletedAt(rule *dash0api.PrometheusAlertRule) {
 	if rule == nil || rule.Metadata == nil {
 		return
 	}
-	rule.Metadata.Annotations = nil
-	if rule.Metadata.Labels == nil {
+	if annotations := rule.Metadata.Annotations; annotations != nil {
+		annotations.Dash0ComdeletedAt = nil
+		if *annotations == (dash0api.PrometheusAlertRuleMetadataAnnotations{}) {
+			rule.Metadata.Annotations = nil
+		}
+	}
+	if rule.Metadata.Annotations == nil && rule.Metadata.Labels == nil {
 		rule.Metadata = nil
 	}
 }

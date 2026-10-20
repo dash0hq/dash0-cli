@@ -77,11 +77,11 @@ fi
 echo "--- Step 6: Apply after delete (expect: restored, ID in output) ---"
 APPLY6=$("$DASH0" apply -f "$YAML_FILE")
 echo "$APPLY6"
-if ! echo "$APPLY6" | grep -qE 'restored[[:space:]]*$'; then
+if ! grep -qE 'restored[[:space:]]*$' <<< "$APPLY6"; then
   echo "FAIL: expected 'restored' in apply output after delete"
   exit 1
 fi
-if ! echo "$APPLY6" | grep -q "$ID"; then
+if ! grep -q "$ID" <<< "$APPLY6"; then
   echo "FAIL: expected ID '$ID' in apply output after delete"
   exit 1
 fi

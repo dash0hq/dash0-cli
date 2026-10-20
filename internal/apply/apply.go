@@ -161,9 +161,8 @@ func (d assetDocument) location() string {
 type applyAction string
 
 const (
-	actionCreated  applyAction = "created"
-	actionUpdated  applyAction = "updated"
-	actionRestored applyAction = applyAction(asset.ActionRestored)
+	actionCreated applyAction = "created"
+	actionUpdated applyAction = "updated"
 )
 
 // applyResult holds the outcome of applying a single asset.
@@ -287,7 +286,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			} else {
 				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
 			}
-			if r.action == actionRestored && r.before != nil {
+			if asset.ImportAction(r.action) == asset.ActionRestored {
 				if err := asset.PrintChanges(os.Stdout, displayKind, r.before, r.after); err != nil {
 					return err
 				}

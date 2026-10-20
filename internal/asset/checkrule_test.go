@@ -60,6 +60,19 @@ func TestClearCheckRuleDeletedAt(t *testing.T) {
 			}},
 			want: &dash0api.PrometheusAlertRule{Metadata: &dash0api.PrometheusAlertRuleMetadata{Labels: sourceLabels}},
 		},
+		{
+			name: "empty metadata",
+			rule: &dash0api.PrometheusAlertRule{Metadata: &dash0api.PrometheusAlertRuleMetadata{}},
+			want: &dash0api.PrometheusAlertRule{},
+		},
+		{
+			name: "active with labels",
+			rule: &dash0api.PrometheusAlertRule{Metadata: &dash0api.PrometheusAlertRuleMetadata{
+				Annotations: &dash0api.PrometheusAlertRuleMetadataAnnotations{},
+				Labels:      sourceLabels,
+			}},
+			want: &dash0api.PrometheusAlertRule{Metadata: &dash0api.PrometheusAlertRuleMetadata{Labels: sourceLabels}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
