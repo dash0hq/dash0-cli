@@ -967,7 +967,8 @@ dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-n
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
-A check rule whose ID belongs to a deleted check rule brings that rule back. It shows `restored`, followed by a diff of any other fields that changed.
+A check rule whose ID belongs to a deleted check rule brings that rule back.
+It shows `restored`, followed by a diff of any other fields that changed.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.
