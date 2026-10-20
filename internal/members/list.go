@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -217,6 +218,17 @@ func RenderMembersTable(items []*dash0api.MemberDefinition, cols []query.ColumnD
 	var rows []map[string]string
 	for _, item := range items {
 		rows = append(rows, MemberValues(item, apiUrl))
+	}
+	// Fit role values locally without changing shared column definitions or table behavior.
+	cols = slices.Clone(cols)
+	for i := range cols {
+		if cols[i].Key != "role" {
+			continue
+		}
+		cols[i].Width = len(cols[i].Header)
+		for _, row := range rows {
+			cols[i].Width = max(cols[i].Width, len(row["role"]))
+		}
 	}
 	query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	return nil

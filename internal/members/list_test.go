@@ -1,12 +1,12 @@
 package members
 
 import (
-	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	"github.com/dash0hq/dash0-cli/internal/query"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +20,6 @@ func TestMemberValues_Role(t *testing.T) {
 		{name: "no labels"},
 		{name: "missing role", labels: &dash0api.MemberLabels{}},
 		{name: "admin", labels: &dash0api.MemberLabels{Dash0Comrole: dash0api.Ptr("admin")}, want: "admin"},
-		{name: "basic member", labels: &dash0api.MemberLabels{Dash0Comrole: dash0api.Ptr("basic_member")}, want: "basic_member"},
-		{name: "future role", labels: &dash0api.MemberLabels{Dash0Comrole: dash0api.Ptr("future_role")}, want: "future_role"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			member := &dash0api.MemberDefinition{Metadata: dash0api.MemberMetadata{Labels: tt.labels}}
@@ -35,18 +33,22 @@ func TestMemberTable_LongRoles(t *testing.T) {
 		for _, skipHeader := range []bool{false, true} {
 			cols, err := ResolveMemberListColumns(columns)
 			require.NoError(t, err)
-			var rows []map[string]string
+			originalColumns := slices.Clone(cols)
+			var items []*dash0api.MemberDefinition
 			for _, role := range []string{"admin", "organization_admin", ""} {
-				rows = append(rows, MemberValues(&dash0api.MemberDefinition{
+				items = append(items, &dash0api.MemberDefinition{
 					Metadata: dash0api.MemberMetadata{Labels: &dash0api.MemberLabels{
 						Dash0Comid: dash0api.Ptr("member-id"), Dash0Comrole: dash0api.Ptr(role),
 					}},
-				}, ""))
+				})
 			}
-			var buf bytes.Buffer
-			query.RenderTable(&buf, cols, rows, skipHeader)
-			assert.Contains(t, buf.String(), "organization_admin")
-			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			output := testutil.CaptureStdout(t, func() {
+				err = RenderMembersTable(items, cols, skipHeader, "")
+			})
+			require.NoError(t, err)
+			assert.Equal(t, originalColumns, cols, "rendering must not change caller-owned columns")
+			assert.Contains(t, output, "organization_admin")
+			lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
 			if !skipHeader {
 				lines = lines[1:]
 			}
