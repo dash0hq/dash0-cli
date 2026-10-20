@@ -716,3 +716,79 @@ spec:
 	require.Len(t, validationWarnings, 1)
 	assert.Contains(t, validationWarnings[0], "spec.routing.assets is API-managed and ignored on write")
 }
+
+func TestValidateDocuments_CheckRuleIDCollisions(t *testing.T) {
+	const (
+		checkRuleA = "kind: CheckRule\nid: shared-id\nname: Rule A\nexpression: up == 0\n"
+		checkRuleB = "kind: CheckRule\nid: shared-id\nname: Rule B\nexpression: up == 1\n"
+	)
+	singleAlertPrometheusRule := `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: rules
+  labels:
+    dash0.com/id: shared-id
+spec:
+  groups:
+    - name: group
+      rules:
+        - alert: Alert A
+          expr: up == 0
+`
+	multiAlertPrometheusRule := singleAlertPrometheusRule + `        - alert: Alert B
+          expr: up == 1
+`
+	collision := func(uses ...string) []string {
+		return []string{`check rule id "shared-id" is used more than once, so only the last one would be kept:` + "\n    " + strings.Join(uses, "\n    ")}
+	}
+
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  []string
+	}{
+		{
+			name:  "two check rules in one file",
+			files: map[string]string{"rules.yaml": checkRuleA + "---\n" + checkRuleB},
+			want:  collision(`rules.yaml: document 1: "Rule A"`, `rules.yaml: document 2: "Rule B"`),
+		},
+		{
+			name:  "check rules in two files",
+			files: map[string]string{"a.yaml": checkRuleA, "b.yaml": checkRuleB},
+			want:  collision(`a.yaml: "Rule A"`, `b.yaml: "Rule B"`),
+		},
+		{
+			name:  "single-alert PrometheusRule and check rule",
+			files: map[string]string{"a.yaml": singleAlertPrometheusRule, "b.yaml": checkRuleB},
+			want:  collision(`a.yaml: "group - Alert A"`, `b.yaml: "Rule B"`),
+		},
+		{
+			name:  "multi-alert PrometheusRule and check rule with its id",
+			files: map[string]string{"a.yaml": multiAlertPrometheusRule, "b.yaml": checkRuleB},
+		},
+		{
+			name:  "distinct ids",
+			files: map[string]string{"a.yaml": checkRuleA, "b.yaml": strings.Replace(checkRuleB, "shared-id", "other-id", 1)},
+		},
+		{
+			name: "check rules without id",
+			files: map[string]string{
+				"a.yaml": "kind: CheckRule\nname: Rule A\nexpression: up == 0\n",
+				"b.yaml": "kind: CheckRule\nname: Rule B\nexpression: up == 1\n",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, content := range tt.files {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0644))
+			}
+			docs, err := readDirectory(dir)
+			require.NoError(t, err)
+
+			validationErrors, _ := validateDocuments(docs)
+			assert.Equal(t, tt.want, validationErrors)
+		})
+	}
+}

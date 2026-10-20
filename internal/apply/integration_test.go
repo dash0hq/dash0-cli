@@ -134,35 +134,73 @@ expression: up == 0
 }
 
 func TestApply_CheckRule_Restored(t *testing.T) {
-	testutil.SetupTestEnv(t)
+	tests := []struct {
+		name        string
+		expression  string
+		putResponse string
+		wantOutput  []string
+		wantErr     string
+		wantDiff    bool
+	}{
+		{
+			name:        "unchanged",
+			expression:  "up == 0",
+			putResponse: testutil.FixtureCheckRulesRestoreSuccess,
+			wantOutput:  []string{`"test-check-rule" (47b6ccbe-82ab-47c6-a613-ce0d7f34353e) restored`},
+		},
+		{
+			name:        "changed field",
+			expression:  "up == 1",
+			putResponse: testutil.FixtureCheckRulesRestoreChanged,
+			wantOutput:  []string{`"test-check-rule" (47b6ccbe-82ab-47c6-a613-ce0d7f34353e) restored`, "-expression: up == 0", "+expression: up == 1"},
+			wantDiff:    true,
+		},
+		{
+			name:        "still deleted",
+			expression:  "up == 0",
+			putResponse: testutil.FixtureCheckRulesGetDeleted,
+			wantErr:     `check rule "test-check-rule" is still deleted after the update`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
 
-	tmpDir := t.TempDir()
-	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
-	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
+			yamlFile := filepath.Join(t.TempDir(), "checkrule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
 id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
 name: test-check-rule
-expression: up == 0
+expression: `+tt.expression+`
 `), 0644))
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/alerting/check-rules/47b6ccbe-82ab-47c6-a613-ce0d7f34353e", testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureCheckRulesGetDeleted,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, "/api/alerting/check-rules/47b6ccbe-82ab-47c6-a613-ce0d7f34353e", testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.WithCheckRulesUpdate(tt.putResponse)
 
-	cmd := NewApplyCmd()
-	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+			cmd := NewApplyCmd()
+			cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	var cmdErr error
-	output := testutil.CaptureStdout(t, func() {
-		cmdErr = cmd.Execute()
-	})
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
 
-	require.NoError(t, cmdErr)
-	assert.Contains(t, output, `"test-check-rule" (47b6ccbe-82ab-47c6-a613-ce0d7f34353e) restored`)
-	assert.NotContains(t, output, "no changes")
+			if tt.wantErr != "" {
+				require.ErrorContains(t, cmdErr, tt.wantErr)
+			} else {
+				require.NoError(t, cmdErr)
+			}
+			for _, want := range tt.wantOutput {
+				assert.Contains(t, output, want)
+			}
+			assert.NotContains(t, output, "no changes")
+			assert.Equal(t, tt.wantDiff, strings.Contains(output, "--- Check rule (before)"), "diff in output:\n%s", output)
+		})
+	}
 }
 
 func TestApply_CheckRule_PreservesAnnotations(t *testing.T) {
@@ -1188,6 +1226,33 @@ metadata:
 	assert.Contains(t, cmdErr.Error(), "validation failed with 2 errors")
 	assert.Contains(t, cmdErr.Error(), "missing 'kind' field")
 	assert.Contains(t, cmdErr.Error(), "unsupported kind")
+}
+
+func TestApply_Directory_CheckRuleIDCollision(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.yaml"), []byte(`kind: CheckRule
+id: shared-id
+name: Rule A
+expression: up == 0
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.yaml"), []byte(`kind: CheckRule
+id: shared-id
+name: Rule B
+expression: up == 1
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `check rule id "shared-id" is used more than once`)
+	assert.Empty(t, server.Requests(), "apply must not call the API when check rule ids collide")
 }
 
 func TestApply_Directory_EmptyDirectory(t *testing.T) {

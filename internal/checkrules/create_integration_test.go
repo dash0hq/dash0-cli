@@ -73,3 +73,38 @@ spec:
 	assert.Equal(t, "3fa42d0c-6b8e-4c1a-9f2d-333333333333", errorRateAnnotations["dash0.com/notification-channel-ids"])
 	assert.Equal(t, "https://runbooks.example.com/checkout-error-rate", errorRateAnnotations["runbook_url"])
 }
+
+func TestCreateCheckRule_Restored(t *testing.T) {
+	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureCheckRulesGetDeleted,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPut, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureCheckRulesRestoreSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
+id: `+ruleID+`
+name: test-check-rule
+expression: up == 0
+`), 0644))
+
+	cmd := NewCheckRulesCmd()
+	cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Equal(t, "Check rule \"test-check-rule\" restored\n", output)
+}

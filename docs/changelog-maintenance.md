@@ -9,7 +9,7 @@ Each user-facing change gets its own YAML file in `.chloggen/`.
    - `change_type`: one of `breaking`, `deprecation`, `new_component`, `enhancement`, `bug_fix`
    - `component`: area of concern (e.g., `dashboards`, `config`, `apply`, `logs`)
    - `note`: brief description of the change; wrap in quotes if it starts with a backtick
-   - `issues`: list of related issue or PR numbers, e.g., `[28]`
+   - `issues`: list of the GitHub issue numbers the change addresses, e.g., `[28]` (see [Issues, branches, and pull requests](../CONTRIBUTING.md#issues-branches-and-pull-requests))
    - `subtext`: (optional) additional detail, use `|` for multiline
 3. Run `make chlog-validate` to verify the entry is well-formed
 4. Run `make chlog-preview` to see how it will render in `CHANGELOG.md`

@@ -153,3 +153,5 @@ expression: sum(rate(http_requests_total{status=~"5.."}[5m])) > 0.1
 ```
 
 `check-rules create` also accepts PrometheusRule CRD files. Each alerting rule in the CRD is created as a separate check rule (recording rules are skipped), named `<group name> - <alert name>`, matching the Dash0 Kubernetes operator and the Terraform provider. The CRD's top-level `metadata.annotations` are merged into every rule it contains (see [PrometheusRule annotation merge](#prometheusrule-annotation-merge)). See the `recording-rules` topic for the recording-rule half of a mixed PrometheusRule CRD.
+
+`check-rules get` also returns a deleted check rule: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `check-rules list` does not show deleted check rules. `apply`, `check-rules create`, and `check-rules update` with the ID of a deleted check rule bring it back and print `restored`; `apply` and `check-rules update` then show a diff of any other fields that changed.

@@ -161,8 +161,9 @@ func (d assetDocument) location() string {
 type applyAction string
 
 const (
-	actionCreated applyAction = "created"
-	actionUpdated applyAction = "updated"
+	actionCreated  applyAction = "created"
+	actionUpdated  applyAction = "updated"
+	actionRestored applyAction = applyAction(asset.ActionRestored)
 )
 
 // applyResult holds the outcome of applying a single asset.
@@ -279,10 +280,17 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 				if err := asset.PrintDiff(os.Stdout, displayKind, r.name, r.before, r.after); err != nil {
 					return err
 				}
-			} else if fromDirectory {
+				continue
+			}
+			if fromDirectory {
 				fmt.Printf("%s: %s %s %s\n", doc.filePath, displayKind, label, r.action)
 			} else {
 				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
+			}
+			if r.action == actionRestored && r.before != nil {
+				if err := asset.PrintChanges(os.Stdout, displayKind, r.before, r.after); err != nil {
+					return err
+				}
 			}
 		}
 		if applyErr != nil {
@@ -373,7 +381,50 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrTimeSeriesAggregationMissingOrigin.Error()))
 		}
 	}
+	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
 	return validationErrors, validationWarnings
+}
+
+func checkRuleIDCollisions(documents []assetDocument) []string {
+	var ids []string
+	usesByID := make(map[string][]string)
+	for _, doc := range documents {
+		for _, rule := range checkRulesWithID(doc) {
+			id := *rule.Id
+			if _, seen := usesByID[id]; !seen {
+				ids = append(ids, id)
+			}
+			usesByID[id] = append(usesByID[id], fmt.Sprintf("%s: %q", doc.location(), rule.Name))
+		}
+	}
+
+	var collisions []string
+	for _, id := range ids {
+		if uses := usesByID[id]; len(uses) > 1 {
+			collisions = append(collisions, fmt.Sprintf("check rule id %q is used more than once, so only the last one would be kept:\n    %s", id, strings.Join(uses, "\n    ")))
+		}
+	}
+	return collisions
+}
+
+func checkRulesWithID(doc assetDocument) []*dash0api.PrometheusAlertRule {
+	kind := normalizeKind(doc.kind)
+	if kind != "checkrule" && kind != "prometheusrule" {
+		return nil
+	}
+	// Parse errors, and recording-only PrometheusRules, are reported by the
+	// other checks or when the document is applied.
+	rules, err := asset.ParseCheckRules(doc.raw)
+	if err != nil {
+		return nil
+	}
+	var withID []*dash0api.PrometheusAlertRule
+	for _, rule := range rules {
+		if rule.Id != nil && *rule.Id != "" {
+			withID = append(withID, rule)
+		}
+	}
+	return withID
 }
 
 // validationError formats one or more validation issues into a consistent

@@ -15,7 +15,8 @@ _For the exact, always-current flag list, run `dash0 --agent-mode apply --help`.
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
-A document whose identifier belongs to a deleted asset brings that asset back, and shows `restored` instead of a diff.
+A document whose identifier belongs to a deleted asset brings that asset back.
+It shows `restored`, followed by a diff of any other fields that changed.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.
@@ -33,6 +34,9 @@ Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as on
 Recording rules (entries with `record:`) are sent to the recording-rule endpoint as a single PrometheusRule CRD with the alerting rules removed.
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
+
+Two check rules in one run that resolve to the same ID fail validation up front, because only the last one applied would be kept.
+This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.

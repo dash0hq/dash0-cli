@@ -620,7 +620,7 @@ $ dash0 dashboards get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Kind: Dashboard
 Name: Production Overview
 Dataset: default
-Deleted: 2026-01-21T09:15:00Z
+Deleted: 2026-01-21 09:15:00
 Origin: gitops/prod
 URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 Created: 2026-01-15 10:30:00
@@ -718,16 +718,26 @@ $ dash0 dashboards update -f dashboard.yaml
 Dashboard "My Dashboard": no changes
 ```
 
-`update` on a deleted asset brings it back, and prints `restored` instead of a diff:
+`update` on a deleted asset brings it back.
+It prints `restored`, followed by a diff of any other fields that changed:
 
 ```bash
 $ dash0 dashboards update -f dashboard.yaml
-Dashboard "My Dashboard" restored
+Dashboard "New Dashboard Name" restored
+--- Dashboard (before)
++++ Dashboard (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Old Dashboard Name
++    name: New Dashboard Name
 ```
 
 With `--dry-run`, the asset stays deleted and the output is a diff, as for any other update.
 For check rules, that diff shows the `dash0.com/deleted-at` annotation going away.
 For the other kinds, the diff leaves out the `dash0.com/deleted-at` annotation and shows only content changes.
+This also works for a file exported with `get -o yaml` while the asset was deleted: the CLI ignores the annotation in the file.
+If the API response still shows the asset as deleted, `apply`, `create`, and `update` fail with an error.
 
 ### `delete`
 
@@ -986,7 +996,8 @@ dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-n
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
-A document whose identifier belongs to a deleted asset brings that asset back, and shows `restored` instead of a diff.
+A document whose identifier belongs to a deleted asset brings that asset back.
+It shows `restored`, followed by a diff of any other fields that changed.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.
@@ -1004,6 +1015,9 @@ Alerting rules (entries with `alert:`) are sent to the check-rule endpoint as on
 Recording rules (entries with `record:`) are sent to the recording-rule endpoint as a single PrometheusRule CRD with the alerting rules removed.
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
+
+Two check rules in one run that resolve to the same ID fail validation up front, because only the last one applied would be kept.
+This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
 The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
