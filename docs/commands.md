@@ -704,8 +704,11 @@ $ dash0 dashboards update -f dashboard.yaml
 Dashboard "My Dashboard": no changes
 ```
 
-`check-rules update` on a deleted check rule brings it back, and prints `restored` instead of a diff.
+`check-rules update` on a deleted check rule brings it back.
+It prints `restored`, followed by a diff of any other fields that changed.
 With `--dry-run`, the diff shows the `dash0.com/deleted-at` annotation going away, and the rule stays deleted.
+This also works for a file exported with `check-rules get -o yaml` while the rule was deleted: the CLI ignores the annotation in the file.
+If the API response still shows the check rule as deleted, `apply`, `check-rules create`, and `check-rules update` fail with an error.
 
 ### `delete`
 
@@ -964,7 +967,7 @@ dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-n
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
-A check rule whose ID belongs to a deleted check rule brings that rule back, and shows `restored` instead of a diff.
+A check rule whose ID belongs to a deleted check rule brings that rule back. It shows `restored`, followed by a diff of any other fields that changed.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.
