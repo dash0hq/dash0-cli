@@ -228,22 +228,61 @@ spec:
 
 func TestUpdateCheckRule_Deleted(t *testing.T) {
 	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
+	const plainFile = `kind: CheckRule
+id: ` + ruleID + `
+name: test-check-rule
+expression: up == 0
+`
+	const exportedFile = plainFile + `metadata:
+  annotations:
+    dash0.com/deleted-at: "2026-10-13T12:50:57Z"
+  labels:
+    dash0.com/source: dash0-cli
+`
 	tests := []struct {
-		name       string
-		extraArgs  []string
-		wantOutput string
-		wantDiff   bool
-		wantPut    bool
+		name        string
+		file        string
+		extraArgs   []string
+		putResponse string
+		wantOutput  []string
+		wantErr     string
+		wantDiff    bool
+		wantPut     bool
 	}{
 		{
-			name:       "update",
-			wantOutput: `Check rule "test-check-rule" restored`,
-			wantPut:    true,
+			name:        "update",
+			file:        plainFile,
+			putResponse: testutil.FixtureCheckRulesRestoreSuccess,
+			wantOutput:  []string{`Check rule "test-check-rule" restored`},
+			wantPut:     true,
+		},
+		{
+			name:        "update with a changed field",
+			file:        strings.Replace(plainFile, "up == 0", "up == 1", 1),
+			putResponse: testutil.FixtureCheckRulesRestoreChanged,
+			wantOutput:  []string{`Check rule "test-check-rule" restored`, "-expression: up == 0", "+expression: up == 1"},
+			wantDiff:    true,
+			wantPut:     true,
+		},
+		{
+			name:        "update that leaves the rule deleted",
+			file:        plainFile,
+			putResponse: testutil.FixtureCheckRulesGetDeleted,
+			wantErr:     `check rule "test-check-rule" is still deleted after the update`,
+			wantPut:     true,
 		},
 		{
 			name:       "dry run",
+			file:       plainFile,
 			extraArgs:  []string{"--dry-run"},
-			wantOutput: `-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`,
+			wantOutput: []string{`-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`},
+			wantDiff:   true,
+		},
+		{
+			name:       "dry run of an exported file",
+			file:       exportedFile,
+			extraArgs:  []string{"--dry-run"},
+			wantOutput: []string{`-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`},
 			wantDiff:   true,
 		},
 	}
@@ -260,15 +299,11 @@ func TestUpdateCheckRule_Deleted(t *testing.T) {
 			server.On(http.MethodPut, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
 				Validator:  testutil.RequireHeaders,
 				StatusCode: http.StatusOK,
-				BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+				BodyFile:   tt.putResponse,
 			})
 
 			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
-			require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
-id: `+ruleID+`
-name: test-check-rule
-expression: up == 0
-`), 0644))
+			require.NoError(t, os.WriteFile(yamlFile, []byte(tt.file), 0644))
 
 			cmd := NewCheckRulesCmd()
 			cmd.SetArgs(append([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken}, tt.extraArgs...))
@@ -278,8 +313,14 @@ expression: up == 0
 				cmdErr = cmd.Execute()
 			})
 
-			require.NoError(t, cmdErr)
-			assert.Contains(t, output, tt.wantOutput)
+			if tt.wantErr != "" {
+				require.EqualError(t, cmdErr, tt.wantErr)
+			} else {
+				require.NoError(t, cmdErr)
+			}
+			for _, want := range tt.wantOutput {
+				assert.Contains(t, output, want)
+			}
 			assert.Equal(t, tt.wantDiff, strings.Contains(output, "--- Check rule (before)"), "diff in output:\n%s", output)
 			assert.Equal(t, tt.wantPut, countRequests(server.Requests(), http.MethodPut) > 0, "PUT sent")
 		})

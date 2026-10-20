@@ -161,8 +161,9 @@ func (d assetDocument) location() string {
 type applyAction string
 
 const (
-	actionCreated applyAction = "created"
-	actionUpdated applyAction = "updated"
+	actionCreated  applyAction = "created"
+	actionUpdated  applyAction = "updated"
+	actionRestored applyAction = applyAction(asset.ActionRestored)
 )
 
 // applyResult holds the outcome of applying a single asset.
@@ -279,10 +280,17 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 				if err := asset.PrintDiff(os.Stdout, displayKind, r.name, r.before, r.after); err != nil {
 					return err
 				}
-			} else if fromDirectory {
+				continue
+			}
+			if fromDirectory {
 				fmt.Printf("%s: %s %s %s\n", doc.filePath, displayKind, label, r.action)
 			} else {
 				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
+			}
+			if r.action == actionRestored && r.before != nil {
+				if err := asset.PrintChanges(os.Stdout, displayKind, r.before, r.after); err != nil {
+					return err
+				}
 			}
 		}
 		if applyErr != nil {
