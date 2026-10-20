@@ -93,6 +93,17 @@ The `nix flake check` warning `unknown flake output 'homeManagerModules'` is ben
 The source package version is pinned in [`flake.nix`](flake.nix) (the `version` binding) and feeds the `-X main.version` ldflag.
 The release automation keeps it in step (see [Releasing](#releasing)) — you do not bump it by hand.
 
+## Issues, branches, and pull requests
+
+Every pull request links to a GitHub issue.
+
+- Before you open a pull request, find or open the issue it addresses.
+  The issue describes the problem and the expected behavior, not the implementation.
+- Name the branch after the issue, for example `123-show-deleted-assets`.
+  `make chlog-new` names the changelog entry after the branch.
+- Link the issue in the pull request description with `Fixes #123`.
+- Put the issue number in the changelog entry's `issues` field.
+
 ## Changelog
 
 Every pull request that affects end users must include a changelog entry.

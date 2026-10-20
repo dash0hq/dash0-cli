@@ -93,3 +93,5 @@ These are user-provided and must not be stripped.
 
 When creating GitHub issues, describe **what** and **why** — not **how**.
 Issues should only contain the problem statement, user-facing behavior, and acceptance criteria.
+
+Every pull request links to a GitHub issue, and the branch and the changelog entry use its number (see the "Issues, branches, and pull requests" section of CONTRIBUTING.md).
