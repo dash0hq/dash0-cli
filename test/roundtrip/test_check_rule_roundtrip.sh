@@ -6,11 +6,14 @@ export DASH0_AGENT_MODE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 FIXTURES="${SCRIPT_DIR}/fixtures"
-FIXTURE="${FIXTURES}/check-rule.yaml"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-ASSET_NAME=$(yq '.name' "$FIXTURE")
+# Other scripts create assets from the same fixture in parallel, so a unique
+# name keeps the lookup by name below on this script's own check rule.
+FIXTURE="${TMPDIR}/check-rule.yaml"
+ASSET_NAME="$(yq '.name' "${FIXTURES}/check-rule.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$ASSET_NAME" yq '.name = env(ASSET_NAME)' "${FIXTURES}/check-rule.yaml" > "$FIXTURE"
 
 echo "=== Check rule round-trip test ==="
 echo "Asset name: $ASSET_NAME"
