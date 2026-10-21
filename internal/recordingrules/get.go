@@ -68,6 +68,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		fmt.Printf("Kind: %s\n", rule.Kind)
 		fmt.Printf("Name: %s\n", dash0api.GetRecordingRuleName(rule))
 		fmt.Printf("Dataset: %s\n", dash0api.GetRecordingRuleDataset(rule))
+		if deletedAt := asset.RecordingRuleDeletedAt(rule); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format("2006-01-02 15:04:05"))
+		}
 		origin := ""
 		if rule.Metadata.Labels != nil {
 			origin = (*rule.Metadata.Labels)["dash0.com/origin"]

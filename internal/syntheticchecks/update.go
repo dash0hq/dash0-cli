@@ -61,6 +61,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	dash0api.StripSyntheticCheckServerFields(&check)
 
 	before, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
 	if err != nil {
@@ -71,7 +72,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Synthetic check", check.Metadata.Name, before, &check)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "Synthetic check",
+			Name:            dash0api.GetSyntheticCheckName(&check),
+			ID:              id,
+			Before:          before,
+			After:           &check,
+			BeforeDeletedAt: asset.SyntheticCheckDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	result, err := apiClient.UpdateSyntheticCheck(ctx, id, &check, dataset)
@@ -83,5 +92,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, "Synthetic check", dash0api.GetSyntheticCheckName(result), before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "Synthetic check",
+		Name:            dash0api.GetSyntheticCheckName(result),
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.SyntheticCheckDeletedAt(before),
+		AfterDeletedAt:  asset.SyntheticCheckDeletedAt(result),
+	})
 }

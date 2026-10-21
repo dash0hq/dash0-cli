@@ -89,7 +89,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, displayKind, dash0api.GetTimeSeriesAggregationName(aggregation), before, aggregation)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     displayKind,
+			Name:            dash0api.GetTimeSeriesAggregationName(aggregation),
+			ID:              key,
+			Before:          before,
+			After:           aggregation,
+			BeforeDeletedAt: asset.TimeSeriesAggregationDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	// The origin label is stripped from the outbound body, matching the import
@@ -108,5 +116,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, displayKind, dash0api.GetTimeSeriesAggregationName(result), before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     displayKind,
+		Name:            dash0api.GetTimeSeriesAggregationName(result),
+		ID:              key,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.TimeSeriesAggregationDeletedAt(before),
+		AfterDeletedAt:  asset.TimeSeriesAggregationDeletedAt(result),
+	})
 }

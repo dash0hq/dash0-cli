@@ -81,6 +81,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 			}
 		}
 		fmt.Printf("Dataset: %s\n", viewDataset)
+		if deletedAt := asset.ViewDeletedAt(view); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format("2006-01-02 15:04:05"))
+		}
 		fmt.Printf("Origin: %s\n", origin)
 		if deeplinkURL := dash0api.ViewDeeplinkURL(apiUrl, view.Spec.Type, id, dataset); deeplinkURL != "" {
 			fmt.Printf("URL: %s\n", deeplinkURL)

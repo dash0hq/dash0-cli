@@ -61,6 +61,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	asset.ClearRecordingRuleDeletedAt(&rule)
 
 	before, err := apiClient.GetRecordingRule(ctx, id, dataset)
 	if err != nil {
@@ -73,7 +74,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	asset.CarryRecordingRuleVersion(before, &rule)
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Recording rule", dash0api.GetRecordingRuleName(&rule), before, &rule)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "Recording rule",
+			Name:            dash0api.GetRecordingRuleName(&rule),
+			ID:              id,
+			Before:          before,
+			After:           &rule,
+			BeforeDeletedAt: asset.RecordingRuleDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	result, err := apiClient.UpdateRecordingRule(ctx, id, &rule, dataset)
@@ -85,5 +94,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, "Recording rule", dash0api.GetRecordingRuleName(result), before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "Recording rule",
+		Name:            dash0api.GetRecordingRuleName(result),
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.RecordingRuleDeletedAt(before),
+		AfterDeletedAt:  asset.RecordingRuleDeletedAt(result),
+	})
 }

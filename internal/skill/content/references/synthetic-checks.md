@@ -30,3 +30,5 @@ spec:
   url: https://api.example.com/health
   interval: 60s
 ```
+
+`synthetic-checks get` also returns a deleted synthetic check: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `synthetic-checks list` does not show deleted synthetic checks. `apply`, `synthetic-checks create`, and `synthetic-checks update` with the ID of a deleted synthetic check bring it back and print `restored`; `apply` and `synthetic-checks update` then show a diff of any other fields that changed. `synthetic-checks update --dry-run` prints `would be restored` instead, and the synthetic check stays deleted.

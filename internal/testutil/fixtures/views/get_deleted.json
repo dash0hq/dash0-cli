@@ -1,0 +1,46 @@
+{
+  "kind": "Dash0View",
+  "metadata": {
+    "annotations": {
+      "dash0.com/deleted-at": "2026-10-13T12:50:57Z"
+    },
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "test-view-id",
+      "dash0.com/origin": "dash0-cli",
+      "dash0.com/source": "userdefined",
+      "dash0.com/version": "1"
+    },
+    "name": "test-view"
+  },
+  "spec": {
+    "display": {
+      "description": "Test view for apply command",
+      "name": "Test View"
+    },
+    "filter": [],
+    "groupBy": [],
+    "implicitFilter": [],
+    "table": {
+      "columns": [
+        {
+          "colSize": "min-content",
+          "key": "otel.log.time",
+          "label": "Time"
+        },
+        {
+          "key": "otel.log.body",
+          "label": "Body"
+        }
+      ],
+      "sort": [
+        {
+          "direction": "descending",
+          "key": "otel.log.time"
+        }
+      ]
+    },
+    "type": "logs",
+    "visualizations": []
+  }
+}

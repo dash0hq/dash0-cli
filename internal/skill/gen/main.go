@@ -63,11 +63,7 @@ var topics = []topicSpec{
 			"`metadata.annotations` are merged into every rule it contains (see " +
 			"[PrometheusRule annotation merge](#prometheusrule-annotation-merge)). See the `recording-rules` topic " +
 			"for the recording-rule half of a mixed PrometheusRule CRD.\n\n" +
-			"`check-rules get` also returns a deleted check rule: the table output shows a `Deleted:` line, and " +
-			"`-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. " +
-			"`check-rules list` does not show deleted check rules. `apply`, `check-rules create`, and " +
-			"`check-rules update` with the ID of a deleted check rule bring it back and print `restored`; `apply` " +
-			"and `check-rules update` then show a diff of any other fields that changed.",
+			deletedAssetNote("check-rules", "check rule", "check rules", "ID"),
 	},
 	{
 		name: "config",
@@ -85,7 +81,8 @@ var topics = []topicSpec{
 		includeQuickRef: true,
 		assetYAMLLabels: []string{"Dashboard:", "PersesDashboard"},
 		extraNote: "`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and " +
-			"`perses.dev/v1alpha2`).",
+			"`perses.dev/v1alpha2`).\n\n" +
+			deletedAssetNote("dashboards", "dashboard", "dashboards", "ID"),
 	},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},
@@ -109,7 +106,8 @@ var topics = []topicSpec{
 		assetYAMLLabels: []string{"Recording rule", "Mixed PrometheusRule"},
 		extraNote: "Recording rules use the PrometheusRule CRD format. A CRD that mixes alerting and recording " +
 			"rules is dispatched to both the check-rule and recording-rule endpoints in a single `apply` — see the " +
-			"\"Mixed PrometheusRule\" example above.",
+			"\"Mixed PrometheusRule\" example above.\n\n" +
+			deletedAssetNote("recording-rules", "recording rule", "recording rules", "ID"),
 	},
 	{
 		name:            "slos",
@@ -118,7 +116,8 @@ var topics = []topicSpec{
 		assetYAMLLabels: []string{"SLO (Dash0's OpenSLO"},
 		extraNote: "`dash0.com/origin` — not `dash0.com/id` — is the upsert key for SLOs: SLO IDs are assigned " +
 			"by the server (`slo_<ulid>`), so origin is the only identifier a hand-written document can pin, and " +
-			"it is what makes `apply` idempotent. See the `apply` topic for the full upsert-key selection rules.",
+			"it is what makes `apply` idempotent. See the `apply` topic for the full upsert-key selection rules.\n\n" +
+			deletedAssetNote("slos", "SLO", "SLOs", "origin"),
 	},
 	{
 		name:            "spam-filters",
@@ -133,6 +132,7 @@ var topics = []topicSpec{
 		name:            "synthetic-checks",
 		includeQuickRef: true,
 		assetYAMLLabels: []string{"Synthetic check:"},
+		extraNote:       deletedAssetNote("synthetic-checks", "synthetic check", "synthetic checks", "ID"),
 	},
 	{
 		name: "teams",
@@ -155,13 +155,15 @@ var topics = []topicSpec{
 			"reapply cleanly.\n\n" +
 			"Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document " +
 			"therefore cannot be applied to two datasets the way it can for every other asset kind — the second " +
-			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.",
+			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.\n\n" +
+			deletedAssetNote("time-series-aggregations", "time series aggregation", "time series aggregations", "origin"),
 	},
 	{name: "traces", sections: []string{"traces get"}},
 	{
 		name:            "views",
 		includeQuickRef: true,
 		assetYAMLLabels: []string{"View:"},
+		extraNote:       deletedAssetNote("views", "view", "views", "ID"),
 	},
 }
 
@@ -566,4 +568,15 @@ func findRepoRoot() (string, error) {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "skillgen:", err)
 	os.Exit(1)
+}
+
+// deletedAssetNote describes how an asset kind's commands show and bring back
+// a deleted asset.
+func deletedAssetNote(command, singular, plural, key string) string {
+	return fmt.Sprintf("`%[1]s get` also returns a deleted %[2]s: the table output shows a `Deleted:` line, and "+
+		"`-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. "+
+		"`%[1]s list` does not show deleted %[3]s. `apply`, `%[1]s create`, and `%[1]s update` with the %[4]s "+
+		"of a deleted %[2]s bring it back and print `restored`; `apply` and `%[1]s update` then show a diff of "+
+		"any other fields that changed. `%[1]s update --dry-run` prints `would be restored` instead, and the "+
+		"%[2]s stays deleted.", command, singular, plural, key)
 }

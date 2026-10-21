@@ -159,7 +159,8 @@ func TestApply_CheckRule_Restored(t *testing.T) {
 			name:        "still deleted",
 			expression:  "up == 0",
 			putResponse: testutil.FixtureCheckRulesGetDeleted,
-			wantErr:     `check rule "test-check-rule" is still deleted after the update`,
+			wantOutput:  []string{"Applied before error:\n  - Check rule \"test-check-rule\" (47b6ccbe-82ab-47c6-a613-ce0d7f34353e)\n"},
+			wantErr:     `Check rule "test-check-rule" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -2724,4 +2725,161 @@ func TestApply_TimeSeriesAggregation_DryRun(t *testing.T) {
 	assert.Contains(t, output, "Dry run")
 	assert.Contains(t, output, "Time series aggregation")
 	assert.Contains(t, output, "http-server-request-duration")
+}
+
+func TestApply_Restored(t *testing.T) {
+	tests := []struct {
+		name           string
+		yaml           string
+		path           string
+		deletedFixture string
+		putFixture     string
+		want           string
+		wantDiff       bool
+		wantErr        string
+	}{
+		{
+			name: "dashboard",
+			yaml: `kind: Dashboard
+metadata:
+  name: test-dashboard
+  dash0Extensions:
+    id: test-dashboard-id
+spec:
+  display:
+    name: Test Dashboard
+`,
+			path:           apiPathDashboards + "/test-dashboard-id",
+			deletedFixture: testutil.FixtureDashboardsGetDeleted,
+			putFixture:     testutil.FixtureDashboardsImportSuccess,
+			want:           `Dashboard "Test Dashboard" (test-dashboard-id) restored`,
+			wantErr:        `Dashboard "Test Dashboard" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name: "view",
+			yaml: `kind: Dash0View
+metadata:
+  name: test-view
+  labels:
+    dash0.com/id: test-view-id
+spec:
+  display:
+    name: Test View
+  type: logs
+`,
+			path:           apiPathViews + "/test-view-id",
+			deletedFixture: testutil.FixtureViewsGetDeleted,
+			putFixture:     testutil.FixtureViewsImportSuccess,
+			want:           `View "Test View" (test-view-id) restored`,
+			wantErr:        `View "Test View" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name: "synthetic check",
+			yaml: `kind: Dash0SyntheticCheck
+metadata:
+  name: test-synthetic-check
+  labels:
+    dash0.com/id: test-synthetic-check-id
+spec:
+  display:
+    name: Test Synthetic Check
+`,
+			path:           apiPathSyntheticChecks + "/test-synthetic-check-id",
+			deletedFixture: testutil.FixtureSyntheticChecksGetDeleted,
+			putFixture:     testutil.FixtureSyntheticChecksImportSuccess,
+			want:           `Synthetic check "Test Synthetic Check" (test-synthetic-check-id) restored`,
+			wantErr:        `Synthetic check "Test Synthetic Check" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name:           "SLO",
+			yaml:           sloYAMLWithOrigin,
+			path:           apiPathSLOs + "/cli-roundtrip-origin",
+			deletedFixture: "slos/get_deleted.json",
+			putFixture:     "slos/update_success.json",
+			want:           `SLO "Checkout availability" (00000000-0000-0000-0000-000000000001) restored`,
+			wantDiff:       true,
+			wantErr:        `SLO "Checkout availability" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name: "recording rule",
+			yaml: `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: CPU Usage Average
+  labels:
+    dash0.com/id: f47ac10b-58cc-4372-a567-0e02b2c3d479
+spec:
+  groups:
+    - name: cpu-averages
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg without(cpu) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+`,
+			path:           apiPathRecordingRules + "/f47ac10b-58cc-4372-a567-0e02b2c3d479",
+			deletedFixture: testutil.FixtureRecordingRulesGetDeleted,
+			putFixture:     testutil.FixtureRecordingRulesCreateSuccess,
+			want:           `Recording rule "CPU Usage Average" (f47ac10b-58cc-4372-a567-0e02b2c3d479) restored`,
+			wantDiff:       true,
+			wantErr:        `Recording rule "CPU Usage Average" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name:           "time series aggregation",
+			yaml:           tsaDoc,
+			path:           apiPathTimeSeriesAggs + "/http-server-request-duration",
+			deletedFixture: "timeseriesaggregations/get_deleted.json",
+			putFixture:     "timeseriesaggregations/update_response.json",
+			want:           `Time series aggregation "HTTP server request duration" (d54caa75-e94b-43c7-8470-23e4ab852ab6) restored`,
+			wantDiff:       true,
+			wantErr:        `Time series aggregation "HTTP server request duration" was saved, but the API still shows it as deleted`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Run("restored", func(t *testing.T) {
+				output, server, err := applyToDeletedAsset(t, tt.yaml, tt.path, tt.deletedFixture, tt.putFixture)
+
+				require.NoError(t, err)
+				assert.Contains(t, output, tt.want)
+				assert.NotContains(t, output, "no changes")
+				assert.Equal(t, tt.wantDiff, strings.Contains(output, " (before)\n"), "diff in output:\n%s", output)
+				assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, tt.path), "expected a PUT to %s", tt.path)
+			})
+			t.Run("still deleted", func(t *testing.T) {
+				output, _, err := applyToDeletedAsset(t, tt.yaml, tt.path, tt.deletedFixture, tt.deletedFixture)
+
+				require.ErrorContains(t, err, tt.wantErr)
+				assert.NotContains(t, output, "restored")
+				assert.Contains(t, output, "Applied before error:\n  - "+strings.TrimSuffix(tt.want, " restored")+"\n")
+			})
+		})
+	}
+}
+
+func applyToDeletedAsset(t *testing.T, yaml, path, deletedFixture, putFixture string) (string, *testutil.MockServer, error) {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(yaml), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, path, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   deletedFixture,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPut, path, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   putFixture,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	return output, server, cmdErr
 }

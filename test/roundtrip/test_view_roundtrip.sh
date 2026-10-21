@@ -6,11 +6,14 @@ export DASH0_AGENT_MODE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 FIXTURES="${SCRIPT_DIR}/fixtures"
-FIXTURE="${FIXTURES}/view.yaml"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-ASSET_NAME=$(yq '.spec.display.name' "$FIXTURE")
+# Other scripts create assets from the same fixture in parallel, so a unique
+# name keeps the lookup by name below on this script's own view.
+FIXTURE="${TMPDIR}/view.yaml"
+ASSET_NAME="$(yq '.spec.display.name' "${FIXTURES}/view.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$ASSET_NAME" yq '.spec.display.name = env(ASSET_NAME)' "${FIXTURES}/view.yaml" > "$FIXTURE"
 
 echo "=== View round-trip test ==="
 echo "Asset name: $ASSET_NAME"

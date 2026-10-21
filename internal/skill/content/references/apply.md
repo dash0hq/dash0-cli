@@ -15,7 +15,7 @@ _For the exact, always-current flag list, run `dash0 --agent-mode apply --help`.
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
-A check rule whose ID belongs to a deleted check rule brings that rule back.
+A document whose identifier belongs to a deleted asset brings that asset back.
 It shows `restored`, followed by a diff of any other fields that changed.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.

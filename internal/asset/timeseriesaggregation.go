@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
@@ -42,6 +43,9 @@ func GetTimeSeriesAggregationOrigin(aggregation *dash0api.TimeSeriesAggregationD
 //
 // The body's dash0.com/id is left alone. The server ignores it and uses the
 // path's origin, so an exported document reapplies safely.
+//
+// A PUT to the origin of a deleted aggregation brings it back, which is
+// reported as ActionRestored.
 func ImportTimeSeriesAggregation(
 	ctx context.Context,
 	apiClient dash0api.Client,
@@ -60,8 +64,7 @@ func ImportTimeSeriesAggregation(
 	existing, err := apiClient.GetTimeSeriesAggregation(ctx, origin, dataset)
 	switch {
 	case err == nil:
-		action = ActionUpdated
-		before = existing
+		action, before = actionForExisting(TimeSeriesAggregationDeletedAt(existing)), existing
 	case dash0api.IsNotFound(err):
 		// The aggregation does not exist yet, so the PUT below creates it and
 		// ActionCreated is correct.
@@ -78,6 +81,9 @@ func ImportTimeSeriesAggregation(
 	if err != nil {
 		return ImportResult{}, wrapIfWrongDataset(err, origin)
 	}
+	if err := RequireNotDeleted("Time series aggregation", dash0api.GetTimeSeriesAggregationName(result), dash0api.GetTimeSeriesAggregationID(result), TimeSeriesAggregationDeletedAt(result)); err != nil {
+		return ImportResult{}, err
+	}
 
 	return ImportResult{
 		Name:   dash0api.GetTimeSeriesAggregationName(result),
@@ -86,6 +92,15 @@ func ImportTimeSeriesAggregation(
 		Before: before,
 		After:  result,
 	}, nil
+}
+
+// TimeSeriesAggregationDeletedAt returns when the aggregation was deleted, or
+// nil when it is not deleted.
+func TimeSeriesAggregationDeletedAt(aggregation *dash0api.TimeSeriesAggregationDefinition) *time.Time {
+	if aggregation == nil || aggregation.Metadata.Annotations == nil {
+		return nil
+	}
+	return aggregation.Metadata.Annotations.Dash0ComdeletedAt
 }
 
 // IsTimeSeriesAggregationWrongDataset reports whether err is the API's

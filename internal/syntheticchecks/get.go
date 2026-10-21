@@ -81,6 +81,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 			}
 		}
 		fmt.Printf("Dataset: %s\n", checkDataset)
+		if deletedAt := asset.SyntheticCheckDeletedAt(check); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format("2006-01-02 15:04:05"))
+		}
 		fmt.Printf("Origin: %s\n", origin)
 		if check.Metadata.Description != nil {
 			fmt.Printf("Description: %s\n", *check.Metadata.Description)

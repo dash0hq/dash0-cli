@@ -103,7 +103,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	dash0api.StripSLOServerFields(&slo)
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "SLO", dash0api.GetSLOName(&slo), before, &slo)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "SLO",
+			Name:            dash0api.GetSLOName(&slo),
+			ID:              id,
+			Before:          before,
+			After:           &slo,
+			BeforeDeletedAt: asset.SLODeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	result, err := apiClient.UpdateSLO(ctx, id, &slo, dataset)
@@ -115,5 +123,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	return asset.PrintDiff(os.Stdout, "SLO", dash0api.GetSLOName(result), before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "SLO",
+		Name:            dash0api.GetSLOName(result),
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.SLODeletedAt(before),
+		AfterDeletedAt:  asset.SLODeletedAt(result),
+	})
 }

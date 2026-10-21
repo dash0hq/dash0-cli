@@ -81,32 +81,3 @@ func TestClearCheckRuleDeletedAt(t *testing.T) {
 		})
 	}
 }
-
-func TestRequireCheckRuleNotDeleted(t *testing.T) {
-	deletedAt := time.Date(2026, 10, 13, 12, 50, 57, 0, time.UTC)
-
-	tests := []struct {
-		name    string
-		rule    *dash0api.PrometheusAlertRule
-		wantErr string
-	}{
-		{name: "active", rule: &dash0api.PrometheusAlertRule{Name: "rule"}},
-		{
-			name: "deleted",
-			rule: &dash0api.PrometheusAlertRule{Name: "rule", Metadata: &dash0api.PrometheusAlertRuleMetadata{
-				Annotations: &dash0api.PrometheusAlertRuleMetadataAnnotations{Dash0ComdeletedAt: &deletedAt},
-			}},
-			wantErr: `check rule "rule" is still deleted after the update`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := RequireCheckRuleNotDeleted(tt.rule)
-			if tt.wantErr == "" {
-				assert.NoError(t, err)
-				return
-			}
-			assert.EqualError(t, err, tt.wantErr)
-		})
-	}
-}

@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strings"
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -26,6 +28,7 @@ const (
 	fixtureListEmpty       = "timeseriesaggregations/list_empty.json"
 	fixtureListAllOptional = "timeseriesaggregations/list_all_optional_fields.json"
 	fixtureGetSuccess      = "timeseriesaggregations/get_success.json"
+	fixtureGetDeleted      = "timeseriesaggregations/get_deleted.json"
 	fixtureCreateResponse  = "timeseriesaggregations/create_response.json"
 	fixtureUpdateResponse  = "timeseriesaggregations/update_response.json"
 	fixtureNotFound        = "timeseriesaggregations/error_not_found.json"
@@ -337,6 +340,41 @@ func TestGetTimeSeriesAggregation_Success(t *testing.T) {
 
 // An undecodable 200 leaves the aggregation nil with a nil error, and the
 // summary path reads aggregation.Spec directly, so this used to panic.
+func TestGetTimeSeriesAggregation_Deleted(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "table", output: "table", want: "Deleted: 2026-10-13 12:50:57"},
+		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPath+"/"+testOrigin, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := newRootCmd()
+			cmd.SetArgs([]string{"tsa", "get", testOrigin, "--api-url", server.URL, "--auth-token", testAuthToken, "-o", tt.output})
+
+			var err error
+			output := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, tt.want)
+		})
+	}
+}
+
 func TestGetTimeSeriesAggregation_UndecodableSuccessBodyIsAnError(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -732,6 +770,88 @@ func TestUpdateTimeSeriesAggregation_DryRunDoesNotWrite(t *testing.T) {
 	require.NoError(t, err)
 	for _, req := range server.Requests() {
 		assert.Equal(t, http.MethodGet, req.Method, "--dry-run must not write")
+	}
+}
+
+func TestCreateAndUpdateTimeSeriesAggregation_Deleted(t *testing.T) {
+	file := docWithOrigin
+	exportedFile := strings.Replace(file, "metadata:\n", "metadata:\n  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
+
+	restored := `Time series aggregation "HTTP server request duration" restored`
+	wouldBeRestored := `Time series aggregation "HTTP server request duration" would be restored`
+
+	tests := []struct {
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
+	}{
+		{name: "create", args: []string{"tsa", "create"}, file: file, putFixture: fixtureUpdateResponse, wantStatus: restored},
+		{name: "update", args: []string{"tsa", "update"}, file: file, putFixture: fixtureUpdateResponse, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"tsa", "update"}, file: exportedFile, putFixture: fixtureUpdateResponse, wantStatus: restored},
+		{name: "update dry run", args: []string{"tsa", "update", "--dry-run"}, file: file, putFixture: fixtureUpdateResponse, wantStatus: wouldBeRestored},
+		{
+			name:       "create that leaves the time series aggregation deleted",
+			args:       []string{"tsa", "create"},
+			file:       file,
+			putFixture: fixtureGetDeleted,
+			wantErr:    `Time series aggregation "HTTP server request duration" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name:       "update that leaves the time series aggregation deleted",
+			args:       []string{"tsa", "update"},
+			file:       file,
+			putFixture: fixtureGetDeleted,
+			wantErr:    `Time series aggregation "HTTP server request duration" was saved, but the API still shows it as deleted`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPath+"/"+testOrigin, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodPut, apiPath+"/"+testOrigin, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   tt.putFixture,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(tt.file), 0644))
+
+			cmd := newRootCmd()
+			cmd.SetArgs(append(tt.args, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken))
+
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			if tt.wantErr != "" {
+				require.EqualError(t, cmdErr, tt.wantErr)
+			} else {
+				require.NoError(t, cmdErr)
+			}
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
+			puts := server.RequestBodies(t, http.MethodPut, apiPath+"/"+testOrigin)
+			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
+			for _, put := range puts {
+				body, err := json.Marshal(put)
+				require.NoError(t, err)
+				assert.NotContains(t, string(body), "deleted-at", "PUT body")
+			}
+		})
 	}
 }
 

@@ -76,6 +76,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	asset.ClearDashboardDeletedAt(dashboard)
 
 	before, err := apiClient.GetDashboard(ctx, id, dataset)
 	if err != nil {
@@ -91,7 +92,15 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	}
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, dashboard)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "Dashboard",
+			Name:            displayName,
+			ID:              id,
+			Before:          before,
+			After:           dashboard,
+			BeforeDeletedAt: asset.DashboardDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	dash0api.ClearDashboardID(dashboard)
@@ -108,5 +117,13 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	if resultDisplayName == "" {
 		resultDisplayName = result.Metadata.Name
 	}
-	return asset.PrintDiff(os.Stdout, "Dashboard", resultDisplayName, before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "Dashboard",
+		Name:            resultDisplayName,
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.DashboardDeletedAt(before),
+		AfterDeletedAt:  asset.DashboardDeletedAt(result),
+	})
 }

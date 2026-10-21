@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
@@ -11,6 +12,8 @@ import (
 // create-or-replace semantics, so this is idempotent regardless of whether the
 // dashboard already exists.
 // When the input has no ID, CREATE is used and the server assigns an ID.
+// A PUT to the ID of a deleted dashboard brings it back, which is reported as
+// ActionRestored.
 func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
 	dash0api.StripDashboardServerFields(dashboard)
 
@@ -23,8 +26,7 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if id != "" {
 		existing, err := apiClient.GetDashboard(ctx, id, dataset)
 		if err == nil {
-			action = ActionUpdated
-			before = existing
+			action, before = actionForExisting(DashboardDeletedAt(existing)), existing
 		}
 	}
 
@@ -51,5 +53,27 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if name == "" {
 		name = result.Metadata.Name
 	}
+	if err := RequireNotDeleted("Dashboard", name, id, DashboardDeletedAt(result)); err != nil {
+		return ImportResult{}, err
+	}
 	return ImportResult{Name: name, ID: id, Action: action, Before: before, After: result}, nil
+}
+
+// DashboardDeletedAt returns when the dashboard was deleted, or nil when it is
+// not deleted.
+func DashboardDeletedAt(dashboard *dash0api.DashboardDefinition) *time.Time {
+	if dashboard == nil || dashboard.Metadata.Annotations == nil {
+		return nil
+	}
+	return dashboard.Metadata.Annotations.Dash0ComdeletedAt
+}
+
+// ClearDashboardDeletedAt removes the deletion timestamp from a dashboard, for
+// example from a file exported with `dashboards get -o yaml` while the
+// dashboard was deleted.
+func ClearDashboardDeletedAt(dashboard *dash0api.DashboardDefinition) {
+	if dashboard == nil || dashboard.Metadata.Annotations == nil {
+		return
+	}
+	dashboard.Metadata.Annotations.Dash0ComdeletedAt = nil
 }

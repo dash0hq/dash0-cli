@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,6 +37,7 @@ const (
 	fixtureUpdateUnchanged = "slos/update_unchanged.json"
 	fixtureNotFound        = "slos/error_not_found.json"
 	fixtureUnauthorized    = "dashboards/error_unauthorized.json"
+	fixtureGetDeleted      = "slos/get_deleted.json"
 )
 
 var sloIDPattern = regexp.MustCompile(`^/api/slos/[^/]+$`)
@@ -347,6 +349,41 @@ func TestGetSLO_NotFound(t *testing.T) {
 	// Validator above teeth: a failed validation is served as a plain 400, so
 	// a bare require.Error would pass even with the auth header missing.
 	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestGetSLO_Deleted(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "table", output: "table", want: "Deleted: 2026-10-13 12:50:57"},
+		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathSLOs+"/"+testSLOOrigin, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := NewSlosCmd()
+			cmd.SetArgs([]string{"get", testSLOOrigin, "--api-url", server.URL, "--auth-token", testAuthToken, "-o", tt.output})
+
+			var err error
+			output := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, tt.want)
+		})
+	}
 }
 
 func TestCreateSLO_DatasetQueryParam(t *testing.T) {
@@ -1008,6 +1045,88 @@ func TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) 
 
 // findRecordedRequest returns the first recorded request matching method and
 // path, or nil when there is none.
+func TestCreateAndUpdateSLO_Deleted(t *testing.T) {
+	file := sloWithLabels("    dash0.com/origin: " + testSLOOrigin + "\n")
+	exportedFile := strings.Replace(file, "  annotations:\n", "  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
+
+	restored := `SLO "Checkout availability" restored`
+	wouldBeRestored := `SLO "Checkout availability" would be restored`
+
+	tests := []struct {
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
+	}{
+		{name: "create", args: []string{"create"}, file: file, putFixture: fixtureUpdateSuccess, wantStatus: restored},
+		{name: "update", args: []string{"update"}, file: file, putFixture: fixtureUpdateSuccess, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: fixtureUpdateSuccess, wantStatus: restored},
+		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: fixtureUpdateSuccess, wantStatus: wouldBeRestored},
+		{
+			name:       "create that leaves the SLO deleted",
+			args:       []string{"create"},
+			file:       file,
+			putFixture: fixtureGetDeleted,
+			wantErr:    `SLO "Checkout availability" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name:       "update that leaves the SLO deleted",
+			args:       []string{"update"},
+			file:       file,
+			putFixture: fixtureGetDeleted,
+			wantErr:    `SLO "Checkout availability" was saved, but the API still shows it as deleted`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathSLOs+"/"+testSLOOrigin, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodPut, apiPathSLOs+"/"+testSLOOrigin, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   tt.putFixture,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			yamlFile := filepath.Join(t.TempDir(), "asset.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(tt.file), 0644))
+
+			cmd := NewSlosCmd()
+			cmd.SetArgs(append(tt.args, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken))
+
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			if tt.wantErr != "" {
+				require.EqualError(t, cmdErr, tt.wantErr)
+			} else {
+				require.NoError(t, cmdErr)
+			}
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
+			puts := server.RequestBodies(t, http.MethodPut, apiPathSLOs+"/"+testSLOOrigin)
+			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
+			for _, put := range puts {
+				body, err := json.Marshal(put)
+				require.NoError(t, err)
+				assert.NotContains(t, string(body), "deleted-at", "PUT body")
+			}
+		})
+	}
+}
+
 func findRecordedRequest(requests []testutil.RecordedRequest, method, path string) *testutil.RecordedRequest {
 	for i := range requests {
 		if requests[i].Method == method && requests[i].Path == path {

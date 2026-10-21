@@ -268,21 +268,28 @@ expression: up == 0
 			name:        "update that leaves the rule deleted",
 			file:        plainFile,
 			putResponse: testutil.FixtureCheckRulesGetDeleted,
-			wantErr:     `check rule "test-check-rule" is still deleted after the update`,
+			wantErr:     `Check rule "test-check-rule" was saved, but the API still shows it as deleted`,
 			wantPut:     true,
 		},
 		{
 			name:       "dry run",
 			file:       plainFile,
 			extraArgs:  []string{"--dry-run"},
-			wantOutput: []string{`-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`},
+			wantOutput: []string{`Check rule "test-check-rule" would be restored`},
+			wantDiff:   true,
+		},
+		{
+			name:       "dry run with a changed field",
+			file:       strings.Replace(plainFile, "up == 0", "up == 1", 1),
+			extraArgs:  []string{"--dry-run"},
+			wantOutput: []string{`Check rule "test-check-rule" would be restored`, "-expression: up == 0", "+expression: up == 1"},
 			wantDiff:   true,
 		},
 		{
 			name:       "dry run of an exported file",
 			file:       exportedFile,
 			extraArgs:  []string{"--dry-run"},
-			wantOutput: []string{`-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`},
+			wantOutput: []string{`Check rule "test-check-rule" would be restored`},
 			wantDiff:   true,
 		},
 	}
@@ -321,6 +328,7 @@ expression: up == 0
 			for _, want := range tt.wantOutput {
 				assert.Contains(t, output, want)
 			}
+			assert.NotContains(t, output, "deleted-at")
 			assert.Equal(t, tt.wantDiff, strings.Contains(output, "--- Check rule (before)"), "diff in output:\n%s", output)
 			assert.Equal(t, tt.wantPut, countRequests(server.Requests(), http.MethodPut) > 0, "PUT sent")
 		})
