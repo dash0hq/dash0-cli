@@ -159,7 +159,8 @@ func TestApply_CheckRule_Restored(t *testing.T) {
 			name:        "still deleted",
 			expression:  "up == 0",
 			putResponse: testutil.FixtureCheckRulesGetDeleted,
-			wantErr:     `check rule "test-check-rule" is still deleted after the update`,
+			wantOutput:  []string{"Applied before error:\n  - Check rule \"test-check-rule\" (47b6ccbe-82ab-47c6-a613-ce0d7f34353e)\n"},
+			wantErr:     `Check rule "test-check-rule" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -2752,7 +2753,7 @@ spec:
 			deletedFixture: testutil.FixtureDashboardsGetDeleted,
 			putFixture:     testutil.FixtureDashboardsImportSuccess,
 			want:           `Dashboard "Test Dashboard" (test-dashboard-id) restored`,
-			wantErr:        `dashboard "Test Dashboard" is still deleted after the update`,
+			wantErr:        `Dashboard "Test Dashboard" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name: "view",
@@ -2770,7 +2771,7 @@ spec:
 			deletedFixture: testutil.FixtureViewsGetDeleted,
 			putFixture:     testutil.FixtureViewsImportSuccess,
 			want:           `View "Test View" (test-view-id) restored`,
-			wantErr:        `view "Test View" is still deleted after the update`,
+			wantErr:        `View "Test View" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name: "synthetic check",
@@ -2787,7 +2788,7 @@ spec:
 			deletedFixture: testutil.FixtureSyntheticChecksGetDeleted,
 			putFixture:     testutil.FixtureSyntheticChecksImportSuccess,
 			want:           `Synthetic check "Test Synthetic Check" (test-synthetic-check-id) restored`,
-			wantErr:        `synthetic check "Test Synthetic Check" is still deleted after the update`,
+			wantErr:        `Synthetic check "Test Synthetic Check" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:           "SLO",
@@ -2797,7 +2798,7 @@ spec:
 			putFixture:     "slos/update_success.json",
 			want:           `SLO "Checkout availability" (00000000-0000-0000-0000-000000000001) restored`,
 			wantDiff:       true,
-			wantErr:        `SLO "Checkout availability" is still deleted after the update`,
+			wantErr:        `SLO "Checkout availability" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name: "recording rule",
@@ -2819,7 +2820,7 @@ spec:
 			putFixture:     testutil.FixtureRecordingRulesCreateSuccess,
 			want:           `Recording rule "CPU Usage Average" (f47ac10b-58cc-4372-a567-0e02b2c3d479) restored`,
 			wantDiff:       true,
-			wantErr:        `recording rule "CPU Usage Average" is still deleted after the update`,
+			wantErr:        `Recording rule "CPU Usage Average" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:           "time series aggregation",
@@ -2829,7 +2830,7 @@ spec:
 			putFixture:     "timeseriesaggregations/update_response.json",
 			want:           `Time series aggregation "HTTP server request duration" (d54caa75-e94b-43c7-8470-23e4ab852ab6) restored`,
 			wantDiff:       true,
-			wantErr:        `time series aggregation "HTTP server request duration" is still deleted after the update`,
+			wantErr:        `Time series aggregation "HTTP server request duration" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -2848,6 +2849,7 @@ spec:
 
 				require.ErrorContains(t, err, tt.wantErr)
 				assert.NotContains(t, output, "restored")
+				assert.Contains(t, output, "Applied before error:\n  - "+strings.TrimSuffix(tt.want, " restored")+"\n")
 			})
 		})
 	}

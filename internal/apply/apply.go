@@ -293,6 +293,10 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			}
 		}
 		if applyErr != nil {
+			var stillDeleted *asset.StillDeletedError
+			if errors.As(applyErr, &stillDeleted) {
+				applied = append(applied, fmt.Sprintf("%s %s", stillDeleted.DisplayKind, formatNameAndId(stillDeleted.Name, stillDeleted.ID)))
+			}
 			if len(applied) > 0 {
 				fmt.Println("Applied before error:")
 				for _, a := range applied {

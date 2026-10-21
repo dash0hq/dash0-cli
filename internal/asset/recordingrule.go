@@ -112,11 +112,11 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	if err != nil {
 		return ImportResult{}, err
 	}
-	if err := RequireNotDeleted("recording rule", dash0api.GetRecordingRuleName(result), RecordingRuleDeletedAt(result)); err != nil {
-		return ImportResult{}, err
-	}
 
 	resultID := dash0api.GetRecordingRuleID(result)
+	if err := RequireNotDeleted("Recording rule", dash0api.GetRecordingRuleName(result), resultID, RecordingRuleDeletedAt(result)); err != nil {
+		return ImportResult{}, err
+	}
 	return ImportResult{Name: dash0api.GetRecordingRuleName(result), ID: resultID, Action: action, Before: before, After: result}, nil
 }
 

@@ -733,11 +733,11 @@ Dashboard "New Dashboard Name" restored
 +    name: New Dashboard Name
 ```
 
-With `--dry-run`, the asset stays deleted and the output is a diff, as for any other update.
-For check rules, that diff shows the `dash0.com/deleted-at` annotation going away.
-For the other kinds, the diff leaves out the `dash0.com/deleted-at` annotation and shows only content changes.
-This also works for a file exported with `get -o yaml` while the asset was deleted: the CLI ignores the annotation in the file.
-If the API response still shows the asset as deleted, `apply`, `create`, and `update` fail with an error.
+With `--dry-run`, the asset stays deleted.
+The output is the same, with `would be restored` instead of `restored`.
+The diff never shows the `dash0.com/deleted-at` annotation, so a file exported with `get -o yaml` while the asset was deleted also works.
+If the API saves the asset but still shows it as deleted, `apply`, `create`, and `update` fail with an error.
+`apply` then lists that asset under `Applied before error`.
 
 ### `delete`
 

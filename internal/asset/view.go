@@ -40,12 +40,12 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 	if err != nil {
 		return ImportResult{}, err
 	}
-	if err := RequireNotDeleted("view", dash0api.GetViewName(result), ViewDeletedAt(result)); err != nil {
-		return ImportResult{}, err
-	}
 
 	if result.Metadata.Labels != nil && result.Metadata.Labels.Dash0Comid != nil {
 		id = *result.Metadata.Labels.Dash0Comid
+	}
+	if err := RequireNotDeleted("View", dash0api.GetViewName(result), id, ViewDeletedAt(result)); err != nil {
+		return ImportResult{}, err
 	}
 	return ImportResult{Name: dash0api.GetViewName(result), ID: id, Action: action, Before: before, After: result}, nil
 }

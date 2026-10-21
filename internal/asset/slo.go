@@ -113,12 +113,12 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 	if err != nil {
 		return ImportResult{}, err
 	}
-	if err := RequireNotDeleted("SLO", dash0api.GetSLOName(result), SLODeletedAt(result)); err != nil {
-		return ImportResult{}, err
-	}
 
 	if resultID := dash0api.GetSLOID(result); resultID != "" {
 		id = resultID
+	}
+	if err := RequireNotDeleted("SLO", dash0api.GetSLOName(result), id, SLODeletedAt(result)); err != nil {
+		return ImportResult{}, err
 	}
 	return ImportResult{Name: dash0api.GetSLOName(result), ID: id, Action: action, Before: before, After: result}, nil
 }

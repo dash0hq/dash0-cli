@@ -73,31 +73,34 @@ func TestCreateAndUpdateView_Deleted(t *testing.T) {
 	file := deletedViewYAML
 	exportedFile := strings.Replace(file, "metadata:\n", "metadata:\n  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
 
+	restored := `View "Test View" restored`
+	wouldBeRestored := `View "Test View" would be restored`
+
 	tests := []struct {
-		name         string
-		args         []string
-		file         string
-		putFixture   string
-		wantRestored bool
-		wantErr      string
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
 	}{
-		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantRestored: true},
-		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantRestored: true},
-		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureViewsImportSuccess, wantRestored: true},
-		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureViewsImportSuccess},
+		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantStatus: restored},
+		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureViewsImportSuccess, wantStatus: restored},
+		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureViewsImportSuccess, wantStatus: wouldBeRestored},
 		{
 			name:       "create that leaves the view deleted",
 			args:       []string{"create"},
 			file:       file,
 			putFixture: testutil.FixtureViewsGetDeleted,
-			wantErr:    `view "Test View" is still deleted after the update`,
+			wantErr:    `View "Test View" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:       "update that leaves the view deleted",
 			args:       []string{"update"},
 			file:       file,
 			putFixture: testutil.FixtureViewsGetDeleted,
-			wantErr:    `view "Test View" is still deleted after the update`,
+			wantErr:    `View "Test View" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -132,7 +135,11 @@ func TestCreateAndUpdateView_Deleted(t *testing.T) {
 			} else {
 				require.NoError(t, cmdErr)
 			}
-			assert.Equal(t, tt.wantRestored, strings.Contains(output, `View "Test View" restored`), "restored in output:\n%s", output)
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
 			puts := server.RequestBodies(t, http.MethodPut, apiPathViews+"/"+testViewID)
 			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
 			for _, put := range puts {

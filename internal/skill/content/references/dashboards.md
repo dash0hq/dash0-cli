@@ -49,4 +49,4 @@ spec:
 
 `dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and `perses.dev/v1alpha2`).
 
-`dashboards get` also returns a deleted dashboard: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `dashboards list` does not show deleted dashboards. `apply`, `dashboards create`, and `dashboards update` with the ID of a deleted dashboard bring it back and print `restored`; `apply` and `dashboards update` then show a diff of any other fields that changed.
+`dashboards get` also returns a deleted dashboard: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `dashboards list` does not show deleted dashboards. `apply`, `dashboards create`, and `dashboards update` with the ID of a deleted dashboard bring it back and print `restored`; `apply` and `dashboards update` then show a diff of any other fields that changed. `dashboards update --dry-run` prints `would be restored` instead, and the dashboard stays deleted.

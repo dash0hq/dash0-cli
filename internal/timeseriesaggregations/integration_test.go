@@ -777,31 +777,34 @@ func TestCreateAndUpdateTimeSeriesAggregation_Deleted(t *testing.T) {
 	file := docWithOrigin
 	exportedFile := strings.Replace(file, "metadata:\n", "metadata:\n  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
 
+	restored := `Time series aggregation "HTTP server request duration" restored`
+	wouldBeRestored := `Time series aggregation "HTTP server request duration" would be restored`
+
 	tests := []struct {
-		name         string
-		args         []string
-		file         string
-		putFixture   string
-		wantRestored bool
-		wantErr      string
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
 	}{
-		{name: "create", args: []string{"tsa", "create"}, file: file, putFixture: fixtureUpdateResponse, wantRestored: true},
-		{name: "update", args: []string{"tsa", "update"}, file: file, putFixture: fixtureUpdateResponse, wantRestored: true},
-		{name: "update of an exported file", args: []string{"tsa", "update"}, file: exportedFile, putFixture: fixtureUpdateResponse, wantRestored: true},
-		{name: "update dry run", args: []string{"tsa", "update", "--dry-run"}, file: file, putFixture: fixtureUpdateResponse},
+		{name: "create", args: []string{"tsa", "create"}, file: file, putFixture: fixtureUpdateResponse, wantStatus: restored},
+		{name: "update", args: []string{"tsa", "update"}, file: file, putFixture: fixtureUpdateResponse, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"tsa", "update"}, file: exportedFile, putFixture: fixtureUpdateResponse, wantStatus: restored},
+		{name: "update dry run", args: []string{"tsa", "update", "--dry-run"}, file: file, putFixture: fixtureUpdateResponse, wantStatus: wouldBeRestored},
 		{
 			name:       "create that leaves the time series aggregation deleted",
 			args:       []string{"tsa", "create"},
 			file:       file,
 			putFixture: fixtureGetDeleted,
-			wantErr:    `time series aggregation "HTTP server request duration" is still deleted after the update`,
+			wantErr:    `Time series aggregation "HTTP server request duration" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:       "update that leaves the time series aggregation deleted",
 			args:       []string{"tsa", "update"},
 			file:       file,
 			putFixture: fixtureGetDeleted,
-			wantErr:    `time series aggregation "HTTP server request duration" is still deleted after the update`,
+			wantErr:    `Time series aggregation "HTTP server request duration" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -836,7 +839,11 @@ func TestCreateAndUpdateTimeSeriesAggregation_Deleted(t *testing.T) {
 			} else {
 				require.NoError(t, cmdErr)
 			}
-			assert.Equal(t, tt.wantRestored, strings.Contains(output, `Time series aggregation "HTTP server request duration" restored`), "restored in output:\n%s", output)
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
 			puts := server.RequestBodies(t, http.MethodPut, apiPath+"/"+testOrigin)
 			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
 			for _, put := range puts {

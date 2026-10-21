@@ -577,5 +577,6 @@ func deletedAssetNote(command, singular, plural, key string) string {
 		"`-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. "+
 		"`%[1]s list` does not show deleted %[3]s. `apply`, `%[1]s create`, and `%[1]s update` with the %[4]s "+
 		"of a deleted %[2]s bring it back and print `restored`; `apply` and `%[1]s update` then show a diff of "+
-		"any other fields that changed.", command, singular, plural, key)
+		"any other fields that changed. `%[1]s update --dry-run` prints `would be restored` instead, and the "+
+		"%[2]s stays deleted.", command, singular, plural, key)
 }

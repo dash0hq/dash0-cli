@@ -90,8 +90,19 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 		})
 	}
 
+	beforeDeletedAt := asset.CheckRuleDeletedAt(before)
+	asset.ClearCheckRuleDeletedAt(before)
+
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Check rule", rule.Name, before, rule)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "Check rule",
+			Name:            rule.Name,
+			ID:              id,
+			Before:          before,
+			After:           rule,
+			BeforeDeletedAt: beforeDeletedAt,
+			DryRun:          true,
+		})
 	}
 
 	result, err := apiClient.UpdateCheckRule(ctx, id, rule, dataset)
@@ -103,14 +114,13 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 		})
 	}
 
-	if err := asset.RequireCheckRuleNotDeleted(result); err != nil {
-		return err
-	}
-
-	if asset.CheckRuleDeletedAt(before) != nil {
-		fmt.Printf("Check rule %q %s\n", result.Name, asset.ActionRestored)
-		asset.ClearCheckRuleDeletedAt(before)
-		return asset.PrintChanges(os.Stdout, "Check rule", before, result)
-	}
-	return asset.PrintDiff(os.Stdout, "Check rule", result.Name, before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "Check rule",
+		Name:            result.Name,
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: beforeDeletedAt,
+		AfterDeletedAt:  asset.CheckRuleDeletedAt(result),
+	})
 }

@@ -75,31 +75,34 @@ func TestCreateAndUpdateSyntheticCheck_Deleted(t *testing.T) {
 	file := deletedSyntheticCheckYAML
 	exportedFile := strings.Replace(file, "metadata:\n", "metadata:\n  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
 
+	restored := `Synthetic check "Test Synthetic Check" restored`
+	wouldBeRestored := `Synthetic check "Test Synthetic Check" would be restored`
+
 	tests := []struct {
-		name         string
-		args         []string
-		file         string
-		putFixture   string
-		wantRestored bool
-		wantErr      string
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
 	}{
-		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantRestored: true},
-		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantRestored: true},
-		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantRestored: true},
-		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureSyntheticChecksImportSuccess},
+		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantStatus: restored},
+		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantStatus: restored},
+		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureSyntheticChecksImportSuccess, wantStatus: wouldBeRestored},
 		{
 			name:       "create that leaves the synthetic check deleted",
 			args:       []string{"create"},
 			file:       file,
 			putFixture: testutil.FixtureSyntheticChecksGetDeleted,
-			wantErr:    `synthetic check "Test Synthetic Check" is still deleted after the update`,
+			wantErr:    `Synthetic check "Test Synthetic Check" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:       "update that leaves the synthetic check deleted",
 			args:       []string{"update"},
 			file:       file,
 			putFixture: testutil.FixtureSyntheticChecksGetDeleted,
-			wantErr:    `synthetic check "Test Synthetic Check" is still deleted after the update`,
+			wantErr:    `Synthetic check "Test Synthetic Check" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -134,7 +137,11 @@ func TestCreateAndUpdateSyntheticCheck_Deleted(t *testing.T) {
 			} else {
 				require.NoError(t, cmdErr)
 			}
-			assert.Equal(t, tt.wantRestored, strings.Contains(output, `Synthetic check "Test Synthetic Check" restored`), "restored in output:\n%s", output)
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
 			puts := server.RequestBodies(t, http.MethodPut, apiPathSyntheticChecks+"/"+testSyntheticCheckID)
 			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
 			for _, put := range puts {

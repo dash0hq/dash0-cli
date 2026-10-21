@@ -33,11 +33,23 @@ func actionForExisting(deletedAt *time.Time) ImportAction {
 	return ActionUpdated
 }
 
-// RequireNotDeleted returns an error when the API response for a create or
-// update still marks the asset as deleted.
-func RequireNotDeleted(kind, name string, deletedAt *time.Time) error {
+// StillDeletedError reports an asset that the API saved but still marks as
+// deleted.
+type StillDeletedError struct {
+	DisplayKind string
+	Name        string
+	ID          string
+}
+
+func (e *StillDeletedError) Error() string {
+	return fmt.Sprintf("%s %q was saved, but the API still shows it as deleted", e.DisplayKind, e.Name)
+}
+
+// RequireNotDeleted returns a StillDeletedError when the API response for a
+// create or update still marks the asset as deleted.
+func RequireNotDeleted(displayKind, name, id string, deletedAt *time.Time) error {
 	if deletedAt == nil {
 		return nil
 	}
-	return fmt.Errorf("%s %q is still deleted after the update", kind, name)
+	return &StillDeletedError{DisplayKind: displayKind, Name: name, ID: id}
 }

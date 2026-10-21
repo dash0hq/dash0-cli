@@ -92,7 +92,15 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	}
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "Dashboard", displayName, before, dashboard)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "Dashboard",
+			Name:            displayName,
+			ID:              id,
+			Before:          before,
+			After:           dashboard,
+			BeforeDeletedAt: asset.DashboardDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	dash0api.ClearDashboardID(dashboard)
@@ -109,13 +117,13 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	if resultDisplayName == "" {
 		resultDisplayName = result.Metadata.Name
 	}
-	if err := asset.RequireNotDeleted("dashboard", resultDisplayName, asset.DashboardDeletedAt(result)); err != nil {
-		return err
-	}
-
-	if asset.DashboardDeletedAt(before) != nil {
-		fmt.Printf("Dashboard %q %s\n", resultDisplayName, asset.ActionRestored)
-		return asset.PrintChanges(os.Stdout, "Dashboard", before, result)
-	}
-	return asset.PrintDiff(os.Stdout, "Dashboard", resultDisplayName, before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "Dashboard",
+		Name:            resultDisplayName,
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.DashboardDeletedAt(before),
+		AfterDeletedAt:  asset.DashboardDeletedAt(result),
+	})
 }

@@ -2,7 +2,6 @@ package asset
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -48,12 +47,11 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 	if err != nil {
 		return ImportResult{}, err
 	}
-	if err := RequireCheckRuleNotDeleted(result); err != nil {
-		return ImportResult{}, err
-	}
-
 	if result.Id != nil {
 		id = *result.Id
+	}
+	if err := RequireNotDeleted("Check rule", result.Name, id, CheckRuleDeletedAt(result)); err != nil {
+		return ImportResult{}, err
 	}
 	return ImportResult{Name: result.Name, ID: id, Action: action, Before: before, After: result}, nil
 }
@@ -83,13 +81,4 @@ func ClearCheckRuleDeletedAt(rule *dash0api.PrometheusAlertRule) {
 	if rule.Metadata.Annotations == nil && rule.Metadata.Labels == nil {
 		rule.Metadata = nil
 	}
-}
-
-// RequireCheckRuleNotDeleted returns an error when the API response for a
-// create or update still marks the check rule as deleted.
-func RequireCheckRuleNotDeleted(rule *dash0api.PrometheusAlertRule) error {
-	if CheckRuleDeletedAt(rule) == nil {
-		return nil
-	}
-	return fmt.Errorf("check rule %q is still deleted after the update", rule.Name)
 }

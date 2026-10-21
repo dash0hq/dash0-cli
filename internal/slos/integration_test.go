@@ -1049,31 +1049,34 @@ func TestCreateAndUpdateSLO_Deleted(t *testing.T) {
 	file := sloWithLabels("    dash0.com/origin: " + testSLOOrigin + "\n")
 	exportedFile := strings.Replace(file, "  annotations:\n", "  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
 
+	restored := `SLO "Checkout availability" restored`
+	wouldBeRestored := `SLO "Checkout availability" would be restored`
+
 	tests := []struct {
-		name         string
-		args         []string
-		file         string
-		putFixture   string
-		wantRestored bool
-		wantErr      string
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
 	}{
-		{name: "create", args: []string{"create"}, file: file, putFixture: fixtureUpdateSuccess, wantRestored: true},
-		{name: "update", args: []string{"update"}, file: file, putFixture: fixtureUpdateSuccess, wantRestored: true},
-		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: fixtureUpdateSuccess, wantRestored: true},
-		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: fixtureUpdateSuccess},
+		{name: "create", args: []string{"create"}, file: file, putFixture: fixtureUpdateSuccess, wantStatus: restored},
+		{name: "update", args: []string{"update"}, file: file, putFixture: fixtureUpdateSuccess, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: fixtureUpdateSuccess, wantStatus: restored},
+		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: fixtureUpdateSuccess, wantStatus: wouldBeRestored},
 		{
 			name:       "create that leaves the SLO deleted",
 			args:       []string{"create"},
 			file:       file,
 			putFixture: fixtureGetDeleted,
-			wantErr:    `SLO "Checkout availability" is still deleted after the update`,
+			wantErr:    `SLO "Checkout availability" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:       "update that leaves the SLO deleted",
 			args:       []string{"update"},
 			file:       file,
 			putFixture: fixtureGetDeleted,
-			wantErr:    `SLO "Checkout availability" is still deleted after the update`,
+			wantErr:    `SLO "Checkout availability" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -1108,7 +1111,11 @@ func TestCreateAndUpdateSLO_Deleted(t *testing.T) {
 			} else {
 				require.NoError(t, cmdErr)
 			}
-			assert.Equal(t, tt.wantRestored, strings.Contains(output, `SLO "Checkout availability" restored`), "restored in output:\n%s", output)
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
 			puts := server.RequestBodies(t, http.MethodPut, apiPathSLOs+"/"+testSLOOrigin)
 			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
 			for _, put := range puts {

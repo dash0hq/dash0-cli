@@ -81,7 +81,7 @@ func ImportTimeSeriesAggregation(
 	if err != nil {
 		return ImportResult{}, wrapIfWrongDataset(err, origin)
 	}
-	if err := RequireNotDeleted("time series aggregation", dash0api.GetTimeSeriesAggregationName(result), TimeSeriesAggregationDeletedAt(result)); err != nil {
+	if err := RequireNotDeleted("Time series aggregation", dash0api.GetTimeSeriesAggregationName(result), dash0api.GetTimeSeriesAggregationID(result), TimeSeriesAggregationDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 

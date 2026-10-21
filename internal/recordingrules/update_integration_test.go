@@ -83,31 +83,34 @@ func TestCreateAndUpdateRecordingRule_Deleted(t *testing.T) {
 	file := deletedRecordingRuleYAML
 	exportedFile := strings.Replace(file, "metadata:\n", "metadata:\n  annotations:\n    dash0.com/deleted-at: \"2026-10-13T12:50:57Z\"\n", 1)
 
+	restored := `Recording rule "CPU Usage Average" restored`
+	wouldBeRestored := `Recording rule "CPU Usage Average" would be restored`
+
 	tests := []struct {
-		name         string
-		args         []string
-		file         string
-		putFixture   string
-		wantRestored bool
-		wantErr      string
+		name       string
+		args       []string
+		file       string
+		putFixture string
+		wantStatus string
+		wantErr    string
 	}{
-		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantRestored: true},
-		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantRestored: true},
-		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantRestored: true},
-		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureRecordingRulesCreateSuccess},
+		{name: "create", args: []string{"create"}, file: file, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantStatus: restored},
+		{name: "update", args: []string{"update"}, file: file, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantStatus: restored},
+		{name: "update of an exported file", args: []string{"update"}, file: exportedFile, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantStatus: restored},
+		{name: "update dry run", args: []string{"update", "--dry-run"}, file: file, putFixture: testutil.FixtureRecordingRulesCreateSuccess, wantStatus: wouldBeRestored},
 		{
 			name:       "create that leaves the recording rule deleted",
 			args:       []string{"create"},
 			file:       file,
 			putFixture: testutil.FixtureRecordingRulesGetDeleted,
-			wantErr:    `recording rule "CPU Usage Average" is still deleted after the update`,
+			wantErr:    `Recording rule "CPU Usage Average" was saved, but the API still shows it as deleted`,
 		},
 		{
 			name:       "update that leaves the recording rule deleted",
 			args:       []string{"update"},
 			file:       file,
 			putFixture: testutil.FixtureRecordingRulesGetDeleted,
-			wantErr:    `recording rule "CPU Usage Average" is still deleted after the update`,
+			wantErr:    `Recording rule "CPU Usage Average" was saved, but the API still shows it as deleted`,
 		},
 	}
 	for _, tt := range tests {
@@ -142,7 +145,11 @@ func TestCreateAndUpdateRecordingRule_Deleted(t *testing.T) {
 			} else {
 				require.NoError(t, cmdErr)
 			}
-			assert.Equal(t, tt.wantRestored, strings.Contains(output, `Recording rule "CPU Usage Average" restored`), "restored in output:\n%s", output)
+			if tt.wantStatus == "" {
+				assert.NotContains(t, output, "restored")
+			} else {
+				assert.Contains(t, output, tt.wantStatus)
+			}
 			puts := server.RequestBodies(t, http.MethodPut, apiPathRecordingRules+"/"+testRecordingRuleID)
 			assert.Equal(t, !slices.Contains(tt.args, "--dry-run"), len(puts) > 0, "PUT sent")
 			for _, put := range puts {

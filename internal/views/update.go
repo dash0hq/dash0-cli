@@ -79,7 +79,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	dash0api.StripViewServerFields(&view)
 
 	if flags.DryRun {
-		return asset.PrintDiff(os.Stdout, "View", view.Metadata.Name, before, &view)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     "View",
+			Name:            dash0api.GetViewName(&view),
+			ID:              id,
+			Before:          before,
+			After:           &view,
+			BeforeDeletedAt: asset.ViewDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	result, err := apiClient.UpdateView(ctx, id, &view, dataset)
@@ -91,13 +99,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
-	if err := asset.RequireNotDeleted("view", dash0api.GetViewName(result), asset.ViewDeletedAt(result)); err != nil {
-		return err
-	}
-
-	if asset.ViewDeletedAt(before) != nil {
-		fmt.Printf("View %q %s\n", dash0api.GetViewName(result), asset.ActionRestored)
-		return asset.PrintChanges(os.Stdout, "View", before, result)
-	}
-	return asset.PrintDiff(os.Stdout, "View", dash0api.GetViewName(result), before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     "View",
+		Name:            dash0api.GetViewName(result),
+		ID:              id,
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.ViewDeletedAt(before),
+		AfterDeletedAt:  asset.ViewDeletedAt(result),
+	})
 }

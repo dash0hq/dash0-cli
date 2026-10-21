@@ -53,7 +53,7 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if name == "" {
 		name = result.Metadata.Name
 	}
-	if err := RequireNotDeleted("dashboard", name, DashboardDeletedAt(result)); err != nil {
+	if err := RequireNotDeleted("Dashboard", name, id, DashboardDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 	return ImportResult{Name: name, ID: id, Action: action, Before: before, After: result}, nil
