@@ -10,7 +10,7 @@ component: apply
 note: "Fail validation when two check rules in one run resolve to the same ID, instead of applying both and keeping only the last one."
 
 # Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
-issues: [311]
+issues: [317]
 
 # (Optional) One or more lines of additional information to render under the primary note.
 # These lines will be padded with 2 spaces and then inserted directly into the document.
