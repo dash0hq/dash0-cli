@@ -611,6 +611,10 @@ spec:
   ...
 ```
 
+`check-rules get` also returns a deleted check rule, because the API keeps deleted check rules instead of removing them.
+The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`.
+`list` does not show deleted check rules.
+
 ### `create`
 
 Create a new asset from a YAML or JSON file.
@@ -644,6 +648,14 @@ The CRD's top-level `metadata.annotations` are merged into every rule it contain
 ```bash
 $ dash0 check-rules create -f prometheus-rules.yaml
 Check rule "High Error Rate Alert" created
+```
+
+`check-rules create` with the ID of a deleted check rule brings that rule back.
+It then prints `restored` instead of `created`:
+
+```bash
+$ dash0 check-rules create -f prometheus-rules.yaml
+Check rule "High Error Rate Alert" restored
 ```
 
 Aliases: `add`
@@ -691,6 +703,12 @@ When nothing changed:
 $ dash0 dashboards update -f dashboard.yaml
 Dashboard "My Dashboard": no changes
 ```
+
+`check-rules update` on a deleted check rule brings it back.
+It prints `restored`, followed by a diff of any other fields that changed.
+With `--dry-run`, the diff shows the `dash0.com/deleted-at` annotation going away, and the rule stays deleted.
+This also works for a file exported with `check-rules get -o yaml` while the rule was deleted: the CLI ignores the annotation in the file.
+If the API response still shows the check rule as deleted, `apply`, `check-rules create`, and `check-rules update` fail with an error.
 
 ### `delete`
 
@@ -949,6 +967,8 @@ dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-n
 
 For assets that are updated, a unified diff of the changes is shown.
 Assets that are created show the standard creation message.
+A check rule whose ID belongs to a deleted check rule brings that rule back.
+It shows `restored`, followed by a diff of any other fields that changed.
 
 When a directory is specified, all `.yaml` and `.yml` files are discovered recursively.
 Hidden files and directories (starting with `.`) are skipped, except for the directory passed to `-f` itself — a dot-prefixed target (e.g. `-f .dash0-assets/`) is a deliberate choice and is scanned normally.

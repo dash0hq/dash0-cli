@@ -30,11 +30,14 @@ const (
 	FixtureDashboardsUnauthorized  = "dashboards/error_unauthorized.json"
 
 	// Check rules fixtures
-	FixtureCheckRulesListSuccess   = "checkrules/list_success.json"
-	FixtureCheckRulesListEmpty     = "checkrules/list_empty.json"
-	FixtureCheckRulesGetSuccess    = "checkrules/get_success.json"
-	FixtureCheckRulesImportSuccess = "checkrules/import_success.json"
-	FixtureCheckRulesNotFound      = "checkrules/error_not_found.json"
+	FixtureCheckRulesListSuccess    = "checkrules/list_success.json"
+	FixtureCheckRulesListEmpty      = "checkrules/list_empty.json"
+	FixtureCheckRulesGetSuccess     = "checkrules/get_success.json"
+	FixtureCheckRulesImportSuccess  = "checkrules/import_success.json"
+	FixtureCheckRulesGetDeleted     = "checkrules/get_deleted.json"
+	FixtureCheckRulesRestoreSuccess = "checkrules/restore_success.json"
+	FixtureCheckRulesRestoreChanged = "checkrules/restore_changed.json"
+	FixtureCheckRulesNotFound       = "checkrules/error_not_found.json"
 
 	// Views fixtures
 	FixtureViewsListSuccess   = "views/list_success.json"

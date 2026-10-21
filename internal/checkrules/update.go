@@ -80,6 +80,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	asset.ClearCheckRuleDeletedAt(rule)
 
 	before, err := apiClient.GetCheckRule(ctx, id, dataset)
 	if err != nil {
@@ -102,5 +103,14 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 		})
 	}
 
+	if err := asset.RequireCheckRuleNotDeleted(result); err != nil {
+		return err
+	}
+
+	if asset.CheckRuleDeletedAt(before) != nil {
+		fmt.Printf("Check rule %q %s\n", result.Name, asset.ActionRestored)
+		asset.ClearCheckRuleDeletedAt(before)
+		return asset.PrintChanges(os.Stdout, "Check rule", before, result)
+	}
 	return asset.PrintDiff(os.Stdout, "Check rule", result.Name, before, result)
 }

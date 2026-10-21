@@ -107,6 +107,41 @@ func TestGetCheckRule_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+func TestGetCheckRule_Deleted(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "table", output: "table", want: "Deleted: 2026-10-13 12:50:57"},
+		{name: "yaml", output: "yaml", want: "dash0.com/deleted-at: \"2026-10-13T12:50:57Z\""},
+		{name: "json", output: "json", want: `"dash0.com/deleted-at": "2026-10-13T12:50:57Z"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesGetDeleted,
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := NewCheckRulesCmd()
+			cmd.SetArgs([]string{"get", "47b6ccbe-82ab-47c6-a613-ce0d7f34353e", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", tt.output})
+
+			var err error
+			output := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, tt.want)
+		})
+	}
+}
+
 // TestGetCheckRule_Unauthorized pins the clean-message contract for 401.
 // The failure mode checklist requires that auth failures surface a message
 // that identifies the credential problem, not a raw 401 body.

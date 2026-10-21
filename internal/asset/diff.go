@@ -136,14 +136,38 @@ func marshalForDiff(asset any) (string, error) {
 // asset and writes it to w. If there are no changes, a "no changes" message is
 // printed instead.
 func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
+	text, err := unifiedDiff(displayKind, before, after)
+	if err != nil {
+		return err
+	}
+
+	if text == "" {
+		fmt.Fprintf(w, "%s %q: no changes\n", displayKind, name)
+		return nil
+	}
+
+	return writeDiff(w, text)
+}
+
+// PrintChanges writes the unified diff between the before and after states of
+// an asset to w, and writes nothing when they are the same.
+func PrintChanges(w io.Writer, displayKind string, before, after any) error {
+	text, err := unifiedDiff(displayKind, before, after)
+	if err != nil || text == "" {
+		return err
+	}
+	return writeDiff(w, text)
+}
+
+func unifiedDiff(displayKind string, before, after any) (string, error) {
 	beforeYAML, err := marshalForDiff(before)
 	if err != nil {
-		return fmt.Errorf("failed to marshal before state: %w", err)
+		return "", fmt.Errorf("failed to marshal before state: %w", err)
 	}
 
 	afterYAML, err := marshalForDiff(after)
 	if err != nil {
-		return fmt.Errorf("failed to marshal after state: %w", err)
+		return "", fmt.Errorf("failed to marshal after state: %w", err)
 	}
 
 	diff := difflib.UnifiedDiff{
@@ -156,19 +180,16 @@ func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 
 	text, err := difflib.GetUnifiedDiffString(diff)
 	if err != nil {
-		return fmt.Errorf("failed to compute diff: %w", err)
+		return "", fmt.Errorf("failed to compute diff: %w", err)
 	}
+	return text, nil
+}
 
-	if text == "" {
-		fmt.Fprintf(w, "%s %q: no changes\n", displayKind, name)
-		return nil
-	}
-
+func writeDiff(w io.Writer, text string) error {
 	if dashcolor.NoColor {
 		_, err := io.WriteString(w, text)
 		return err
 	}
-
 	return writeColorizedDiff(w, text)
 }
 

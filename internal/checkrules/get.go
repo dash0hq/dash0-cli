@@ -69,6 +69,9 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 	default:
 		fmt.Printf("Name: %s\n", dash0api.GetCheckRuleName(rule))
 		fmt.Printf("Dataset: %s\n", dash0api.GetCheckRuleDataset(rule))
+		if deletedAt := asset.CheckRuleDeletedAt(rule); deletedAt != nil {
+			fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format("2006-01-02 15:04:05"))
+		}
 		fmt.Printf("Expression: %s\n", rule.Expression)
 		if rule.Enabled != nil {
 			fmt.Printf("Enabled: %t\n", *rule.Enabled)

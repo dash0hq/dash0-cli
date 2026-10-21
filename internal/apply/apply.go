@@ -279,10 +279,17 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 				if err := asset.PrintDiff(os.Stdout, displayKind, r.name, r.before, r.after); err != nil {
 					return err
 				}
-			} else if fromDirectory {
+				continue
+			}
+			if fromDirectory {
 				fmt.Printf("%s: %s %s %s\n", doc.filePath, displayKind, label, r.action)
 			} else {
 				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
+			}
+			if asset.ImportAction(r.action) == asset.ActionRestored {
+				if err := asset.PrintChanges(os.Stdout, displayKind, r.before, r.after); err != nil {
+					return err
+				}
 			}
 		}
 		if applyErr != nil {

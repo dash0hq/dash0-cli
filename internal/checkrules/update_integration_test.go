@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -223,4 +224,115 @@ spec:
 
 	require.Error(t, cmdErr)
 	assert.Contains(t, cmdErr.Error(), "does not match")
+}
+
+func TestUpdateCheckRule_Deleted(t *testing.T) {
+	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
+	const plainFile = `kind: CheckRule
+id: ` + ruleID + `
+name: test-check-rule
+expression: up == 0
+`
+	const exportedFile = plainFile + `metadata:
+  annotations:
+    dash0.com/deleted-at: "2026-10-13T12:50:57Z"
+  labels:
+    dash0.com/source: dash0-cli
+`
+	tests := []struct {
+		name        string
+		file        string
+		extraArgs   []string
+		putResponse string
+		wantOutput  []string
+		wantErr     string
+		wantDiff    bool
+		wantPut     bool
+	}{
+		{
+			name:        "update",
+			file:        plainFile,
+			putResponse: testutil.FixtureCheckRulesRestoreSuccess,
+			wantOutput:  []string{`Check rule "test-check-rule" restored`},
+			wantPut:     true,
+		},
+		{
+			name:        "update with a changed field",
+			file:        strings.Replace(plainFile, "up == 0", "up == 1", 1),
+			putResponse: testutil.FixtureCheckRulesRestoreChanged,
+			wantOutput:  []string{`Check rule "test-check-rule" restored`, "-expression: up == 0", "+expression: up == 1"},
+			wantDiff:    true,
+			wantPut:     true,
+		},
+		{
+			name:        "update that leaves the rule deleted",
+			file:        plainFile,
+			putResponse: testutil.FixtureCheckRulesGetDeleted,
+			wantErr:     `check rule "test-check-rule" is still deleted after the update`,
+			wantPut:     true,
+		},
+		{
+			name:       "dry run",
+			file:       plainFile,
+			extraArgs:  []string{"--dry-run"},
+			wantOutput: []string{`-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`},
+			wantDiff:   true,
+		},
+		{
+			name:       "dry run of an exported file",
+			file:       exportedFile,
+			extraArgs:  []string{"--dry-run"},
+			wantOutput: []string{`-    dash0.com/deleted-at: "2026-10-13T12:50:57Z"`},
+			wantDiff:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
+				Validator:  testutil.RequireHeaders,
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesGetDeleted,
+			})
+			server.On(http.MethodPut, apiPathCheckRules+"/"+ruleID, testutil.MockResponse{
+				Validator:  testutil.RequireHeaders,
+				StatusCode: http.StatusOK,
+				BodyFile:   tt.putResponse,
+			})
+
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(tt.file), 0644))
+
+			cmd := NewCheckRulesCmd()
+			cmd.SetArgs(append([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken}, tt.extraArgs...))
+
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			if tt.wantErr != "" {
+				require.EqualError(t, cmdErr, tt.wantErr)
+			} else {
+				require.NoError(t, cmdErr)
+			}
+			for _, want := range tt.wantOutput {
+				assert.Contains(t, output, want)
+			}
+			assert.Equal(t, tt.wantDiff, strings.Contains(output, "--- Check rule (before)"), "diff in output:\n%s", output)
+			assert.Equal(t, tt.wantPut, countRequests(server.Requests(), http.MethodPut) > 0, "PUT sent")
+		})
+	}
+}
+
+func countRequests(requests []testutil.RecordedRequest, method string) int {
+	count := 0
+	for _, request := range requests {
+		if request.Method == method {
+			count++
+		}
+	}
+	return count
 }
