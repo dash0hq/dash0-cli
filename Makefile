@@ -9,7 +9,7 @@ GOARCH?=$(shell go env GOARCH)
 
 # Tools
 TOOLS_BIN_DIR?=$(shell pwd)/.tools
-GOLANGCI_LINT_VERSION=v1.64.8
+GOLANGCI_LINT_VERSION=v2.15.0
 GOLANGCI_LINT=$(TOOLS_BIN_DIR)/golangci-lint
 CHLOGGEN_VERSION=v0.23.1
 CHLOGGEN=$(TOOLS_BIN_DIR)/chloggen
@@ -65,7 +65,7 @@ lint-go-install: $(GOLANGCI_LINT)
 
 $(GOLANGCI_LINT):
 	@mkdir -p $(TOOLS_BIN_DIR)
-	GOBIN=$(TOOLS_BIN_DIR) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	GOBIN=$(TOOLS_BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 lint-sh-install:
 	@command -v shellcheck >/dev/null 2>&1 || { echo "Installing shellcheck..."; brew install shellcheck 2>/dev/null || sudo apt-get install -y shellcheck; }

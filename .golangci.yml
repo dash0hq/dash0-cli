@@ -1,17 +1,39 @@
+version: "2"
 linters:
   enable:
     - forbidigo
-
-linters-settings:
-  forbidigo:
-    analyze-types: true
-    forbid:
-      - p: ^yaml\.Unmarshal$
-        pkg: ^sigs\.k8s\.io/yaml$
-        msg: "use dash0yaml.Unmarshal: sigs.k8s.io/yaml reads plain y/n/yes/no/on/off keys as booleans (see docs/code-style.md)"
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - forbidigo
+  settings:
+    staticcheck:
+      # Keep the checks that golangci-lint v1 ran (staticcheck SA* and gosimple S1*).
+      # v2 merges stylecheck (ST*) and quickfix (QF*) into staticcheck, which were not enabled before.
+      checks:
+        - SA*
+        - S1*
+    forbidigo:
+      forbid:
+        - pattern: ^yaml\.Unmarshal$
+          pkg: ^sigs\.k8s\.io/yaml$
+          msg: 'use dash0yaml.Unmarshal: sigs.k8s.io/yaml reads plain y/n/yes/no/on/off keys as booleans (see docs/code-style.md)'
+      analyze-types: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - forbidigo
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

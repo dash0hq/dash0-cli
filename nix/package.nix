@@ -5,7 +5,7 @@
 # takes everything it needs as arguments.
 {
   lib,
-  buildGoModule,
+  buildGo127Module,
   installShellFiles,
   stdenv,
   # Build metadata. `flake.nix` overrides these with values derived from the
@@ -21,7 +21,7 @@
   date ? "1970-01-01T00:00:00Z",
 }:
 
-buildGoModule (finalAttrs: {
+buildGo127Module (finalAttrs: {
   pname = "dash0";
   inherit version;
 

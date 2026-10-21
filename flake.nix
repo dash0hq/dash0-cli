@@ -55,7 +55,7 @@
         # lint/changelog tooling, matching what the Makefile expects.
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.go_1_25
+            pkgs.go_1_27
             pkgs.gopls
             pkgs.gotools
             pkgs.golangci-lint
