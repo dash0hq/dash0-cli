@@ -2,6 +2,8 @@ module github.com/dash0hq/dash0-cli
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	github.com/cli/browser v1.3.0
 	github.com/dash0hq/dash0-api-client-go v1.23.0
