@@ -1,0 +1,20 @@
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: new_component
+
+# The name of the component, or a single word describing the area of concern, (e.g. dashboards, config)
+component: datasets
+
+# A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: "Add the experimental `datasets` commands and `Dash0Dataset` support in `apply`"
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: [309]
+
+# (Optional) One or more lines of additional information to render under the primary note.
+# These lines will be padded with 2 spaces and then inserted directly into the document.
+# Use pipe (|) for multiline entries.
+subtext: |
+  `datasets list`, `get`, `create`, `update`, and `delete` require `--experimental`.
+  Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days. Telemetry is removed as its retention expires.
+  `apply --since` deletes a dataset removed from git as a 30-day soft delete, and needs `--force` in agent mode.
+  The `sync-assets` action always passes `--experimental`, so dataset documents also work without `since`.

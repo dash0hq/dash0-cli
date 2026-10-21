@@ -133,7 +133,7 @@ func runDryRun(documents []assetDocument, fromDirectory bool, fileArg, since str
 		fmt.Fprintf(os.Stderr, "warning: %s\n", dp.warning)
 	}
 
-	rowsByFile, files, validatedFileSet := buildDryRunRows(documents, dp)
+	rowsByFile, files, validatedFileSet := buildDryRunRows(datasetsFirst(documents), dp)
 
 	if agentmode.Enabled {
 		return renderDryRunJSON(rowsByFile, files, fromDirectory, fileArg, since)
