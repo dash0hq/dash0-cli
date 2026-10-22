@@ -72,12 +72,13 @@ Supported asset types:
   - Dash0NotificationChannel
   - Dash0Team
   - Dash0TimeSeriesAggregation
+  - Dash0Dataset
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
 If an asset exists, it will be updated. If it doesn't exist, it will be created.
 
-[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
+[experimental] Pass --since <ref> (requires --experimental/-X) to also delete assets whose definition existed at <ref> but is no longer present in -f's current contents, detected by identifier (id or origin), never by file path. A removed Dash0Dataset is deleted like any other kind, as a 30-day soft delete: dashboards, check rules, synthetic checks and views are kept for 30 days, and applying the same slug again within that time restores them; telemetry is removed as its retention expires. --force skips the per-deletion confirmation prompt and accepts a non-ancestor --since ref; --accept-non-ancestor-ref accepts a non-ancestor ref on its own, without also skipping the per-deletion prompt.` + internal.CONFIG_HINT,
 		Example: `  # Apply a single asset
   dash0 apply -f dashboard.yaml
 
@@ -258,6 +259,22 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
+	// A dataset delete starts the 30-day countdown to removing its assets.
+	// Like `datasets delete`, agent mode must pass --force deliberately instead
+	// of getting the usual agent-mode auto-confirmation. Checked before any
+	// document is applied, so a refusal leaves the run untouched.
+	if deletionPlan != nil {
+		for _, d := range deletionPlan.plan.ByIdentifier {
+			if d.Kind != "dataset" {
+				continue
+			}
+			if err := confirmation.RequireForceInAgentMode(flags.Force, fmt.Sprintf("deleting Dataset %q with --since", d.Identifier),
+				"re-run with --force to confirm. "+asset.DatasetSoftDeleteNote); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Create API client
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
@@ -268,7 +285,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 	// Apply each document
 	var applied []string
-	for _, doc := range documents {
+	for _, doc := range datasetsFirst(documents) {
 		results, applyErr := applyDocument(ctx, apiClient, doc, dataset)
 		for _, r := range results {
 			displayKind := asset.KindDisplayName(r.kind)
@@ -349,7 +366,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -374,6 +391,16 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			if err := dash0yaml.Unmarshal(doc.raw, &channel); err == nil {
 				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
 					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+				}
+			}
+		} else if normalizeKind(doc.kind) == "dataset" {
+			// A missing slug (the server cannot assign one) or an unknown apiVersion
+			// fails here, before any document is applied, instead of as a server
+			// 400 mid-run.
+			var dataset dash0api.DatasetDefinition
+			if err := dash0yaml.Unmarshal(doc.raw, &dataset); err == nil {
+				if err := asset.ValidateDataset(&dataset); err != nil {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 				}
 			}
 		} else if normalizeKind(doc.kind) == "timeseriesaggregation" && doc.id == "" {
@@ -589,6 +616,14 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			// Teams use origin as the upsert key.
 			id = dash0api.GetTeamOrigin(&team)
 		}
+
+	case "dataset":
+		var dataset dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(data, &dataset); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetDatasetName(&dataset)
+		id = dash0api.GetDatasetID(&dataset)
 
 	default:
 		var raw map[string]any
@@ -902,6 +937,22 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		return []applyResult{{kind: "Dash0Team", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
+	case "dataset":
+		var dataset dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(doc.raw, &dataset); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0Dataset: %w", err)
+		}
+		result, err := asset.ImportDataset(ctx, apiClient, &dataset)
+		if err != nil {
+			err = client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "dataset",
+				AssetID:   dash0api.GetDatasetID(&dataset),
+				AssetName: dash0api.GetDatasetName(&dataset),
+			})
+			return nil, err
+		}
+		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
 	}
@@ -1052,4 +1103,20 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 		// Unreachable: DetectSpamFilterAPIVersion only returns supported values or an error.
 		return nil, fmt.Errorf("unsupported spam filter apiVersion %q", apiVersion)
 	}
+}
+
+// datasetsFirst returns documents with every Dash0Dataset document moved to the front, keeping
+// the relative order of everything else. Assets live inside a dataset, and the API answers 403
+// for an asset whose dataset does not exist yet, so a dataset file that sorts after its assets
+// would otherwise stop the run before the dataset is created.
+func datasetsFirst(documents []assetDocument) []assetDocument {
+	var datasets, rest []assetDocument
+	for _, doc := range documents {
+		if normalizeKind(doc.kind) == "dataset" {
+			datasets = append(datasets, doc)
+		} else {
+			rest = append(rest, doc)
+		}
+	}
+	return append(datasets, rest...)
 }

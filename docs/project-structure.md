@@ -11,6 +11,7 @@
 - `/internal/confirmation`: Confirmation prompt for destructive operations (respects `--force` and agent mode)
 - `/internal/config`: Configuration management (profiles, resolution)
 - `/internal/experimental`: Gate for commands behind the `--experimental` (`-X`) flag
+- `/internal/datasets`: The `datasets` command group — `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/dataset.go`
 - `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/dash0hq/dash0-api-client-go/profiles"
-	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/oauth"
@@ -35,16 +34,11 @@ func runLogout(ctx context.Context, opts logoutOptions) error {
 	// when running under agent mode. This mirrors `dash0 login`'s blanket
 	// refusal to run in agent mode at all: both directions of the OAuth
 	// session transition now require deliberate user intent.
-	if agentmode.Enabled && !opts.Force {
-		displayName := ""
-		if opts.ProfileName != "" {
-			displayName = opts.ProfileName
-		}
-		return fmt.Errorf(
-			"dash0 logout requires --force when run in agent mode\n"+
-				"Hint: re-run with `dash0 logout%s --force` to confirm revocation of the OAuth refresh token.",
-			config.ProfileFlagFragment(displayName),
-		)
+	if err := confirmation.RequireForceInAgentMode(opts.Force, "dash0 logout", fmt.Sprintf(
+		"re-run with `dash0 logout%s --force` to confirm revocation of the OAuth refresh token.",
+		config.ProfileFlagFragment(opts.ProfileName),
+	)); err != nil {
+		return err
 	}
 
 	store, err := profiles.NewStore()

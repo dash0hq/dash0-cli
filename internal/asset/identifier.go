@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 )
 
@@ -45,6 +46,7 @@ type identifierProbe struct {
 //   - Dashboard: metadata.dash0Extensions.id
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
+//   - Dash0Dataset: spec.slug, then dash0.com/id
 //   - SLO, Dash0SpamFilter, Dash0Team: dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View):
 //     dash0.com/id
@@ -69,6 +71,14 @@ func ExtractIdentifier(data []byte) (string, error) {
 		return probe.ID, nil
 	case "notificationchannel", "timeseriesaggregation":
 		return origin, nil
+	case "dataset":
+		// The client's own helper, so spec.slug wins over the label exactly as it
+		// does on create, update, and apply.
+		var dataset dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(data, &dataset); err != nil {
+			return "", fmt.Errorf("failed to extract identifier: %w", err)
+		}
+		return dash0api.GetDatasetID(&dataset), nil
 	case "slo", "spamfilter", "team":
 		if origin != "" {
 			return origin, nil

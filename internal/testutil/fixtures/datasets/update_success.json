@@ -1,0 +1,39 @@
+{
+  "apiVersion": "dash0.com/v1alpha1",
+  "kind": "Dash0Dataset",
+  "metadata": {
+    "name": "Production (renamed)",
+    "labels": {
+      "dash0.com/id": "production",
+      "dash0.com/origin": "dash0-cli",
+      "dash0.com/source": "dash0-cli",
+      "dash0.com/version": "2"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-02-01T10:00:00Z",
+      "dash0.com/updated-at": "2026-04-18T10:00:00Z"
+    }
+  },
+  "spec": {
+    "preferred": false,
+    "retention": {
+      "traces": "60d",
+      "logs": "120d"
+    },
+    "privacy": {
+      "ipAddresses": {
+        "endUser": {
+          "storage": "anonymize"
+        }
+      },
+      "geoLocation": {
+        "endUser": {
+          "storage": "up_to_country"
+        }
+      }
+    },
+    "processing": {
+      "spanEventsToLogs": true
+    }
+  }
+}

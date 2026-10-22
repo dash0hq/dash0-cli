@@ -717,6 +717,58 @@ spec:
 	assert.Contains(t, validationWarnings[0], "spec.routing.assets is API-managed and ignored on write")
 }
 
+func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: P\nspec: {}\n"))
+	require.NoError(t, err)
+
+	validationErrors, _ := validateDocuments(docs)
+	require.Len(t, validationErrors, 1)
+	assert.Contains(t, validationErrors[0], "dash0.com/id")
+}
+
+func TestValidateDocuments_DatasetAPIVersion(t *testing.T) {
+	cases := map[string]struct {
+		doc     string
+		wantErr string
+	}{
+		"valid":   {"apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n", ""},
+		"missing": {"kind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n", "dataset definition requires apiVersion: dash0.com/v1alpha1"},
+		"unknown": {"apiVersion: dash0.com/v2\nkind: Dash0Dataset\nmetadata:\n  name: P\n  labels:\n    dash0.com/id: p\nspec: {}\n", `unsupported dataset apiVersion "dash0.com/v2" (supported: dash0.com/v1alpha1)`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			docs, err := readMultiDocumentYAML("-", strings.NewReader(c.doc))
+			require.NoError(t, err)
+
+			validationErrors, _ := validateDocuments(docs)
+			if c.wantErr == "" {
+				assert.Empty(t, validationErrors)
+				return
+			}
+			require.Len(t, validationErrors, 1)
+			assert.Contains(t, validationErrors[0], c.wantErr)
+		})
+	}
+}
+
+func TestDatasetsFirst(t *testing.T) {
+	docs := []assetDocument{
+		{kind: "View", id: "v1"},
+		{kind: "Dash0Dataset", id: "d1"},
+		{kind: "Dashboard", id: "b1"},
+		{kind: "Dash0Dataset", id: "d2"},
+	}
+
+	got := datasetsFirst(docs)
+
+	var ids []string
+	for _, d := range got {
+		ids = append(ids, d.id)
+	}
+	assert.Equal(t, []string{"d1", "d2", "v1", "b1"}, ids)
+	assert.Equal(t, "v1", docs[0].id, "the input must not be reordered")
+}
+
 func TestValidateDocuments_CheckRuleIDCollisions(t *testing.T) {
 	const (
 		checkRuleA = "kind: CheckRule\nid: shared-id\nname: Rule A\nexpression: up == 0\n"

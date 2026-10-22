@@ -25,6 +25,18 @@ func SetReaderForTest(r io.Reader) (restore func()) {
 	return func() { reader = prev }
 }
 
+// RequireForceInAgentMode refuses an operation that must never ride on agent mode's automatic
+// confirmation. Agent mode normally auto-confirms destructive operations, which is wrong for the
+// few that cannot be undone or that end a session: those need an explicit --force from the caller.
+// It returns nil when force is set or agent mode is off. what names the operation in the error
+// ("dash0 logout"), and hint says how to re-run it.
+func RequireForceInAgentMode(force bool, what, hint string) error {
+	if !agentmode.Enabled || force {
+		return nil
+	}
+	return fmt.Errorf("%s requires --force when run in agent mode\nHint: %s", what, hint)
+}
+
 // ConfirmDestructiveOperation prompts the user for confirmation before a
 // destructive operation. It returns true if the operation should proceed.
 // The prompt is skipped (returns true) when force is set or agent mode is

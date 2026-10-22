@@ -1,0 +1,1164 @@
+//go:build integration
+
+package datasets
+
+import (
+	"encoding/json"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	apiPathDatasets = "/api/datasets"
+	testAuthToken   = "auth_test_token"
+	deletePrompt    = `Are you sure you want to delete dataset "staging"? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: `
+
+	datasetYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec:
+  retention:
+    traces: 60d
+    logs: 90d
+  privacy:
+    ipAddresses:
+      endUser:
+        storage: anonymize
+    geoLocation:
+      endUser:
+        storage: up_to_country
+  processing:
+    spanEventsToLogs: true
+`
+)
+
+var datasetIDPattern = regexp.MustCompile(`^/api/datasets/[^/]+$`)
+
+// newExperimentalDatasetsCmd creates a root command with the --experimental persistent
+// flag and the datasets subcommand attached, mirroring the real command tree.
+func newExperimentalDatasetsCmd() *cobra.Command {
+	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	root.AddCommand(NewDatasetsCmd())
+	return root
+}
+
+// runCmd runs the command tree with the connection flags appended and captures stdout and stderr.
+func runCmd(t *testing.T, serverURL string, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	cmd := newExperimentalDatasetsCmd()
+	cmd.SetArgs(append(args, "--api-url", serverURL, "--auth-token", testAuthToken))
+	stderr = testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+	return stdout, stderr, err
+}
+
+func writeYAML(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "dataset.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
+	return path
+}
+
+// requestsFor returns the recorded requests with the given method and path.
+func requestsFor(server *testutil.MockServer, method, path string) []testutil.RecordedRequest {
+	var out []testutil.RecordedRequest
+	for _, r := range server.Requests() {
+		if r.Method == method && r.Path == path {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func decodeDataset(t *testing.T, req testutil.RecordedRequest) dash0api.DatasetDefinition {
+	t.Helper()
+	var d dash0api.DatasetDefinition
+	require.NoError(t, json.Unmarshal(req.Body, &d))
+	return d
+}
+
+// assertNewShapeSpec checks the spec carried by the fixtures and datasetYAML.
+func assertNewShapeSpec(t *testing.T, d *dash0api.DatasetDefinition, logsRetention dash0api.RetentionClass) {
+	t.Helper()
+	assert.Equal(t, "dash0.com/v1alpha1", d.ApiVersion)
+	require.NotNil(t, d.Spec.Retention)
+	require.NotNil(t, d.Spec.Retention.Traces)
+	assert.Equal(t, dash0api.N60d, *d.Spec.Retention.Traces)
+	require.NotNil(t, d.Spec.Retention.Logs)
+	assert.Equal(t, logsRetention, *d.Spec.Retention.Logs)
+	require.NotNil(t, d.Spec.Privacy)
+	require.NotNil(t, d.Spec.Privacy.IpAddresses)
+	require.NotNil(t, d.Spec.Privacy.IpAddresses.EndUser)
+	require.NotNil(t, d.Spec.Privacy.IpAddresses.EndUser.Storage)
+	assert.Equal(t, dash0api.IpAddressStorageStrategyAnonymize, *d.Spec.Privacy.IpAddresses.EndUser.Storage)
+	require.NotNil(t, d.Spec.Privacy.GeoLocation)
+	require.NotNil(t, d.Spec.Privacy.GeoLocation.EndUser)
+	require.NotNil(t, d.Spec.Privacy.GeoLocation.EndUser.Storage)
+	assert.Equal(t, dash0api.GeoLocationStorageStrategyUpToCountry, *d.Spec.Privacy.GeoLocation.EndUser.Storage)
+	require.NotNil(t, d.Spec.Processing)
+	require.NotNil(t, d.Spec.Processing.SpanEventsToLogs)
+	assert.True(t, *d.Spec.Processing.SpanEventsToLogs)
+}
+
+func mockListSuccess(t *testing.T) *testutil.MockServer {
+	t.Helper()
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsListSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	return server
+}
+
+func TestListDatasets_Success(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list")
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	require.Len(t, lines, 4) // header + 3 datasets
+	assert.Regexp(t, `^NAME\s+ID$`, strings.TrimSpace(lines[0]))
+	assert.Regexp(t, `^Default\s+default$`, strings.TrimSpace(lines[1]))
+	assert.Regexp(t, `^Production\s+production$`, strings.TrimSpace(lines[2]))
+	assert.Regexp(t, `^Staging\s+staging$`, strings.TrimSpace(lines[3]))
+}
+
+func TestListDatasets_Empty(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsListEmpty,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "No datasets found")
+}
+
+func TestListDatasets_Wide(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "wide")
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	require.Len(t, lines, 4)
+	assert.Regexp(t, `^NAME\s+ID\s+ORIGIN$`, strings.TrimSpace(lines[0]))
+	assert.Regexp(t, `^Production\s+production\s+dash0-cli$`, strings.TrimSpace(lines[2]))
+	assert.Regexp(t, `^Staging\s+staging\s+-$`, strings.TrimSpace(lines[3]))
+}
+
+func TestListDatasets_JSON(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "json")
+
+	require.NoError(t, err)
+	var parsed []dash0api.DatasetDefinition
+	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
+	require.Len(t, parsed, 3)
+	assert.Equal(t, dash0api.Dash0Dataset, parsed[1].Kind)
+	assert.Equal(t, "production", dash0api.GetDatasetID(&parsed[1]))
+	assert.Equal(t, "Production", dash0api.GetDatasetName(&parsed[1]))
+}
+
+func TestListDatasets_EmptyJSONIsArray(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsListEmpty,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "json")
+
+	require.NoError(t, err)
+	assert.Equal(t, "[]", strings.TrimSpace(output))
+}
+
+func TestListDatasets_YAML(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "yaml")
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, strings.Count(output, "kind: Dash0Dataset"))
+	assert.Equal(t, 2, strings.Count(output, "\n---\n"))
+}
+
+func TestListDatasets_CSV(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "csv")
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	require.Len(t, lines, 4)
+	assert.Equal(t, "name,id,origin", lines[0])
+	assert.Equal(t, "Production,production,dash0-cli", lines[2])
+	assert.Equal(t, "Staging,staging,-", lines[3])
+}
+
+func TestListDatasets_SkipHeader(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "--skip-header")
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	require.Len(t, lines, 3)
+	assert.Regexp(t, `^Default\s+default$`, strings.TrimSpace(lines[0]))
+}
+
+func TestListDatasets_Column(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := mockListSuccess(t)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "csv", "--column", "slug")
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	assert.Equal(t, []string{"id", "default", "production", "staging"}, lines)
+}
+
+func TestListDatasets_InvalidFormat(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	_, _, err := runCmd(t, "http://unused", "-X", "datasets", "list", "-o", "xml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown output format")
+}
+
+func TestListDatasets_Unauthorized(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusUnauthorized,
+		BodyFile:   testutil.FixtureDatasetsUnauthorized,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "list")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication failed")
+}
+
+func TestDatasets_RequireExperimental(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeYAML(t, datasetYAML)
+
+	for name, args := range map[string][]string{
+		"list":   {"datasets", "list"},
+		"get":    {"datasets", "get", "production"},
+		"create": {"datasets", "create", "-f", yamlFile},
+		"update": {"datasets", "update", "-f", yamlFile},
+		"delete": {"datasets", "delete", "production", "--force"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := runCmd(t, "http://unused", args...)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "experimental")
+		})
+	}
+}
+
+func TestGetDataset_Success(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production")
+
+	require.NoError(t, err)
+	assert.Regexp(t, `Kind:\s+Dash0Dataset`, output)
+	assert.Regexp(t, `Name:\s+Production`, output)
+	assert.Regexp(t, `ID:\s+production`, output)
+	assert.Regexp(t, `Origin:\s+dash0-cli`, output)
+	require.Len(t, requestsFor(server, http.MethodGet, "/api/datasets/production"), 1)
+}
+
+func TestGetDataset_JSON(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production", "-o", "json")
+
+	require.NoError(t, err)
+	var parsed dash0api.DatasetDefinition
+	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
+	assert.Equal(t, "production", dash0api.GetDatasetID(&parsed))
+	assert.Equal(t, "Production", parsed.Metadata.Name)
+	assertNewShapeSpec(t, &parsed, dash0api.N90d)
+}
+
+func TestGetDataset_YAML(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production", "-o", "yaml")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "kind: Dash0Dataset")
+	assert.Contains(t, output, "dash0.com/id: production")
+	assert.Contains(t, output, "apiVersion: dash0.com/v1alpha1")
+
+	var parsed dash0api.DatasetDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte(output), &parsed))
+	assertNewShapeSpec(t, &parsed, dash0api.N90d)
+}
+
+func TestGetDataset_InvalidFormatMakesNoAPICall(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production", "-o", "xml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown output format")
+	assert.Empty(t, server.Requests())
+}
+
+func TestGetDataset_NotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "missing")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `dataset "missing" not found`)
+}
+
+func TestGetDataset_Unauthorized(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusUnauthorized,
+		BodyFile:   testutil.FixtureDatasetsUnauthorized,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication failed")
+}
+
+func TestCreateDataset_PostsWhenPreflightIs404(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetYAML))
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Dataset "Production" created (id: production)`)
+
+	posts := requestsFor(server, http.MethodPost, apiPathDatasets)
+	require.Len(t, posts, 1)
+	body := decodeDataset(t, posts[0])
+	assert.Equal(t, dash0api.Dash0Dataset, body.Kind)
+	assert.Equal(t, "Production", body.Metadata.Name)
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assertNewShapeSpec(t, &body, dash0api.N90d)
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
+func TestCreateDataset_PutsWhenPreflightHits(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetYAML))
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "updated")
+
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/production")
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assert.Equal(t, "Production", body.Metadata.Name)
+	assertNewShapeSpec(t, &body, dash0api.N90d)
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
+}
+
+func TestCreateDataset_PreflightErrorSurfaces(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusUnauthorized,
+		BodyFile:   testutil.FixtureDatasetsUnauthorized,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetYAML))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication failed")
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
+}
+
+func TestCreateDataset_PermissionsSentInPost(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec:
+  permissions:
+    - role: admin
+      actions:
+        - dataset:read
+`)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", yamlFile)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "created")
+	posts := requestsFor(server, http.MethodPost, apiPathDatasets)
+	require.Len(t, posts, 1)
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+	body := decodeDataset(t, posts[0])
+	require.NotNil(t, body.Spec.Permissions)
+	require.Len(t, *body.Spec.Permissions, 1)
+	assert.Equal(t, []dash0api.DatasetAction{dash0api.DatasetRead}, (*body.Spec.Permissions)[0].Actions)
+}
+
+func TestCreateDataset_SlugRequired(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Production
+spec: {}
+`)
+
+	_, _, err := runCmd(t, "http://unused", "-X", "datasets", "create", "-f", yamlFile)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dash0.com/id")
+}
+
+func TestCreateDataset_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "create", "-f", writeYAML(t, datasetYAML), "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Dry run")
+	assert.Empty(t, server.Requests())
+}
+
+func TestUpdateDataset_NotFoundSendsNoPut(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", writeYAML(t, datasetYAML))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `dataset "production" not found`)
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
+}
+
+func TestUpdateDataset_Success(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	// The input carries server-managed fields, as an export from get -o yaml does.
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Production (renamed)
+  labels:
+    dash0.com/id: production
+    dash0.com/source: ui
+    dash0.com/version: "7"
+  annotations:
+    dash0.com/created-at: "2020-01-01T00:00:00Z"
+    dash0.com/updated-at: "2020-01-02T00:00:00Z"
+spec:
+  retention:
+    traces: 60d
+    logs: 120d
+  privacy:
+    ipAddresses:
+      endUser:
+        storage: anonymize
+    geoLocation:
+      endUser:
+        storage: up_to_country
+  processing:
+    spanEventsToLogs: true
+`)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", yamlFile)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "--- Dataset (before)")
+	assert.Contains(t, output, "+++ Dataset (after)")
+	assert.Contains(t, output, "-  name: Production")
+	assert.Contains(t, output, "+  name: Production (renamed)")
+
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/production")
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
+	assert.Equal(t, "Production (renamed)", body.Metadata.Name)
+	assert.Nil(t, body.Metadata.Annotations, "server-managed annotations must be stripped")
+	require.NotNil(t, body.Metadata.Labels)
+	assert.Nil(t, body.Metadata.Labels.Dash0Comversion, "server-managed version label must be stripped")
+	assert.Nil(t, body.Metadata.Labels.Dash0Comsource, "server-managed source label must be stripped")
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body), "the slug label must survive")
+	assertNewShapeSpec(t, &body, dash0api.N120d)
+	assert.Contains(t, output, "+    logs: 120d")
+}
+
+func TestUpdateDataset_PositionalIDTargetsPathWhenFileHasNoID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	// The file names no slug, so the positional id is the only key and must pick the URL path.
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
+
+	require.NoError(t, err)
+	assert.Len(t, requestsFor(server, http.MethodGet, "/api/datasets/production"), 1)
+	assert.Len(t, requestsFor(server, http.MethodPut, "/api/datasets/production"), 1)
+}
+
+func TestUpdateDataset_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, strings.Replace(datasetYAML, "name: Production", "name: Production (renamed)", 1))
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", yamlFile, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "+  name: Production (renamed)")
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
+const (
+	datasetNoAPIVersionYAML = `kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec: {}
+`
+	datasetUnknownAPIVersionYAML = `apiVersion: dash0.com/v2
+kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec: {}
+`
+)
+
+func TestDatasetsWrite_APIVersionRejectedWithoutAPICall(t *testing.T) {
+	cases := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{"missing", datasetNoAPIVersionYAML, "dataset definition requires apiVersion: dash0.com/v1alpha1"},
+		{"unknown", datasetUnknownAPIVersionYAML, `unsupported dataset apiVersion "dash0.com/v2" (supported: dash0.com/v1alpha1)`},
+	}
+	commands := map[string][]string{
+		"create":         {"create", "-f"},
+		"create dry-run": {"create", "--dry-run", "-f"},
+		"update":         {"update", "-f"},
+		"update dry-run": {"update", "--dry-run", "-f"},
+	}
+	for _, c := range cases {
+		for cmdName, base := range commands {
+			t.Run(c.name+"/"+cmdName, func(t *testing.T) {
+				testutil.SetupTestEnv(t)
+				server := testutil.NewMockServer(t, testutil.FixturesDir())
+				args := append([]string{"-X", "datasets"}, base...)
+				args = append(args, writeYAML(t, c.yaml))
+
+				_, _, err := runCmd(t, server.URL, args...)
+
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), c.wantErr)
+				assert.Empty(t, server.Requests())
+			})
+		}
+	}
+}
+
+func TestUpdateDataset_DryRunPartialFileShowsOnlyTheChange(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Production
+  labels:
+    dash0.com/id: production
+spec:
+  retention:
+    logs: 120d
+`)
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", yamlFile, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "-    logs: 90d")
+	assert.Contains(t, output, "+    logs: 120d")
+	// Only the logs line changes; context lines may name other fields but none is removed or added.
+	var changed []string
+	for _, line := range strings.Split(output, "\n") {
+		if (strings.HasPrefix(line, "-") || strings.HasPrefix(line, "+")) && !strings.HasPrefix(line, "---") && !strings.HasPrefix(line, "+++") {
+			changed = append(changed, line)
+		}
+	}
+	assert.Equal(t, []string{"-    logs: 90d", "+    logs: 120d"}, changed)
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
+// The argument can be an origin the file does not carry, so a mismatch shows up against the stored
+// dataset and nothing is sent.
+func TestUpdateDataset_ArgumentNamesAnotherDataset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "my-origin", "-f", writeYAML(t, datasetYAML))
+	require.NoError(t, err, "a slug-only file and the stored dataset's origin name the same dataset")
+
+	other := strings.Replace(datasetYAML, "dash0.com/id: production", "dash0.com/id: staging", 1)
+	_, _, err = runCmd(t, server.URL, "-X", "datasets", "update", "my-origin", "-f", writeYAML(t, other))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `argument "my-origin" is dataset "production", but the file names dataset "staging"`)
+}
+
+func TestUpdateDataset_NoIDAnywhere(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+
+	_, _, err := runCmd(t, "http://unused", "-X", "datasets", "update", "-f", yamlFile)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no dataset id given")
+}
+
+func TestDeleteDataset_Force(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging", "--force")
+
+	require.NoError(t, err)
+	assert.Equal(t, "Dataset \"staging\" deleted\n", output)
+	assert.Len(t, requestsFor(server, http.MethodDelete, "/api/datasets/staging"), 1)
+}
+
+func TestDeleteDataset_AgentModeRequiresForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires --force when run in agent mode")
+	assert.Contains(t, err.Error(), "datasets delete staging --force")
+	assert.Empty(t, server.Requests())
+}
+
+func TestDeleteDataset_AgentModeWithForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging", "--force")
+
+	require.NoError(t, err)
+	assert.Equal(t, "Dataset \"staging\" deleted\n", output)
+	assert.Len(t, requestsFor(server, http.MethodDelete, "/api/datasets/staging"), 1)
+}
+
+func TestDeleteDataset_PromptConfirmed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	t.Cleanup(restore)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging")
+
+	require.NoError(t, err)
+	assert.Equal(t, deletePrompt+"Dataset \"staging\" deleted\n", output)
+	assert.Len(t, requestsFor(server, http.MethodDelete, "/api/datasets/staging"), 1)
+}
+
+func TestDeleteDataset_PromptDeclined(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	restore := confirmation.SetReaderForTest(strings.NewReader("n\n"))
+	t.Cleanup(restore)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging")
+
+	require.NoError(t, err)
+	assert.Equal(t, deletePrompt+"Deletion cancelled\n", output)
+	assert.Empty(t, server.Requests(), "a declined deletion must not call the API")
+}
+
+func TestDeleteDataset_ForceAlreadyDeleted(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, stderr, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging", "--force")
+
+	require.NoError(t, err)
+	assert.Empty(t, output)
+	assert.Contains(t, stderr, `Dataset "staging" was already deleted`)
+}
+
+func TestDeleteDataset_NotFoundWithoutForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	t.Cleanup(restore)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDatasetsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `dataset "staging" not found`)
+}
+
+func TestDeleteDataset_DefaultRejected(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusBadRequest,
+		BodyFile:   testutil.FixtureDatasetsBadRequest,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "default", "--force")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid request")
+	assert.Contains(t, err.Error(), "the default dataset cannot be deleted")
+}
+
+func TestDeleteDataset_Unauthorized(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusUnauthorized,
+		BodyFile:   testutil.FixtureDatasetsUnauthorized,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "delete", "staging", "--force")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication failed")
+}
+
+func unsortedPermissionsDataset() map[string]any {
+	return map[string]any{
+		"apiVersion": "dash0.com/v1alpha1",
+		"kind":       "Dash0Dataset",
+		"metadata":   map[string]any{"name": "Production", "labels": map[string]any{"dash0.com/id": "production"}},
+		"spec": map[string]any{"permissions": []any{
+			map[string]any{"teamId": "team_b", "actions": []string{"dataset:read"}},
+			map[string]any{"role": "basic_member", "actions": []string{"dataset:read"}},
+			map[string]any{"teamId": "team_a", "actions": []string{"dataset:read"}},
+		}},
+	}
+}
+
+func assertPermissionsSorted(t *testing.T, d *dash0api.DatasetDefinition) {
+	t.Helper()
+	require.NotNil(t, d.Spec.Permissions)
+	perms := *d.Spec.Permissions
+	require.Len(t, perms, 3)
+	require.NotNil(t, perms[0].Role)
+	assert.Equal(t, "basic_member", *perms[0].Role)
+	require.NotNil(t, perms[1].TeamId)
+	assert.Equal(t, "team_a", *perms[1].TeamId)
+	require.NotNil(t, perms[2].TeamId)
+	assert.Equal(t, "team_b", *perms[2].TeamId)
+}
+
+func TestGetDataset_SortsPermissions(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       unsortedPermissionsDataset(),
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "get", "production", "-o", "json")
+
+	require.NoError(t, err)
+	var parsed dash0api.DatasetDefinition
+	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
+	assertPermissionsSorted(t, &parsed)
+}
+
+func TestListDatasets_SortsPermissions(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDatasets, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       []any{unsortedPermissionsDataset()},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "list", "-o", "json")
+
+	require.NoError(t, err)
+	var parsed []dash0api.DatasetDefinition
+	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
+	require.Len(t, parsed, 1)
+	assertPermissionsSorted(t, &parsed[0])
+}
+
+// The path id names the dataset, so a file without the slug label still sends it.
+func TestUpdateDataset_SendsSlugFromPathWhenFileHasNone(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
+
+	require.NoError(t, err)
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/production")
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+}
+
+// A file that leaves out kind, name, and the slug must not show them as removed in the preview.
+func TestUpdateDataset_DryRunMinimalFileKeepsIdentity(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nspec:\n  retention:\n    logs: 120d\n")
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile, "--dry-run")
+
+	require.NoError(t, err)
+	var changed []string
+	for _, line := range strings.Split(output, "\n") {
+		if (strings.HasPrefix(line, "-") || strings.HasPrefix(line, "+")) && !strings.HasPrefix(line, "---") && !strings.HasPrefix(line, "+++") {
+			changed = append(changed, line)
+		}
+	}
+	assert.Equal(t, []string{"-    logs: 90d", "+    logs: 120d"}, changed)
+	assert.NotContains(t, output, "name:")
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
+// A file without metadata.name must not print an empty name in the "no changes" line.
+func TestUpdateDataset_DryRunNoChangesNamesTheStoredDataset(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nspec: {}\n")
+
+	output, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Dataset "Production": no changes`)
+}
+
+// The path can be the origin. The body must still carry the stored slug, because the API
+// rejects a body slug that differs from the dataset's own.
+func TestUpdateDataset_ByOriginSendsStoredSlug(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "my-origin", "-f", yamlFile)
+
+	require.NoError(t, err)
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/my-origin")
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
+	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+}
+
+// An exported file carries both labels, so either one is a valid argument.
+func TestUpdateDataset_ArgumentMayMatchFileOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\n  labels:\n    dash0.com/id: production\n    dash0.com/origin: dash0-cli\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "dash0-cli", "-f", yamlFile)
+
+	require.NoError(t, err)
+	require.Len(t, requestsFor(server, http.MethodPut, "/api/datasets/dash0-cli"), 1)
+}
+
+// A file with only an origin label still accepts the slug as the argument.
+func TestUpdateDataset_SlugArgumentWithOriginOnlyFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\n  labels:\n    dash0.com/origin: dash0-cli\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
+
+	require.NoError(t, err)
+	require.Len(t, requestsFor(server, http.MethodPut, "/api/datasets/production"), 1)
+}
+
+// A file that contradicts the stored origin is refused before the PUT.
+func TestUpdateDataset_FileOriginContradictsStoredOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Production\n  labels:\n    dash0.com/origin: tf-staging\nspec: {}\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tf-staging")
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
+// A partial file must send kind and metadata.name, which the API requires.
+func TestUpdateDataset_MinimalFileSendsStoredKindAndName(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsUpdateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	yamlFile := writeYAML(t, "apiVersion: dash0.com/v1alpha1\nspec:\n  retention:\n    logs: 120d\n")
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "production", "-f", yamlFile)
+
+	require.NoError(t, err)
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/production")
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
+	assert.Equal(t, "Dash0Dataset", string(body.Kind))
+	assert.Equal(t, "Production", body.Metadata.Name)
+}

@@ -84,6 +84,14 @@ var topics = []topicSpec{
 			"`perses.dev/v1alpha2`).\n\n" +
 			deletedAssetNote("dashboards", "dashboard", "dashboards", "ID"),
 	},
+	{
+		name:            "datasets",
+		includeQuickRef: true,
+		sections: []string{
+			"datasets list", "datasets get", "datasets create", "datasets update", "datasets delete",
+		},
+		assetYAMLLabels: []string{"Dataset ("},
+	},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},
 	{name: "logs", sections: []string{"logs query", "logs send"}},

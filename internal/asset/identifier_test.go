@@ -52,3 +52,24 @@ func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 		})
 	}
 }
+
+// A dataset names its slug in spec.slug or the dash0.com/id label, and spec.slug wins like it does on
+// create. The origin is never the identifier: the slug is the only key.
+func TestExtractIdentifier_Dataset(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"label only", "kind: Dash0Dataset\nmetadata:\n  labels:\n    dash0.com/id: from-label\n", "from-label"},
+		{"spec.slug only", "kind: Dash0Dataset\nspec:\n  slug: from-spec\n", "from-spec"},
+		{"spec.slug wins over the label", "kind: Dash0Dataset\nmetadata:\n  labels:\n    dash0.com/id: from-label\nspec:\n  slug: from-spec\n", "from-spec"},
+		{"origin is not an identifier", "kind: Dash0Dataset\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ExtractIdentifier([]byte(tc.doc))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
