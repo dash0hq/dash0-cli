@@ -159,3 +159,30 @@ func (b *blockingReader) Read(p []byte) (int, error) {
 }
 
 func (b *blockingReader) Close() { close(b.closed) }
+
+func TestRequireForceInAgentMode(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		agentMode bool
+		force     bool
+		wantErr   bool
+	}{
+		{"agent mode without force is refused", true, false, true},
+		{"agent mode with force passes", true, true, false},
+		{"human mode without force passes", false, false, false},
+		{"human mode with force passes", false, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withAgentMode(t, tc.agentMode)
+
+			err := RequireForceInAgentMode(tc.force, "dash0 thing", "re-run with --force.")
+
+			if !tc.wantErr {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, "dash0 thing requires --force when run in agent mode\nHint: re-run with --force.", err.Error())
+		})
+	}
+}

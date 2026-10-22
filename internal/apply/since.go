@@ -298,52 +298,32 @@ func splitMultiDocPath(path string) (basePath string, docIndex int) {
 func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *string, dp *deletionPlan, force bool) (int, error) {
 	declined := 0
 
+	// Datasets go last: assets live inside a dataset, and the API ignores an asset delete in a
+	// dataset that is already deleted, so a dataset deleted first would keep its assets for good.
+	var assets, datasets []gitutil.Deletion
 	for _, d := range dp.plan.ByIdentifier {
-		displayKind := asset.KindDisplayName(d.Kind)
-		// dp.names is resolved from git history and best-effort: a lookup
-		// failure falls back to an explicit "<name>" placeholder, matching
-		// printDryRunWithDeletions' convention.
-		name := dp.names[d.Path]
-		if name == "" {
-			name = "<name>"
-		}
-		display := formatNameAndId(name, d.Identifier)
-		if d.Kind == "slo" && !d.SLOUsesOrigin {
-			fmt.Fprintf(os.Stderr, "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
-		}
-		if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
-			fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
-		}
-		var prompt string
-		if d.Kind == "recordingrule" {
-			// The surviving PrometheusRule CRD's own file is not what's
-			// being removed here -- only its recording-rule role. The
-			// generic "removed since --since ref" phrasing below would
-			// wrongly suggest the whole document is gone.
-			prompt = fmt.Sprintf("Are you sure you want to delete %s %s, whose last record was removed from its PrometheusRule since --since ref? [y/N]: ", displayKind, display)
+		if d.Kind == "dataset" {
+			datasets = append(datasets, d)
 		} else {
-			prompt = fmt.Sprintf("Are you sure you want to delete %s %s, removed since --since ref? [y/N]: ", displayKind, display)
+			assets = append(assets, d)
 		}
-		confirmed, err := confirmation.ConfirmDestructiveOperation(ctx, prompt, force)
-		if err != nil {
-			return declined, err
+	}
+
+	deleteAll := func(deletions []gitutil.Deletion) error {
+		for _, d := range deletions {
+			wasDeclined, err := deleteRemovedAsset(ctx, apiClient, dataset, dp, d, force)
+			if err != nil {
+				return err
+			}
+			if wasDeclined {
+				declined++
+			}
 		}
-		if !confirmed {
-			fmt.Fprintf(os.Stderr, "%s %s: deletion declined\n", displayKind, display)
-			declined++
-			continue
-		}
-		alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.declaredCheckRuleIDs)
-		if err != nil {
-			return declined, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
-		}
-		// alreadyDeleted means IsAlreadyDeleted already printed its own
-		// "was already deleted" line -- printing "deleted" here too would
-		// contradict it and misrepresent a no-op as a real deletion in a CI
-		// log or audit trail.
-		if !alreadyDeleted {
-			fmt.Printf("%s %s deleted\n", displayKind, display)
-		}
+		return nil
+	}
+
+	if err := deleteAll(assets); err != nil {
+		return declined, err
 	}
 
 	var nameIndex checkRuleNameIndex
@@ -376,7 +356,63 @@ func applyDeletions(ctx context.Context, apiClient dash0api.Client, dataset *str
 		}
 	}
 
+	if err := deleteAll(datasets); err != nil {
+		return declined, err
+	}
+
 	return declined, nil
+}
+
+// deleteRemovedAsset confirms and deletes one whole-asset deletion from the plan.
+// It reports true when the user declined.
+func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset *string, dp *deletionPlan, d gitutil.Deletion, force bool) (declined bool, err error) {
+	displayKind := asset.KindDisplayName(d.Kind)
+	// dp.names is resolved from git history and best-effort: a lookup
+	// failure falls back to an explicit "<name>" placeholder, matching
+	// printDryRunWithDeletions' convention.
+	name := dp.names[d.Path]
+	if name == "" {
+		name = "<name>"
+	}
+	display := formatNameAndId(name, d.Identifier)
+	if d.Kind == "slo" && !d.SLOUsesOrigin {
+		fmt.Fprintf(os.Stderr, "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
+	}
+	if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
+		fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
+	}
+	var prompt string
+	if d.Kind == "recordingrule" {
+		// The surviving PrometheusRule CRD's own file is not what's
+		// being removed here -- only its recording-rule role. The
+		// generic "removed since --since ref" phrasing below would
+		// wrongly suggest the whole document is gone.
+		prompt = fmt.Sprintf("Are you sure you want to delete %s %s, whose last record was removed from its PrometheusRule since --since ref? [y/N]: ", displayKind, display)
+	} else if d.Kind == "dataset" {
+		prompt = fmt.Sprintf("Are you sure you want to delete %s %s, removed since --since ref? %s [y/N]: ", displayKind, display, asset.DatasetSoftDeleteNote)
+	} else {
+		prompt = fmt.Sprintf("Are you sure you want to delete %s %s, removed since --since ref? [y/N]: ", displayKind, display)
+	}
+	confirmed, err := confirmation.ConfirmDestructiveOperation(ctx, prompt, force)
+	if err != nil {
+		return false, err
+	}
+	if !confirmed {
+		fmt.Fprintf(os.Stderr, "%s %s: deletion declined\n", displayKind, display)
+		return true, nil
+	}
+	alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.declaredCheckRuleIDs)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
+	}
+	// alreadyDeleted means IsAlreadyDeleted already printed its own
+	// "was already deleted" line -- printing "deleted" here too would
+	// contradict it and misrepresent a no-op as a real deletion in a CI
+	// log or audit trail.
+	if !alreadyDeleted {
+		fmt.Printf("%s %s deleted\n", displayKind, display)
+	}
+	return false, nil
 }
 
 // deleteAssetByKindAndIdentifier dispatches a whole-asset deletion (an
@@ -436,6 +472,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteNotificationChannel(ctx, identifier)
 	case "team":
 		err = apiClient.DeleteTeam(ctx, identifier)
+	case "dataset":
+		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
+		// The same path as `datasets delete`.
+		err = apiClient.DeleteDataset(ctx, identifier)
 	case "timeseriesaggregation":
 		// The API returns 204 for an absent aggregation, so the tolerance
 		// below never fires for this kind. It does fire for the cross-dataset

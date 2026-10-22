@@ -1,0 +1,6 @@
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "the default dataset cannot be deleted"
+}
