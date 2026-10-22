@@ -151,6 +151,26 @@ func TestValidateColumnFormat(t *testing.T) {
 }
 
 func TestRenderTable(t *testing.T) {
+	t.Run("unlimited column before another column remains unpadded", func(t *testing.T) {
+		cols := []ColumnDef{
+			{Key: "body", Header: "BODY", Width: 0},
+			{Key: "time", Header: "TIME", Width: 20},
+		}
+		rows := []map[string]string{
+			{"body": "short", "time": "10:00"},
+			{"body": "a much longer body", "time": "10:01"},
+		}
+		for _, skipHeader := range []bool{false, true} {
+			var buf bytes.Buffer
+			RenderTable(&buf, cols, rows, skipHeader)
+			want := "short  10:00\na much longer body  10:01\n"
+			if !skipHeader {
+				want = "BODY  TIME\n" + want
+			}
+			assert.Equal(t, want, buf.String())
+		}
+	})
+
 	t.Run("basic rendering", func(t *testing.T) {
 		cols := []ColumnDef{
 			{Key: "a", Header: "COL A", Width: 10},

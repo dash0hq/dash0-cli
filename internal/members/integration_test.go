@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -50,6 +51,9 @@ func TestListMembers_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "NAME")
 	assert.Contains(t, output, "EMAIL")
+	assert.Contains(t, output, "ROLE")
+	assert.Contains(t, output, "admin")
+	assert.Contains(t, output, "basic_member")
 	assert.Contains(t, output, "Alice Smith")
 	assert.Contains(t, output, "alice@example.com")
 	assert.Contains(t, output, "Bob Jones")
@@ -97,9 +101,13 @@ func TestListMembers_JSON(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	var parsed []interface{}
+	var parsed []dash0api.MemberDefinition
 	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
-	assert.Len(t, parsed, 3)
+	require.Len(t, parsed, 3)
+	require.NotNil(t, parsed[0].Metadata.Labels)
+	assert.Equal(t, dash0api.Ptr("admin"), parsed[0].Metadata.Labels.Dash0Comrole)
+	require.NotNil(t, parsed[1].Metadata.Labels)
+	assert.Equal(t, dash0api.Ptr("basic_member"), parsed[1].Metadata.Labels.Dash0Comrole)
 }
 
 func TestListMembers_CSV(t *testing.T) {
@@ -123,8 +131,38 @@ func TestListMembers_CSV(t *testing.T) {
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	require.GreaterOrEqual(t, len(lines), 4) // header + 3 members
-	assert.Equal(t, "name,email,id,url", lines[0])
-	assert.Contains(t, lines[1], "Alice Smith")
+	assert.Equal(t, "name,email,role,id,url", lines[0])
+	assert.Contains(t, lines[1], "Alice Smith,alice@example.com,admin,")
+	assert.Contains(t, lines[2], "Bob Jones,bob@example.com,basic_member,")
+	assert.Contains(t, lines[3], "Carol Williams,carol@example.com,,")
+}
+
+func TestListMembers_RoleColumn(t *testing.T) {
+	for _, format := range []string{"table", "csv"} {
+		t.Run(format, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathMembers, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureMembersListSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			cmd := newExperimentalMembersCmd()
+			cmd.SetArgs([]string{"-X", "members", "list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", format, "--column", "email", "--column", "role", "--skip-header"})
+			var err error
+			output := testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+			require.NoError(t, err)
+			assert.NotContains(t, output, "ROLE")
+			assert.NotContains(t, output, "Alice Smith")
+			if format == "csv" {
+				assert.Equal(t, "alice@example.com,admin\nbob@example.com,basic_member\ncarol@example.com,\n", output)
+			} else {
+				assert.Contains(t, output, "admin")
+				assert.Contains(t, output, "basic_member")
+				assert.Contains(t, output, "carol@example.com")
+			}
+		})
+	}
 }
 
 func TestListMembers_Unauthorized(t *testing.T) {
