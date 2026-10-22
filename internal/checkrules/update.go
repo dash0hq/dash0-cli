@@ -91,7 +91,6 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 	}
 
 	beforeDeletedAt := asset.CheckRuleDeletedAt(before)
-	asset.ClearCheckRuleDeletedAt(before)
 
 	if flags.DryRun {
 		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{

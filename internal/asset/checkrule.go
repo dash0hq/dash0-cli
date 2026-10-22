@@ -13,11 +13,9 @@ import (
 // rule already exists.
 // When the input has no ID, CREATE is used and the server assigns an ID.
 // A PUT to the ID of a deleted check rule brings it back, which is reported as
-// ActionRestored. Before then holds the deleted rule without its deletion
-// timestamp, so a diff against After shows only the other changes.
+// ActionRestored.
 func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
 	dash0api.StripCheckRuleServerFields(rule)
-	ClearCheckRuleDeletedAt(rule)
 
 	action := ActionCreated
 	var before any
@@ -29,7 +27,6 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 			action = ActionUpdated
 			if CheckRuleDeletedAt(existing) != nil {
 				action = ActionRestored
-				ClearCheckRuleDeletedAt(existing)
 			}
 			before = existing
 		}

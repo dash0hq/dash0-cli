@@ -1,12 +1,12 @@
 module github.com/dash0hq/dash0-cli
 
-go 1.26.0
+go 1.26.10
 
 toolchain go1.27.3
 
 require (
 	github.com/cli/browser v1.3.0
-	github.com/dash0hq/dash0-api-client-go v1.26.0
+	github.com/dash0hq/dash0-api-client-go v1.27.0
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
