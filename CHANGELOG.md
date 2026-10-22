@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.19.0
+
+
+### Breaking Changes
+
+
+- `agent-mode`: `--agent-mode` now takes precedence over `DASH0_AGENT_MODE`, so `--agent-mode=false` disables agent mode and `DASH0_AGENT_MODE=0` no longer overrides `--agent-mode`. (#296)
+  All settings now follow one precedence order: CLI flags, then environment variables, then the profile, then the default.
+  The documentation for connection settings (`api-url`, `otlp-url`, `auth-token`, `dataset`) incorrectly listed environment variables above CLI flags and is now corrected; their behavior is unchanged.
+  
+
+
+### New Components
+
+
+- `datasets`: Add the experimental `datasets` commands and `Dash0Dataset` support in `apply` (#309)
+  `datasets list`, `get`, `create`, `update`, and `delete` require `--experimental`.
+  Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days. Telemetry is removed as its retention expires.
+  `apply --since` deletes a dataset removed from git as a 30-day soft delete, and needs `--force` in agent mode.
+  The `sync-assets` action always passes `--experimental`, so dataset documents also work without `since`.
+  
+
+
+### Enhancements
+
+
+- `apply`: Fail validation when two check rules in one run resolve to the same ID, instead of applying both and keeping only the last one. (#317)
+  The check covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
+  The error names the ID and every document that uses it.
+  
+
+- `config`: Add the global `--config-dir` flag to override the configuration directory (#298)
+  The configuration directory is resolved in this order: `--config-dir`, `DASH0_CONFIG_DIR`, `~/.dash0`.
+  
+
+- `config`: Add the global `--auth-token-file` flag to read the auth token from a file. (#299)
+  The file must contain only the auth token; surrounding whitespace is removed.
+  This supports Kubernetes secrets, Docker secrets, and systemd credentials that are mounted as files.
+  Also, `dash0 api` and `dash0 metrics instant` now honor `--auth-token` when the active profile uses a static token.
+  
+
+
+### Bug Fixes
+
+
+- `check-rules`: Show deleted check rules as deleted, instead of like active ones. (#318)
+  `check-rules get` shows a `Deleted:` line in table output, and the `dash0.com/deleted-at` annotation in YAML and JSON output.
+  `apply`, `check-rules create`, and `check-rules update` print `restored` when they bring back a deleted check rule, and fail if the API keeps it deleted.
+  `apply` and `check-rules update` also show a diff of any other fields that changed.
+  
+
+- `assets`: Show deleted dashboards, views, synthetic checks, SLOs, recording rules, and time series aggregations as deleted, instead of like active ones. (#319)
+  `get` shows a `Deleted:` line in table output, and the `dash0.com/deleted-at` annotation in YAML and JSON output.
+  `apply`, `create`, and `update` print `restored` when they bring back a deleted asset, and fail if the API keeps it deleted.
+  `apply` and `update` also show a diff of any other fields that changed.
+  `update --dry-run` on a deleted asset of any kind, check rules included, prints `would be restored`, and the asset stays deleted.
+  
+
+- `dashboards`: Show `<name>` placeholders in table and wide output, empty names in CSV, and stderr warnings when individual dashboard name lookups fail. (#286)
+  Other rows remain visible and name lookup failures do not change the exit status. JSON and YAML exports continue to return fetch errors.
+
+- `apply`: Keep unquoted `y`, `n`, `yes`, `no`, `on`, and `off` keys as strings in YAML input, so a dashboard grid item's `y` key is no longer sent as `"true"`. (#306)
+  YAML generators such as PyYAML write these words without quotes.
+  Values are not changed by this fix.
+  This affects `apply` and every `create` and `update` command.
+  
+
 ## 1.18.0
 
 
