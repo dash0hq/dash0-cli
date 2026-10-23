@@ -1,0 +1,6 @@
+change_type: enhancement
+component: actions
+note: "Update actions/cache in composite actions to Node 24."
+issues: [315]
+subtext: |
+  Upgrade actions/cache/restore and actions/cache/save in the send-log-event, setup, and sync-assets actions to v6.1.0 targeting Node 24.
