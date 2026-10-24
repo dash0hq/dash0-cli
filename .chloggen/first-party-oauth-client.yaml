@@ -1,0 +1,21 @@
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: enhancement
+
+# The name of the component, or a single word describing the area of concern, (e.g. dashboards, config, apply)
+component: login
+
+# A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: "`dash0 login` shows as an official Dash0 application on the consent screen instead of as a third-party application."
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: [304]
+
+# (Optional) One or more lines of additional information to render under the main note.
+# Use pipe (|) for multiline entries.
+subtext: |
+  Against Dash0-hosted API URLs, the CLI now logs in with the OAuth client Dash0 provisions for it instead of registering its own.
+  Existing logins keep working; they move to the new client the next time you run `dash0 login`.
+
+# If your change doesn't affect end users or the exported elements of any package,
+# you should mark this entry as a user-facing change.
+change_logs: []
