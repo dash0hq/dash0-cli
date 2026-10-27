@@ -365,6 +365,10 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 	for _, doc := range documents {
 		if doc.kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
+		} else if normalizeKind(doc.kind) == "authtoken" {
+			// The API returns a token's secret only on create, and apply has no safe
+			// place to deliver it, so a created token's secret would be lost.
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.location(), doc.kind))
 		} else if !isValidKind(doc.kind) {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {

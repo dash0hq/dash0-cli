@@ -12,6 +12,7 @@ import (
 	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/authtokens"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/failedchecks"
@@ -75,6 +76,7 @@ func init() {
 
 	// Register subcommands
 	rootCmd.AddCommand(apply.NewApplyCmd())
+	rootCmd.AddCommand(authtokens.NewAuthTokensCmd())
 	rootCmd.AddCommand(rawapi.NewAPICmd())
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())

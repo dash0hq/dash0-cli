@@ -726,6 +726,16 @@ func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
 	assert.Contains(t, validationErrors[0], "dash0.com/id")
 }
 
+func TestValidateDocuments_AuthTokenRejected(t *testing.T) {
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("apiVersion: dash0.com/v1alpha1\nkind: Dash0AuthToken\nmetadata:\n  name: ingest\nspec:\n  actions: [\"ingest:*\"]\n"))
+	require.NoError(t, err)
+
+	validationErrors, _ := validateDocuments(docs)
+	require.Len(t, validationErrors, 1)
+	assert.Contains(t, validationErrors[0], `apply does not support kind "Dash0AuthToken"`)
+	assert.Contains(t, validationErrors[0], "auth-tokens create")
+}
+
 func TestValidateDocuments_DatasetAPIVersion(t *testing.T) {
 	cases := map[string]struct {
 		doc     string
