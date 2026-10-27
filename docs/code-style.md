@@ -168,7 +168,7 @@ A hardcoded `"table"` default bakes in the wrong value — `ParseFormat` then se
 Destructive operations (delete, remove) must call `confirmation.ConfirmDestructiveOperation(prompt, force)` instead of inlining the `!force && !agentmode.Enabled` check.
 This helper skips the prompt when `--force` is set or agent mode is active, and handles stdin reading and y/yes/n parsing.
 Operations that cannot be undone, or that end a session, must not ride on that auto-confirmation: call `confirmation.RequireForceInAgentMode(force, what, hint)` first, so agent mode demands an explicit `--force`.
-`logout`, `datasets delete`, and `apply --since` do this.
+`logout`, `datasets delete`, `auth-tokens delete`, and `apply --since` do this.
 
 ### Errors
 

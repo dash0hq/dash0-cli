@@ -129,7 +129,8 @@ func runCreate(ctx context.Context, flags *createFlags, stdout io.Writer, stdout
 	if err := requireAllowAll(&token, flags.AllowAllActions); err != nil {
 		return err
 	}
-	if flags.SecretFile == "" && !secretOnTerminal(stdoutIsTerminal, format) {
+	// A dry run creates no token, so it has no secret to deliver.
+	if !flags.DryRun && flags.SecretFile == "" && !secretOnTerminal(stdoutIsTerminal, format) {
 		return errNoSecretDestination
 	}
 
@@ -232,6 +233,9 @@ func createToken(ctx context.Context, flags *createFlags, token *dash0api.AuthTo
 // compensate deletes a token whose secret cannot be delivered, because a token
 // nobody holds the secret of is only an attack surface.
 func compensate(ctx context.Context, apiURL, authToken string, token *dash0api.AuthTokenResponseDefinition, cause error) error {
+	// The rollback must still run after Ctrl-C cancels the command's context.
+	// The client's request timeout bounds it.
+	ctx = context.WithoutCancel(ctx)
 	id := idOf(&token.Metadata)
 	apiClient, err := client.NewClientFromContext(ctx, apiURL, authToken)
 	if err == nil {

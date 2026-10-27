@@ -365,6 +365,37 @@ func TestCreateAuthToken_DryRun(t *testing.T) {
 	assert.Empty(t, server.Requests())
 }
 
+func TestCreateAuthToken_DryRunNeedsNoSecretDestination(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	withAgentMode(t, true)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	stdout, _, err := runCmd(t, server.URL, "create", "-f", writeYAML(t, tokenYAML), "--dry-run")
+
+	require.NoError(t, err)
+	assert.Equal(t, "Dry run: auth token definition is valid\n", stdout)
+	assert.Empty(t, server.Requests())
+}
+
+func TestCompensate_DeletesAfterCancel(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, tokenPathPattern, respond(http.StatusOK, map[string]any{}))
+	var created dash0api.AuthTokenResponseDefinition
+	data, err := json.Marshal(tokenBody("Ingest", ""))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &created))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = compensate(ctx, server.URL, testAuthToken, &created, fmt.Errorf("interrupted"))
+
+	require.ErrorContains(t, err, "was deleted again")
+	deletes := requestsWith(server, http.MethodDelete)
+	require.Len(t, deletes, 1)
+	assert.Equal(t, apiPathAuthTokens+"/"+tokenID, deletes[0].Path)
+}
+
 func TestUpdateAuthToken_NotFoundSendsNoPut(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())

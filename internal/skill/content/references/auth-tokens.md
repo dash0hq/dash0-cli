@@ -83,6 +83,7 @@ The API returns a token's secret only in the response that creates it, so `creat
   A path inside a git repository is refused unless git ignores it.
 - In a pipe, in CI, in agent mode, or with `-o json` or `-o yaml`, `--secret-file` is required.
   Without it, `create` fails before it creates anything.
+  `--dry-run` creates nothing, so it does not need `--secret-file`.
 
 If the secret cannot be written after the token is created, `create` deletes the token again and fails, because nobody would hold its secret.
 
