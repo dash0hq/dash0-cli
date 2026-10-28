@@ -14,8 +14,6 @@ const (
 	apiVersion   = "dash0.com/v1alpha1"
 	allActions   = dash0api.AuthTokenAction("*")
 	allowAllFlag = "allow-all-actions"
-	// originPrefix makes the server report the token's source as dash0-cli.
-	originPrefix = "dash0-cli_"
 )
 
 // NewAuthTokensCmd creates the auth-tokens parent command.

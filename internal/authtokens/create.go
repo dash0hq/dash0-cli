@@ -14,7 +14,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -70,7 +69,6 @@ In a pipe, in CI, in agent mode, or with -o json or -o yaml, --secret-file is re
 
 The file passed to --secret-file must not exist. A path inside a git repository is refused unless git ignores it.
 
-When the definition has no dash0.com/origin label, create sets one that starts with "dash0-cli_".
 An origin that already exists is refused; use update to change that token.
 Granting the '*' action requires --allow-all-actions.` + internal.CONFIG_HINT,
 		Example: `  # Create a token and print its secret once on this terminal
@@ -138,15 +136,6 @@ func runCreate(ctx context.Context, flags *createFlags, stdout io.Writer, stdout
 		token.Kind = "Dash0AuthToken"
 	}
 	dash0api.StripAuthTokenServerFields(&token)
-	origin := originOf(&token.Metadata)
-	if origin == "" {
-		origin = originPrefix + uuid.NewString()
-		if token.Metadata.Labels == nil {
-			token.Metadata.Labels = &dash0api.AuthTokenLabels{}
-		}
-		token.Metadata.Labels.Dash0Comorigin = &origin
-	}
-
 	if flags.DryRun {
 		if flags.SecretFile != "" {
 			if err := requireNotCommittable(ctx, flags.SecretFile); err != nil {
@@ -166,7 +155,7 @@ func runCreate(ctx context.Context, flags *createFlags, stdout io.Writer, stdout
 			return err
 		}
 	}
-	created, value, err := createToken(ctx, flags, &token, origin)
+	created, value, err := createToken(ctx, flags, &token)
 	if err != nil {
 		if secretFile != nil {
 			discardSecretFile(secretFile)
@@ -200,22 +189,25 @@ func runCreate(ctx context.Context, flags *createFlags, stdout io.Writer, stdout
 
 // createToken refuses an origin that already exists, then creates the token.
 // It returns the response with the secret already moved out.
-func createToken(ctx context.Context, flags *createFlags, token *dash0api.AuthTokenDefinition, origin string) (*dash0api.AuthTokenResponseDefinition, secret, error) {
+func createToken(ctx context.Context, flags *createFlags, token *dash0api.AuthTokenDefinition) (*dash0api.AuthTokenResponseDefinition, secret, error) {
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return nil, secret{}, err
 	}
+	origin := originOf(&token.Metadata)
 	ectx := client.ErrorContext{AssetType: assetType, AssetID: origin, AssetName: token.Metadata.Name}
 
 	// The API answers a duplicate origin with a bare 400; the GET turns that into
 	// a message that names the way out.
-	_, err = apiClient.GetAuthToken(ctx, origin)
-	switch {
-	case err == nil:
-		return nil, secret{}, fmt.Errorf("auth token with origin %q already exists\n"+
-			"Hint: use `dash0 --experimental auth-tokens update %s -f <file>` to change it", origin, origin)
-	case !dash0api.IsNotFound(err):
-		return nil, secret{}, client.HandleAPIError(err, ectx)
+	if origin != "" {
+		_, err = apiClient.GetAuthToken(ctx, origin)
+		switch {
+		case err == nil:
+			return nil, secret{}, fmt.Errorf("auth token with origin %q already exists\n"+
+				"Hint: use `dash0 --experimental auth-tokens update %s -f <file>` to change it", origin, origin)
+		case !dash0api.IsNotFound(err):
+			return nil, secret{}, client.HandleAPIError(err, ectx)
+		}
 	}
 
 	created, err := apiClient.CreateAuthToken(ctx, token)

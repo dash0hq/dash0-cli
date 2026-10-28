@@ -301,18 +301,19 @@ func TestCreateAuthToken_SecretFile(t *testing.T) {
 	assert.Equal(t, tokenOrigin, *sent.Metadata.Labels.Dash0Comorigin)
 }
 
-func TestCreateAuthToken_GeneratesCLIOrigin(t *testing.T) {
+func TestCreateAuthToken_WithoutOriginSendsNone(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := newCreateServer(t, newCanary())
 
 	_, _, err := runCmd(t, server.URL, "create", "-f", writeYAML(t, noOriginYAML), "--secret-file", filepath.Join(t.TempDir(), "s"))
 
 	require.NoError(t, err)
+	assert.Empty(t, requestsWith(server, http.MethodGet))
 	posts := requestsWith(server, http.MethodPost)
 	require.Len(t, posts, 1)
 	var sent dash0api.AuthTokenDefinition
 	require.NoError(t, json.Unmarshal(posts[0].Body, &sent))
-	assert.True(t, strings.HasPrefix(*sent.Metadata.Labels.Dash0Comorigin, originPrefix))
+	assert.Empty(t, originOf(&sent.Metadata))
 }
 
 func TestCreateAuthToken_ExistingOriginRefused(t *testing.T) {
