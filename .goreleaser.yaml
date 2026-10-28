@@ -146,9 +146,11 @@ homebrew_casks:
         # `/usr/bin/xattr` and `com.apple.quarantine` are macOS-only; running
         # the hook unconditionally breaks `brew install --cask` on Linux,
         # where the binary has no such tool or attribute.
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", staged_path]
+        # `install_steps` renders Homebrew's `postflight_steps`; the older
+        # `install` renders `postflight`, which Homebrew deprecated.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}"]
           end
 
 nix:
