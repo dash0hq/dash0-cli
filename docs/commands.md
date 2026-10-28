@@ -37,9 +37,10 @@ Output formats are `table`, `json`, and `csv`.
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
-**Organizational commands** manage entities (teams, members, notification channels, datasets) scoped to the organization, not to a dataset.
+**Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
-Notification channels and datasets are exceptions: they use file-based input (`-f`), support `--dry-run`, and are wired into `apply`, but are still organization-level (no `--dataset`).
+Notification channels, datasets, and auth tokens are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+Notification channels and datasets are also wired into `apply`; auth tokens are not, because `apply` has no safe place to deliver a new token's secret.
 
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
@@ -3076,11 +3077,15 @@ The API returns a token's secret only in the response that creates it, so `creat
 - With `--secret-file <path>`, `create` writes the secret and a newline to a new file with mode `0600`.
   The path must not exist, so a symlink is refused too.
   A path inside a git repository is refused unless git ignores it.
+  In CI, write the secret outside the checkout, for example to `$RUNNER_TEMP` on GitHub Actions.
 - In a pipe, in CI, in agent mode, or with `-o json` or `-o yaml`, `--secret-file` is required.
   Without it, `create` fails before it creates anything.
   `--dry-run` creates nothing, so it does not need `--secret-file`.
 
-If the secret cannot be written after the token is created, `create` deletes the token again and fails, because nobody would hold its secret.
+If the secret cannot be written or printed after the token is created, `create` deletes the token again and fails, because nobody would hold its secret.
+This cannot cover a `create` that stops before the API response arrives, for example after Ctrl-C or a network drop.
+The token can then exist with a secret nobody holds.
+Find it with `auth-tokens list` and delete it with `auth-tokens delete`.
 
 `metadata.name` and `spec.actions` are required.
 `dash0.com/origin` is optional.

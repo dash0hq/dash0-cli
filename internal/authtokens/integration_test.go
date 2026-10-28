@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -280,6 +281,26 @@ func TestCreateAuthToken_PrintsSecretOnceOnTerminal(t *testing.T) {
 	assert.NotContains(t, stderr, canaryValue)
 }
 
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+func TestCreateAuthToken_SecretPrintFailureDeletesToken(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := newCreateServer(t, newCanary())
+
+	var err error
+	testutil.CaptureStderr(t, func() {
+		err = runCreate(context.Background(), &createFlags{ApiUrl: server.URL, AuthToken: testAuthToken, File: writeYAML(t, tokenYAML)}, failingWriter{}, true)
+	})
+
+	require.ErrorContains(t, err, "failed to print the secret")
+	assert.ErrorContains(t, err, "was deleted again")
+	deletes := requestsWith(server, http.MethodDelete)
+	require.Len(t, deletes, 1)
+	assert.Equal(t, apiPathAuthTokens+"/"+tokenID, deletes[0].Path)
+}
+
 func TestCreateAuthToken_SecretFile(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	canaryValue := newCanary()
@@ -422,6 +443,20 @@ func TestUpdateAuthToken_PutsByStoredIDAndShowsDiff(t *testing.T) {
 	puts := requestsWith(server, http.MethodPut)
 	require.Len(t, puts, 1)
 	assert.Equal(t, apiPathAuthTokens+"/"+tokenID, puts[0].Path)
+}
+
+func TestUpdateAuthToken_IDMismatchWithoutArgumentNamesTheFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathAuthTokens+"/"+tokenOrigin, respond(http.StatusOK, tokenBody("Ingest", "")))
+	otherID := "0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90"
+	file := writeYAML(t, strings.Replace(tokenYAML, "  labels:\n", "  labels:\n    dash0.com/id: "+otherID+"\n", 1))
+
+	_, _, err := runCmd(t, server.URL, "update", "-f", file)
+
+	require.ErrorContains(t, err, `"`+tokenOrigin+`" from the file is auth token "`+tokenID+`", but the file names auth token "`+otherID+`"`)
+	assert.NotContains(t, err.Error(), "argument")
+	assert.Empty(t, requestsWith(server, http.MethodPut))
 }
 
 func TestUpdateAuthToken_PutThatCreatesIsRolledBack(t *testing.T) {

@@ -74,11 +74,11 @@ Granting the '*' action requires --allow-all-actions.` + internal.CONFIG_HINT,
 		Example: `  # Create a token and print its secret once on this terminal
   dash0 --experimental auth-tokens create -f token.yaml
 
-  # Create a token and write its secret to a new file (for CI and scripts)
-  dash0 --experimental auth-tokens create -f token.yaml --secret-file ./ingest-token.secret
+  # Create a token in GitHub Actions and write its secret to a new file outside the checkout
+  dash0 --experimental auth-tokens create -f token.yaml --secret-file "$RUNNER_TEMP/ingest-token"
 
   # Create a token that holds every action
-  dash0 --experimental auth-tokens create -f admin-token.yaml --secret-file ./admin-token.secret --allow-all-actions
+  dash0 --experimental auth-tokens create -f admin-token.yaml --secret-file "$RUNNER_TEMP/admin-token" --allow-all-actions
 
   # Validate without creating
   dash0 --experimental auth-tokens create -f token.yaml --dry-run`,
@@ -183,7 +183,9 @@ func runCreate(ctx context.Context, flags *createFlags, stdout io.Writer, stdout
 		return nil
 	}
 	_, _ = fmt.Fprintln(os.Stderr, "Store this secret now: it is shown only once, and Dash0 cannot show it again.")
-	_, _ = fmt.Fprintln(stdout, value.reveal())
+	if _, err := fmt.Fprintln(stdout, value.reveal()); err != nil {
+		return compensate(ctx, flags.ApiUrl, flags.AuthToken, created, fmt.Errorf("failed to print the secret: %w", err))
+	}
 	return nil
 }
 

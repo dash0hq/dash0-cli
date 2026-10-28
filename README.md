@@ -686,8 +686,8 @@ dash0 -X auth-tokens list
 ```
 
 ```bash
-# Create an auth token and write its secret to a new file
-dash0 -X auth-tokens create -f token.yaml --secret-file ./ingest-token.secret
+# Create an auth token in GitHub Actions and write its secret to a new file outside the checkout
+dash0 -X auth-tokens create -f token.yaml --secret-file "$RUNNER_TEMP/ingest-token"
 ```
 
 ```bash

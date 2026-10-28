@@ -93,11 +93,15 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 	takeSecret(before)
 	storedID, storedOrigin := idOf(&before.Metadata), originOf(&before.Metadata)
+	keySource := fmt.Sprintf("argument %q", key)
+	if len(args) == 0 {
+		keySource = fmt.Sprintf("%q from the file", key)
+	}
 	if id := idOf(&token.Metadata); id != "" && id != storedID {
-		return fmt.Errorf("argument %q is auth token %q, but the file names auth token %q", key, storedID, id)
+		return fmt.Errorf("%s is auth token %q, but the file names auth token %q", keySource, storedID, id)
 	}
 	if origin := originOf(&token.Metadata); origin != "" && origin != storedOrigin {
-		return fmt.Errorf("argument %q is auth token %q with origin %q, but the file's origin is %q", key, storedID, storedOrigin, origin)
+		return fmt.Errorf("%s is auth token %q with origin %q, but the file's origin is %q", keySource, storedID, storedOrigin, origin)
 	}
 
 	if token.Kind == "" {
