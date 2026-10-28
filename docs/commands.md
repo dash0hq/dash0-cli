@@ -3084,7 +3084,7 @@ If the secret cannot be written after the token is created, `create` deletes the
 
 `metadata.name` and `spec.actions` are required.
 `dash0.com/origin` is optional.
-When it is absent, Dash0 assigns one.
+When it is absent, Dash0 assigns an origin, so each `create` makes a new token.
 An origin that already exists is refused: use `auth-tokens update` to change that token.
 The `*` action gives the token full access to the organization, including its auth tokens, so granting it needs `--allow-all-actions`.
 `--force` and agent mode do not grant it.
