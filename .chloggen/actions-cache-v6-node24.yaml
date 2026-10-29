@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: github-actions
+note: The `setup`, `send-log-event` and `sync-assets` actions no longer trigger the Node.js 20 deprecation warning.
+issues: [336]
+subtext: |
+  `actions/cache/restore` and `actions/cache/save` move from v4.3.0 (Node.js 20) to v6.1.0 (Node.js 24).
+change_logs: [user]
