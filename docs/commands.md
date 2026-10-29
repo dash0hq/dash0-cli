@@ -17,7 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
@@ -37,10 +37,10 @@ Output formats are `table`, `json`, and `csv`.
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
-**Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens) scoped to the organization, not to a dataset.
+**Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
-Notification channels, datasets, and auth tokens are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
-Notification channels and datasets are also wired into `apply`; auth tokens are not, because `apply` has no safe place to deliver a new token's secret.
+Notification channels, datasets, auth tokens, and Agent0 skills are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+Notification channels, datasets, and Agent0 skills are also wired into `apply`; auth tokens are not, because `apply` has no safe place to deliver a new token's secret.
 
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
@@ -800,6 +800,7 @@ Aliases: `remove`
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
+| Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 ### Asset identifiers and idempotent upsert
@@ -826,12 +827,13 @@ The identifier field location varies by asset kind:
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
+| `Dash0Skill` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level Agent0 custom skill. `dash0.com/origin` is the upsert key: `PUT /api/agent0/custom-skills/{origin}` creates the skill when the origin is new and replaces it otherwise. Use a `dash0-cli_` prefix so Dash0 shows the skill as managed by the CLI. When only `dash0.com/id` is present the CLI preflights `GET /api/agent0/custom-skills/{id}`: on hit it PUTs, on 404 it fails instead of creating, because the id is server-assigned. A document with neither label creates the skill with POST; the skill name, from the `SKILL.md` frontmatter, is unique per organization, so a second apply fails with a name collision instead of creating a duplicate |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
 Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
 
-For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, and teams — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/teams/{origin}`).
+For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
 Notification channels have no user-settable ID field at all, and for SLOs origin is not merely accepted but the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
@@ -1008,7 +1010,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1051,6 +1053,14 @@ Only the creation time and the version reset, and the settings come from the req
 `apply` applies `Dash0Dataset` documents before every other kind, whatever the file order, because the API rejects an asset whose dataset does not exist yet.
 A dataset document has no telemetry filters: spam filters own them, and creating or updating a dataset never changes them.
 `apply --since` deletes a dataset whose document was removed from git, like any other kind (see [`apply --since`](#apply---since-experimental)).
+
+`Dash0Skill` documents are Agent0 custom skills, dispatched to the organization-level custom skills endpoint (not associated with a dataset).
+A document without a `SKILL.md` file in `spec.files` fails during the validation phase.
+`dash0.com/origin` is the upsert key, with `dash0.com/id` as an update-only fallback (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
+`apply` never sends `spec.source`, `metadata.annotations["dash0.com/enabled"]`, or the server-managed `metadata.name`, version, and timestamps, so a `get -o yaml` export applies as is.
+`spec.permissions` is sent as written, `defaultEnabled` included; when it is absent, the stored grants stay unchanged.
+The `admin` grant the server adds to every skill is left out of the request and the diff, unless it sets `defaultEnabled: false`.
+A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -1227,6 +1237,8 @@ keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
 Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
+
+A `Dash0Skill` document removed since `<ref>` deletes the skill by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `agent0 skills delete`.
 
 A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
 `--since` deletes a removed dataset after every other removed asset, because the API ignores an asset delete in a dataset that is already deleted.
@@ -1543,6 +1555,41 @@ spec:
 
 `apiVersion` is required, and `dash0.com/v1alpha1` is the only supported value.
 The dataset slug is `spec.slug` or, when that is absent, `metadata.labels["dash0.com/id"]`; `spec.slug` wins when a document carries both.
+
+Agent0 skill (organization-level, no `--dataset`, requires `--experimental` for the `agent0 skills` commands):
+
+```yaml
+kind: Dash0Skill
+metadata:
+  labels:
+    dash0.com/origin: dash0-cli_incident-triage
+spec:
+  files:
+    - relativePath: SKILL.md
+      content: |
+        ---
+        name: incident-triage
+        description: Triage a production incident from its failed checks.
+        ---
+
+        Start from the failed check, then follow the trace to the failing service.
+    - relativePath: references/runbook.md
+      content: |
+        # Runbook
+
+        Check the deploy log first.
+  permissions:
+    - role: basic_member
+      actions:
+        - custom_skill:read
+      defaultEnabled: false
+```
+
+The skill's name is the `name` in the `SKILL.md` frontmatter, and is unique per organization.
+`metadata.labels["dash0.com/origin"]` is the upsert key; an origin is set on create and cannot change.
+The server rejects a `custom_skill:write` grant on a skill whose origin marks it as managed by Terraform, the Dash0 operator, or the Dash0 platform; `dash0-cli_` origins accept it.
+`dash0.com/enabled` is per user, so it is never sent; set `defaultEnabled: false` on a grant to ship the skill turned off for the users that grant matches.
+Only admins may set `defaultEnabled` on any grant; members only on their own user grant or on a grant to a team they belong to.
 It is required and cannot change after creation.
 `metadata.name` is the display name.
 Every `spec` field is optional: a field left out on create takes the server default, and a field left out on update keeps its stored value.
@@ -2701,14 +2748,14 @@ The proxy's stats block updates in place as the data flows through, then the rec
 
 ## Organizational commands
 
-Organizational commands manage entities (teams, members, notification channels, datasets, auth tokens) that are scoped to the organization, not to a dataset.
+Organizational commands manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills) that are scoped to the organization, not to a dataset.
 They share a common set of characteristics:
 - No `--dataset` flag.
 - All are experimental and require the `-X` flag.
 - Use `api-url` and `auth-token`.
 
 Most organizational commands use flag-based input.
-Notification channels, datasets, and auth tokens are exceptions: they use file-based input (`-f`) and support `--dry-run`.
+Notification channels, datasets, auth tokens, and Agent0 skills are exceptions: they use file-based input (`-f`) and support `--dry-run`.
 
 ### `notification-channels list` (experimental)
 
@@ -2984,6 +3031,133 @@ Example:
 $ dash0 -X datasets delete <id>
 Are you sure you want to delete dataset "<id>"? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: y
 Dataset "<id>" deleted
+```
+
+Aliases: `remove`
+
+### `agent0 skills list` (experimental)
+
+List the Agent0 custom skills you can read in the organization.
+
+```bash
+dash0 -X agent0 skills list [-o <format>] [--skip-header] [--column <col>] [--origin-prefix <prefix>] [--enabled[=false]]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `wide`, `json`, `yaml`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table`, `wide`, and `csv` output |
+| `--column` | | Column to display (repeatable; `table`, `wide`, and `csv` only) |
+| `--origin-prefix` | | Only list skills whose origin starts with this prefix |
+| `--enabled` | | Only list skills that are on (`--enabled`) or off (`--enabled=false`) for you; omit to list both |
+
+The `wide` and `csv` formats add `ORIGIN` and `ENABLED` columns.
+A skill is on or off per user; for an API token without a user, every readable skill counts as enabled.
+
+Example:
+
+```bash
+$ dash0 -X agent0 skills list
+NAME              ID
+incident-triage   cskl_01jb8k3m4n5p6q7r8s9t0v1w2x
+release-notes     cskl_01jb8k3m4n5p6q7r8s9t0v1w2y
+```
+
+Aliases: `ls`
+
+### `agent0 skills get` (experimental)
+
+Get an Agent0 custom skill, including its files and permissions, by ID or origin.
+
+```bash
+dash0 -X agent0 skills get <id> [-o <format>]
+```
+
+Example:
+
+```bash
+$ dash0 -X agent0 skills get dash0-cli_incident-triage
+Kind:    Dash0Skill
+Name:    incident-triage
+ID:      cskl_01jb8k3m4n5p6q7r8s9t0v1w2x
+Origin:  dash0-cli_incident-triage
+Enabled: true
+Files:
+  SKILL.md
+  references/runbook.md
+```
+
+Use `-o yaml` to get the full definition, suitable for editing and re-applying.
+`spec.permissions`, `defaultEnabled` included, round-trips through the export.
+
+### `agent0 skills create` (experimental)
+
+Create an Agent0 custom skill from a YAML or JSON definition file.
+The file must carry a `SKILL.md` in `spec.files`; the skill's name is the `name` in its frontmatter.
+When the file sets `dash0.com/origin`, the command upserts by that origin, so a skill with that origin is updated.
+`spec.source` and `metadata.annotations["dash0.com/enabled"]` are never sent.
+
+```bash
+dash0 -X agent0 skills create -f <file> [--dry-run]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--dry-run` | Validate without creating |
+
+Create from a YAML file:
+
+```bash
+$ dash0 -X agent0 skills create -f skill.yaml
+Agent0 skill "incident-triage" created (id: dash0-cli_incident-triage)
+```
+
+A name another skill already uses fails with a hint:
+
+```bash
+$ dash0 -X agent0 skills create -f skill.yaml
+Error: another Agent0 skill in this organization is already named "incident-triage":
+  dash0 api error: Bad Request: ... Skill names must be unique per organization. (status: 400)
+Hint: the name comes from the SKILL.md frontmatter and is unique per organization. Rename the skill, delete the other one, or set the other skill's metadata.labels["dash0.com/origin"] in this document to update it instead
+```
+
+Aliases: `add`
+
+### `agent0 skills update` (experimental)
+
+Update an existing Agent0 custom skill from a YAML or JSON definition file.
+If the ID argument is omitted, the origin, or else the ID, is read from the file.
+The skill must already exist: the command fails with a "not found" error instead of creating it.
+The files in the definition replace the stored files.
+When `spec.permissions` is absent, the stored grants stay unchanged.
+A member who sets `defaultEnabled` on a grant they may not change gets an error that says which grants they may change.
+The output is a unified diff of the before and after states; `--dry-run` shows it without updating.
+
+```bash
+dash0 -X agent0 skills update [id] -f <file> [--dry-run]
+```
+
+Update a skill from a file:
+
+```bash
+dash0 -X agent0 skills update -f skill.yaml
+```
+
+### `agent0 skills delete` (experimental)
+
+Delete an Agent0 custom skill by ID or origin.
+Prompts for confirmation unless `--force` is passed.
+
+```bash
+dash0 -X agent0 skills delete <id> [--force]
+```
+
+Example:
+
+```bash
+$ dash0 -X agent0 skills delete dash0-cli_incident-triage --force
+Agent0 skill "dash0-cli_incident-triage" deleted
 ```
 
 Aliases: `remove`

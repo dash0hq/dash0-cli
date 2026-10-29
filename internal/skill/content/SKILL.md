@@ -21,7 +21,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens` | Flag-based input, no dataset, experimental |
+| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
 
@@ -60,11 +60,12 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `Dash0NotificationChannel` | no ID field — `metadata.labels["dash0.com/origin"]` is the upsert key |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug — required and immutable; `spec.slug` wins when both are set); `dash0.com/origin` is optional |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) |
+| `Dash0Skill` | `metadata.labels["dash0.com/origin"]`; `metadata.labels["dash0.com/id"]` only updates an existing skill when origin is absent |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]`, and it is **mandatory** — the API rejects an aggregation without one, so there is no POST fallback. A `dash0.com/id` in the body is ignored. Origins are unique per organization while each aggregation belongs to one dataset, so one document cannot serve two datasets |
 
 **Origin vs ID — do not conflate them.** *ID* is the user-defined external identifier described above. *Origin* (`dash0.com/origin` label) records which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`, `operator`). Which of the two is the upsert key depends on the kind, and the split follows the shape of the underlying API rather than being a list of exceptions:
 
-- **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, teams, and time series aggregations. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent. For time series aggregations it is mandatory: the API rejects a document without one.
+- **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, teams, time series aggregations, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent. For time series aggregations it is mandatory: the API rejects a document without one.
 - **ID is the upsert key, and origin is provenance only** for views, check rules, recording rules, and synthetic checks. The CLI strips `dash0.com/origin` before sending these documents, so an `apply` never claims ownership of an asset managed by Terraform or the Kubernetes operator.
 - **Dashboards** use `metadata.dash0Extensions.id`; the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never upsert a dashboard by origin.
 
@@ -166,6 +167,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | Topic | Covers |
 |-------|--------|
 | `apply` | Create-or-update asset definitions from files, directories, or stdin |
+| `agent0` | Agent0 custom skill CRUD (`agent0 skills`; organization-level, experimental; `kind: Dash0Skill`) |
 | `api` | Raw HTTP passthrough to any Dash0 API endpoint |
 | `auth-tokens` | Auth token CRUD (organization-level, experimental; `create` needs `--secret-file` outside an interactive terminal; not supported by `apply`) |
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |

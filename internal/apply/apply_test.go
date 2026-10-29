@@ -854,3 +854,36 @@ spec:
 		})
 	}
 }
+
+func TestValidateDocuments_SkillRequiresManifest(t *testing.T) {
+	docs, err := readMultiDocumentYAML("-", strings.NewReader("kind: Dash0Skill\nmetadata:\n  labels:\n    dash0.com/origin: o\nspec:\n  files:\n    - relativePath: README.md\n      content: x\n"))
+	require.NoError(t, err)
+
+	validationErrors, _ := validateDocuments(docs)
+	require.Len(t, validationErrors, 1)
+	assert.Contains(t, validationErrors[0], "requires a SKILL.md file in spec.files")
+}
+
+func TestParseDocumentHeader_Skill(t *testing.T) {
+	const manifest = "      content: |\n        ---\n        name: incident-triage\n        description: d\n        ---\n        Body.\n"
+	cases := map[string]struct {
+		labels string
+		wantID string
+	}{
+		"origin wins":    {"    dash0.com/origin: dash0-cli_triage\n    dash0.com/id: cskl_1\n", "dash0-cli_triage"},
+		"id fallback":    {"    dash0.com/id: cskl_1\n", "cskl_1"},
+		"no identifiers": {"    team: sre\n", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			doc := "kind: Dash0Skill\nmetadata:\n  labels:\n" + c.labels + "spec:\n  files:\n    - relativePath: SKILL.md\n" + manifest
+
+			kind, docName, id, err := parseDocumentHeader([]byte(doc))
+
+			require.NoError(t, err)
+			assert.Equal(t, "Dash0Skill", kind)
+			assert.Equal(t, "incident-triage", docName, "the name comes from the SKILL.md frontmatter")
+			assert.Equal(t, c.wantID, id)
+		})
+	}
+}

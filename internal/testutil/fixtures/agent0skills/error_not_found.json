@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": 404,
+    "message": "Not Found: The requested custom skill does not exist or is inaccessible to you."
+  }
+}

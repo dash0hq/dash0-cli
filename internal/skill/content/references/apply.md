@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -66,6 +66,14 @@ Only the creation time and the version reset, and the settings come from the req
 `apply` applies `Dash0Dataset` documents before every other kind, whatever the file order, because the API rejects an asset whose dataset does not exist yet.
 A dataset document has no telemetry filters: spam filters own them, and creating or updating a dataset never changes them.
 `apply --since` deletes a dataset whose document was removed from git, like any other kind (see [`apply --since`](#apply---since-experimental)).
+
+`Dash0Skill` documents are Agent0 custom skills, dispatched to the organization-level custom skills endpoint (not associated with a dataset).
+A document without a `SKILL.md` file in `spec.files` fails during the validation phase.
+`dash0.com/origin` is the upsert key, with `dash0.com/id` as an update-only fallback (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
+`apply` never sends `spec.source`, `metadata.annotations["dash0.com/enabled"]`, or the server-managed `metadata.name`, version, and timestamps, so a `get -o yaml` export applies as is.
+`spec.permissions` is sent as written, `defaultEnabled` included; when it is absent, the stored grants stay unchanged.
+The `admin` grant the server adds to every skill is left out of the request and the diff, unless it sets `defaultEnabled: false`.
+A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
 Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
@@ -242,6 +250,8 @@ keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
 Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
+
+A `Dash0Skill` document removed since `<ref>` deletes the skill by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `agent0 skills delete`.
 
 A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
 `--since` deletes a removed dataset after every other removed asset, because the API ignores an asset delete in a dataset that is already deleted.

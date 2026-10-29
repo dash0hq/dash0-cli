@@ -1,0 +1,24 @@
+kind: Dash0Skill
+metadata:
+  labels:
+    dash0.com/origin: __ORIGIN__
+spec:
+  files:
+    - relativePath: SKILL.md
+      content: |
+        ---
+        name: __NAME__
+        description: Roundtrip test skill for the Dash0 CLI.
+        ---
+
+        Answer with the word roundtrip.
+    - relativePath: references/notes.md
+      content: |
+        # Notes
+
+        __NOTE__
+  permissions:
+    - role: basic_member
+      actions:
+        - custom_skill:read
+      defaultEnabled: false

@@ -91,6 +91,14 @@ var topics = []topicSpec{
 			deletedAssetNote("dashboards", "dashboard", "dashboards", "ID"),
 	},
 	{
+		name:            "agent0",
+		includeQuickRef: true,
+		sections: []string{
+			"agent0 skills list", "agent0 skills get", "agent0 skills create", "agent0 skills update", "agent0 skills delete",
+		},
+		assetYAMLLabels: []string{"Agent0 skill ("},
+	},
+	{
 		name:            "datasets",
 		includeQuickRef: true,
 		sections: []string{
