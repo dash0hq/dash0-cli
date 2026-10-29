@@ -1,0 +1,84 @@
+{
+  "skills": [
+    {
+      "kind": "Dash0Skill",
+      "metadata": {
+        "name": "incident-triage",
+        "labels": {
+          "dash0.com/id": "cskl_01jb8k3m4n5p6q7r8s9t0v1w2x",
+          "dash0.com/version": "3",
+          "dash0.com/source": "dash0-cli",
+          "dash0.com/origin": "dash0-cli_incident-triage"
+        },
+        "annotations": {
+          "dash0.com/created-at": "2026-10-20T09:00:00Z",
+          "dash0.com/updated-at": "2026-10-28T14:30:00Z",
+          "dash0.com/enabled": "true"
+        }
+      },
+      "spec": {
+        "files": [
+          {
+            "relativePath": "SKILL.md",
+            "content": "---\nname: incident-triage\ndescription: Triage a production incident from its failed checks.\n---\n\nStart from the failed check, then follow the trace to the failing service.\n"
+          },
+          {
+            "relativePath": "references/runbook.md",
+            "content": "# Runbook\n\nCheck the deploy log first.\n"
+          }
+        ],
+        "permittedActions": [
+          "custom_skill:read",
+          "custom_skill:write",
+          "custom_skill:delete"
+        ],
+        "permissions": [
+          {
+            "role": "basic_member",
+            "actions": [
+              "custom_skill:read"
+            ],
+            "defaultEnabled": false
+          },
+          {
+            "role": "admin",
+            "actions": [
+              "custom_skill:read",
+              "custom_skill:delete"
+            ],
+            "defaultEnabled": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "Dash0Skill",
+      "metadata": {
+        "name": "release-notes",
+        "labels": {
+          "dash0.com/id": "cskl_01jb8k3m4n5p6q7r8s9t0v1w2y",
+          "dash0.com/version": "3",
+          "dash0.com/source": "ui"
+        },
+        "annotations": {
+          "dash0.com/created-at": "2026-10-20T09:00:00Z",
+          "dash0.com/updated-at": "2026-10-28T14:30:00Z",
+          "dash0.com/enabled": "false"
+        }
+      },
+      "spec": {
+        "files": [
+          {
+            "relativePath": "SKILL.md",
+            "content": "---\nname: release-notes\ndescription: Triage a production incident from its failed checks.\n---\n\nStart from the failed check, then follow the trace to the failing service.\n"
+          }
+        ],
+        "permittedActions": [
+          "custom_skill:read",
+          "custom_skill:write",
+          "custom_skill:delete"
+        ]
+      }
+    }
+  ]
+}

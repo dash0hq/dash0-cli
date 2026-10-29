@@ -31,6 +31,7 @@ type ManifestEntry struct {
 // live only in SKILL.md's own prose).
 var Manifest = []ManifestEntry{
 	{"apply", "references/apply.md"},
+	{"agent0", "references/agent0.md"},
 	{"api", "references/api.md"},
 	{"auth-tokens", "references/auth-tokens.md"},
 	{"check-rules", "references/check-rules.md"},

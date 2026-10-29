@@ -73,6 +73,7 @@ Supported asset types:
   - Dash0Team
   - Dash0TimeSeriesAggregation
   - Dash0Dataset
+  - Dash0Skill (Agent0 custom skill)
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -370,7 +371,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			// place to deliver it, so a created token's secret would be lost.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.location(), doc.kind))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -404,6 +405,13 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			var dataset dash0api.DatasetDefinition
 			if err := dash0yaml.Unmarshal(doc.raw, &dataset); err == nil {
 				if err := asset.ValidateDataset(&dataset); err != nil {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
+				}
+			}
+		} else if normalizeKind(doc.kind) == "skill" {
+			var skill dash0api.SkillDefinition
+			if err := dash0yaml.Unmarshal(doc.raw, &skill); err == nil {
+				if err := asset.ValidateCustomSkill(&skill); err != nil {
 					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 				}
 			}
@@ -628,6 +636,15 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = dash0api.GetDatasetName(&dataset)
 		id = dash0api.GetDatasetID(&dataset)
+
+	case "skill":
+		var skill dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(data, &skill); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = asset.CustomSkillName(&skill)
+		// Skills upsert by origin, falling back to dash0.com/id.
+		id = asset.CustomSkillKey(&skill)
 
 	default:
 		var raw map[string]any
@@ -956,6 +973,21 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			return nil, err
 		}
 		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "skill":
+		var skill dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(doc.raw, &skill); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0Skill: %w", err)
+		}
+		name := asset.CustomSkillName(&skill)
+		result, err := asset.ImportCustomSkill(ctx, apiClient, &skill)
+		if err != nil {
+			if explained := asset.ExplainCustomSkillError(err, name); explained != nil {
+				return nil, explained
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "Agent0 skill", AssetName: name})
+		}
+		return []applyResult{{kind: "Dash0Skill", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)

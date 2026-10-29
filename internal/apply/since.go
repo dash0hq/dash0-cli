@@ -472,6 +472,8 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteNotificationChannel(ctx, identifier)
 	case "team":
 		err = apiClient.DeleteTeam(ctx, identifier)
+	case "skill":
+		err = apiClient.DeleteCustomSkill(ctx, identifier)
 	case "dataset":
 		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
 		// The same path as `datasets delete`.

@@ -3111,3 +3111,164 @@ func TestApply_Dataset_AppliedBeforeAssetsThatSortFirst(t *testing.T) {
 	require.GreaterOrEqual(t, viewAt, 0, "expected a view request")
 	assert.Less(t, datasetAt, viewAt, "the dataset must be created before the view")
 }
+
+const (
+	apiPathSkills   = "/api/agent0/custom-skills"
+	skillOriginPath = apiPathSkills + "/dash0-cli_incident-triage"
+
+	skillDoc = `kind: Dash0Skill
+metadata:
+  labels:
+    dash0.com/origin: dash0-cli_incident-triage
+spec:
+  files:
+    - relativePath: SKILL.md
+      content: |
+        ---
+        name: incident-triage
+        description: Triage a production incident from its failed checks.
+        ---
+
+        Start from the failed check, then follow the trace to the failing service.
+    - relativePath: references/runbook.md
+      content: |
+        # Runbook
+
+        Check the deploy log first.
+  permissions:
+    - role: basic_member
+      actions:
+        - custom_skill:read
+      defaultEnabled: false
+`
+)
+
+func runApplyDoc(t *testing.T, serverURL, doc string, extraArgs ...string) (string, error) {
+	t.Helper()
+	yamlFile := filepath.Join(t.TempDir(), "skill.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+	cmd := NewApplyCmd()
+	cmd.SetArgs(append([]string{"-f", yamlFile, "--api-url", serverURL, "--auth-token", testAuthToken}, extraArgs...))
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	return output, cmdErr
+}
+
+func TestApply_Skill_CreatedByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound})
+	server.On(http.MethodPut, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsCreateSuccess, Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, skillDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Agent0 skill "incident-triage" (dash0-cli_incident-triage) created`)
+	put := findRequest(server.Requests(), http.MethodPut, skillOriginPath)
+	require.NotNil(t, put)
+	assert.NotContains(t, put.Query, "dataset=", "skills are org-level and must not carry a dataset query parameter")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSkills), "PUT by origin is an upsert, so no POST")
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(put.Body, &body))
+	spec := body["spec"].(map[string]any)
+	assert.Equal(t, []any{
+		map[string]any{"role": "basic_member", "actions": []any{"custom_skill:read"}, "defaultEnabled": false},
+	}, spec["permissions"])
+}
+
+// The fixture is what the server returns for skillDoc, so a re-apply must report no changes even though the
+// server adds a version, timestamps, the per-user enabled state and the admin grant.
+func TestApply_Skill_UnchangedReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess, Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, skillDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "no changes")
+}
+
+func TestApply_Skill_UpdatedShowsDiff(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsUpdateSuccess, Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, skillDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "--- Agent0 skill (before)")
+	assert.Contains(t, output, "+      Check the deploy log, then the feature flags.")
+	assert.NotContains(t, output, "dash0.com/version")
+}
+
+func TestApply_Skill_IDFallbackUpdatesOnly(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	const idPath = apiPathSkills + "/cskl_01jb8k3m4n5p6q7r8s9t0v1w2x"
+	doc := strings.Replace(skillDoc, "dash0.com/origin: dash0-cli_incident-triage", "dash0.com/id: cskl_01jb8k3m4n5p6q7r8s9t0v1w2x", 1)
+
+	t.Run("existing skill is updated by id", func(t *testing.T) {
+		server := testutil.NewMockServer(t, testutil.FixturesDir())
+		server.On(http.MethodGet, idPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess, Validator: testutil.RequireHeaders})
+		server.On(http.MethodPut, idPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsUpdateSuccess, Validator: testutil.RequireHeaders})
+
+		_, err := runApplyDoc(t, server.URL, doc)
+
+		require.NoError(t, err)
+		assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, idPath))
+	})
+
+	t.Run("unknown id is not created", func(t *testing.T) {
+		server := testutil.NewMockServer(t, testutil.FixturesDir())
+		server.On(http.MethodGet, idPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders})
+
+		_, err := runApplyDoc(t, server.URL, doc)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `Agent0 skill with id "cskl_01jb8k3m4n5p6q7r8s9t0v1w2x" not found`)
+		assert.Contains(t, err.Error(), "dash0.com/id only addresses an existing skill")
+		assert.Nil(t, findRequest(server.Requests(), http.MethodPut, idPath))
+		assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSkills))
+	})
+}
+
+func TestApply_Skill_DuplicateNameExplained(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound})
+	server.On(http.MethodPut, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: testutil.FixtureAgent0SkillsDuplicateName})
+
+	_, err := runApplyDoc(t, server.URL, skillDoc)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `already named "incident-triage"`)
+	assert.Contains(t, err.Error(), "\nHint:")
+}
+
+func TestApply_Skill_DefaultEnabledForbiddenExplained(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess})
+	server.On(http.MethodPut, skillOriginPath, testutil.MockResponse{StatusCode: http.StatusForbidden, BodyFile: testutil.FixtureAgent0SkillsDefaultEnabledDenied})
+
+	_, err := runApplyDoc(t, server.URL, skillDoc)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not allowed to set defaultEnabled")
+	assert.Contains(t, err.Error(), "\nHint: admins may set defaultEnabled on any grant")
+}
+
+func TestApply_Skill_DryRunMakesNoAPICall(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, err := runApplyDoc(t, server.URL, skillDoc, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "incident-triage")
+	assert.Empty(t, server.Requests())
+}
