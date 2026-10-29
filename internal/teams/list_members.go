@@ -23,6 +23,14 @@ type listMembersFlags struct {
 	Column     []string
 }
 
+// Team member listings retain their own defaults as organization member columns evolve.
+var teamMemberListDefaultColumns = []query.ColumnDef{
+	{Key: "name", Aliases: []string{"member name"}, Header: internal.HEADER_NAME, Width: 30},
+	{Key: "email", Header: internal.HEADER_EMAIL, Width: 40},
+	{Key: "id", Aliases: []string{"member id"}, Header: internal.HEADER_ID, Width: 36},
+	{Key: "url", Header: internal.HEADER_URL, Width: 70},
+}
+
 func newListMembersCmd() *cobra.Command {
 	flags := &listMembersFlags{}
 
@@ -75,9 +83,13 @@ func runListMembers(cmd *cobra.Command, teamID string, flags *listMembersFlags) 
 		return err
 	}
 
-	cols, err := members.ResolveMemberListColumns(flags.Column)
-	if err != nil {
-		return err
+	cols := teamMemberListDefaultColumns
+	if len(flags.Column) > 0 {
+		specs, err := query.ParseColumns(flags.Column)
+		if err != nil {
+			return err
+		}
+		cols = query.ResolveColumns(specs, teamMemberListDefaultColumns)
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
