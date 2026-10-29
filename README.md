@@ -678,6 +678,23 @@ dash0 -X datasets create -f dataset.yaml
 dash0 -X datasets delete <id>
 ```
 
+### Agent0 skills (experimental)
+
+```bash
+# List the Agent0 custom skills
+dash0 -X agent0 skills list
+```
+
+```bash
+# Create or update a skill from a definition file
+dash0 -X apply -f skill.yaml
+```
+
+```bash
+# Export a skill, files and permissions included, ready to re-apply
+dash0 -X agent0 skills get <id> -o yaml > skill.yaml
+```
+
 ### Auth tokens (experimental)
 
 ```bash

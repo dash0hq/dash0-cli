@@ -81,6 +81,17 @@ const (
 	FixtureNotificationChannelsNotFound      = "notificationchannels/error_not_found.json"
 	FixtureNotificationChannelsUnauthorized  = "notificationchannels/error_unauthorized.json"
 
+	// Agent0 custom skills fixtures
+	FixtureAgent0SkillsListSuccess          = "agent0skills/list_success.json"
+	FixtureAgent0SkillsListEmpty            = "agent0skills/list_empty.json"
+	FixtureAgent0SkillsGetSuccess           = "agent0skills/get_success.json"
+	FixtureAgent0SkillsCreateSuccess        = "agent0skills/create_success.json"
+	FixtureAgent0SkillsUpdateSuccess        = "agent0skills/update_success.json"
+	FixtureAgent0SkillsNotFound             = "agent0skills/error_not_found.json"
+	FixtureAgent0SkillsUnauthorized         = "agent0skills/error_unauthorized.json"
+	FixtureAgent0SkillsDuplicateName        = "agent0skills/error_duplicate_name.json"
+	FixtureAgent0SkillsDefaultEnabledDenied = "agent0skills/error_default_enabled_forbidden.json"
+
 	// Datasets fixtures
 	FixtureDatasetsListSuccess   = "datasets/list_success.json"
 	FixtureDatasetsListEmpty     = "datasets/list_empty.json"

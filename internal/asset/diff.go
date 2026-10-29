@@ -86,6 +86,14 @@ func marshalForDiff(asset any) (string, error) {
 		dash0api.StripDatasetServerFields(&d)
 		SortDatasetPermissions(&d)
 		stripped = &d
+	case *dash0api.SkillDefinition:
+		var sk dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &sk); err != nil {
+			return "", fmt.Errorf("failed to unmarshal Agent0 skill: %w", err)
+		}
+		dash0api.StripCustomSkillServerFields(&sk)
+		SortCustomSkillPermissions(&sk)
+		stripped = &sk
 	case *dash0api.RecordingRule:
 		var r dash0api.RecordingRule
 		if err := dash0yaml.Unmarshal(jsonBytes, &r); err != nil {

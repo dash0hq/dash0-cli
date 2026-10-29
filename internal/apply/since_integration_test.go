@@ -2400,3 +2400,52 @@ func TestApply_Since_DeletesRemovedDatasetNamedBySpecSlug(t *testing.T) {
 	assert.Contains(t, output, `Dataset "Staging" (staging) deleted`)
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathDatasets+"/staging"))
 }
+
+func TestApply_Since_DeletesRemovedSkill(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "skill.yaml", "kind: Dash0Skill\nmetadata:\n  labels:\n    dash0.com/origin: dash0-cli_triage\nspec:\n  files:\n    - relativePath: SKILL.md\n      content: \"---\\nname: triage\\ndescription: d\\n---\\nBody.\\n\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add skill")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "skill.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove skill")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.On(http.MethodDelete, "/api/agent0/custom-skills/dash0-cli_triage", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `Agent0 skill "triage" (dash0-cli_triage) deleted`)
+	del := findRequest(server.Requests(), http.MethodDelete, "/api/agent0/custom-skills/dash0-cli_triage")
+	require.NotNil(t, del)
+	assert.NotContains(t, del.Query, "dataset=", "skills are org-level and must not carry a dataset query parameter")
+}

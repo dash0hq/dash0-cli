@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": 403,
+    "message": "Forbidden: You may not change defaultEnabled on the spec.permissions entry with role basic_member. Admins may change it on any grant; members only on a grant to a team they belong to or on their own user grant."
+  }
+}
