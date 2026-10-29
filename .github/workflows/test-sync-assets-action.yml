@@ -25,10 +25,22 @@ on:
         description: Commit to check out. Empty means the triggering ref.
         type: string
         default: ''
+      live-only:
+        description: Run only the jobs that need Dash0 credentials.
+        type: boolean
+        default: false
+    secrets:
+      DASH0_API_URL:
+        required: false
+      DASH0_AUTH_TOKEN:
+        required: false
+      DASH0_DATASET:
+        required: false
 
 jobs:
   test-since-none-omits-since:
     name: 'Since: none omits --since from both the preflight and the mutating call'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +90,7 @@ jobs:
 
   test-auto-does-not-derive-on-pull-request:
     name: 'Since: auto does not derive a comparison ref on a pull_request event'
-    if: github.event_name == 'pull_request'
+    if: ${{ !inputs.live-only && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,6 +143,7 @@ jobs:
 
   test-explicit-ref-passes-since:
     name: 'An explicit since ref is passed to both the preflight and the mutating call'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -191,6 +204,7 @@ jobs:
 
   test-unresolvable-ref-fails:
     name: 'An unresolvable since ref fails before dash0 is invoked'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -212,6 +226,7 @@ jobs:
 
   test-explicit-empty-since-fails:
     name: 'An explicit empty since fails, unlike auto finding no prior state'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -233,6 +248,7 @@ jobs:
 
   test-explicit-all-zeros-since-fails:
     name: 'An explicit all-zeros since fails, unlike auto finding no prior state'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -254,6 +270,7 @@ jobs:
 
   test-non-ancestor-ref-fails:
     name: 'A non-ancestor since ref fails by default'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -284,6 +301,7 @@ jobs:
 
   test-accept-non-ancestor-ref:
     name: 'Accept-non-ancestor-ref lets a non-ancestor since ref proceed'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -342,6 +360,7 @@ jobs:
 
   test-dry-run-plan-outputs:
     name: 'Dry-run computes and reports the pending plan without applying it'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -381,6 +400,7 @@ jobs:
 
   test-max-deletions-blocks:
     name: 'Max-deletions fails the job before any mutating call'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -442,6 +462,10 @@ jobs:
 
   test-end-to-end-sync:
     name: 'End-to-end create then delete-via-since'
+    # Every run writes the fixed id sync-assets-e2e-test to the same dataset.
+    concurrency:
+      group: sync-assets-e2e-test
+      cancel-in-progress: false
     # Needs live Dash0 credentials, which fork pull requests do not get. Runs on pull
     # requests from this repository, on every push to main, and for fork pull requests
     # after a maintainer approves them (see fork-pr-live-tests.yml).
@@ -518,6 +542,7 @@ jobs:
 
   test-arm64:
     name: 'Standalone install and dry-run on arm64'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

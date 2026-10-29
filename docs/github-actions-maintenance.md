@@ -32,16 +32,19 @@ When adding or removing flags from `dash0 config profiles create`, update both t
 
 ## Live tests on fork pull requests
 
-Fork pull requests get no secrets, so their `pull_request` run skips every job that needs live Dash0 credentials: the roundtrip tests in `ci.yml`, every `send-log-event` test job except `test-rejects-old-cli`, and `test-end-to-end-sync`.
+Fork pull requests get no secrets, so their `pull_request` run skips every job that needs live Dash0 credentials: the roundtrip tests in `ci.yml`, the `send-log-event` jobs that send to Dash0, and `test-end-to-end-sync`.
 `.github/workflows/fork-pr-live-tests.yml` runs them on `pull_request_target` instead, once a maintainer approves the run in the `fork-pr-live-tests` environment.
-It calls `ci.yml` and the two action test workflows through `workflow_call`, with the pull request's head commit as the `ref` input.
+It calls `ci.yml` and the two action test workflows through `workflow_call`, with the pull request's head commit as `ref`, `live-only: true`, and only the `DASH0_*` secrets.
 
-Approval runs the fork's code with the repository's secrets.
-Review the whole diff before you approve, including `.github/`, `Makefile`, and test scripts.
+Approval is the only control.
+Only the workflow files come from `main`. The fork's `Makefile`, test scripts, and the composite actions and scripts under `.github/actions/` all run with the secrets, so review all of them before you approve.
 Each new push to the pull request needs a new approval.
 
-When you add a job that checks out code to one of these workflows, pass `ref: ${{ inputs.ref }}` to `actions/checkout`, or the approved run tests `main` instead of the pull request.
-Do not save caches on `pull_request_target`, because they land in `main`'s cache scope.
+When you add a job to one of these workflows:
+
+- Pass `ref: ${{ inputs.ref }}` to `actions/checkout`, or the approved run tests `main` instead of the pull request.
+- If the job needs Dash0 credentials, gate it on the head repository like `test-send`, declare the secret under `workflow_call.secrets`, and pass it from `fork-pr-live-tests.yml`.
+- Otherwise, add `if: ${{ !inputs.live-only }}` so the approved run skips it.
 
 ## Testing the sync-assets action
 

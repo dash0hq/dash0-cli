@@ -25,6 +25,13 @@ on:
         description: Commit to check out. Empty means the triggering ref.
         type: string
         default: ''
+      live-only:
+        description: Run only the jobs that need Dash0 credentials.
+        type: boolean
+        default: false
+    secrets:
+      DASH0_AUTH_TOKEN:
+        required: false
 
 jobs:
   test-standalone-install:
@@ -132,6 +139,7 @@ jobs:
 
   test-rejects-old-cli:
     name: 'Rejects CLI below minimum version'
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -156,10 +164,7 @@ jobs:
 
   test-argument-mapping:
     name: 'Argument mapping'
-    # Needs live Dash0 credentials, which fork pull requests do not get. Runs on pull
-    # requests from this repository, on every push to main, and for fork pull requests
-    # after a maintainer approves them (see fork-pr-live-tests.yml).
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -190,9 +195,9 @@ jobs:
       - name: Send log event with all inputs
         uses: ./.github/actions/send-log-event
         with:
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
-          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
-          dataset: ${{ vars.DASH0_DATASET }}
+          otlp-url: https://ingress.example.com
+          auth-token: auth_dummy-token-for-argument-mapping
+          dataset: default
           event-name: dash0.deployment
           body: 'Test deployment completed'
           service-name: my-service
@@ -215,9 +220,9 @@ jobs:
 
       - name: Verify captured arguments
         env:
-          DASH0_OTLP_URL: ${{ vars.DASH0_OTLP_URL }}
-          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
-          DASH0_DATASET: ${{ vars.DASH0_DATASET }}
+          DASH0_OTLP_URL: https://ingress.example.com
+          DASH0_AUTH_TOKEN: auth_dummy-token-for-argument-mapping
+          DASH0_DATASET: default
         run: |
           cat /tmp/dash0-captured-args.txt
 
