@@ -4,7 +4,7 @@ component: agent0
 
 note: "`dash0 -X agent0 skills list|get|create|update|delete` and `apply` manage the Agent0 custom skills of your organization."
 
-issues: [0]
+issues: [337]
 
 subtext: |
   `apply` accepts `kind: Dash0Skill` documents and upserts them by `dash0.com/origin`; without an origin, `dash0.com/id` updates an existing skill only.
