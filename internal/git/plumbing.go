@@ -240,3 +240,19 @@ func (r Repo) ListYAMLFilesAtRef(ctx context.Context, ref, scope string) ([]stri
 	sort.Strings(files)
 	return files, nil
 }
+
+// IsIgnored runs `git check-ignore -q <path>`, reporting whether git
+// ignores path in the work tree containing r.Dir. path need not exist.
+// Exit 0 means ignored and exit 1 means not ignored; any other outcome
+// (including "not a git repository") is an error.
+func (r Repo) IsIgnored(ctx context.Context, path string) (bool, error) {
+	_, err := r.run(ctx, "check-ignore", "-q", path)
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
+}

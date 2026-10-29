@@ -129,6 +129,15 @@ func marshalForDiff(asset any) (string, error) {
 		// keeping it would show up as a phantom removal in `update --dry-run`.
 		dash0api.ClearTimeSeriesAggregationID(&a)
 		stripped = &a
+	case *dash0api.AuthTokenDefinition, *dash0api.AuthTokenResponseDefinition:
+		// Decoding into the request type drops spec.token, so a diff can never
+		// show the secret, even if a caller passes a response that still holds it.
+		var t dash0api.AuthTokenDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &t); err != nil {
+			return "", fmt.Errorf("failed to unmarshal auth token: %w", err)
+		}
+		dash0api.StripAuthTokenServerFields(&t)
+		stripped = &t
 	default:
 		stripped = asset
 	}

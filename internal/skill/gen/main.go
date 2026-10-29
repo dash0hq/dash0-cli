@@ -53,6 +53,12 @@ var topics = []topicSpec{
 	{name: "apply", sections: []string{"apply", "prometheusrule annotation merge"}},
 	{name: "api", sections: []string{"api"}},
 	{
+		name: "auth-tokens",
+		sections: []string{
+			"auth-tokens list", "auth-tokens get", "auth-tokens create", "auth-tokens update", "auth-tokens delete",
+		},
+	},
+	{
 		name:            "check-rules",
 		includeQuickRef: true,
 		sections:        []string{"prometheusrule annotation merge"},

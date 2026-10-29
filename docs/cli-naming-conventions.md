@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`
 - Group related functionality: `config profiles` for profile management
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams` and `datasets` commands, use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, and `auth-tokens` commands, use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -120,6 +120,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `PersesDashboard`           | PersesDashboard      |
 | `Dash0NotificationChannel`  | Notification channel |
 | `Dash0Dataset`              | Dataset              |
+| `Dash0AuthToken`            | Auth token           |
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
 
@@ -143,3 +144,7 @@ Shared parsing and import logic lives in `internal/asset/` so that both code pat
 Adding a new Asset CRUD command without wiring its `kind` into `internal/apply/apply.go` is incomplete work and must be flagged in review.
 Adding a new schema version (e.g. `apiVersion: v1alpha2`) to an existing asset without teaching `apply` to detect and route on it is the same kind of incomplete work.
 See [docs/adding-commands.md, step 4](adding-commands.md#4-wire-asset-crud-commands-into-apply) for the concrete wiring steps and the [verification step](adding-commands.md#11-verify) that proves the wiring is in place.
+
+`auth-tokens` is the one exception: `apply` rejects `Dash0AuthToken` documents.
+The API returns a new token's secret only once, and `apply` has no safe place to deliver it, so a token it created would have a secret nobody holds.
+Wire it into `apply` only together with a secret destination, such as a secret store.

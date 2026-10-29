@@ -17,7 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
@@ -37,9 +37,10 @@ Output formats are `table`, `json`, and `csv`.
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
-**Organizational commands** manage entities (teams, members, notification channels, datasets) scoped to the organization, not to a dataset.
+**Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
-Notification channels and datasets are exceptions: they use file-based input (`-f`), support `--dry-run`, and are wired into `apply`, but are still organization-level (no `--dataset`).
+Notification channels, datasets, and auth tokens are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+Notification channels and datasets are also wired into `apply`; auth tokens are not, because `apply` has no safe place to deliver a new token's secret.
 
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
@@ -1008,6 +1009,8 @@ All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
 Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
+`Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
+Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
 
 For `Dash0SpamFilter`, the `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a missing value defaults to `v1alpha1`.
@@ -2698,14 +2701,14 @@ The proxy's stats block updates in place as the data flows through, then the rec
 
 ## Organizational commands
 
-Organizational commands manage entities (teams, members, notification channels, datasets) that are scoped to the organization, not to a dataset.
+Organizational commands manage entities (teams, members, notification channels, datasets, auth tokens) that are scoped to the organization, not to a dataset.
 They share a common set of characteristics:
 - No `--dataset` flag.
 - All are experimental and require the `-X` flag.
 - Use `api-url` and `auth-token`.
 
 Most organizational commands use flag-based input.
-Notification channels and datasets are exceptions: they use file-based input (`-f`) and support `--dry-run`.
+Notification channels, datasets, and auth tokens are exceptions: they use file-based input (`-f`) and support `--dry-run`.
 
 ### `notification-channels list` (experimental)
 
@@ -2981,6 +2984,182 @@ Example:
 $ dash0 -X datasets delete <id>
 Are you sure you want to delete dataset "<id>"? Dashboards, check rules, synthetic checks and views are kept for 30 days; creating the same slug within that time restores them. Telemetry is removed as its retention expires. [y/N]: y
 Dataset "<id>" deleted
+```
+
+Aliases: `remove`
+
+### `auth-tokens list` (experimental)
+
+List all auth tokens in the organization.
+The output never contains a secret.
+
+```bash
+dash0 -X auth-tokens list [-o <format>] [--skip-header] [--column <col>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `wide`, `json`, `yaml`, or `csv` |
+| `--skip-header` | `false` | Omit the header row from `table`, `wide`, and `csv` output |
+| `--column` | | Column to display (repeatable; `table`, `wide`, and `csv` only) |
+
+The `wide` and `csv` formats add an `ORIGIN` column.
+
+```bash
+$ dash0 -X auth-tokens list
+NAME            ID                                    ACTIONS
+CI ingest       6f1c0d1e-5b7a-4c2e-9a51-2b0c6c4b8a10  ingest:*
+Read-only API   0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90  *:read
+```
+
+Aliases: `ls`
+
+### `auth-tokens get` (experimental)
+
+Get an auth token by ID or origin.
+The output never contains the secret: the API returns it only when the token is created.
+
+```bash
+dash0 -X auth-tokens get <id> [-o <format>]
+```
+
+```bash
+$ dash0 -X auth-tokens get <id>
+Kind:    Dash0AuthToken
+Name:    CI ingest
+ID:      6f1c0d1e-5b7a-4c2e-9a51-2b0c6c4b8a10
+Origin:  dash0-cli_ci-ingest
+Actions: ingest:*
+Created: 2026-10-01 10:00:00
+```
+
+Use `-o yaml` to get a definition you can edit and pass to `auth-tokens update`.
+
+### `auth-tokens create` (experimental)
+
+Create an auth token from a YAML or JSON definition file.
+`apply` does not accept auth tokens yet, so this is the only way to create one from a file.
+
+```bash
+dash0 -X auth-tokens create -f <file> [--secret-file <path>] [--allow-all-actions] [--dry-run] [-o <format>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--secret-file` | Write the secret to this new file, readable only by you |
+| `--allow-all-actions` | Allow the definition to grant the `*` action |
+| `--dry-run` | Validate without creating |
+| `-o` | Output format: `table`, `json`, or `yaml`; `json` and `yaml` never contain the secret |
+
+Definition:
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0AuthToken
+metadata:
+  name: CI ingest
+  labels:
+    dash0.com/origin: dash0-cli_ci-ingest
+spec:
+  actions:
+    - ingest:*
+  scope:
+    datasets:
+      restriction: restricted
+      slugs:
+        - default
+```
+
+The API returns a token's secret only in the response that creates it, so `create` delivers the secret before it returns, and decides where to deliver it before it calls the API:
+
+- On an interactive terminal, with agent mode off and the default output format, `create` prints the secret once on stdout and warns on stderr that it is shown only once.
+- With `--secret-file <path>`, `create` writes the secret and a newline to a new file with mode `0600`.
+  The path must not exist, so a symlink is refused too.
+  A path inside a git repository is refused unless git ignores it.
+  In CI, write the secret outside the checkout, for example to `$RUNNER_TEMP` on GitHub Actions.
+- In a pipe, in CI, in agent mode, or with `-o json` or `-o yaml`, `--secret-file` is required.
+  Without it, `create` fails before it creates anything.
+  `--dry-run` creates nothing, so it does not need `--secret-file`.
+
+If the secret cannot be written or printed after the token is created, `create` deletes the token again and fails, because nobody would hold its secret.
+This cannot cover a `create` that stops before the API response arrives, for example after Ctrl-C or a network drop.
+The token can then exist with a secret nobody holds.
+Find it with `auth-tokens list` and delete it with `auth-tokens delete`.
+
+`metadata.name` and `spec.actions` are required.
+`dash0.com/origin` is optional.
+When it is absent, Dash0 assigns an origin, so each `create` makes a new token.
+An origin that already exists is refused: use `auth-tokens update` to change that token.
+The `*` action gives the token full access to the organization, including its auth tokens, so granting it needs `--allow-all-actions`.
+`--force` and agent mode do not grant it.
+
+Create a token on an interactive terminal:
+
+```bash
+$ dash0 -X auth-tokens create -f token.yaml
+Auth token "CI ingest" created (id: 6f1c0d1e-5b7a-4c2e-9a51-2b0c6c4b8a10, origin: dash0-cli_ci-ingest)
+Store this secret now: it is shown only once, and Dash0 cannot show it again.
+auth_...
+```
+
+Create a token in CI and write the secret to a file:
+
+```bash
+$ dash0 -X auth-tokens create -f token.yaml --secret-file "$RUNNER_TEMP/ingest-token"
+Auth token "CI ingest" created (id: 6f1c0d1e-5b7a-4c2e-9a51-2b0c6c4b8a10, origin: dash0-cli_ci-ingest)
+Secret written to /home/runner/work/_temp/ingest-token
+```
+
+Aliases: `add`
+
+### `auth-tokens update` (experimental)
+
+Update an existing auth token from a YAML or JSON definition file.
+If the ID argument is omitted, the origin or ID is taken from the file.
+The token must exist: `update` fails with "not found" and never creates a token.
+The secret does not change and is never shown.
+A `spec` field left out of the file keeps its stored value.
+Granting the `*` action needs `--allow-all-actions`, as for `create`.
+The output is a unified diff of the before and after states.
+
+```bash
+dash0 -X auth-tokens update [id] -f <file> [--allow-all-actions] [--dry-run]
+```
+
+Rename a token from an exported definition:
+
+```bash
+$ dash0 -X auth-tokens update -f token.yaml
+--- Auth token (before)
++++ Auth token (after)
+@@ -3,7 +3,7 @@
+ metadata:
+   labels:
+     dash0.com/origin: dash0-cli_ci-ingest
+-  name: CI ingest
++  name: CI ingest (staging)
+ spec:
+   actions:
+   - ingest:*
+```
+
+### `auth-tokens delete` (experimental)
+
+Delete an auth token by ID or origin.
+Anything that uses the token loses access at once, and the deletion cannot be undone.
+Prompts for confirmation unless `--force` is passed.
+In agent mode, `auth-tokens delete` requires an explicit `--force`, as `datasets delete` does.
+The last auth token of an organization cannot be deleted: the API answers with a 400 error.
+With `--force`, a token that is already gone counts as deleted.
+
+```bash
+dash0 -X auth-tokens delete <id> [--force]
+```
+
+```bash
+$ dash0 -X auth-tokens delete <id> --force
+Auth token "<id>" deleted
 ```
 
 Aliases: `remove`
@@ -3498,7 +3677,7 @@ Install the skill for the detected agent host:
 
 ```bash
 $ dash0 skill install
-Installed dash0-cli skill (20 files) to .claude/skills/dash0-cli (detected: claude-code)
+Installed dash0-cli skill (24 files) to .claude/skills/dash0-cli (detected: claude-code)
 ```
 
 Install into a different directory than the current one:
@@ -3536,7 +3715,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: apply, api, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: apply, api, auth-tokens, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

@@ -21,7 +21,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| Organizational | `teams`, `members`, `notification-channels`, `datasets` | Flag-based input, no dataset, experimental |
+| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
 
@@ -167,6 +167,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 |-------|--------|
 | `apply` | Create-or-update asset definitions from files, directories, or stdin |
 | `api` | Raw HTTP passthrough to any Dash0 API endpoint |
+| `auth-tokens` | Auth token CRUD (organization-level, experimental; `create` needs `--secret-file` outside an interactive terminal; not supported by `apply`) |
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |

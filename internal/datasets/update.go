@@ -2,7 +2,6 @@ package datasets
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -131,7 +130,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	if flags.DryRun {
 		// A spec field left out of the file keeps its stored value, so the preview
 		// merges the file onto the stored dataset instead of showing omissions as removals.
-		preview, err := previewUpdate(before, &dataset)
+		preview, err := asset.PreviewUpdate[dash0api.DatasetDefinition](before, &dataset)
 		if err != nil {
 			return err
 		}
@@ -148,54 +147,4 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 
 	return asset.PrintDiff(os.Stdout, "Dataset", dash0api.GetDatasetName(result), before, result)
-}
-
-// previewUpdate returns the dataset as it would look after update: the file's values win,
-// and anything the file leaves out keeps its stored value.
-func previewUpdate(stored, update *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
-	base, err := toMap(stored)
-	if err != nil {
-		return nil, err
-	}
-	over, err := toMap(update)
-	if err != nil {
-		return nil, err
-	}
-	var merged dash0api.DatasetDefinition
-	data, err := json.Marshal(mergeMaps(base, over))
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(data, &merged); err != nil {
-		return nil, fmt.Errorf("failed to build the update preview: %w", err)
-	}
-	return &merged, nil
-}
-
-func toMap(d *dash0api.DatasetDefinition) (map[string]any, error) {
-	data, err := json.Marshal(d)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// mergeMaps overlays over onto base: nested objects merge, everything else is replaced.
-// An empty string counts as "left out": the definition types do not omit empty required
-// strings (kind, metadata.name), so a file that omits them marshals them as "".
-func mergeMaps(base, over map[string]any) map[string]any {
-	for k, v := range over {
-		if vm, ok := v.(map[string]any); ok {
-			if bm, ok := base[k].(map[string]any); ok {
-				base[k] = mergeMaps(bm, vm)
-				continue
-			}
-		}
-		base[k] = v
-	}
-	return base
 }

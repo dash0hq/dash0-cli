@@ -1,0 +1,9 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0AuthToken
+metadata:
+  name: __NAME__
+  labels:
+    dash0.com/origin: __ORIGIN__
+spec:
+  actions:
+    - "*:read"

@@ -60,6 +60,8 @@ func KindDisplayName(kind string) string {
 		return "Time series aggregation"
 	case "dataset":
 		return "Dataset"
+	case "authtoken":
+		return "Auth token"
 	default:
 		return kind
 	}

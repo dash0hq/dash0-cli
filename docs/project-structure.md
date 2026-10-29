@@ -4,6 +4,7 @@
 - `/docs`: Development guidelines referenced from `CLAUDE.md`
 - `/internal/agentmode`: Agent mode detection and structured error output for AI coding agents
 - `/internal/apply`: The `apply` command — orchestration only, delegates asset-specific logic to `internal/asset`
+- `/internal/authtokens`: The `auth-tokens` command group — `auth-tokens list`, `auth-tokens get`, `auth-tokens create`, `auth-tokens update`, `auth-tokens delete` (experimental, org-wide, no dataset). Not wired into `apply`, because `apply` cannot deliver a new token's secret
 - `/internal/asset`: Shared asset logic (types, import functions, display helpers) used by both `apply` and the per-asset CRUD commands
 - `/internal/checkrules`, `/internal/dashboards`, `/internal/recordingrules`, `/internal/syntheticchecks`, `/internal/views`: Per-asset CRUD commands — delegate asset-specific logic to `internal/asset`
 - `/internal/client`: API client factory and error handling
