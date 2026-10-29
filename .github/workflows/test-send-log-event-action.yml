@@ -18,14 +18,28 @@ on:
       - .chloggen/**
       - flake.nix
   workflow_dispatch:
+  workflow_call:
+    # Called by fork-pr-live-tests.yml after a maintainer approves a fork pull request.
+    inputs:
+      ref:
+        description: Commit to check out. Empty means the triggering ref.
+        type: string
+        default: ''
 
 jobs:
   test-standalone-install:
     name: 'Standalone install (no setup action)'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Start local OTLP stub
+        run: |
+          nohup python3 .github/workflows/test-helpers/otlp_stub.py 4318 > /tmp/otlp-stub.log 2>&1 &
+          for _ in $(seq 1 50); do curl -sf -X POST http://127.0.0.1:4318/ready && exit 0; sleep 0.1; done
+          echo "::error::OTLP stub did not start"; cat /tmp/otlp-stub.log; exit 1
 
       - name: Verify CLI is not installed
         run: |
@@ -34,9 +48,9 @@ jobs:
       - name: Send log event (standalone)
         uses: ./.github/actions/send-log-event
         with:
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
-          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
-          dataset: ${{ vars.DASH0_DATASET }}
+          otlp-url: http://127.0.0.1:4318
+          auth-token: auth_dummy-token-for-fork-ci
+          dataset: default
           event-name: dash0.ci.test
           body: 'Standalone install test'
           service-name: send-log-event-action-ci
@@ -49,18 +63,25 @@ jobs:
 
   test-reuses-setup:
     name: 'Reuse setup action installation'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Start local OTLP stub
+        run: |
+          nohup python3 .github/workflows/test-helpers/otlp_stub.py 4318 > /tmp/otlp-stub.log 2>&1 &
+          for _ in $(seq 1 50); do curl -sf -X POST http://127.0.0.1:4318/ready && exit 0; sleep 0.1; done
+          echo "::error::OTLP stub did not start"; cat /tmp/otlp-stub.log; exit 1
 
       - name: Setup Dash0 CLI
         uses: ./.github/actions/setup
         with:
           version: '1.1.0'
           cache: 'false'
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
-          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          otlp-url: http://127.0.0.1:4318
+          auth-token: auth_dummy-token-for-fork-ci
 
       - name: Record binary path before send-log-event
         id: before
@@ -69,7 +90,7 @@ jobs:
       - name: Send log event (reusing setup)
         uses: ./.github/actions/send-log-event
         with:
-          dataset: ${{ vars.DASH0_DATASET }}
+          dataset: default
           event-name: dash0.ci.test
           body: 'Reuse setup test'
           service-name: send-log-event-action-ci
@@ -81,38 +102,51 @@ jobs:
 
   test-profile-update:
     name: 'Updates existing profile with connection inputs'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Start local OTLP stub
+        run: |
+          nohup python3 .github/workflows/test-helpers/otlp_stub.py 4318 > /tmp/otlp-stub.log 2>&1 &
+          for _ in $(seq 1 50); do curl -sf -X POST http://127.0.0.1:4318/ready && exit 0; sleep 0.1; done
+          echo "::error::OTLP stub did not start"; cat /tmp/otlp-stub.log; exit 1
 
       - name: Setup Dash0 CLI with a dummy token
         uses: ./.github/actions/setup
         with:
           version: '1.1.0'
           cache: 'false'
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          otlp-url: http://127.0.0.1:4318
           auth-token: auth_this-token-is-intentionally-invalid
 
       - name: Verify profile has the dummy token
         run: |
           dash0 config show | grep -q '...alid'
 
-      - name: Send log event with the real token
+      - name: Send log event with a different token
         uses: ./.github/actions/send-log-event
         with:
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
-          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
-          dataset: ${{ vars.DASH0_DATASET }}
+          otlp-url: http://127.0.0.1:4318
+          auth-token: auth_dummy-token-for-fork-ci
+          dataset: default
           event-name: dash0.ci.test
           body: 'Profile update test'
           service-name: send-log-event-action-ci
+
+      - name: Verify profile now has the new token
+        run: |
+          dash0 config show | grep -q '...fork-ci'
 
   test-rejects-old-cli:
     name: 'Rejects CLI below minimum version'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Send log event with old CLI version
         id: send
@@ -132,10 +166,11 @@ jobs:
 
   test-argument-mapping:
     name: 'Argument mapping'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Dash0 CLI
         uses: ./.github/actions/setup
@@ -161,9 +196,9 @@ jobs:
       - name: Send log event with all inputs
         uses: ./.github/actions/send-log-event
         with:
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
-          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
-          dataset: ${{ vars.DASH0_DATASET }}
+          otlp-url: http://127.0.0.1:4318
+          auth-token: auth_dummy-token-for-fork-ci
+          dataset: default
           event-name: dash0.deployment
           body: 'Test deployment completed'
           service-name: my-service
@@ -186,9 +221,9 @@ jobs:
 
       - name: Verify captured arguments
         env:
-          DASH0_OTLP_URL: ${{ vars.DASH0_OTLP_URL }}
-          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
-          DASH0_DATASET: ${{ vars.DASH0_DATASET }}
+          DASH0_OTLP_URL: http://127.0.0.1:4318
+          DASH0_AUTH_TOKEN: auth_dummy-token-for-fork-ci
+          DASH0_DATASET: default
         run: |
           cat /tmp/dash0-captured-args.txt
 
@@ -236,10 +271,15 @@ jobs:
 
   test-send:
     name: 'End-to-end send'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
+    # Needs live Dash0 credentials, which fork pull requests do not get. Runs on pull
+    # requests from this repository, on every push to main, and for fork pull requests
+    # after a maintainer approves them (see fork-pr-live-tests.yml).
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Generate unique marker
         id: marker
@@ -282,17 +322,24 @@ jobs:
 
   test-arm64:
     name: 'Standalone install on arm64'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Start local OTLP stub
+        run: |
+          nohup python3 .github/workflows/test-helpers/otlp_stub.py 4318 > /tmp/otlp-stub.log 2>&1 &
+          for _ in $(seq 1 50); do curl -sf -X POST http://127.0.0.1:4318/ready && exit 0; sleep 0.1; done
+          echo "::error::OTLP stub did not start"; cat /tmp/otlp-stub.log; exit 1
 
       - name: Send log event (standalone on arm64)
         uses: ./.github/actions/send-log-event
         with:
-          otlp-url: ${{ vars.DASH0_OTLP_URL }}
-          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
-          dataset: ${{ vars.DASH0_DATASET }}
+          otlp-url: http://127.0.0.1:4318
+          auth-token: auth_dummy-token-for-fork-ci
+          dataset: default
           event-name: dash0.ci.test
           body: 'arm64 install test'
           service-name: send-log-event-action-ci

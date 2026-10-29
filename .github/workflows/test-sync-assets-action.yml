@@ -18,6 +18,13 @@ on:
       - .chloggen/**
       - flake.nix
   workflow_dispatch:
+  workflow_call:
+    # Called by fork-pr-live-tests.yml after a maintainer approves a fork pull request.
+    inputs:
+      ref:
+        description: Commit to check out. Empty means the triggering ref.
+        type: string
+        default: ''
 
 jobs:
   test-since-none-omits-since:
@@ -26,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Setup Dash0 CLI
@@ -75,6 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Setup Dash0 CLI
@@ -126,6 +135,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Setup Dash0 CLI
@@ -185,6 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Sync assets with an unresolvable since ref
@@ -205,6 +216,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Sync assets with an explicit empty since
@@ -225,6 +237,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Sync assets with an explicit all-zeros since
@@ -245,6 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Create an orphan commit that is not an ancestor of HEAD
@@ -274,6 +288,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Create an orphan commit that is not an ancestor of HEAD
@@ -331,6 +346,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Create a scratch dashboard fixture
@@ -369,6 +385,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Build a scratch git history with two dashboards, then remove both
@@ -425,11 +442,15 @@ jobs:
 
   test-end-to-end-sync:
     name: 'End-to-end create then delete-via-since'
-    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'
+    # Needs live Dash0 credentials, which fork pull requests do not get. Runs on pull
+    # requests from this repository, on every push to main, and for fork pull requests
+    # after a maintainer approves them (see fork-pr-live-tests.yml).
+    if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Add the e2e dashboard fixture
@@ -501,6 +522,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Verify CLI is not installed

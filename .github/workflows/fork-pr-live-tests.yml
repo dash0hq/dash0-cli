@@ -1,0 +1,44 @@
+name: Fork PR live tests
+
+# Fork pull requests get no secrets, so the roundtrip tests and the live action
+# tests skip on their pull_request run. This workflow runs them with secrets
+# once a maintainer approves the run in the fork-pr-live-tests environment.
+#
+# pull_request_target runs the workflow files from main, so a fork cannot change
+# them. It does check out and run the fork's code with secrets, so review the whole
+# diff, including .github/, before you approve. Each new push needs a new approval.
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  approve:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    environment: fork-pr-live-tests
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Approved live tests for ${{ github.event.pull_request.head.sha }}"
+
+  ci:
+    needs: approve
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+    secrets: inherit
+
+  send-log-event:
+    needs: approve
+    uses: ./.github/workflows/test-send-log-event-action.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+    secrets: inherit
+
+  sync-assets:
+    needs: approve
+    uses: ./.github/workflows/test-sync-assets-action.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+    secrets: inherit
