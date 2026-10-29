@@ -129,6 +129,13 @@ func marshalForDiff(asset any) (string, error) {
 		// keeping it would show up as a phantom removal in `update --dry-run`.
 		dash0api.ClearTimeSeriesAggregationID(&a)
 		stripped = &a
+	case *dash0api.AwsMetricScrapeConfigDefinition:
+		var c dash0api.AwsMetricScrapeConfigDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &c); err != nil {
+			return "", fmt.Errorf("failed to unmarshal AWS metric scrape config: %w", err)
+		}
+		normalizeAwsMetricScrapeConfigForDiff(&c)
+		stripped = &c
 	case *dash0api.AuthTokenDefinition, *dash0api.AuthTokenResponseDefinition:
 		// Decoding into the request type drops spec.token, so a diff can never
 		// show the secret, even if a caller passes a response that still holds it.

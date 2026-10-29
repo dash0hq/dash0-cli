@@ -270,6 +270,9 @@ jobs:
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
           DASH0_OTLP_URL: ${{ secrets.DASH0_OTLP_URL }}
           DASH0_DATASET: ${{ secrets.DASH0_DATASET }}
+          # An AWS integration whose scrape config test_aws_metric_scrape_config_roundtrip
+          # replaces and restores. That test skips while the secret is unset.
+          DASH0_AWS_INTEGRATION_ID: ${{ secrets.DASH0_AWS_INTEGRATION_ID }}
         run: bash test/roundtrip/${{ matrix.test }}.sh
 
       - name: Run ${{ matrix.test }} (OAuth token)

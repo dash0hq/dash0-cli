@@ -73,6 +73,7 @@ Supported asset types:
   - Dash0Team
   - Dash0TimeSeriesAggregation
   - Dash0Dataset
+  - Dash0AwsMetricScrapeConfig
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -370,7 +371,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			// place to deliver it, so a created token's secret would be lost.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.location(), doc.kind))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0AwsMetricScrapeConfig)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -413,6 +414,19 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			// run has written its other documents. parseDocumentHeader already
 			// stored the origin in doc.id, so there is nothing to re-parse.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrTimeSeriesAggregationMissingOrigin.Error()))
+		} else if normalizeKind(doc.kind) == "awsmetricscrapeconfig" {
+			// A missing spec.namespaces would be sent as [] and stop all
+			// scraping, so the document is validated before anything is applied.
+			_, warnings, err := asset.ParseAwsMetricScrapeConfig(doc.raw)
+			switch {
+			case err != nil:
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
+			case doc.id == "":
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrAwsMetricScrapeConfigMissingID.Error()))
+			}
+			for _, warning := range warnings {
+				validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
+			}
 		}
 	}
 	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
@@ -628,6 +642,15 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = dash0api.GetDatasetName(&dataset)
 		id = dash0api.GetDatasetID(&dataset)
+
+	case "awsmetricscrapeconfig":
+		var cfg dash0api.AwsMetricScrapeConfigDefinition
+		if err := dash0yaml.Unmarshal(data, &cfg); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetAwsMetricScrapeConfigName(&cfg)
+		// The integration id is the only key: there is one config per integration.
+		id = dash0api.GetAwsMetricScrapeConfigID(&cfg)
 
 	default:
 		var raw map[string]any
@@ -956,6 +979,19 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			return nil, err
 		}
 		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "awsmetricscrapeconfig":
+		// Organization-level: the integration id decides the dataset, so the
+		// CLI's --dataset is not passed.
+		cfg, _, err := asset.ParseAwsMetricScrapeConfig(doc.raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportAwsMetricScrapeConfig(ctx, apiClient, cfg, doc.id)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.id})
+		}
+		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)

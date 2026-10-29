@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0AwsMetricScrapeConfig`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -87,6 +87,21 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > You therefore cannot apply one document to two datasets, as you can for every other asset kind.
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+
+`Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
+They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
+These checks run during the validation phase, before any document in the run is applied:
+
+- A document without `dash0.com/id` fails, because there is nothing to address it by.
+- A missing or `null` `spec.namespaces` fails, because the API would read it as `[]` and stop all scraping.
+  Write `namespaces: []` to stop scraping on purpose.
+- An unknown field under `spec` fails, so a misspelled key is not silently dropped.
+- A label or annotation that the API ignores prints a warning.
+  The labels and annotations that `aws-metric-scrape-configs get -o yaml` exports are not warned about.
+
+The CLI does not send `dash0.com/origin`, so it never claims ownership of a config.
+Dash0 keeps the origin of the first writer until the config is cleared.
+`apply` prints `created` when the integration had no config before, and a diff otherwise.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -254,6 +269,9 @@ Telemetry is removed as its retention expires, not by the delete.
 In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), a `--since` run that would delete a dataset requires an explicit `--force`, as `datasets delete` does.
 Without it, the run refuses with an error before it applies anything.
 A dataset that is already gone counts as deleted, and a removed dataset document with no slug fails the "no identifier" check below, like any other kind.
+
+A `Dash0AwsMetricScrapeConfig` document removed since `<ref>` clears the integration's scrape config, with the same API call as `aws-metric-scrape-configs delete`.
+Dash0 stops scraping CloudWatch metrics for that integration, and the integration itself is kept.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 

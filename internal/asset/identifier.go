@@ -48,7 +48,8 @@ type identifierProbe struct {
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
 //   - SLO, Dash0SpamFilter, Dash0Team: dash0.com/origin, then dash0.com/id
-//   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View):
+//   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
+//     Dash0AwsMetricScrapeConfig):
 //     dash0.com/id
 //
 // Each kind reads only the field its Import helper actually upserts by. A

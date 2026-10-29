@@ -3111,3 +3111,148 @@ func TestApply_Dataset_AppliedBeforeAssetsThatSortFirst(t *testing.T) {
 	require.GreaterOrEqual(t, viewAt, 0, "expected a view request")
 	assert.Less(t, datasetAt, viewAt, "the dataset must be created before the view")
 }
+
+const (
+	awsScrapeIntegrationID = "27755ed0-0009-422d-8c11-19c6dd72df98"
+	apiPathAwsScrapeConfig = "/api/aws-metric-scrape-configs/" + awsScrapeIntegrationID
+
+	awsScrapeConfigDoc = `apiVersion: dash0.com/v1alpha1
+kind: Dash0AwsMetricScrapeConfig
+metadata:
+  name: production-account
+  labels:
+    dash0.com/id: ` + awsScrapeIntegrationID + `
+spec:
+  namespaces:
+    - namespace: AWS/S3
+      metrics:
+        - BucketSizeBytes
+`
+)
+
+func runApplyFile(t *testing.T, serverURL, path string, extra ...string) (string, string, error) {
+	t.Helper()
+	cmd := NewApplyCmd()
+	cmd.SetArgs(append([]string{"-f", path, "--api-url", serverURL, "--auth-token", testAuthToken}, extra...))
+	var cmdErr error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+	return stdout, stderr, cmdErr
+}
+
+func TestApply_AwsMetricScrapeConfig_PutsByIntegrationID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "scrape-config.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(awsScrapeConfigDoc), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathAwsScrapeConfig, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "awsmetricscrapeconfigs/get_unconfigured.json", Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, apiPathAwsScrapeConfig, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "awsmetricscrapeconfigs/get_configured.json", Validator: testutil.RequireHeaders})
+
+	output, _, err := runApplyFile(t, server.URL, yamlFile, "--dataset", "ignored")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`) created`)
+	put := findRequest(server.Requests(), http.MethodPut, apiPathAwsScrapeConfig)
+	require.NotNil(t, put)
+	assert.Empty(t, put.Query, "the config is organization-level, so no dataset is sent")
+	var sent dash0api.AwsMetricScrapeConfigDefinition
+	require.NoError(t, json.Unmarshal(put.Body, &sent))
+	assert.Nil(t, sent.Metadata.Labels, "the CLI must not claim ownership with an origin")
+	require.Len(t, sent.Spec.Namespaces, 1)
+	assert.Equal(t, "AWS/S3", sent.Spec.Namespaces[0].Namespace)
+}
+
+func TestApply_AwsMetricScrapeConfig_ReapplyShowsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	exported, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), "awsmetricscrapeconfigs", "get_configured.json"))
+	require.NoError(t, err)
+	// apply only discovers .yaml files; JSON is valid YAML.
+	yamlFile := filepath.Join(t.TempDir(), "scrape-config.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, exported, 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathAwsScrapeConfig, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "awsmetricscrapeconfigs/get_configured.json"})
+	server.On(http.MethodPut, apiPathAwsScrapeConfig, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "awsmetricscrapeconfigs/get_configured.json"})
+
+	output, stderr, err := runApplyFile(t, server.URL, yamlFile)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `AWS metric scrape config "production-account": no changes`)
+	assert.Empty(t, stderr)
+}
+
+// A missing id, or a spec that would silently stop all scraping, must fail
+// during validation, before the dashboard next to it is written.
+func TestApply_AwsMetricScrapeConfig_InvalidDocumentsFailValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		doc     string
+		wantErr string
+	}{
+		{
+			name:    "missing integration id",
+			doc:     "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  name: production-account\nspec:\n  namespaces: []\n",
+			wantErr: `requires metadata.labels["dash0.com/id"]`,
+		},
+		{
+			name:    "missing namespaces",
+			doc:     "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  labels:\n    dash0.com/id: " + awsScrapeIntegrationID + "\nspec:\n  namespace: []\n",
+			wantErr: "spec.namespaces is required",
+		},
+		{
+			name:    "unknown spec field",
+			doc:     "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  labels:\n    dash0.com/id: " + awsScrapeIntegrationID + "\nspec:\n  namespaces: []\n  filter: []\n",
+			wantErr: `unknown field "filter"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "a-dashboard.yaml"), []byte("kind: Dashboard\nmetadata:\n  name: d\n  dash0Extensions:\n    id: dash-1\nspec:\n  display:\n    name: d\n"), 0644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "scrape-config.yaml"), []byte(tt.doc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+			_, _, err := runApplyFile(t, server.URL, dir)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Empty(t, server.Requests())
+		})
+	}
+}
+
+func TestApply_AwsMetricScrapeConfig_IntegrationNotFound(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "scrape-config.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(awsScrapeConfigDoc), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathAwsScrapeConfig, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "awsmetricscrapeconfigs/error_not_found.json"})
+
+	_, _, err := runApplyFile(t, server.URL, yamlFile)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `AWS integration "`+awsScrapeIntegrationID+`" not found`)
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPut, apiPathAwsScrapeConfig))
+}
+
+func TestApply_AwsMetricScrapeConfig_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "scrape-config.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(awsScrapeConfigDoc), 0644))
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--dry-run"})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `Apply AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`)`)
+}
