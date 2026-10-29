@@ -30,16 +30,9 @@ The profile-creation tests mirror the parameter combinations tested in `TestCrea
 Each combination is a separate job that asserts the correct fields are set and the omitted fields show `(not set)` (or `default` for dataset).
 When adding or removing flags from `dash0 config profiles create`, update both the unit test and the workflow.
 
-## Testing the send-log-event action
-
-The workflow `.github/workflows/test-send-log-event-action.yml` must pass on fork pull requests, which get no secrets.
-Jobs that test installation, profile handling, or argument mapping send to a local OTLP stub (`.github/workflows/test-helpers/otlp_stub.py`) with a dummy token.
-Only `test-send` needs live Dash0 credentials.
-Give a new job a live credential only when it checks something that a stub cannot prove, such as a log record arriving in Dash0.
-
 ## Live tests on fork pull requests
 
-Fork pull requests get no secrets, so their `pull_request` run skips every job that needs live Dash0 credentials: the roundtrip tests in `ci.yml`, `test-send`, and `test-end-to-end-sync`.
+Fork pull requests get no secrets, so their `pull_request` run skips every job that needs live Dash0 credentials: the roundtrip tests in `ci.yml`, every `send-log-event` test job except `test-rejects-old-cli`, and `test-end-to-end-sync`.
 `.github/workflows/fork-pr-live-tests.yml` runs them on `pull_request_target` instead, once a maintainer approves the run in the `fork-pr-live-tests` environment.
 It calls `ci.yml` and the two action test workflows through `workflow_call`, with the pull request's head commit as the `ref` input.
 
