@@ -13,6 +13,11 @@ set -euo pipefail
 export DASH0_AGENT_MODE=0
 
 if [ -z "${DASH0_AWS_INTEGRATION_ID:-}" ]; then
+  # CI sets the secret, so a skip there means the test silently stopped running.
+  if [ -n "${CI:-}" ]; then
+    echo "=== FAIL: DASH0_AWS_INTEGRATION_ID is not set in CI ==="
+    exit 1
+  fi
   echo "=== SKIP: DASH0_AWS_INTEGRATION_ID is not set ==="
   echo "Set it to the id of an AWS integration whose scrape config this test may replace and restore."
   exit 0
