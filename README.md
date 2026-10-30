@@ -695,6 +695,23 @@ dash0 -X auth-tokens create -f token.yaml --secret-file "$RUNNER_TEMP/ingest-tok
 dash0 -X auth-tokens delete <id>
 ```
 
+### AWS metric scrape configs (experimental)
+
+```bash
+# Export the CloudWatch metric scrape config of an AWS integration
+dash0 -X aws-metric-scrape-configs get <integration-id> -o yaml > scrape-config.yaml
+```
+
+```bash
+# Replace the config from a file (the integration id comes from the file's dash0.com/id label)
+dash0 -X aws-metric-scrape-configs update -f scrape-config.yaml
+```
+
+```bash
+# Clear the config: Dash0 stops scraping CloudWatch metrics, and the integration is kept
+dash0 -X aws-metric-scrape-configs delete <integration-id>
+```
+
 ### Teams (experimental)
 
 ```bash

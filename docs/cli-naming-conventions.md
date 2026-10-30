@@ -5,8 +5,8 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`, `aws-metric-scrape-configs`
 - Group related functionality: `config profiles` for profile management
 
 ## Standard CRUD Subcommands for Assets
@@ -35,6 +35,19 @@ Without `--force`, a 404 must surface as a clean "asset not found" error (via `c
 The shared helper is `client.IsAlreadyDeleted(err, force, ectx)` in `internal/client/client.go`.
 Every delete path must call it before falling through to `client.HandleAPIError`; the helper prints an "already deleted" line to stderr and returns `true` when force is set and the error is a 404.
 This is a hard rule, not a guideline — adding a new delete command without this wiring is incomplete work and will be flagged in review.
+
+## AWS Metric Scrape Configs Subcommands (experimental)
+Each AWS integration has exactly one CloudWatch metric scrape config, addressed by the integration id.
+The API has no list endpoint and no create, so `aws-metric-scrape-configs` has only three of the standard subcommands:
+
+| Subcommand | Alias    | Description                                                    |
+|------------|----------|----------------------------------------------------------------|
+| `get`      | -        | Get the config of an integration                               |
+| `update`   | -        | Replace the config of an integration from a file               |
+| `delete`   | `remove` | Clear the config of an integration; the integration is kept    |
+
+`update` doubles as create, because a PUT replaces the config whether or not one exists, so there is no `create` alias to keep in sync.
+Success messages say `cleared`, not `deleted`, because the integration survives.
 
 ## Config Profiles Subcommands
 The `config profiles` command uses:
@@ -123,6 +136,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dash0AuthToken`            | Auth token           |
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
+| `Dash0AwsMetricScrapeConfig`| AWS metric scrape config |
 
 For example: `Check rule "High Error Rate" created`, not `CheckRule "High Error Rate" created`.
 

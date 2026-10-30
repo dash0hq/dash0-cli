@@ -2400,3 +2400,44 @@ func TestApply_Since_DeletesRemovedDatasetNamedBySpecSlug(t *testing.T) {
 	assert.Contains(t, output, `Dataset "Staging" (staging) deleted`)
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathDatasets+"/staging"))
 }
+
+func TestApply_Since_RemovedAwsMetricScrapeConfigIsCleared(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "scrape-config.yaml", awsScrapeConfigDoc)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add scrape config")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "scrape-config.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove scrape config")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodDelete, apiPathAwsScrapeConfig, testutil.MockResponse{
+		StatusCode:  http.StatusNoContent,
+		ContentType: "text/plain",
+		Validator:   testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`) cleared`)
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathAwsScrapeConfig))
+}

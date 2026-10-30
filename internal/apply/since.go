@@ -410,7 +410,11 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 	// contradict it and misrepresent a no-op as a real deletion in a CI
 	// log or audit trail.
 	if !alreadyDeleted {
-		fmt.Printf("%s %s deleted\n", displayKind, display)
+		verb := "deleted"
+		if d.Kind == "awsmetricscrapeconfig" {
+			verb = "cleared" // the integration itself is kept
+		}
+		fmt.Printf("%s %s %s\n", displayKind, display, verb)
 	}
 	return false, nil
 }
@@ -476,6 +480,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
 		// The same path as `datasets delete`.
 		err = apiClient.DeleteDataset(ctx, identifier)
+	case "awsmetricscrapeconfig":
+		// Clears the integration's scrape config and keeps the integration,
+		// the same call as `aws-metric-scrape-configs delete`.
+		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
 	case "timeseriesaggregation":
 		// The API returns 204 for an absent aggregation, so the tolerance
 		// below never fires for this kind. It does fire for the cross-dataset

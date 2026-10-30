@@ -33,6 +33,7 @@ var Manifest = []ManifestEntry{
 	{"apply", "references/apply.md"},
 	{"api", "references/api.md"},
 	{"auth-tokens", "references/auth-tokens.md"},
+	{"aws-metric-scrape-configs", "references/aws-metric-scrape-configs.md"},
 	{"check-rules", "references/check-rules.md"},
 	{"config", "references/config.md"},
 	{"dashboards", "references/dashboards.md"},
