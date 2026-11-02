@@ -85,6 +85,7 @@ const (
 	FixtureAgent0SkillsListSuccess          = "agent0skills/list_success.json"
 	FixtureAgent0SkillsListEmpty            = "agent0skills/list_empty.json"
 	FixtureAgent0SkillsGetSuccess           = "agent0skills/get_success.json"
+	FixtureAgent0SkillsGetDeleted           = "agent0skills/get_deleted.json"
 	FixtureAgent0SkillsCreateSuccess        = "agent0skills/create_success.json"
 	FixtureAgent0SkillsUpdateSuccess        = "agent0skills/update_success.json"
 	FixtureAgent0SkillsNotFound             = "agent0skills/error_not_found.json"

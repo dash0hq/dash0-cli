@@ -278,6 +278,25 @@ func TestGetSkill_Table(t *testing.T) {
 		"  references/runbook.md\n", output)
 }
 
+func TestGetSkill_TableShowsDeleted(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	mockGet(server, pathByOrigin, http.StatusOK, testutil.FixtureAgent0SkillsGetDeleted)
+
+	output, _, err := runCmd(t, server.URL, "-X", "agent0", "skills", "get", skillOrigin)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Kind:    Dash0Skill\n"+
+		"Name:    incident-triage\n"+
+		"ID:      "+skillID+"\n"+
+		"Origin:  "+skillOrigin+"\n"+
+		"Deleted: 2026-11-02 08:45:10\n"+
+		"Enabled: true\n"+
+		"Files:\n"+
+		"  SKILL.md\n"+
+		"  references/runbook.md\n", output)
+}
+
 // The YAML export is what users commit, so spec.permissions, defaultEnabled included, must survive it.
 func TestGetSkill_YAMLKeepsPermissions(t *testing.T) {
 	testutil.SetupTestEnv(t)

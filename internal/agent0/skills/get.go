@@ -125,6 +125,9 @@ func printDetails(skill *dash0api.SkillDefinition) {
 	if origin := dash0api.GetCustomSkillOrigin(skill); origin != "" {
 		fmt.Printf("Origin:  %s\n", origin)
 	}
+	if deletedAt := asset.CustomSkillDeletedAt(skill); deletedAt != nil {
+		fmt.Printf("Deleted: %s\n", deletedAt.UTC().Format("2006-01-02 15:04:05"))
+	}
 	if enabled := enabledValue(skill); enabled != "-" {
 		fmt.Printf("Enabled: %s\n", enabled)
 	}

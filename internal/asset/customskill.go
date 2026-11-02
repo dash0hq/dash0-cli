@@ -108,7 +108,7 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 		before, err = apiClient.GetCustomSkill(ctx, origin)
 		switch {
 		case err == nil:
-			action = actionForExisting(customSkillDeletedAt(before))
+			action = actionForExisting(CustomSkillDeletedAt(before))
 		case dash0api.IsNotFound(err):
 			before = nil
 		default:
@@ -124,7 +124,7 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 			}
 			return ImportResult{}, err
 		}
-		action = actionForExisting(customSkillDeletedAt(before))
+		action = actionForExisting(CustomSkillDeletedAt(before))
 		result, err = apiClient.UpdateCustomSkill(ctx, id, skill)
 	default:
 		result, err = apiClient.CreateCustomSkill(ctx, skill)
@@ -142,7 +142,8 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 	return ImportResult{Name: CustomSkillName(result), ID: CustomSkillKey(result), Action: action, Before: beforeAny, After: result}, nil
 }
 
-func customSkillDeletedAt(skill *dash0api.SkillDefinition) *time.Time {
+// CustomSkillDeletedAt returns when the skill was soft-deleted, or nil if it was not.
+func CustomSkillDeletedAt(skill *dash0api.SkillDefinition) *time.Time {
 	if skill == nil || skill.Metadata.Annotations == nil {
 		return nil
 	}
