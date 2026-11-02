@@ -34,7 +34,7 @@ type deletionPlan struct {
 	// scope is the --since target's path relative to the repository root
 	// (forward-slashed, "" when the target is the repo root itself). Deletion
 	// paths (gitutil.Deletion.Path, from git ls-tree) are always repo-root-
-	// relative, while validated documents' assetDocument.filePath is always
+	// relative, while validated documents' asset.Document.filePath is always
 	// relative to the -f target itself -- when the target is a subdirectory,
 	// those two bases differ, so rendering must strip this prefix from a
 	// deletion path before grouping it with validated documents from the same
@@ -195,7 +195,7 @@ func computeDeletionPlan(ctx context.Context, flags *applyFlags) (*deletionPlan,
 	plan := gitutil.Diff(before, after)
 	if len(plan.NoIdentifier) > 0 {
 		return nil, fmt.Errorf("--since '%s' found %s deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
-			flags.Since, pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
+			flags.Since, asset.Pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
 	}
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
@@ -248,18 +248,18 @@ func nearestExistingAncestor(path string) (ancestor string, missingSuffix string
 // dispatch never depends on a name, only on (kind, identifier).
 func resolveDeletionNames(before gitutil.Snapshot, deletions []gitutil.Deletion) map[string]string {
 	names := make(map[string]string, len(deletions))
-	docsByFile := map[string][]assetDocument{}
+	docsByFile := map[string][]asset.Document{}
 	for _, d := range deletions {
 		basePath, docIndex := splitMultiDocPath(d.Path)
 		docs, cached := docsByFile[basePath]
 		if !cached {
 			if raw, ok := before.RawContent[basePath]; ok {
-				docs, _ = parseMultiDocumentYAML(raw)
+				docs, _ = asset.ParseMultiDocumentYAML(raw)
 			}
 			docsByFile[basePath] = docs
 		}
-		if docIndex < len(docs) && docs[docIndex].name != "" {
-			names[d.Path] = docs[docIndex].name
+		if docIndex < len(docs) && docs[docIndex].Name != "" {
+			names[d.Path] = docs[docIndex].Name
 		}
 	}
 	return names
@@ -374,7 +374,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 	if name == "" {
 		name = "<name>"
 	}
-	display := formatNameAndId(name, d.Identifier)
+	display := asset.FormatNameAndID(name, d.Identifier)
 	if d.Kind == "slo" && !d.SLOUsesOrigin {
 		fmt.Fprintf(os.Stderr, "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
 	}
