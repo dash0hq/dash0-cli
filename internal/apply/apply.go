@@ -331,7 +331,6 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	return nil
 }
 
-
 func normalizeKind(kind string) string {
 	// Normalize common variations
 	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
@@ -547,7 +546,6 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc ass
 
 	return results, nil
 }
-
 
 // applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.
 // The apiVersion field on the document selects the schema; an unknown value

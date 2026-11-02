@@ -14,6 +14,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+
+// dryRunFileJSON and dryRunChangeJSON decode --dry-run --agent-mode output, the
+// JSON contract the sync-assets action parses.
+type dryRunFileJSON struct {
+	Path    string             `json:"path"`
+	Changes []dryRunChangeJSON `json:"changes"`
+}
+
+type dryRunChangeJSON struct {
+	Op         string `json:"op"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	OriginOrID string `json:"originOrId"`
+	Since      string `json:"since,omitempty"`
+}
+
 func withAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
 	prev := agentmode.Enabled
@@ -73,6 +89,27 @@ func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 	require.Len(t, out[0].Changes, 2)
 	assert.Equal(t, dryRunChangeJSON{Op: "apply", Kind: "View", Name: "error-logs-view", OriginOrID: "33333333-3333-3333-3333-333333333333"}, out[0].Changes[0])
 	assert.Equal(t, dryRunChangeJSON{Op: "delete", Kind: "Check rule", Name: "High Error Rate", OriginOrID: "44444444-4444-4444-4444-444444444444", Since: "abc123"}, out[0].Changes[1])
+}
+
+// apply --since skips deleting a check rule that -f still declares, so the
+// dry run must not list that deletion, and its count must leave it out.
+func TestRunDryRun_DeclaredCheckRuleIsNotListed(t *testing.T) {
+	documents := []asset.Document{
+		{Kind: "CheckRule", Name: "High Error Rate", ID: "still-declared", FilePath: "rules.yaml"},
+	}
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
+			ByIdentifier: []gitutil.Deletion{{Kind: "checkrule", Identifier: "still-declared", Path: "old.yaml"}},
+		},
+		DeclaredCheckRuleIDs: map[string]bool{"still-declared": true},
+	}
+
+	stdout := testutil.CaptureStdout(t, func() {
+		require.NoError(t, runDryRun(documents, true, "dir", "HEAD~1", dp))
+	})
+
+	assert.Contains(t, stdout, "--since: no deletions")
+	assert.NotContains(t, stdout, "Delete")
 }
 
 // TestRunDryRun_JSON_DeletionIncludesKindAndSinceRef is a regression test
@@ -217,7 +254,7 @@ func TestRunDryRun_TextMode_Unaffected(t *testing.T) {
 }
 
 // prometheusRuleCRDForDryRun is a two-alert CRD whose dash0.com/id label is
-// what buildDryRunRows keys crdFileByIdentifier on, so an alert deletion
+// what preview.Plan.AddDeletions keys crdFileByIdentifier on, so an alert deletion
 // (which carries only its surviving CRD's identifier, never a file path)
 // lands under the same file entry as the CRD's own "apply" row.
 const prometheusRuleCRDForDryRun = `apiVersion: monitoring.coreos.com/v1
