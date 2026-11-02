@@ -43,6 +43,7 @@ Each new push to the pull request needs a new approval.
 When you add a job to one of these workflows:
 
 - Pass `ref: ${{ inputs.ref }}` to `actions/checkout`, or the approved run tests `main` instead of the pull request.
+- Also pass `allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}`, or `actions/checkout` v7 refuses to check out the fork's code.
 - If the job needs Dash0 credentials, gate it on the head repository like `test-send`, declare the secret under `workflow_call.secrets`, and pass it from `fork-pr-live-tests.yml`.
 - Otherwise, add `if: ${{ !inputs.live-only }}` so the approved run skips it.
 
