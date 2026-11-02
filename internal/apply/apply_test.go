@@ -70,7 +70,7 @@ func TestIsValidKind(t *testing.T) {
 
 	for _, kind := range validKinds {
 		t.Run("valid_"+kind, func(t *testing.T) {
-			assert.True(t, isValidKind(kind), "expected %q to be valid", kind)
+			assert.True(t, asset.IsValidKind(kind), "expected %q to be valid", kind)
 		})
 	}
 
@@ -85,7 +85,7 @@ func TestIsValidKind(t *testing.T) {
 
 	for _, kind := range invalidKinds {
 		t.Run("invalid_"+kind, func(t *testing.T) {
-			assert.False(t, isValidKind(kind), "expected %q to be invalid", kind)
+			assert.False(t, asset.IsValidKind(kind), "expected %q to be invalid", kind)
 		})
 	}
 }
@@ -113,7 +113,7 @@ spec:
 	docs, err := asset.ReadMultiDocumentYAML("-", strings.NewReader(yaml))
 	require.NoError(t, err)
 
-	validationErrors, validationWarnings := validateDocuments(docs)
+	validationErrors, validationWarnings := asset.ValidateDocuments(docs)
 	assert.Empty(t, validationErrors, "the API-managed assets warning must not become a validation error")
 	require.Len(t, validationWarnings, 1)
 	assert.Contains(t, validationWarnings[0], "spec.routing.assets is API-managed and ignored on write")
@@ -123,7 +123,7 @@ func TestValidateDocuments_DatasetMissingSlug(t *testing.T) {
 	docs, err := asset.ReadMultiDocumentYAML("-", strings.NewReader("apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: P\nspec: {}\n"))
 	require.NoError(t, err)
 
-	validationErrors, _ := validateDocuments(docs)
+	validationErrors, _ := asset.ValidateDocuments(docs)
 	require.Len(t, validationErrors, 1)
 	assert.Contains(t, validationErrors[0], "dash0.com/id")
 }
@@ -132,7 +132,7 @@ func TestValidateDocuments_AuthTokenRejected(t *testing.T) {
 	docs, err := asset.ReadMultiDocumentYAML("-", strings.NewReader("apiVersion: dash0.com/v1alpha1\nkind: Dash0AuthToken\nmetadata:\n  name: ingest\nspec:\n  actions: [\"ingest:*\"]\n"))
 	require.NoError(t, err)
 
-	validationErrors, _ := validateDocuments(docs)
+	validationErrors, _ := asset.ValidateDocuments(docs)
 	require.Len(t, validationErrors, 1)
 	assert.Contains(t, validationErrors[0], `apply does not support kind "Dash0AuthToken"`)
 	assert.Contains(t, validationErrors[0], "auth-tokens create")
@@ -152,7 +152,7 @@ func TestValidateDocuments_DatasetAPIVersion(t *testing.T) {
 			docs, err := asset.ReadMultiDocumentYAML("-", strings.NewReader(c.doc))
 			require.NoError(t, err)
 
-			validationErrors, _ := validateDocuments(docs)
+			validationErrors, _ := asset.ValidateDocuments(docs)
 			if c.wantErr == "" {
 				assert.Empty(t, validationErrors)
 				return
@@ -251,7 +251,7 @@ spec:
 			docs, err := asset.ReadDirectory(dir)
 			require.NoError(t, err)
 
-			validationErrors, _ := validateDocuments(docs)
+			validationErrors, _ := asset.ValidateDocuments(docs)
 			assert.Equal(t, tt.want, validationErrors)
 		})
 	}

@@ -1,0 +1,14 @@
+change_type: new_component
+
+component: diff
+
+note: "Add the experimental `dash0 diff` command, which previews what `apply` would do (creates, updates, and — with `--since` — deletions) without ever mutating anything."
+
+issues: [256]
+
+subtext: |
+  `diff` fetches each document's current state from Dash0 first, so it can accurately distinguish a create from
+  an update — unlike `apply --dry-run`, which is local-only and cannot tell the two apart. It uses a three-way
+  exit code (0 clean, 1 differences pending, 2 error), modeled on `kubectl diff`.
+
+change_logs: [user]

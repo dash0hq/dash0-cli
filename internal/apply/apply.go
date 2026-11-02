@@ -14,6 +14,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -166,7 +167,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		// Read from stdin
 		documents, err = asset.ReadMultiDocumentYAML("-", os.Stdin)
 		if err != nil {
-			return validationError(err.Error())
+			return asset.FormatValidationError(err.Error())
 		}
 	} else {
 		info, statErr := os.Stat(flags.File)
@@ -193,30 +194,30 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 					// itself survives. Same all-deletions case as above.
 					documents = nil
 				} else {
-					return validationError(err.Error())
+					return asset.FormatValidationError(err.Error())
 				}
 			}
 		default:
 			documents, err = asset.ReadMultiDocumentYAML(flags.File, nil)
 			if err != nil {
-				return validationError(err.Error())
+				return asset.FormatValidationError(err.Error())
 			}
 		}
 	}
 
 	if len(documents) == 0 && !flags.SinceFlagSet {
-		return validationError("no documents found in input")
+		return asset.FormatValidationError("no documents found in input")
 	}
 
-	validationErrors, validationWarnings := validateDocuments(documents)
+	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
 	if len(validationErrors) > 0 {
-		return validationError(validationErrors...)
+		return asset.FormatValidationError(validationErrors...)
 	}
 	for _, warning := range validationWarnings {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
-	var deletionPlan *deletionPlan
+	var deletionPlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
 		plan, err := computeDeletionPlan(ctx, flags)
 		if err != nil {
@@ -224,7 +225,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		}
 		deletionPlan = plan
 		if targetVanished {
-			fromDirectory = plan.targetWasDirectoryAtRef
+			fromDirectory = plan.TargetWasDirectoryAtRef
 		}
 	}
 
@@ -237,7 +238,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	// of getting the usual agent-mode auto-confirmation. Checked before any
 	// document is applied, so a refusal leaves the run untouched.
 	if deletionPlan != nil {
-		for _, d := range deletionPlan.plan.ByIdentifier {
+		for _, d := range deletionPlan.Plan.ByIdentifier {
 			if d.Kind != "dataset" {
 				continue
 			}
@@ -304,8 +305,8 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		// work) meant a declined or unconfirmable --since ref aborted the
 		// entire apply run, including ordinary creates/updates that have
 		// nothing to do with --since's ancestry check.
-		if deletionPlan.warning != "" {
-			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.warning)
+		if deletionPlan.Warning != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.Warning)
 			// --force also accepts this (backward compatible: it always
 			// implied "proceed unattended"), but --accept-non-ancestor-ref
 			// lets a caller accept a doubtful ref on its own, without also
@@ -313,7 +314,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			acceptRef := flags.Force || flags.AcceptNonAncestorRef
 			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", acceptRef)
 			if confirmErr != nil || !confirmed {
-				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
+				skipped := len(deletionPlan.Plan.ByIdentifier) + len(deletionPlan.Plan.AlertsByName)
 				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")
 				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", asset.Pluralize(skipped, "asset"))
 			}
@@ -330,119 +331,6 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	return nil
 }
 
-// validateDocuments checks all documents up front, collecting all errors so a multi-doc apply is
-// never partially triggered by a problem detectable before the first API call. Non-fatal warnings
-// are collected separately — callers only print them when validation succeeds, since a warning
-// about a document that never gets applied would be noise next to a hard error.
-func validateDocuments(documents []asset.Document) (validationErrors, validationWarnings []string) {
-	for _, doc := range documents {
-		if doc.Kind == "" {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.Location()))
-		} else if normalizeKind(doc.Kind) == "authtoken" {
-			// The API returns a token's secret only on create, and apply has no safe
-			// place to deliver it, so a created token's secret would be lost.
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.Location(), doc.Kind))
-		} else if !isValidKind(doc.Kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset)", doc.Location(), doc.Kind))
-		} else if normalizeKind(doc.Kind) == "spamfilter" {
-			// Catch unknown spam filter apiVersions during validation rather
-			// than after the first PUT, so a partial apply of a multi-doc input
-			// is never triggered by a typo in apiVersion.
-			if _, err := asset.DetectSpamFilterAPIVersion(doc.Raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
-			}
-		} else if normalizeKind(doc.Kind) == "prometheusrule" {
-			// Catch CRDs that contain no usable rules at all up front, before
-			// any API call. ParseAsPrometheusAlertRules already rejects
-			// alert-only-empty CRDs, but a CRD with zero rules of either kind
-			// would otherwise slip through to applyDocument.
-			if err := validatePrometheusRule(doc.Raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
-			}
-		} else if normalizeKind(doc.Kind) == "notificationchannel" {
-			// A document carrying spec.routing.assets gets a non-fatal warning — the API treats
-			// the field as API-managed and silently ignores it on write; the apply proceeds as
-			// usual. Parse errors are already caught during metadata extraction in
-			// readMultiDocumentYAML.
-			var channel dash0api.NotificationChannelDefinition
-			if err := dash0yaml.Unmarshal(doc.Raw, &channel); err == nil {
-				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
-					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.Location(), warning))
-				}
-			}
-		} else if normalizeKind(doc.Kind) == "dataset" {
-			// A missing slug (the server cannot assign one) or an unknown apiVersion
-			// fails here, before any document is applied, instead of as a server
-			// 400 mid-run.
-			var dataset dash0api.DatasetDefinition
-			if err := dash0yaml.Unmarshal(doc.Raw, &dataset); err == nil {
-				if err := asset.ValidateDataset(&dataset); err != nil {
-					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
-				}
-			}
-		} else if normalizeKind(doc.Kind) == "timeseriesaggregation" && doc.ID == "" {
-			// Origin is mandatory for this kind and there is no fallback create
-			// path, so a document missing it fails here rather than after the
-			// run has written its other documents. parseDocumentHeader already
-			// stored the origin in doc.ID, so there is nothing to re-parse.
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), asset.ErrTimeSeriesAggregationMissingOrigin.Error()))
-		}
-	}
-	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
-	return validationErrors, validationWarnings
-}
-
-func checkRuleIDCollisions(documents []asset.Document) []string {
-	var ids []string
-	usesByID := make(map[string][]string)
-	for _, doc := range documents {
-		for _, rule := range checkRulesWithID(doc) {
-			id := *rule.Id
-			if _, seen := usesByID[id]; !seen {
-				ids = append(ids, id)
-			}
-			usesByID[id] = append(usesByID[id], fmt.Sprintf("%s: %q", doc.Location(), rule.Name))
-		}
-	}
-
-	var collisions []string
-	for _, id := range ids {
-		if uses := usesByID[id]; len(uses) > 1 {
-			collisions = append(collisions, fmt.Sprintf("check rule id %q is used more than once, so only the last one would be kept:\n    %s", id, strings.Join(uses, "\n    ")))
-		}
-	}
-	return collisions
-}
-
-func checkRulesWithID(doc asset.Document) []*dash0api.PrometheusAlertRule {
-	kind := normalizeKind(doc.Kind)
-	if kind != "checkrule" && kind != "prometheusrule" {
-		return nil
-	}
-	// Parse errors, and recording-only PrometheusRules, are reported by the
-	// other checks or when the document is applied.
-	rules, err := asset.ParseCheckRules(doc.Raw)
-	if err != nil {
-		return nil
-	}
-	var withID []*dash0api.PrometheusAlertRule
-	for _, rule := range rules {
-		if rule.Id != nil && *rule.Id != "" {
-			withID = append(withID, rule)
-		}
-	}
-	return withID
-}
-
-// validationError formats one or more validation issues into a consistent
-// "validation failed with N error/errors:" message.
-func validationError(issues ...string) error {
-	return fmt.Errorf("validation failed with %s:\n  %s", asset.Pluralize(len(issues), "error"), strings.Join(issues, "\n  "))
-}
-
-func isValidKind(kind string) bool {
-	return asset.IsValidKind(kind)
-}
 
 func normalizeKind(kind string) string {
 	// Normalize common variations
@@ -623,7 +511,7 @@ func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 // recording rules are dispatched to the recording-rule endpoint via a
 // recording-only copy of the CRD.
 func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	crd, err := parsePrometheusRuleCRD(doc.Raw)
+	crd, err := asset.ParsePrometheusRuleCRD(doc.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -660,37 +548,6 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc ass
 	return results, nil
 }
 
-// parsePrometheusRuleCRD parses raw bytes as a PrometheusRule CRD (the typed
-// dash0api.RecordingRule, an alias for the generated PrometheusRule type that
-// captures both Alert and Record per rule).
-func parsePrometheusRuleCRD(data []byte) (*dash0api.RecordingRule, error) {
-	var crd dash0api.RecordingRule
-	if err := dash0yaml.Unmarshal(data, &crd); err != nil {
-		return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
-	}
-	return &crd, nil
-}
-
-// validatePrometheusRule rejects a PrometheusRule CRD that contains no
-// alerting and no recording rules, so the failure surfaces in the validation
-// phase rather than after the first request.
-func validatePrometheusRule(data []byte) error {
-	crd, err := parsePrometheusRuleCRD(data)
-	if err != nil {
-		return err
-	}
-	if !asset.PrometheusRuleHasAlerts(crd) && asset.RecordingOnlyPrometheusRule(crd) == nil {
-		return fmt.Errorf("PrometheusRule contains no alerting or recording rules")
-	}
-	names, err := asset.ExtractPrometheusAlertNames(data)
-	if err != nil {
-		return err
-	}
-	if err := asset.CheckAlertNameCollisions(names); err != nil {
-		return err
-	}
-	return nil
-}
 
 // applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.
 // The apiVersion field on the document selects the schema; an unknown value

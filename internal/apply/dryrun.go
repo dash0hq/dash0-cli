@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 )
 
 // dryRunRow is one asset --dry-run reports on: either being validated
@@ -54,7 +54,7 @@ type dryRunFileJSON struct {
 // buildDryRunRows groups documents (always) and dp's deletion plan (only
 // when dp is non-nil) into per-file rows, sorted within each file by
 // originOrID (id/origin) for both text and JSON rendering to share.
-func buildDryRunRows(documents []asset.Document, dp *deletionPlan) (rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool) {
+func buildDryRunRows(documents []asset.Document, dp *gitutil.SincePlan) (rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool) {
 	rowsByFile = map[string][]dryRunRow{}
 	validatedFileSet = map[string]bool{}
 	addRow := func(file string, row dryRunRow) {
@@ -81,19 +81,19 @@ func buildDryRunRows(documents []asset.Document, dp *deletionPlan) (rowsByFile m
 	}
 
 	if dp != nil {
-		for _, d := range dp.plan.ByIdentifier {
-			// dp.names is resolved from git history and best-effort: a
+		for _, d := range dp.Plan.ByIdentifier {
+			// dp.Names is resolved from git history and best-effort: a
 			// lookup failure (rewritten/gc'd blob) falls back to an
 			// explicit "<name>" placeholder rather than silently omitting
 			// it.
-			name := dp.names[d.Path]
+			name := dp.Names[d.Path]
 			if name == "" {
 				name = "<name>"
 			}
-			basePath, _ := splitMultiDocPath(d.Path)
-			addRow(stripScope(basePath, dp.scope), dryRunRow{op: "delete", kind: d.Kind, name: name, originOrID: d.Identifier})
+			basePath, _ := gitutil.SplitMultiDocPath(d.Path)
+			addRow(gitutil.StripScope(basePath, dp.Scope), dryRunRow{op: "delete", kind: d.Kind, name: name, originOrID: d.Identifier})
 		}
-		for _, a := range dp.plan.AlertsByName {
+		for _, a := range dp.Plan.AlertsByName {
 			addRow(crdFileByIdentifier[a.CRDIdentifier], dryRunRow{
 				op:         "delete",
 				kind:       "checkrule",
@@ -128,9 +128,9 @@ func flattenSorted(rowsByFile map[string][]dryRunRow, files []string) []dryRunRo
 // runDryRun renders --dry-run's output: validation results, merged with
 // --since's deletion plan when dp is non-nil. Emits agent-mode JSON when
 // active, plain text otherwise.
-func runDryRun(documents []asset.Document, fromDirectory bool, fileArg, since string, dp *deletionPlan) error {
-	if dp != nil && dp.warning != "" {
-		fmt.Fprintf(os.Stderr, "warning: %s\n", dp.warning)
+func runDryRun(documents []asset.Document, fromDirectory bool, fileArg, since string, dp *gitutil.SincePlan) error {
+	if dp != nil && dp.Warning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", dp.Warning)
 	}
 
 	rowsByFile, files, validatedFileSet := buildDryRunRows(datasetsFirst(documents), dp)
@@ -142,14 +142,14 @@ func runDryRun(documents []asset.Document, fromDirectory bool, fileArg, since st
 	return nil
 }
 
-func renderDryRunText(rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool, fromDirectory bool, documentCount int, since string, dp *deletionPlan) {
+func renderDryRunText(rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool, fromDirectory bool, documentCount int, since string, dp *gitutil.SincePlan) {
 	switch {
 	case dp == nil && fromDirectory:
 		fmt.Printf("Dry run: %s from %s validated\n", asset.Pluralize(documentCount, "document"), asset.Pluralize(len(validatedFileSet), "file"))
 	case dp == nil:
 		fmt.Printf("Dry run: %s validated\n", asset.Pluralize(documentCount, "document"))
 	default:
-		deletionCount := len(dp.plan.ByIdentifier) + len(dp.plan.AlertsByName)
+		deletionCount := len(dp.Plan.ByIdentifier) + len(dp.Plan.AlertsByName)
 		if deletionCount == 0 {
 			fmt.Printf("Dry run: %s%s validated; --since: no deletions\n", asset.Pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)))
 		} else {
@@ -184,26 +184,6 @@ func renderDryRunLine(r dryRunRow) string {
 	return fmt.Sprintf("%s %s %s", verb, asset.KindDisplayName(r.kind), asset.FormatNameAndID(r.name, r.originOrID))
 }
 
-// stripScope removes scope's directory prefix from path, converting a
-// repo-root-relative deletion path (gitutil.Deletion.Path, as read via git
-// ls-tree) into the same -f-target-relative basis validated documents'
-// asset.Document.filePath already uses -- otherwise a deletion from a
-// subdirectory -f target groups under a different (repo-root-relative) key
-// than that same file's surviving documents, splitting one file into two
-// entries with inconsistent prefixing. scope is "" when the target is the
-// repository root itself, in which case the two bases already coincide.
-func stripScope(path, scope string) string {
-	if scope == "" {
-		return path
-	}
-	prefix := scope + "/"
-	if rest, ok := strings.CutPrefix(path, prefix); ok {
-		return rest
-	}
-	return path
-}
-
-// fileSuffix renders the " from N files" clause the --since summary line
 // adds only when the target was a directory — a single-file or stdin target
 // has no file count worth stating.
 func fileSuffix(fromDirectory bool, fileCount int) string {

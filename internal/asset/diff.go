@@ -176,6 +176,14 @@ func PrintChanges(w io.Writer, displayKind string, before, after any) error {
 	return writeDiff(w, text)
 }
 
+// HasDifference reports whether before and after differ once normalized the
+// same way PrintDiff normalizes them, so a caller that counts pending changes
+// (dash0 diff) does not re-implement that normalization.
+func HasDifference(before, after any) (bool, error) {
+	text, err := unifiedDiff("", before, after)
+	return text != "", err
+}
+
 func unifiedDiff(displayKind string, before, after any) (string, error) {
 	beforeYAML, err := marshalForDiff(before)
 	if err != nil {
