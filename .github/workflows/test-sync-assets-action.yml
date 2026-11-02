@@ -46,6 +46,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Setup Dash0 CLI
@@ -96,6 +97,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Setup Dash0 CLI
@@ -149,6 +151,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Setup Dash0 CLI
@@ -210,6 +213,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Sync assets with an unresolvable since ref
@@ -232,6 +236,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Sync assets with an explicit empty since
@@ -254,6 +259,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Sync assets with an explicit all-zeros since
@@ -276,6 +282,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Create an orphan commit that is not an ancestor of HEAD
@@ -307,6 +314,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Create an orphan commit that is not an ancestor of HEAD
@@ -366,6 +374,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Create a scratch dashboard fixture
@@ -406,6 +415,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Build a scratch git history with two dashboards, then remove both
@@ -475,6 +485,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Add the e2e dashboard fixture
@@ -548,6 +559,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
           fetch-depth: 0
 
       - name: Verify CLI is not installed
