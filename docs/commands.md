@@ -683,6 +683,9 @@ If the ID argument is omitted, the ID is extracted from the file content.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
 
+The diff is computed semantically, not as a raw text diff: cosmetic differences, such as key order, duration formatting (`2m` vs. `2m0s`), int-vs-float representation, and API-populated defaults absent from the local file, never produce a spurious "changed" result.
+See [`diff`](#diff-experimental) for what the comparison does and does not normalize.
+
 ```bash
 dash0 dashboards update [id] -f <file> [--dry-run]
 ```
@@ -1323,6 +1326,12 @@ Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash
 For an update, `diff` prints a unified diff between the fetched state and the local definition, identical in format to `dashboards update`'s own diff output.
 A document with no identifier, or one whose identifier does not match any existing asset, is reported as a create.
 An asset that exists but is soft-deleted is also reported as a create, since `apply` restores it.
+
+The comparison is semantic, not a raw text diff.
+Key order, duration formatting (`2m` and `2m0s` are the same value), int-vs-float differences between YAML and JSON, and API-populated defaults absent from the local document never count as a change.
+Slice order is ignored only for fields that are sets, such as `spec.permissions`, notification channels, and synthetic check locations; reordering any other list, such as `spec.filter`, is a change.
+For check rules, the default annotation values the Prometheus YAML conversion omits (`dash0-threshold-critical`/`dash0-threshold-degraded: "0"`, `dash0-enabled: "true"`) are treated as absent.
+A real change next to an ignored reorder or duration-format difference may still show that difference in the printed diff, but the comparison never reports a false "no differences".
 
 All documents are fetched before anything is printed.
 If any single fetch fails for a reason other than the asset simply not existing yet — an auth failure, a 5xx, a network error — the entire preview is aborted and nothing is printed, so a partial, misleading report is never shown.

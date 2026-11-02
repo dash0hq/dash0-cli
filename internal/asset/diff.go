@@ -176,9 +176,35 @@ func PrintChanges(w io.Writer, displayKind string, before, after any) error {
 	return writeDiff(w, text)
 }
 
-// HasDifference reports whether before and after differ once normalized the
-// same way PrintDiff normalizes them, so a caller that counts pending changes
-// (dash0 diff) does not re-implement that normalization.
+// semanticCompareConfig returns the per-kind options for dash0yaml.Equivalent
+// and dash0yaml.Normalize, keyed off after's concrete type.
+//
+// *dash0api.PrometheusAlertRule is flat (top-level annotations, no metadata:
+// nesting), and its annotations hold user content (summary, description, the
+// bare "sharing" key) rather than server provenance, so it compares them
+// unfiltered. Every other kind is metadata-nested and keeps only the
+// user-settable annotations listed here.
+func semanticCompareConfig(asset any) (extraIgnoredFields, preservedAnnotationKeys []string, opts []dash0yaml.Option) {
+	switch asset.(type) {
+	case *dash0api.DashboardDefinition, *dash0api.ViewDefinition:
+		return nil, []string{dash0api.AnnotationSharing, dash0api.AnnotationFolderPath}, nil
+	case *dash0api.SloDefinition:
+		return nil, []string{dash0api.AnnotationSharing, dash0api.AnnotationFolderPath, "dash0.com/enabled"}, nil
+	case *dash0api.PrometheusAlertRule:
+		return nil, nil, []dash0yaml.Option{dash0yaml.WithAnnotationsRoot(""), dash0yaml.WithAnnotationsUnfiltered()}
+	case *dash0api.SyntheticCheckDefinition:
+		return nil, []string{dash0api.AnnotationSharing}, nil
+	case *dash0api.NotificationChannelDefinition:
+		// spec.routing.assets is API-managed; see RoutingAssetsWarning.
+		return []string{"spec.routing.assets"}, nil, nil
+	default:
+		return nil, nil, nil
+	}
+}
+
+// HasDifference reports whether before and after differ semantically, the
+// same way PrintDiff decides, so a caller that counts pending changes (dash0
+// diff) does not re-implement that comparison.
 func HasDifference(before, after any) (bool, error) {
 	text, err := unifiedDiff("", before, after)
 	return text != "", err
@@ -195,9 +221,35 @@ func unifiedDiff(displayKind string, before, after any) (string, error) {
 		return "", fmt.Errorf("failed to marshal after state: %w", err)
 	}
 
+	// Compare semantically: key and slice order, duration formatting
+	// ("2m" vs "2m0s"), int-vs-float, empty containers, and server-populated
+	// defaults absent from after are not changes.
+	extraIgnored, preserved, opts := semanticCompareConfig(after)
+	extraIgnored = append(extraIgnored, dash0yaml.AbsentFields([]byte(afterYAML), dash0yaml.ConditionallyIgnoredFields())...)
+	equivalent, err := dash0yaml.Equivalent([]byte(beforeYAML), []byte(afterYAML), extraIgnored, preserved, opts...)
+	if err != nil {
+		return "", fmt.Errorf("failed to compare semantic equivalence: %w", err)
+	}
+	if equivalent {
+		return "", nil
+	}
+
+	// Render from normalized YAML so ignored fields do not clutter the diff.
+	// Slice order and duration formatting are only tolerated by the
+	// comparator, so a real change next to one of those can still show it
+	// as extra noise; it never hides a real change.
+	normalizedBefore, err := dash0yaml.Normalize([]byte(beforeYAML), extraIgnored, preserved, opts...)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize before state: %w", err)
+	}
+	normalizedAfter, err := dash0yaml.Normalize([]byte(afterYAML), extraIgnored, preserved, opts...)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize after state: %w", err)
+	}
+
 	diff := difflib.UnifiedDiff{
-		A:        difflib.SplitLines(beforeYAML),
-		B:        difflib.SplitLines(afterYAML),
+		A:        difflib.SplitLines(string(normalizedBefore)),
+		B:        difflib.SplitLines(string(normalizedAfter)),
 		FromFile: fmt.Sprintf("%s (before)", displayKind),
 		ToFile:   fmt.Sprintf("%s (after)", displayKind),
 		Context:  3,

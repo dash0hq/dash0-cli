@@ -57,15 +57,21 @@ func TestBuildRows_UpdateWithRealChange(t *testing.T) {
 	assert.Equal(t, 1, pendingCount(rowsByFile))
 }
 
+// TestBuildRows_UpdateWithNoChange uses two distinct *SyntheticCheckDefinition
+// values whose spec.schedule.locations differ only in order, so the semantic
+// comparison (asset.HasDifference) decides "no change", not pointer identity.
 func TestBuildRows_UpdateWithNoChange(t *testing.T) {
-	same := &dash0api.ViewDefinition{}
-	same.Metadata.Name = "same-name"
-
+	before := &dash0api.SyntheticCheckDefinition{}
+	before.Metadata.Name = "same-name"
+	before.Spec.Schedule.Locations = []string{"de-frankfurt", "us-oregon"}
+	after := &dash0api.SyntheticCheckDefinition{}
+	after.Metadata.Name = "same-name"
+	after.Spec.Schedule.Locations = []string{"us-oregon", "de-frankfurt"}
 	planned := []plannedDoc{
 		{
 			doc: viewDoc("view.yaml", "view-id"),
 			plans: []docPlan{
-				{displayKind: "View", name: "same-name", id: "view-id", before: same, after: same},
+				{displayKind: "SyntheticCheck", name: "same-name", id: "check-id", before: before, after: after},
 			},
 		},
 	}
