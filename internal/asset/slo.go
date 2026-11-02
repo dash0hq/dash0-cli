@@ -57,57 +57,19 @@ func SLOUsesOrigin(data []byte) (bool, error) {
 // ActionRestored. Both labels are captured before StripSLOServerFields runs,
 // because that helper clears dash0.com/origin and dash0.com/id.
 func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportResult, error) {
-	// Capture identifiers before stripping — StripSLOServerFields clears both
-	// the dash0.com/origin and dash0.com/id labels, so origin- and id-based
-	// routing must observe the input first.
-	origin := dash0api.GetSLOOrigin(slo)
 	id := dash0api.GetSLOID(slo)
-	dash0api.StripSLOServerFields(slo)
-
-	action := ActionCreated
-	var before any
-	var upsertKey string
-	switch {
-	case origin != "":
-		upsertKey = origin
-		// The route is PUT either way, so the preflight only decides "created"
-		// vs "updated" — but swallowing a 5xx there reports a replace as a
-		// create with no diff, claiming a write the run did not make.
-		existing, err := apiClient.GetSLO(ctx, origin, dataset)
-		switch {
-		case err == nil:
-			action, before = actionForExisting(SLODeletedAt(existing)), existing
-		case dash0api.IsNotFound(err):
-			// Nothing at this origin yet; the PUT below creates it.
-		default:
-			return ImportResult{}, err
-		}
-	case id != "":
-		// The preflight GET's outcome decides the route, so the kind of error
-		// matters. Only a genuine 404 permits POST fallback (cross-environment
-		// apply — the id belongs to another org). Any other error (5xx, auth
-		// failure, network blip) must surface — silently POSTing would create a
-		// duplicate on the very failure mode this path exists to prevent.
-		existing, err := apiClient.GetSLO(ctx, id, dataset)
-		switch {
-		case err == nil:
-			upsertKey = id
-			action, before = actionForExisting(SLODeletedAt(existing)), existing
-		case dash0api.IsNotFound(err):
-			// Fall through to POST.
-		default:
-			return ImportResult{}, err
-		}
+	plan, err := PlanSLO(ctx, apiClient, slo, dataset)
+	if err != nil {
+		return ImportResult{}, err
 	}
 
 	var result *dash0api.SloDefinition
-	var err error
-	if upsertKey != "" {
-		result, err = apiClient.UpdateSLO(ctx, upsertKey, slo, dataset)
+	if plan.Key != "" {
+		result, err = apiClient.UpdateSLO(ctx, plan.Key, slo, dataset)
 	} else {
-		// No explicit ClearSLOID here: StripSLOServerFields above already
-		// removed dash0.com/id, so the cross-environment POST fallback cannot
-		// carry an identifier belonging to the source organization.
+		// StripSLOServerFields in PlanSLO already removed dash0.com/id, so the
+		// cross-environment POST fallback cannot carry an identifier belonging
+		// to the source organization.
 		result, err = apiClient.CreateSLO(ctx, slo, dataset)
 	}
 	if err != nil {
@@ -120,7 +82,38 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 	if err := RequireNotDeleted("SLO", dash0api.GetSLOName(result), id, SLODeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: dash0api.GetSLOName(result), ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: dash0api.GetSLOName(result), ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanSLO picks the SLO's upsert key and reads the stored SLO that ImportSLO
+// would write. Origin wins over id. On the id path a 404 leaves Key empty, so
+// the write falls back to POST. Any other preflight error is returned: on the
+// id path it decides the route, and on the origin path swallowing it would
+// report a replace as a create.
+func PlanSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportPlan, error) {
+	// StripSLOServerFields clears both labels, so read them first.
+	origin := dash0api.GetSLOOrigin(slo)
+	id := dash0api.GetSLOID(slo)
+	dash0api.StripSLOServerFields(slo)
+
+	plan := ImportPlan{Action: ActionCreated, Proposed: slo}
+	lookupKey := origin
+	if lookupKey == "" {
+		lookupKey = id
+	}
+	if lookupKey == "" {
+		return plan, nil
+	}
+	if origin != "" {
+		plan.Key = origin
+	}
+	existing, err := apiClient.GetSLO(ctx, lookupKey, dataset)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Key = lookupKey
+	plan.Action, plan.Before = actionForExisting(SLODeletedAt(existing)), existing
+	return plan, nil
 }
 
 // SLODeletedAt returns when the SLO was deleted, or nil when it is not deleted.

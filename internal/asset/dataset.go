@@ -57,27 +57,45 @@ func DatasetOrigin(dataset *dash0api.DatasetDefinition) string {
 // A dataset deleted within the last 30 days answers 404, so the POST restores it.
 // Any other preflight error surfaces instead of creating a duplicate.
 func ImportDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0api.DatasetDefinition) (ImportResult, error) {
-	if err := ValidateDataset(dataset); err != nil {
+	plan, err := PlanDataset(ctx, apiClient, dataset)
+	if err != nil {
 		return ImportResult{}, err
 	}
-	slug := dash0api.GetDatasetID(dataset)
-	dash0api.StripDatasetServerFields(dataset)
 
-	existing, err := apiClient.GetDataset(ctx, slug)
 	var result *dash0api.DatasetDefinition
-	action := ActionCreated
-	var before any
-	switch {
-	case err == nil:
-		action = ActionUpdated
-		before = existing
-		result, err = apiClient.UpdateDataset(ctx, slug, dataset)
-	case dash0api.IsNotFound(err):
+	if plan.Action == ActionUpdated {
+		result, err = apiClient.UpdateDataset(ctx, plan.Key, dataset)
+	} else {
 		result, err = apiClient.CreateDataset(ctx, dataset)
 	}
 	if err != nil {
 		return ImportResult{}, err
 	}
 
-	return ImportResult{Name: dash0api.GetDatasetName(result), ID: dash0api.GetDatasetID(result), Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: dash0api.GetDatasetName(result), ID: dash0api.GetDatasetID(result), Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanDataset reads the stored dataset that ImportDataset would write, keyed by
+// its slug. A spec field left out of the document keeps its stored value on
+// update, so Proposed is the document merged onto the stored dataset. Any
+// preflight error other than "not found" is returned, because it decides
+// between PUT and POST.
+func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0api.DatasetDefinition) (ImportPlan, error) {
+	if err := ValidateDataset(dataset); err != nil {
+		return ImportPlan{}, err
+	}
+	slug := dash0api.GetDatasetID(dataset)
+	dash0api.StripDatasetServerFields(dataset)
+
+	plan := ImportPlan{Key: slug, Action: ActionCreated, Proposed: dataset}
+	existing, err := apiClient.GetDataset(ctx, slug)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	merged, err := PreviewUpdate[dash0api.DatasetDefinition](existing, dataset)
+	if err != nil {
+		return plan, err
+	}
+	plan.Action, plan.Before, plan.Proposed = ActionUpdated, existing, merged
+	return plan, nil
 }

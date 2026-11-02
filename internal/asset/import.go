@@ -3,6 +3,8 @@ package asset
 import (
 	"fmt"
 	"time"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
 // ImportAction indicates whether an asset was created, updated, or restored.
@@ -21,6 +23,19 @@ type ImportResult struct {
 	Action ImportAction
 	Before any // asset state before update or restore (nil for creates)
 	After  any // asset state after update/create
+}
+
+// ImportPlan is what an import would do, decided from the stored asset before
+// any write. apply writes it; diff only prints it.
+type ImportPlan struct {
+	// Key is the id or origin the write targets. An empty Key means a create
+	// with a server-assigned id.
+	Key    string
+	Action ImportAction
+	// Before is the stored asset, or nil when nothing is stored yet.
+	Before any
+	// Proposed is the asset as it would be stored after the write.
+	Proposed any
 }
 
 // actionForExisting returns the action for a write to an asset that already
@@ -52,4 +67,13 @@ func RequireNotDeleted(displayKind, name, id string, deletedAt *time.Time) error
 		return nil
 	}
 	return &StillDeletedError{DisplayKind: displayKind, Name: name, ID: id}
+}
+
+// ignoreNotFound turns a "not found" preflight into success: nothing is stored
+// yet, so the write creates the asset.
+func ignoreNotFound(err error) error {
+	if dash0api.IsNotFound(err) {
+		return nil
+	}
+	return err
 }
