@@ -30,11 +30,27 @@ The profile-creation tests mirror the parameter combinations tested in `TestCrea
 Each combination is a separate job that asserts the correct fields are set and the omitted fields show `(not set)` (or `default` for dataset).
 When adding or removing flags from `dash0 config profiles create`, update both the unit test and the workflow.
 
+## Live tests on fork pull requests
+
+Fork pull requests get no secrets, so their `pull_request` run skips every job that needs live Dash0 credentials: the roundtrip tests in `ci.yml`, the `send-log-event` jobs that send to Dash0, and `test-end-to-end-sync`.
+`.github/workflows/fork-pr-live-tests.yml` runs them on `pull_request_target` instead, once a maintainer approves the run in the `fork-pr-live-tests` environment.
+It calls `ci.yml` and the two action test workflows through `workflow_call`, with the pull request's head commit as `ref`, `live-only: true`, and only the `DASH0_*` secrets.
+
+Approval is the only control.
+Only the workflow files come from `main`. The fork's `Makefile`, test scripts, and the composite actions and scripts under `.github/actions/` all run with the secrets, so review all of them before you approve.
+Each new push to the pull request needs a new approval.
+
+When you add a job to one of these workflows:
+
+- Pass `ref: ${{ inputs.ref }}` to `actions/checkout`, or the approved run tests `main` instead of the pull request.
+- If the job needs Dash0 credentials, gate it on the head repository like `test-send`, declare the secret under `workflow_call.secrets`, and pass it from `fork-pr-live-tests.yml`.
+- Otherwise, add `if: ${{ !inputs.live-only }}` so the approved run skips it.
+
 ## Testing the sync-assets action
 
 The workflow `.github/workflows/test-sync-assets-action.yml` runs on every pull request and on every push to `main`, mirroring the setup action's testing rationale: changes to `apply --since`'s ref-resolution behavior can silently break this action's preflight logic.
 Most jobs need no real Dash0 credentials — dummy `api-url`/`auth-token` values are enough, since either the job intercepts every `dash0 apply` call with a wrapper script (mirroring `send-log-event`'s `test-argument-mapping` job) to verify argument construction, or it exercises `dry-run: true`, which makes no API calls at all.
-Only `test-end-to-end-sync` performs a real create-then-delete cycle against the live Dash0 API and is gated behind `if: github.repository == 'dash0hq/dash0-cli' && github.actor != 'dependabot[bot]'`, using the same `secrets.DASH0_API_URL`/`secrets.DASH0_AUTH_TOKEN`/`secrets.DASH0_DATASET` secrets `ci.yml`'s roundtrip tests use (a different, more sensitive credential set than `send-log-event`'s `vars.DASH0_OTLP_URL`/`secrets.DASH0_AUTH_TOKEN`, since this action talks to the API, not OTLP ingest).
+Only `test-end-to-end-sync` performs a real create-then-delete cycle against the live Dash0 API and runs on fork pull requests only after approval (see [Live tests on fork pull requests](#live-tests-on-fork-pull-requests)), using the same `secrets.DASH0_API_URL`/`secrets.DASH0_AUTH_TOKEN`/`secrets.DASH0_DATASET` secrets `ci.yml`'s roundtrip tests use (a different, more sensitive credential set than `send-log-event`'s `vars.DASH0_OTLP_URL`/`secrets.DASH0_AUTH_TOKEN`, since this action talks to the API, not OTLP ingest).
 
 The non-ancestor-ref scenarios construct a real orphan commit in the checkout (`git hash-object -w -t tree /dev/null` plus `git commit-tree`) rather than trying to simulate `github.event.before`, since a test workflow cannot fabricate an arbitrary value for that context field — testing the `since` input directly (an explicit ref, not relying on the triggering event) is the practical equivalent, and is what the action's own resolvability/ancestry preflights operate on either way.
 

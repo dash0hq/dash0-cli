@@ -6,6 +6,30 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    # Called by fork-pr-live-tests.yml after a maintainer approves a fork pull request.
+    inputs:
+      ref:
+        description: Commit to check out. Empty means the triggering ref.
+        type: string
+        default: ''
+      live-only:
+        description: Run only the jobs that need Dash0 credentials.
+        type: boolean
+        default: false
+    secrets:
+      DASH0_API_URL:
+        required: false
+      DASH0_AUTH_TOKEN:
+        required: false
+      DASH0_OTLP_URL:
+        required: false
+      DASH0_DATASET:
+        required: false
+      DASH0_OAUTH_CLIENT_ID:
+        required: false
+      DASH0_OAUTH_REFRESH_TOKEN:
+        required: false
 
 jobs:
   build:
@@ -13,10 +37,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # A cache saved from a pull_request_target run lands in main's scope.
+          cache: ${{ github.event_name != 'pull_request_target' }}
 
       - name: Build & Test
         run: |
@@ -32,6 +60,7 @@ jobs:
           retention-days: 1
 
   test-e2e:
+    if: ${{ !inputs.live-only }}
     # Real dash0 binary + real git binary inside a container, proving
     # --since's git-shell-out path works across a real process boundary --
     # something in-process unit/integration tests can't cover. GitHub-hosted
@@ -42,23 +71,32 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # A cache saved from a pull_request_target run lands in main's scope.
+          cache: ${{ github.event_name != 'pull_request_target' }}
 
       - name: Run end-to-end tests
         run: make test-e2e
 
   lint-go:
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # A cache saved from a pull_request_target run lands in main's scope.
+          cache: ${{ github.event_name != 'pull_request_target' }}
 
       - name: Install golangci-lint
         run: make lint-go-install
@@ -67,10 +105,13 @@ jobs:
         run: make lint-go
 
   lint-sh:
+    if: ${{ !inputs.live-only }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Install ShellCheck
         run: make lint-sh-install
@@ -79,6 +120,7 @@ jobs:
         run: make lint-sh
 
   lint-skill:
+    if: ${{ !inputs.live-only }}
     # Fails the build if the dash0-cli Agent Skill bundle is out of sync with
     # docs/commands.md, or if the root-level publish copies under
     # .claude/skills/dash0-cli and .agents/skills/dash0-cli drifted from
@@ -89,15 +131,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # A cache saved from a pull_request_target run lands in main's scope.
+          cache: ${{ github.event_name != 'pull_request_target' }}
 
       - name: Validate Agent Skill bundle
         run: make skill-validate
 
   sync-docs-to-website-dry-run:
+    if: ${{ !inputs.live-only }}
     # Drift guard: verify on every CI build that the transformations declared in
     # `.github/workflows/sync-docs/transformations.yaml` still apply cleanly against
     # the current dash0-cli docs. The real sync (dry-run: false) runs from
@@ -118,11 +165,13 @@ jobs:
       run: ${{ steps.filter.outputs.roundtrip || 'true' }}
     steps:
       - name: Checkout repository
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Detect relevant changes
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
         id: filter
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
@@ -144,6 +193,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Discover test scripts
         id: find
@@ -181,6 +232,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Download CLI binary
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
