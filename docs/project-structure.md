@@ -12,6 +12,7 @@
 - `/internal/confirmation`: Confirmation prompt for destructive operations (respects `--force` and agent mode)
 - `/internal/config`: Configuration management (profiles, resolution)
 - `/internal/experimental`: Gate for commands behind the `--experimental` (`-X`) flag
+- `/internal/diff`: The experimental `diff` command — previews what `apply` would create, update, or delete, through the same `asset.Plan*` reads `apply` runs before each write
 - `/internal/datasets`: The `datasets` command group — `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/dataset.go`
 - `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
@@ -23,6 +24,7 @@
 - `/internal/oauth`: Shared OAuth helpers — refresh-token revocation (`Revoke`) used by `login`, `logout`, and `config profiles update --oauth=false`; and AS-supplied-text sanitization (`SanitizeASText`) for terminal output. Lives in its own package to avoid a `login` ↔ `config` import cycle.
 - `/internal/otlp`: Shared OTLP utilities (key-value pairs, trace/span ID parsing, scope defaults, log severity range constants and number-to-range mapping) used by send and query commands across signal types
 - `/internal/output`: Output format parsing and formatting (table, wide, JSON, YAML)
+- `/internal/preview`: The change list and agent-mode JSON shared by `apply --dry-run` and `diff`
 - `/internal/query`: Shared query utilities (filter parsing, timestamp normalization, timestamp formatting) used by query commands across signal types (e.g., `logs query`, `spans query`)
 - `/internal/rawapi`: The experimental `api` command — a raw HTTP passthrough that reuses the active profile's connection settings to call any Dash0 API endpoint
 - `/internal/skill`: The `skill install`/`skill show` commands — distribute the dash0-cli Agent Skill (embedded via `//go:embed`) to AI coding agents; `internal/skill/gen` regenerates the embedded reference content from `docs/commands.md` (see `docs/agent-skill-maintenance.md`)
@@ -33,6 +35,7 @@
 - `/internal/version`: Build version (set at build time via linker flags)
 
 Logic that is shared between `apply` and CRUD commands (import with existence check, PrometheusRule conversion, kind display names, file I/O) must live in `internal/asset/`, not be duplicated across packages.
+Each `asset.Import<Asset>` runs an `asset.Plan<Asset>` step first, which picks the upsert key and reads the stored asset; `diff` calls only that step, so a preview and an apply route the same way.
 The per-asset packages and `apply` import from `internal/asset`, never from each other.
 
 Logic that is shared across query commands for different signal types (filter parsing, timestamp normalization) must live in `internal/query/`, not be duplicated across per-signal packages like `internal/logs`.

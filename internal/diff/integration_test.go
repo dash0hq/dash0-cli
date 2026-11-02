@@ -6,8 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -314,5 +316,136 @@ spec:
 	})
 
 	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "No differences")
+}
+
+func runDiffCmd(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	cmd := NewDiffCmd()
+	withExperimentalFlag(cmd)
+	cmd.SetArgs(append(args, "--auth-token", testAuthToken, "--experimental"))
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	return output, cmdErr
+}
+
+// With --since, a target that holds no YAML file anymore is an all-deletions
+// run, as in apply --since, not an input error.
+func TestDiff_Since_EmptyTargetListsEveryDeletion(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir, ref := testutil.BuildGitScenario(t, "whole-directory-deletion")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, err := runDiffCmd(t, "-f", repoDir, "--since", ref, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending)
+	assert.Equal(t, 2, pending.Count)
+	assert.Contains(t, output, `Delete Dashboard "Dashboard A" (dash-a)`)
+	assert.Contains(t, output, `Delete View "View B" (view-b)`)
+}
+
+// With --since, a target directory removed together with its files is an
+// all-deletions run too.
+func TestDiff_Since_RemovedTargetListsEveryDeletion(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repoDir}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "test")
+	target := filepath.Join(repoDir, "views")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	writeViewFixture(t, target, "view.yaml")
+	git("add", "-A")
+	git("commit", "-q", "-m", "add view")
+	ref := git("rev-parse", "HEAD")
+	require.NoError(t, os.RemoveAll(target))
+	git("add", "-A")
+	git("commit", "-q", "-m", "remove views directory")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, err := runDiffCmd(t, "-f", target, "--since", ref, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending)
+	assert.Equal(t, 1, pending.Count)
+	assert.Contains(t, output, `Delete View "my-view" (view-id)`)
+}
+
+// The server stores member ids and the file lists emails, so diff resolves the
+// stored ids before it compares.
+func TestDiff_TeamMemberEmailsMatchStoredIDs(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	doc := `apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: backend-team
+spec:
+  display:
+    name: Backend Team
+  members:
+    - alice@example.com
+`
+	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+	var stored dash0api.TeamDefinitionV1Alpha1
+	require.NoError(t, dash0yaml.Unmarshal([]byte(doc), &stored))
+	stored.Spec.Members = []string{"user-1"}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/members", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureMembersListSuccess, Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	require.NoError(t, err, output)
+	assert.Contains(t, output, "No differences")
+}
+
+// A dataset update keeps every spec field the file leaves out, so a partial
+// file that matches the stored values is not a change.
+func TestDiff_PartialDatasetKeepsStoredFields(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "dataset.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Staging
+  labels:
+    dash0.com/id: staging
+spec:
+  retention:
+    logs: 60d
+`), 0644))
+	var stored dash0api.DatasetDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Staging
+  labels:
+    dash0.com/id: staging
+spec:
+  retention:
+    traces: 30d
+    logs: 60d
+  processing:
+    spanEventsToLogs: false
+`), &stored))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	require.NoError(t, err, output)
 	assert.Contains(t, output, "No differences")
 }

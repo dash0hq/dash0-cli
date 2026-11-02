@@ -270,7 +270,7 @@ func TestPrintDiff_View_PermissionOrderIsNotAChange(t *testing.T) {
 }
 
 // The tests below exercise the semantic comparison engine
-// (dash0yaml.Equivalent/Normalize) wired into HasDifference/PrintDiff,
+// (dash0yaml.Equivalent/Normalize) wired into UnifiedDiff/PrintDiff,
 // covering behaviors a plain textual YAML diff would get wrong: slice
 // reordering, duration-string formatting, check-rule default annotation
 // values, and the bare "sharing" annotation key check rules use (not
@@ -291,13 +291,13 @@ func TestPrintDiff_SyntheticCheck_ReorderedLocationsIsNotAChange(t *testing.T) {
 		return c
 	}
 
-	different, err := HasDifference(check("de-frankfurt", "us-oregon"), check("us-oregon", "de-frankfurt"))
+	text, err := UnifiedDiff("", check("de-frankfurt", "us-oregon"), check("us-oregon", "de-frankfurt"))
 	require.NoError(t, err)
-	assert.False(t, different, "reordering a set-like slice must not be reported as drift")
+	assert.Empty(t, text, "reordering a set-like slice must not be reported as drift")
 
-	different, err = HasDifference(check("de-frankfurt", "us-oregon"), check("de-frankfurt"))
+	text, err = UnifiedDiff("", check("de-frankfurt", "us-oregon"), check("de-frankfurt"))
 	require.NoError(t, err)
-	assert.True(t, different, "removing a location must still be reported")
+	assert.NotEmpty(t, text, "removing a location must still be reported")
 }
 
 // TestPrintDiff_View_ReorderedFilterCriteriaRealChangeDetected proves the
@@ -329,9 +329,9 @@ func TestPrintDiff_View_ReorderedFilterCriteriaRealChangeDetected(t *testing.T) 
 		},
 	}
 
-	different, err := HasDifference(before, after)
+	text, err := UnifiedDiff("", before, after)
 	require.NoError(t, err)
-	assert.True(t, different, "a genuine element-level change must still be detected regardless of position")
+	assert.NotEmpty(t, text, "a genuine element-level change must still be detected regardless of position")
 }
 
 func TestPrintDiff_CheckRule_DurationFormatEquivalence_NoChanges(t *testing.T) {
@@ -376,9 +376,9 @@ func TestPrintDiff_CheckRule_DurationFormatRealChange_Detected(t *testing.T) {
 		For:        &for2,
 	}
 
-	different, err := HasDifference(before, after)
+	text, err := UnifiedDiff("", before, after)
 	require.NoError(t, err)
-	assert.True(t, different, "a genuinely different duration must not be swallowed by the format-tolerant comparison")
+	assert.NotEmpty(t, text, "a genuinely different duration must not be swallowed by the format-tolerant comparison")
 }
 
 // TestPrintDiff_CheckRule_DefaultAnnotationValues_NoChanges pins that
@@ -439,9 +439,9 @@ func TestPrintDiff_CheckRule_SharingChangeDetected(t *testing.T) {
 		},
 	}
 
-	different, err := HasDifference(before, after)
+	text, err := UnifiedDiff("", before, after)
 	require.NoError(t, err)
-	assert.True(t, different, "a real sharing change on a check rule must be detected, not treated as a non-preserved annotation")
+	assert.NotEmpty(t, text, "a real sharing change on a check rule must be detected, not treated as a non-preserved annotation")
 }
 
 // TestPrintDiff_CheckRule_CustomLabelChangeDetected pins the fix for the gap
@@ -464,9 +464,9 @@ func TestPrintDiff_CheckRule_CustomLabelChangeDetected(t *testing.T) {
 		Labels:     &map[string]string{"team": "backend"},
 	}
 
-	different, err := HasDifference(before, after)
+	text, err := UnifiedDiff("", before, after)
 	require.NoError(t, err)
-	assert.True(t, different, "a real custom label change on a check rule must be detected")
+	assert.NotEmpty(t, text, "a real custom label change on a check rule must be detected")
 }
 
 // TestPrintDiff_NotificationChannel_RoutingAssetsIgnored pins that
@@ -496,9 +496,9 @@ func TestPrintDiff_NotificationChannel_RoutingAssetsIgnored(t *testing.T) {
 		},
 	}
 
-	different, err := HasDifference(before, after)
+	text, err := UnifiedDiff("", before, after)
 	require.NoError(t, err)
-	assert.False(t, different, "spec.routing.assets is API-managed and must never be reported as drift")
+	assert.Empty(t, text, "spec.routing.assets is API-managed and must never be reported as drift")
 }
 
 func TestPrintDiff_ColorOutput(t *testing.T) {

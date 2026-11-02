@@ -202,12 +202,16 @@ func semanticCompareConfig(asset any) (extraIgnoredFields, preservedAnnotationKe
 	}
 }
 
-// HasDifference reports whether before and after differ semantically, the
-// same way PrintDiff decides, so a caller that counts pending changes (dash0
-// diff) does not re-implement that comparison.
-func HasDifference(before, after any) (bool, error) {
-	text, err := unifiedDiff("", before, after)
-	return text != "", err
+// UnifiedDiff returns the unified diff between before and after, or "" when
+// they are semantically the same. dash0 diff uses it to compare each update
+// once and print the same text later with WriteDiff.
+func UnifiedDiff(displayKind string, before, after any) (string, error) {
+	return unifiedDiff(displayKind, before, after)
+}
+
+// WriteDiff writes text from UnifiedDiff to w, colorized unless color is off.
+func WriteDiff(w io.Writer, text string) error {
+	return writeDiff(w, text)
 }
 
 func unifiedDiff(displayKind string, before, after any) (string, error) {

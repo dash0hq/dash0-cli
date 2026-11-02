@@ -12,5 +12,7 @@ subtext: |
   exit code (0 clean, 1 differences pending, 2 error), modeled on `kubectl diff`.
   The comparison (also used by every `<kind> update` diff) is semantic, not textual: key order, duration-string
   formatting, int-vs-float representation, and API-populated defaults never produce a spurious "changed" result.
+  `apply --since --dry-run` no longer lists the deletion of a check rule that `-f` still declares, because the real
+  run skips that deletion.
 
 change_logs: [user]

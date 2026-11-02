@@ -1331,6 +1331,8 @@ The comparison is semantic, not a raw text diff.
 Key order, duration formatting (`2m` and `2m0s` are the same value), int-vs-float differences between YAML and JSON, and API-populated defaults absent from the local document never count as a change.
 Slice order is ignored only for fields that are sets, such as `spec.permissions`, notification channels, and synthetic check locations; reordering any other list, such as `spec.filter`, is a change.
 For check rules, the default annotation values the Prometheus YAML conversion omits (`dash0-threshold-critical`/`dash0-threshold-degraded: "0"`, `dash0-enabled: "true"`) are treated as absent.
+For datasets, a `spec` field left out of the file keeps its stored value, so it does not show as removed.
+For teams, stored member ids are compared as email addresses, so a file that lists emails matches.
 A real change next to an ignored reorder or duration-format difference may still show that difference in the printed diff, but the comparison never reports a false "no differences".
 
 All documents are fetched before anything is printed.
@@ -1339,6 +1341,8 @@ If any single fetch fails for a reason other than the asset simply not existing 
 `--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
 A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
 A deletion candidate with no `dash0.com/id` or `dash0.com/origin` label still fails the whole command before any plan is reported, matching `apply --since`'s posture.
+A check rule that `-f`'s current contents still declare is not listed as a deletion, because `apply --since` skips it.
+When every asset definition under `-f`'s target was deleted, whether the directory is now empty or was removed, `diff --since` lists every deletion, the same as `apply --since`.
 
 **Exit code** is a deliberate three-way exception to this CLI's uniform 0/1 convention, modeled on `kubectl diff`:
 
@@ -1354,9 +1358,7 @@ Preview a directory with a pending create and update:
 
 ```bash
 $ dash0 --experimental diff -f dashboards/
-dashboards/new.yaml
-  Create Dashboard "New Dashboard"
-dashboards/existing.yaml
+existing.yaml
 --- Dashboard (before)
 +++ Dashboard (after)
 @@ -2,7 +2,7 @@
@@ -1364,9 +1366,13 @@ dashboards/existing.yaml
    display:
 -    name: Old Name
 +    name: New Name
+new.yaml
+  Create Dashboard "New Dashboard"
 $ echo $?
 1
 ```
+
+Each file header is the path relative to `-f`'s target, as in `apply`, and files are listed in sorted order.
 
 Preview with no pending differences:
 
@@ -1381,9 +1387,9 @@ Preview deletions alongside creates and updates:
 
 ```bash
 $ dash0 --experimental diff -f dashboards/ --since HEAD~1
-dashboards/keep.yaml
+keep.yaml
   Create Dashboard "Production Overview"
-dashboards/removed.yaml
+removed.yaml
   Delete Dashboard "Old Dashboard" (b2c3d4e5-...)
 $ echo $?
 1
@@ -1393,7 +1399,8 @@ A genuine error aborts before any plan is printed:
 
 ```bash
 $ dash0 --experimental diff -f dashboards/ --since totally-bogus-ref
-Error: --since 'totally-bogus-ref' could not be resolved (check for a typo, or a too-shallow clone missing the needed history)
+Error: --since 'totally-bogus-ref' could not be resolved
+Hint: check the ref for a typo; if this is a shallow clone (actions/checkout defaults to fetch-depth: 1), re-run the checkout with fetch-depth: 0 so the ref's history is available
 $ echo $?
 2
 ```

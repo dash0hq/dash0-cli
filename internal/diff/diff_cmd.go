@@ -2,9 +2,13 @@ package diff
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -82,11 +86,11 @@ Requires the -X (or --experimental) flag.` + internal.CONFIG_HINT,
 }
 
 func runDiff(ctx context.Context, flags *diffFlags) error {
-	documents, fromDirectory, err := readDocuments(flags.File)
+	documents, fromDirectory, targetVanished, err := readDocuments(flags.File, flags.SinceFlagSet)
 	if err != nil {
 		return err
 	}
-	if len(documents) == 0 {
+	if len(documents) == 0 && !flags.SinceFlagSet {
 		return asset.FormatValidationError("no documents found in input")
 	}
 
@@ -105,10 +109,12 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 			return err
 		}
 		sincePlan = plan
+		if targetVanished {
+			fromDirectory = plan.TargetWasDirectoryAtRef
+		}
 		if sincePlan.Warning != "" {
-			// Unlike apply, diff never mutates, so a non-ancestor ref only
-			// needs a warning -- there is nothing to confirm before
-			// proceeding.
+			// diff never mutates, so a non-ancestor ref needs only a warning,
+			// not the confirmation apply asks for.
 			fmt.Fprintf(os.Stderr, "warning: %s\n", sincePlan.Warning)
 		}
 	}
@@ -119,16 +125,11 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 	}
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
-	// All-or-nothing fetch gate: plan (fetch) every document before printing
-	// anything. A failure here aborts the whole preview -- no partial report
-	// covering only the documents that happened to succeed.
-	planned := make([]plannedDoc, 0, len(documents))
-	for _, doc := range documents {
-		plans, err := planDocument(ctx, apiClient, doc, dataset)
-		if err != nil {
-			return fmt.Errorf("%s (%s): %w", doc.Location(), doc.Kind, err)
-		}
-		planned = append(planned, plannedDoc{doc: doc, plans: plans})
+	// Every document is read before anything is printed, so a failed read
+	// aborts the whole preview instead of printing a partial one.
+	planned, err := planDocuments(ctx, apiClient, documents, dataset)
+	if err != nil {
+		return err
 	}
 
 	pending, err := renderReport(planned, sincePlan, fromDirectory, flags.File, flags.Since)
@@ -141,33 +142,74 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 	return &PendingDifferencesError{Count: pending}
 }
 
-// readDocuments reads flags.File the same way apply does: stdin ("-"), a
-// single file, or a directory (recursively). Returns whether the target was
-// a directory, since that affects how the report groups rows.
-func readDocuments(file string) (documents []asset.Document, fromDirectory bool, err error) {
+// maxConcurrentReads bounds the parallel reads against the Dash0 API.
+const maxConcurrentReads = 8
+
+// planDocuments plans every document in parallel. The result keeps document
+// order, and the error reported is the first one in document order, so the
+// output does not depend on which read finishes first.
+func planDocuments(ctx context.Context, apiClient dash0api.Client, documents []asset.Document, dataset *string) ([]plannedDoc, error) {
+	planned := make([]plannedDoc, len(documents))
+	errs := make([]error, len(documents))
+	slots := make(chan struct{}, maxConcurrentReads)
+	var wg sync.WaitGroup
+	for i, doc := range documents {
+		wg.Add(1)
+		slots <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			plans, err := planDocument(ctx, apiClient, doc, dataset)
+			if err != nil {
+				errs[i] = fmt.Errorf("%s (%s): %w", doc.Location(), doc.Kind, err)
+				return
+			}
+			planned[i] = plannedDoc{doc: doc, plans: plans}
+		}()
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return planned, nil
+}
+
+// readDocuments reads file the same way apply does: stdin ("-"), a single
+// file, or a directory (recursively). With --since, a target that was removed
+// or holds no YAML file anymore is an all-deletions run, not an error, so it
+// returns no documents. targetVanished reports that the target no longer
+// exists, which leaves the directory question to git history.
+func readDocuments(file string, sinceFlagSet bool) (documents []asset.Document, fromDirectory, targetVanished bool, err error) {
 	if file == "-" {
 		documents, err = asset.ReadMultiDocumentYAML("-", os.Stdin)
 		if err != nil {
-			return nil, false, asset.FormatValidationError(err.Error())
+			return nil, false, false, asset.FormatValidationError(err.Error())
 		}
-		return documents, false, nil
+		return documents, false, false, nil
 	}
 
 	info, statErr := os.Stat(file)
-	if statErr != nil {
-		return nil, false, fmt.Errorf("failed to read input: %w", statErr)
-	}
-	if info.IsDir() {
+	switch {
+	case statErr != nil && sinceFlagSet && os.IsNotExist(statErr):
+		return nil, true, true, nil
+	case statErr != nil:
+		return nil, false, false, fmt.Errorf("failed to read input: %w", statErr)
+	case info.IsDir():
 		documents, err = asset.ReadDirectory(file)
 		if err != nil {
-			return nil, true, asset.FormatValidationError(err.Error())
+			if sinceFlagSet && errors.Is(err, asset.ErrNoYAMLFilesFound) {
+				return nil, true, false, nil
+			}
+			return nil, true, false, asset.FormatValidationError(err.Error())
 		}
-		return documents, true, nil
+		return documents, true, false, nil
 	}
 
 	documents, err = asset.ReadMultiDocumentYAML(file, nil)
 	if err != nil {
-		return nil, false, asset.FormatValidationError(err.Error())
+		return nil, false, false, asset.FormatValidationError(err.Error())
 	}
-	return documents, false, nil
+	return documents, false, false, nil
 }
