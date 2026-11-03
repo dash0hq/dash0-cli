@@ -24,7 +24,8 @@ Slice order is ignored only for fields that are sets, such as `spec.permissions`
 For check rules, the default annotation values the Prometheus YAML conversion omits (`dash0-threshold-critical`/`dash0-threshold-degraded: "0"`, `dash0-enabled: "true"`) are treated as absent.
 For datasets, a `spec` field left out of the file keeps its stored value, so it does not show as removed.
 For teams, stored member ids are compared as email addresses, so a file that lists emails matches.
-A real change next to an ignored reorder or duration-format difference may still show that difference in the printed diff, but the comparison never reports a false "no differences".
+Fields the API adds on write, such as the `dash0.com/source` label, the `dash0.com/enabled: "true"` annotation, and a check rule's default `enabled` and `interval`, do not count as a change when the local document leaves them out.
+A real change next to an ignored reorder may still show that reorder in the printed diff, but the comparison never reports a false "no differences".
 
 All documents are fetched before anything is printed.
 If any single fetch fails for a reason other than the asset simply not existing yet — an auth failure, a 5xx, a network error — the entire preview is aborted and nothing is printed, so a partial, misleading report is never shown.

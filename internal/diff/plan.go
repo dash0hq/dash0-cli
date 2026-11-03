@@ -101,6 +101,11 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "view", AssetID: plan.Key})
 		}
+		// The API can give a view a new id and still find it by the local id,
+		// so the stored id names the same view and is not a change.
+		if before, ok := plan.Before.(*dash0api.ViewDefinition); ok && before.Metadata.Labels != nil && before.Metadata.Labels.Dash0Comid != nil {
+			view.Metadata.Labels.Dash0Comid = before.Metadata.Labels.Dash0Comid
+		}
 		return []docPlan{{displayKind: doc.Kind, name: view.Metadata.Name, plan: plan}}, nil
 
 	case "spamfilter":

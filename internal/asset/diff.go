@@ -230,7 +230,9 @@ func unifiedDiff(displayKind string, before, after any) (string, error) {
 	// defaults absent from after are not changes.
 	extraIgnored, preserved, opts := semanticCompareConfig(after)
 	extraIgnored = append(extraIgnored, dash0yaml.AbsentFields([]byte(afterYAML), dash0yaml.ConditionallyIgnoredFields())...)
-	equivalent, err := dash0yaml.Equivalent([]byte(beforeYAML), []byte(afterYAML), extraIgnored, preserved, opts...)
+	// after is the reference: Equivalent skips server-added fields only when
+	// they are absent from the reference, and diff's after is the local file.
+	equivalent, err := dash0yaml.Equivalent([]byte(afterYAML), []byte(beforeYAML), extraIgnored, preserved, opts...)
 	if err != nil {
 		return "", fmt.Errorf("failed to compare semantic equivalence: %w", err)
 	}
@@ -242,13 +244,9 @@ func unifiedDiff(displayKind string, before, after any) (string, error) {
 	// Slice order and duration formatting are only tolerated by the
 	// comparator, so a real change next to one of those can still show it
 	// as extra noise; it never hides a real change.
-	normalizedBefore, err := dash0yaml.Normalize([]byte(beforeYAML), extraIgnored, preserved, opts...)
+	normalizedAfter, normalizedBefore, err := dash0yaml.NormalizePair([]byte(afterYAML), []byte(beforeYAML), extraIgnored, preserved, opts...)
 	if err != nil {
-		return "", fmt.Errorf("failed to normalize before state: %w", err)
-	}
-	normalizedAfter, err := dash0yaml.Normalize([]byte(afterYAML), extraIgnored, preserved, opts...)
-	if err != nil {
-		return "", fmt.Errorf("failed to normalize after state: %w", err)
+		return "", fmt.Errorf("failed to normalize states: %w", err)
 	}
 
 	diff := difflib.UnifiedDiff{

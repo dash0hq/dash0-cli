@@ -722,3 +722,41 @@ func matcherValue(t *testing.T, value string) *dash0api.Matcher_Value {
 	require.NoError(t, v.FromAttributeFilterStringValue(value))
 	return &v
 }
+
+// storedCheckRuleJSON is a check rule as the API returns it for a file that set
+// only name and expression: the API adds the source label, enabled, and the
+// default interval.
+const storedCheckRuleJSON = `{
+	"name": "rule",
+	"expression": "up == 0",
+	"enabled": true,
+	"interval": "1m0s",
+	"metadata": {"labels": {"dash0.com/source": "api"}}
+}`
+
+func TestPrintDiff_CheckRule_ServerAddedFieldsAreNotAChange(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	var stored dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal([]byte(storedCheckRuleJSON), &stored))
+	local := &dash0api.PrometheusAlertRule{Name: "rule", Expression: "up == 0"}
+
+	var buf bytes.Buffer
+	require.NoError(t, PrintDiff(&buf, "Check rule", "rule", &stored, local))
+	assert.Contains(t, buf.String(), `Check rule "rule": no changes`)
+}
+
+func TestUnifiedDiff_CheckRule_ShowsOnlyTheRealChange(t *testing.T) {
+	var stored dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal([]byte(storedCheckRuleJSON), &stored))
+	interval := dash0api.Duration("1m")
+	local := &dash0api.PrometheusAlertRule{Name: "rule", Expression: "up == 1", Interval: &interval}
+
+	text, err := UnifiedDiff("Check rule", &stored, local)
+	require.NoError(t, err)
+	assert.Contains(t, text, "-expression: up == 0")
+	assert.Contains(t, text, "+expression: up == 1")
+	assert.NotContains(t, text, "dash0.com/source")
+	assert.NotContains(t, text, "1m0s")
+}

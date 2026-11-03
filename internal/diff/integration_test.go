@@ -449,3 +449,39 @@ spec:
 	require.NoError(t, err, output)
 	assert.Contains(t, output, "No differences")
 }
+
+func TestDiff_ViewFoundByLocalIDWithServerAssignedID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "view.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: View
+metadata:
+  name: Error Logs
+  labels:
+    dash0.com/id: error-logs
+spec:
+  display:
+    name: Error Logs
+  type: logs
+`), 0644))
+	var stored dash0api.ViewDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte(`kind: View
+metadata:
+  name: Error Logs
+  labels:
+    dash0.com/id: 5a939b78-98c2-424e-94c0-98a5f9814c21
+    dash0.com/source: api
+spec:
+  display:
+    name: Error Logs
+  type: logs
+`), &stored))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/error-logs", testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	require.NoError(t, err, output)
+	assert.Contains(t, output, "No differences")
+}
