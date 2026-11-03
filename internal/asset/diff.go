@@ -187,26 +187,23 @@ func PrintChanges(w io.Writer, displayKind string, before, after any) error {
 // semanticCompareConfig returns the per-kind options for dash0yaml.Equivalent
 // and dash0yaml.Normalize, keyed off after's concrete type.
 //
-// *dash0api.PrometheusAlertRule is flat (top-level annotations, no metadata:
-// nesting), and its annotations hold user content (summary, description, the
-// bare "sharing" key) rather than server provenance, so it compares them
-// unfiltered. Every other kind is metadata-nested and keeps only the
-// user-settable annotations listed here.
+// Every annotation takes part in the comparison. marshalForDiff has already
+// removed the server-managed ones through each kind's Strip*ServerFields, and
+// any other annotation is user content, such as a synthetic check's
+// dash0.com/folder-path or an SLO's dash0.com/display-name.
 func semanticCompareConfig(asset any) (extraIgnoredFields, preservedAnnotationKeys []string, opts []dash0yaml.Option) {
 	switch asset.(type) {
-	case *dash0api.DashboardDefinition, *dash0api.ViewDefinition:
-		return nil, []string{dash0api.AnnotationSharing, dash0api.AnnotationFolderPath}, nil
-	case *dash0api.SloDefinition:
-		return nil, []string{dash0api.AnnotationSharing, dash0api.AnnotationFolderPath, "dash0.com/enabled"}, nil
 	case *dash0api.PrometheusAlertRule:
-		return nil, nil, []dash0yaml.Option{dash0yaml.WithAnnotationsRoot(""), dash0yaml.WithAnnotationsUnfiltered()}
-	case *dash0api.SyntheticCheckDefinition:
-		return nil, []string{dash0api.AnnotationSharing}, nil
+		return nil, nil, []dash0yaml.Option{dash0yaml.WithFlatDocument()}
+	case *dash0api.RecordingRule:
+		// The API does not store a recording rule CRD's annotations, so they
+		// can never match the stored rule.
+		return nil, nil, nil
 	case *dash0api.NotificationChannelDefinition:
 		// spec.routing.assets is API-managed; see RoutingAssetsWarning.
-		return []string{"spec.routing.assets"}, nil, nil
+		return []string{"spec.routing.assets"}, nil, []dash0yaml.Option{dash0yaml.WithAnnotationsUnfiltered()}
 	default:
-		return nil, nil, nil
+		return nil, nil, []dash0yaml.Option{dash0yaml.WithAnnotationsUnfiltered()}
 	}
 }
 

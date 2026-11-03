@@ -53,6 +53,11 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "synthetic check", AssetID: plan.Key})
 		}
+		// Like a view, a synthetic check can get a new id and still be found
+		// by the local one.
+		if before, ok := plan.Before.(*dash0api.SyntheticCheckDefinition); ok && before.Metadata.Labels != nil && before.Metadata.Labels.Dash0Comid != nil && check.Metadata.Labels != nil {
+			check.Metadata.Labels.Dash0Comid = before.Metadata.Labels.Dash0Comid
+		}
 		return []docPlan{{displayKind: doc.Kind, name: check.Metadata.Name, plan: plan}}, nil
 
 	case "slo":

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -759,4 +760,51 @@ func TestUnifiedDiff_CheckRule_ShowsOnlyTheRealChange(t *testing.T) {
 	assert.Contains(t, text, "+expression: up == 1")
 	assert.NotContains(t, text, "dash0.com/source")
 	assert.NotContains(t, text, "1m0s")
+}
+
+func TestUnifiedDiff_UserAnnotationChangesAreChanges(t *testing.T) {
+	decode := func(t *testing.T, doc string, into any) any {
+		t.Helper()
+		require.NoError(t, dash0yaml.Unmarshal([]byte(doc), into))
+		return into
+	}
+	cases := map[string]struct {
+		before, after string
+		newAsset      func() any
+	}{
+		"synthetic check folder path": {
+			before:   "kind: Dash0SyntheticCheck\nmetadata:\n  name: n\n  annotations:\n    dash0.com/folder-path: /a\n",
+			after:    "kind: Dash0SyntheticCheck\nmetadata:\n  name: n\n  annotations:\n    dash0.com/folder-path: /b\n",
+			newAsset: func() any { return &dash0api.SyntheticCheckDefinition{} },
+		},
+		"SLO display name": {
+			before:   "kind: SLO\nmetadata:\n  name: n\n  annotations:\n    dash0.com/display-name: A\n",
+			after:    "kind: SLO\nmetadata:\n  name: n\n  annotations:\n    dash0.com/display-name: B\n",
+			newAsset: func() any { return &dash0api.SloDefinition{} },
+		},
+		"view annotation removed": {
+			before:   "kind: View\nmetadata:\n  name: n\n  annotations:\n    dash0.com/folder-path: /a\n",
+			after:    "kind: View\nmetadata:\n  name: n\n",
+			newAsset: func() any { return &dash0api.ViewDefinition{} },
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			text, err := UnifiedDiff("Asset", decode(t, c.before, c.newAsset()), decode(t, c.after, c.newAsset()))
+
+			require.NoError(t, err)
+			assert.NotEmpty(t, text)
+		})
+	}
+}
+
+func TestUnifiedDiff_ServerDefaultAnnotationIsNotAChange(t *testing.T) {
+	var stored, local dash0api.SyntheticCheckDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte("kind: Dash0SyntheticCheck\nmetadata:\n  name: n\n  annotations:\n    dash0.com/enabled: \"true\"\n"), &stored))
+	require.NoError(t, dash0yaml.Unmarshal([]byte("kind: Dash0SyntheticCheck\nmetadata:\n  name: n\n"), &local))
+
+	text, err := UnifiedDiff("Synthetic check", &stored, &local)
+
+	require.NoError(t, err)
+	assert.Empty(t, text)
 }

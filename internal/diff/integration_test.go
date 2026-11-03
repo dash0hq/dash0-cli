@@ -547,3 +547,30 @@ func TestDiff_Skill(t *testing.T) {
 		})
 	}
 }
+
+func TestDiff_SyntheticCheckFoundByLocalIDWithServerAssignedID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	local := `apiVersion: dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: checkout-health
+  labels:
+    dash0.com/id: checkout-health
+  annotations:
+    dash0.com/folder-path: /checkout
+spec:
+  enabled: false
+`
+	yamlFile := filepath.Join(t.TempDir(), "check.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(local), 0644))
+	var stored dash0api.SyntheticCheckDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte(strings.Replace(local, "dash0.com/id: checkout-health", "dash0.com/id: 64617368-3073-796e-7468-50cf467aaec7", 1)), &stored))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/synthetic-checks/checkout-health", testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	require.NoError(t, err, output)
+	assert.Contains(t, output, "No differences")
+}
