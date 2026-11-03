@@ -208,7 +208,7 @@ func planSpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 		}
 		return []docPlan{{displayKind: doc.Kind, name: dash0api.GetSpamFilterName(&filter), plan: plan}}, nil
 
-	case string(dash0api.V1alpha2):
+	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
 		var filter dash0api.SpamFilterV1Alpha2
 		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)

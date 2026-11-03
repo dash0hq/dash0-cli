@@ -23,7 +23,7 @@ func TestDetectAPIVersion(t *testing.T) {
 		{
 			name: "explicit v1alpha2",
 			data: "apiVersion: v1alpha2\nkind: Dash0SpamFilter\n",
-			want: string(dash0api.V1alpha2),
+			want: string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2),
 		},
 		{
 			name: "missing apiVersion defaults to v1alpha1",
@@ -33,7 +33,7 @@ func TestDetectAPIVersion(t *testing.T) {
 		{
 			name: "JSON input is accepted",
 			data: `{"apiVersion":"v1alpha2","kind":"Dash0SpamFilter"}`,
-			want: string(dash0api.V1alpha2),
+			want: string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2),
 		},
 		{
 			name:    "unknown apiVersion is rejected with the list of supported values",
@@ -102,7 +102,7 @@ func TestObjectAccessors_V1Alpha2(t *testing.T) {
 	id := "sf-456"
 
 	obj := &dash0api.SpamFilterV1Alpha2{
-		ApiVersion: dash0api.V1alpha2,
+		ApiVersion: dash0api.SpamFilterApiVersionV1Alpha2V1alpha2,
 		Kind:       dash0api.SpamFilterDefinitionV1Alpha2KindDash0SpamFilter,
 		Metadata: dash0api.SpamFilterMetadata{
 			Name:   "drop noisy v2",
@@ -117,7 +117,7 @@ func TestObjectAccessors_V1Alpha2(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, string(dash0api.V1alpha2), objectAPIVersion(obj))
+	assert.Equal(t, string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2), objectAPIVersion(obj))
 	assert.Equal(t, "Dash0SpamFilter", objectKind(obj))
 	assert.Equal(t, "drop noisy v2", objectName(obj))
 	assert.Equal(t, "sf-456", objectID(obj))

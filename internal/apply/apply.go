@@ -570,7 +570,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.D
 			})
 		}
 		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-	case string(dash0api.V1alpha2):
+	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
 		var filter dash0api.SpamFilterV1Alpha2
 		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)
