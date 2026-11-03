@@ -217,8 +217,8 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 	}
 
 	timeRange := dash0api.TimeReferenceRange{
-		From: query.NormalizeTimestamp(flags.From),
-		To:   query.NormalizeTimestamp(flags.To),
+		From: dash0api.TimeReferenceFromString(query.NormalizeTimestamp(flags.From)),
+		To:   dash0api.TimeReferenceFromString(query.NormalizeTimestamp(flags.To)),
 	}
 	sampling, err := query.ParsePrecision(flags.Precision, timeRange)
 	if err != nil {

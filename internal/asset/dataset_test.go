@@ -37,7 +37,7 @@ func TestPrintDiff_Dataset_PermissionOrderIsNotAChange(t *testing.T) {
 		return &dash0api.DatasetDefinition{
 			ApiVersion: DatasetAPIVersion,
 			Kind:       "Dash0Dataset",
-			Metadata:   dash0api.DatasetMetadata{Name: "P", Labels: &dash0api.DatasetLabels{Dash0Comid: "p"}},
+			Metadata:   dash0api.DatasetMetadata{Name: "P", Labels: &dash0api.DatasetLabels{Dash0Comid: dash0api.Ptr("p")}},
 			Spec:       dash0api.DatasetSpec{Permissions: &perms},
 		}
 	}
@@ -76,7 +76,7 @@ func TestImportDataset_APIVersionRejectedBeforeAnyCall(t *testing.T) {
 	for _, v := range []string{"", "dash0.com/v2"} {
 		d := &dash0api.DatasetDefinition{
 			ApiVersion: v,
-			Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: "prod"}},
+			Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: dash0api.Ptr("prod")}},
 		}
 		rec := &datasetRecorder{}
 		_, err := ImportDataset(context.Background(), rec, d)
@@ -87,13 +87,13 @@ func TestImportDataset_APIVersionRejectedBeforeAnyCall(t *testing.T) {
 }
 
 func TestImportDataset_SendsNewSpecFields(t *testing.T) {
-	logs, traces := dash0api.N90d, dash0api.N60d
+	logs, traces := dash0api.RetentionClassN90d, dash0api.RetentionClassN60d
 	anonymize := dash0api.IpAddressStorageStrategyAnonymize
 	upToCountry := dash0api.GeoLocationStorageStrategyUpToCountry
 	spanEvents := true
 	d := &dash0api.DatasetDefinition{
 		ApiVersion: DatasetAPIVersion,
-		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: "prod"}},
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: dash0api.Ptr("prod")}},
 		Spec: dash0api.DatasetSpec{
 			Retention: &dash0api.DatasetRetention{Logs: &logs, Traces: &traces},
 			Privacy: &dash0api.DatasetPrivacy{
@@ -111,8 +111,8 @@ func TestImportDataset_SendsNewSpecFields(t *testing.T) {
 	assert.Equal(t, ActionCreated, result.Action)
 	require.NotNil(t, rec.created)
 	assert.Equal(t, DatasetAPIVersion, rec.created.ApiVersion)
-	assert.Equal(t, dash0api.N90d, *rec.created.Spec.Retention.Logs)
-	assert.Equal(t, dash0api.N60d, *rec.created.Spec.Retention.Traces)
+	assert.Equal(t, dash0api.RetentionClassN90d, *rec.created.Spec.Retention.Logs)
+	assert.Equal(t, dash0api.RetentionClassN60d, *rec.created.Spec.Retention.Traces)
 	assert.Equal(t, anonymize, *rec.created.Spec.Privacy.IpAddresses.EndUser.Storage)
 	assert.Equal(t, upToCountry, *rec.created.Spec.Privacy.GeoLocation.EndUser.Storage)
 	assert.True(t, *rec.created.Spec.Processing.SpanEventsToLogs)
