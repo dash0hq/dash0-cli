@@ -221,3 +221,70 @@ func TestBuildSnapshotFromDisk_PathsAlignWithRepoRootWhenScopeIsSubdirectory(t *
 
 	assert.True(t, snap.Paths["sub/dashboard.yaml"], "disk-side paths must be repo-root-relative, matching the git ls-tree side, even when scope is a subdirectory")
 }
+
+// TestDiff_DashboardReauthoredBetweenKindSpellings is a regression test for
+// #270: apply upserts PersesDashboard and Dashboard documents through the
+// same dashboard import, so switching a file between the two spellings under
+// an unchanged identifier must not be planned as a deletion.
+func TestDiff_DashboardReauthoredBetweenKindSpellings(t *testing.T) {
+	const persesYAML = `apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+  duration: 5m
+  panels: {}
+`
+	const plainYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  dash0Extensions:
+    id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
+	for _, tt := range []struct{ name, before, after string }{
+		{"PersesDashboard to Dashboard", persesYAML, plainYAML},
+		{"Dashboard to PersesDashboard", plainYAML, persesYAML},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := testRepo(t)
+			writeFile(t, repo.Dir, "dashboard.yaml", tt.before)
+			first := commitAll(t, repo.Dir, "add dashboard")
+			writeFile(t, repo.Dir, "dashboard.yaml", tt.after)
+			commitAll(t, repo.Dir, "re-author dashboard")
+
+			before, err := BuildSnapshotFromRef(context.Background(), repo, first, "")
+			require.NoError(t, err)
+			after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+			require.NoError(t, err)
+
+			plan := Diff(before, after)
+			assert.True(t, plan.IsEmpty(), "expected no deletions, got %+v", plan)
+		})
+	}
+
+	t.Run("removed PersesDashboard is still a deletion", func(t *testing.T) {
+		repo := testRepo(t)
+		writeFile(t, repo.Dir, "dashboard.yaml", persesYAML)
+		first := commitAll(t, repo.Dir, "add dashboard")
+		runGit(t, repo.Dir, "rm", "-q", "dashboard.yaml")
+		commitAll(t, repo.Dir, "remove dashboard")
+
+		before, err := BuildSnapshotFromRef(context.Background(), repo, first, "")
+		require.NoError(t, err)
+		after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+		require.NoError(t, err)
+
+		plan := Diff(before, after)
+		require.Len(t, plan.ByIdentifier, 1)
+		assert.Equal(t, "persesdashboard", plan.ByIdentifier[0].Kind)
+		assert.Equal(t, "shared-id", plan.ByIdentifier[0].Identifier)
+	})
+}
