@@ -121,7 +121,6 @@ func PlanCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *dash
 	id := dash0api.GetCustomSkillID(skill)
 	dash0api.StripCustomSkillServerFields(skill)
 	skill.Kind = dash0api.Dash0Skill
-	SortCustomSkillPermissions(skill)
 
 	plan := ImportPlan{Action: ActionCreated, Proposed: skill}
 	switch {
