@@ -227,6 +227,7 @@ func WriteDiff(w io.Writer, text string) error {
 }
 
 func unifiedDiff(displayKind string, before, after any) (string, error) {
+	after = withCheckRuleEnabledDefault(before, after)
 	beforeYAML, err := marshalForDiff(before)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal before state: %w", err)
@@ -308,4 +309,24 @@ func writeColorizedDiff(w io.Writer, text string) error {
 		}
 	}
 	return nil
+}
+
+// withCheckRuleEnabledDefault returns after with the server default for
+// enabled, true, when after leaves enabled out and before is a disabled rule.
+// The API enables a rule whose PUT has no enabled field, while the semantic
+// comparison drops a stored false that after leaves out, so the re-enabled
+// rule would show as no change.
+func withCheckRuleEnabledDefault(before, after any) any {
+	stored, ok := before.(*dash0api.PrometheusAlertRule)
+	if !ok || stored == nil || stored.Enabled == nil || *stored.Enabled {
+		return after
+	}
+	rule, ok := after.(*dash0api.PrometheusAlertRule)
+	if !ok || rule == nil || rule.Enabled != nil {
+		return after
+	}
+	withDefault := *rule
+	enabled := true
+	withDefault.Enabled = &enabled
+	return &withDefault
 }

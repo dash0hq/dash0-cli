@@ -823,3 +823,32 @@ func TestUnifiedDiff_RecordingRuleAnnotationsAreNotCompared(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, text, "the API does not store a recording rule CRD's annotations")
 }
+
+// The API enables a check rule whose PUT leaves enabled out, so a file without
+// enabled re-enables a disabled rule.
+func TestUnifiedDiff_CheckRuleWithoutEnabled(t *testing.T) {
+	disabled, enabled := false, true
+	cases := map[string]struct {
+		stored   *bool
+		wantDiff string
+	}{
+		"re-enables a disabled rule":  {stored: &disabled, wantDiff: "-enabled: false"},
+		"keeps an enabled rule as is": {stored: &enabled, wantDiff: ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			stored := &dash0api.PrometheusAlertRule{Name: "r", Expression: "up == 0", Enabled: c.stored}
+			local := &dash0api.PrometheusAlertRule{Name: "r", Expression: "up == 0"}
+
+			text, err := UnifiedDiff("Check rule", stored, local)
+
+			require.NoError(t, err)
+			if c.wantDiff == "" {
+				assert.Empty(t, text)
+			} else {
+				assert.Contains(t, text, c.wantDiff)
+			}
+			assert.Nil(t, local.Enabled, "the comparison must not change the document apply sends")
+		})
+	}
+}
