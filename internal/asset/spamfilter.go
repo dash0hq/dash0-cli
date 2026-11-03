@@ -14,7 +14,7 @@ import (
 // own error messages.
 var SpamFilterSupportedAPIVersions = []string{
 	string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1),
-	string(dash0api.V1alpha2),
+	string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2),
 }
 
 // DetectSpamFilterAPIVersion peeks at the apiVersion field on a YAML or JSON
@@ -44,7 +44,7 @@ func DetectSpamFilterAPIVersion(data []byte) (string, error) {
 	switch normalized {
 	case "", string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
 		return string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), nil
-	case string(dash0api.V1alpha2):
+	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
 		return normalized, nil
 	default:
 		quoted := make([]string, len(SpamFilterSupportedAPIVersions))
