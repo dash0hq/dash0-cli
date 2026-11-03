@@ -115,7 +115,8 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		if dataset.Metadata.Labels == nil {
 			dataset.Metadata.Labels = &dash0api.DatasetLabels{}
 		}
-		dataset.Metadata.Labels.Dash0Comid = dash0api.Ptr(dash0api.GetDatasetID(before))
+		slug := dash0api.GetDatasetID(before)
+		dataset.Metadata.Labels.Dash0Comid = &slug
 	}
 	// kind and metadata.name are required on the wire, so a partial file takes them from the
 	// stored dataset, as the dry-run preview already shows.

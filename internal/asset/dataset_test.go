@@ -37,7 +37,7 @@ func TestPrintDiff_Dataset_PermissionOrderIsNotAChange(t *testing.T) {
 		return &dash0api.DatasetDefinition{
 			ApiVersion: DatasetAPIVersion,
 			Kind:       "Dash0Dataset",
-			Metadata:   dash0api.DatasetMetadata{Name: "P", Labels: &dash0api.DatasetLabels{Dash0Comid: dash0api.Ptr("p")}},
+			Metadata:   dash0api.DatasetMetadata{Name: "P", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("p")}},
 			Spec:       dash0api.DatasetSpec{Permissions: &perms},
 		}
 	}
@@ -76,7 +76,7 @@ func TestImportDataset_APIVersionRejectedBeforeAnyCall(t *testing.T) {
 	for _, v := range []string{"", "dash0.com/v2"} {
 		d := &dash0api.DatasetDefinition{
 			ApiVersion: v,
-			Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: dash0api.Ptr("prod")}},
+			Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("prod")}},
 		}
 		rec := &datasetRecorder{}
 		_, err := ImportDataset(context.Background(), rec, d)
@@ -93,7 +93,7 @@ func TestImportDataset_SendsNewSpecFields(t *testing.T) {
 	spanEvents := true
 	d := &dash0api.DatasetDefinition{
 		ApiVersion: DatasetAPIVersion,
-		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: dash0api.Ptr("prod")}},
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("prod")}},
 		Spec: dash0api.DatasetSpec{
 			Retention: &dash0api.DatasetRetention{Logs: &logs, Traces: &traces},
 			Privacy: &dash0api.DatasetPrivacy{
