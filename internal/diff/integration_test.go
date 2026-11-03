@@ -523,6 +523,11 @@ func TestDiff_Skill(t *testing.T) {
 			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess, Validator: testutil.RequireHeaders},
 			wantOutput: "No differences",
 		},
+		"deleted skill is a create, because apply restores it": {
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetDeleted, Validator: testutil.RequireHeaders},
+			wantOutput: `Create Agent0 skill "incident-triage" (dash0-cli_incident-triage)`,
+			wantErr:    true,
+		},
 		"new origin is a create": {
 			stored:     testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders},
 			wantOutput: `Create Agent0 skill "incident-triage" (dash0-cli_incident-triage)`,

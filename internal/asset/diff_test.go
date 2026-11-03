@@ -771,21 +771,25 @@ func TestUnifiedDiff_UserAnnotationChangesAreChanges(t *testing.T) {
 	cases := map[string]struct {
 		before, after string
 		newAsset      func() any
+		wantLine      string
 	}{
 		"synthetic check folder path": {
 			before:   "kind: Dash0SyntheticCheck\nmetadata:\n  name: n\n  annotations:\n    dash0.com/folder-path: /a\n",
 			after:    "kind: Dash0SyntheticCheck\nmetadata:\n  name: n\n  annotations:\n    dash0.com/folder-path: /b\n",
 			newAsset: func() any { return &dash0api.SyntheticCheckDefinition{} },
+			wantLine: "+    dash0.com/folder-path: /b",
 		},
 		"SLO display name": {
 			before:   "kind: SLO\nmetadata:\n  name: n\n  annotations:\n    dash0.com/display-name: A\n",
 			after:    "kind: SLO\nmetadata:\n  name: n\n  annotations:\n    dash0.com/display-name: B\n",
 			newAsset: func() any { return &dash0api.SloDefinition{} },
+			wantLine: "+    dash0.com/display-name: B",
 		},
 		"view annotation removed": {
 			before:   "kind: View\nmetadata:\n  name: n\n  annotations:\n    dash0.com/folder-path: /a\n",
 			after:    "kind: View\nmetadata:\n  name: n\n",
 			newAsset: func() any { return &dash0api.ViewDefinition{} },
+			wantLine: "-    dash0.com/folder-path: /a",
 		},
 	}
 	for name, c := range cases {
@@ -793,7 +797,7 @@ func TestUnifiedDiff_UserAnnotationChangesAreChanges(t *testing.T) {
 			text, err := UnifiedDiff("Asset", decode(t, c.before, c.newAsset()), decode(t, c.after, c.newAsset()))
 
 			require.NoError(t, err)
-			assert.NotEmpty(t, text)
+			assert.Contains(t, text, c.wantLine)
 		})
 	}
 }
@@ -807,4 +811,15 @@ func TestUnifiedDiff_ServerDefaultAnnotationIsNotAChange(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, text)
+}
+
+func TestUnifiedDiff_RecordingRuleAnnotationsAreNotCompared(t *testing.T) {
+	var stored, local dash0api.RecordingRule
+	require.NoError(t, dash0yaml.Unmarshal([]byte("kind: PrometheusRule\nmetadata:\n  name: n\n"), &stored))
+	require.NoError(t, dash0yaml.Unmarshal([]byte("kind: PrometheusRule\nmetadata:\n  name: n\n  annotations:\n    team: qa\n"), &local))
+
+	text, err := UnifiedDiff("Recording rule", &stored, &local)
+
+	require.NoError(t, err)
+	assert.Empty(t, text, "the API does not store a recording rule CRD's annotations")
 }
