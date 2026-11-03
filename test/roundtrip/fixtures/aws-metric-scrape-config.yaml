@@ -1,0 +1,15 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0AwsMetricScrapeConfig
+metadata:
+  labels:
+    dash0.com/id: __ID__
+spec:
+  namespaces:
+    - namespace: AWS/SQS
+      metrics:
+        - NumberOfMessagesSent
+        - ApproximateAgeOfOldestMessage
+    - namespace: AWS/Lambda
+      metrics:
+        - Invocations
+        - Errors

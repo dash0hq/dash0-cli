@@ -37,6 +37,7 @@ jobs:
       DASH0_DATASET: ${{ secrets.DASH0_DATASET }}
       DASH0_OAUTH_CLIENT_ID: ${{ secrets.DASH0_OAUTH_CLIENT_ID }}
       DASH0_OAUTH_REFRESH_TOKEN: ${{ secrets.DASH0_OAUTH_REFRESH_TOKEN }}
+      DASH0_AWS_INTEGRATION_ID: ${{ secrets.DASH0_AWS_INTEGRATION_ID }}
 
   send-log-event:
     needs: approve

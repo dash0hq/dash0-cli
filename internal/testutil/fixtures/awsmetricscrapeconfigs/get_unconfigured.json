@@ -1,0 +1,14 @@
+{
+  "apiVersion": "dash0.com/v1alpha1",
+  "kind": "Dash0AwsMetricScrapeConfig",
+  "metadata": {
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "27755ed0-0009-422d-8c11-19c6dd72df98"
+    },
+    "name": "production-account"
+  },
+  "spec": {
+    "namespaces": []
+  }
+}

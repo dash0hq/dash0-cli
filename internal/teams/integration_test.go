@@ -659,6 +659,7 @@ func TestListTeamMembers_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "NAME")
 	assert.Contains(t, output, "EMAIL")
+	assert.NotContains(t, output, "ROLE")
 	assert.Contains(t, output, "Alice Smith")
 	assert.Contains(t, output, "Bob Jones")
 }

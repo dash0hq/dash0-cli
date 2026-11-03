@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 404,
+    "message": "AWS integration \"27755ed0-0009-422d-8c11-19c6dd72df98\" not found",
+    "traceId": "ddb701fbe941e637739b3be3735897e9"
+  }
+}

@@ -70,6 +70,7 @@ Supported asset types:
   - Dash0TimeSeriesAggregation
   - Dash0Dataset
   - Dash0Skill (Agent0 custom skill)
+  - Dash0AwsMetricScrapeConfig
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -484,6 +485,19 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "Agent0 skill", AssetName: name})
 		}
 		return []applyResult{{kind: "Dash0Skill", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "awsmetricscrapeconfig":
+		// Organization-level: the integration id decides the dataset, so the
+		// CLI's --dataset is not passed.
+		cfg, _, err := asset.ParseAwsMetricScrapeConfig(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportAwsMetricScrapeConfig(ctx, apiClient, cfg, doc.ID)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
+		}
+		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)

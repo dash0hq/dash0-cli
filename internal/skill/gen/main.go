@@ -59,6 +59,14 @@ var topics = []topicSpec{
 		},
 	},
 	{
+		name:            "aws-metric-scrape-configs",
+		includeQuickRef: true,
+		sections: []string{
+			"aws-metric-scrape-configs get", "aws-metric-scrape-configs update", "aws-metric-scrape-configs delete",
+		},
+		assetYAMLLabels: []string{"AWS metric scrape config ("},
+	},
+	{
 		name:            "check-rules",
 		includeQuickRef: true,
 		sections:        []string{"prometheusrule annotation merge"},

@@ -17,7 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
@@ -38,10 +38,10 @@ Output formats are `table`, `json`, and `csv`.
 **Send commands** transmit telemetry data to Dash0 via OTLP.
 They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
 
-**Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills) scoped to the organization, not to a dataset.
+**Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills, AWS metric scrape configs) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
-Notification channels, datasets, auth tokens, and Agent0 skills are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
-Notification channels, datasets, and Agent0 skills are also wired into `apply`; auth tokens are not, because `apply` has no safe place to deliver a new token's secret.
+Notification channels, datasets, auth tokens, Agent0 skills, and AWS metric scrape configs are exceptions: they use file-based input (`-f`) and support `--dry-run`, but are still organization-level (no `--dataset`).
+Notification channels, datasets, Agent0 skills, and AWS metric scrape configs are also wired into `apply`; auth tokens are not, because `apply` has no safe place to deliver a new token's secret.
 
 **Raw HTTP command** (`api`) is an escape hatch for endpoints that do not yet have a dedicated subcommand.
 It reuses the active profile's `api-url`, `auth-token`, and (by default) `dataset`, and emits a plain HTTP request.
@@ -804,6 +804,7 @@ Aliases: `remove`
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
+| AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
@@ -831,6 +832,7 @@ The identifier field location varies by asset kind:
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
+| `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level Agent0 custom skill. `dash0.com/origin` is the upsert key: `PUT /api/agent0/custom-skills/{origin}` creates the skill when the origin is new and replaces it otherwise. Use a `dash0-cli_` prefix so Dash0 shows the skill as managed by the CLI. When only `dash0.com/id` is present the CLI preflights `GET /api/agent0/custom-skills/{id}`: on hit it PUTs, on 404 it fails instead of creating, because the id is server-assigned. A document with neither label creates the skill with POST; the skill name, from the `SKILL.md` frontmatter, is unique per organization, so a second apply fails with a name collision instead of creating a duplicate |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
@@ -1014,7 +1016,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1086,6 +1088,21 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > You therefore cannot apply one document to two datasets, as you can for every other asset kind.
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+
+`Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
+They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
+These checks run during the validation phase, before any document in the run is applied:
+
+- A document without `dash0.com/id` fails, because there is nothing to address it by.
+- A missing or `null` `spec.namespaces` fails, because the API would read it as `[]` and stop all scraping.
+  Write `namespaces: []` to stop scraping on purpose.
+- An unknown field under `spec` fails, so a misspelled key is not silently dropped.
+- A label or annotation that the API ignores prints a warning.
+  The labels and annotations that `aws-metric-scrape-configs get -o yaml` exports are not warned about.
+
+The CLI does not send `dash0.com/origin`, so it never claims ownership of a config.
+Dash0 keeps the origin of the first writer until the config is cleared.
+`apply` prints `created` when the integration had no config before, and a diff otherwise.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -1255,6 +1272,9 @@ Telemetry is removed as its retention expires, not by the delete.
 In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), a `--since` run that would delete a dataset requires an explicit `--force`, as `datasets delete` does.
 Without it, the run refuses with an error before it applies anything.
 A dataset that is already gone counts as deleted, and a removed dataset document with no slug fails the "no identifier" check below, like any other kind.
+
+A `Dash0AwsMetricScrapeConfig` document removed since `<ref>` clears the integration's scrape config, with the same API call as `aws-metric-scrape-configs delete`.
+Dash0 stops scraping CloudWatch metrics for that integration, and the integration itself is kept.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
@@ -1757,6 +1777,32 @@ spec:
 The three names are independent: setting `metadata.name`, `spec.display.name`, or the origin does not change either of the others.
 
 Optional `spec` fields: `priority` (the lower the value, the earlier Dash0 evaluates the aggregation), `sample.delay`, `sample.staleAfter`, `match.otherFilters`, and `attributeModifications`.
+
+AWS metric scrape config (organization-level, no `--dataset`, requires `--experimental` for the `aws-metric-scrape-configs` commands):
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0AwsMetricScrapeConfig
+metadata:
+  labels:
+    dash0.com/id: 27755ed0-0009-422d-8c11-19c6dd72df98
+spec:
+  namespaces:
+    - namespace: AWS/Lambda
+      metrics:
+        - Errors
+        - Invocations
+    - namespace: AWS/SQS
+      metrics:
+        - ApproximateAgeOfOldestMessage
+        - NumberOfMessagesSent
+```
+
+`dash0.com/id` is the id of the AWS integration and is required.
+`spec.namespaces` is the complete list of CloudWatch namespaces to scrape: a namespace that is not listed is not scraped, and `namespaces: []` stops all scraping.
+Each namespace takes an optional `filter`, and `spec` takes an optional `integrationFilter`; both are lists of filter criteria (`key`, `operator`, `value`).
+`metadata.name` is the integration's name: `get` exports it, and the API ignores it on write.
+The API returns namespaces and metrics sorted, and the diff ignores their order.
 
 Mixed PrometheusRule (one alerting rule and one recording rule in the same CRD):
 
@@ -2859,14 +2905,14 @@ The proxy's stats block updates in place as the data flows through, then the rec
 
 ## Organizational commands
 
-Organizational commands manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills) that are scoped to the organization, not to a dataset.
+Organizational commands manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills, AWS metric scrape configs) that are scoped to the organization, not to a dataset.
 They share a common set of characteristics:
 - No `--dataset` flag.
 - All are experimental and require the `-X` flag.
 - Use `api-url` and `auth-token`.
 
 Most organizational commands use flag-based input.
-Notification channels, datasets, auth tokens, and Agent0 skills are exceptions: they use file-based input (`-f`) and support `--dry-run`.
+Notification channels, datasets, auth tokens, Agent0 skills, and AWS metric scrape configs are exceptions: they use file-based input (`-f`) and support `--dry-run`.
 
 ### `notification-channels list` (experimental)
 
@@ -3449,6 +3495,98 @@ Auth token "<id>" deleted
 
 Aliases: `remove`
 
+### `aws-metric-scrape-configs get` (experimental)
+
+Show the CloudWatch metric scrape config of an AWS integration.
+
+```bash
+dash0 -X aws-metric-scrape-configs get <integration-id> [-o <format>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, or `yaml` |
+
+Every AWS integration has a config, so an integration without one shows no namespaces instead of an error.
+An unknown integration id fails with `AWS integration "<id>" not found`.
+
+```bash
+$ dash0 -X aws-metric-scrape-configs get 27755ed0-0009-422d-8c11-19c6dd72df98
+Kind: AWS metric scrape config
+Integration: production-account
+Integration ID: 27755ed0-0009-422d-8c11-19c6dd72df98
+Dataset: default
+Origin: api-f5036b48-c11d-4998-a8f2-9dcb6f95dccd
+Namespaces:
+  AWS/Lambda (2 metrics)
+  AWS/SQS (2 metrics)
+Created: 2026-10-29 10:52:45
+Updated: 2026-10-29 10:52:45
+```
+
+Use `-o yaml` to get a definition that `aws-metric-scrape-configs update -f` and `apply -f` accept unchanged:
+
+```bash
+dash0 -X aws-metric-scrape-configs get 27755ed0-0009-422d-8c11-19c6dd72df98 -o yaml > scrape-config.yaml
+```
+
+### `aws-metric-scrape-configs update` (experimental)
+
+Replace the CloudWatch metric scrape config of an AWS integration with the config in a YAML or JSON file.
+There is no `create`: each integration has exactly one config, and `update` replaces it whether or not the integration had one.
+If the integration id argument is omitted, it is taken from the document's `dash0.com/id` label; when both are given, they must match.
+The document is validated before any API call, as described for [`apply`](#apply).
+The output is a unified diff of the before and after states, or `created` when the integration had no config before.
+
+```bash
+dash0 -X aws-metric-scrape-configs update [integration-id] -f <file> [--dry-run]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--dry-run` | Show the diff without applying it |
+
+Stop scraping the `AWS/SQS` namespace by removing it from an exported config:
+
+```bash
+$ dash0 -X aws-metric-scrape-configs update -f scrape-config.yaml
+--- AWS metric scrape config (before)
++++ AWS metric scrape config (after)
+@@ -7,8 +7,4 @@
+     - Errors
+     - Invocations
+     namespace: AWS/Lambda
+-  - metrics:
+-    - ApproximateAgeOfOldestMessage
+-    - NumberOfMessagesSent
+-    namespace: AWS/SQS
+```
+
+Preview the change without applying it:
+
+```bash
+dash0 -X aws-metric-scrape-configs update -f scrape-config.yaml --dry-run
+```
+
+### `aws-metric-scrape-configs delete` (experimental)
+
+Clear the CloudWatch metric scrape config of an AWS integration.
+Dash0 stops scraping CloudWatch metrics for the integration, and the integration itself is kept.
+Prompts for confirmation unless `--force` is passed.
+With `--force`, an integration that no longer exists counts as cleared.
+
+```bash
+dash0 -X aws-metric-scrape-configs delete <integration-id> [--force]
+```
+
+```bash
+$ dash0 -X aws-metric-scrape-configs delete 27755ed0-0009-422d-8c11-19c6dd72df98 --force
+AWS metric scrape config of integration "27755ed0-0009-422d-8c11-19c6dd72df98" cleared
+```
+
+Aliases: `remove`
+
 ### `teams list` (experimental)
 
 List all teams in the organization.
@@ -3659,7 +3797,7 @@ Alice Smith       alice@example.com      m1-0000-0000-0000-000000000001
 Bob Jones         bob@example.com        m2-0000-0000-0000-000000000002
 ```
 
-Column aliases are the same as for `members list`: `name` / `member name`, `email`, `id` / `member id`.
+Column aliases: `name` / `member name`, `email`, `id` / `member id`.
 
 ### `teams add-members` (experimental)
 
@@ -3718,7 +3856,8 @@ $ dash0 -X teams remove-members <team-id> <email-address> --force
 
 ### `members list` (experimental)
 
-List all members of the organization.
+List all members of the organization, including their organization role.
+The role column is blank when the API does not provide a role.
 
 ```bash
 dash0 -X members list [-o <format>] [--skip-header] [--column <col>]
@@ -3734,13 +3873,13 @@ Example:
 
 ```bash
 $ dash0 -X members list
-NAME              EMAIL                  ID
-Alice Smith       alice@example.com      m1-0000-0000-0000-000000000001
-Bob Jones         bob@example.com        m2-0000-0000-0000-000000000002
+NAME         EMAIL              ROLE          ID                              URL
+Alice Smith  alice@example.com  admin         m1-0000-0000-0000-000000000001  https://app.dash0.com/goto/settings/members?member_id=m1-0000-0000-0000-000000000001
+Bob Jones    bob@example.com    basic_member  m2-0000-0000-0000-000000000002  https://app.dash0.com/goto/settings/members?member_id=m2-0000-0000-0000-000000000002
 ...
 ```
 
-Column aliases: `name` / `member name`, `email`, `id` / `member id`.
+Column aliases: `name` / `member name`, `email`, `role`, `id` / `member id`, `url`.
 
 Aliases: `ls`
 

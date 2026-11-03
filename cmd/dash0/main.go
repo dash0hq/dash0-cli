@@ -15,6 +15,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/authtokens"
+	"github.com/dash0hq/dash0-cli/internal/awsmetricscrapeconfigs"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
@@ -81,6 +82,7 @@ func init() {
 	rootCmd.AddCommand(agent0.NewAgent0Cmd())
 	rootCmd.AddCommand(apply.NewApplyCmd())
 	rootCmd.AddCommand(authtokens.NewAuthTokensCmd())
+	rootCmd.AddCommand(awsmetricscrapeconfigs.NewAwsMetricScrapeConfigsCmd())
 	rootCmd.AddCommand(rawapi.NewAPICmd())
 	rootCmd.AddCommand(checkrules.NewCheckRulesCmd())
 	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())

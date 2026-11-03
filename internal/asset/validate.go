@@ -2,6 +2,7 @@ package asset
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -21,7 +22,7 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 			// place to deliver it, so a created token's secret would be lost.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.Location(), doc.Kind))
 		} else if !IsValidKind(doc.Kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill)", doc.Location(), doc.Kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.Location(), doc.Kind))
 		} else if NormalizeKind(doc.Kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -64,6 +65,25 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 				if err := ValidateCustomSkill(&skill); err != nil {
 					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
 				}
+			}
+		} else if NormalizeKind(doc.Kind) == "awsmetricscrapeconfig" {
+			// A missing spec.namespaces would be sent as [] and stop all
+			// scraping, so the document is validated before anything is applied.
+			_, warnings, err := ParseAwsMetricScrapeConfig(doc.Raw)
+			switch {
+			case err != nil:
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
+			case doc.ID == "":
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), ErrAwsMetricScrapeConfigMissingID.Error()))
+			default:
+				// The client rejects a non-UUID id only when it sends the request,
+				// which would be after the documents before this one were applied.
+				if _, err := uuid.Parse(doc.ID); err != nil {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: dash0.com/id %q is not a valid AWS integration id: it must be a UUID", doc.Location(), doc.ID))
+				}
+			}
+			for _, warning := range warnings {
+				validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.Location(), warning))
 			}
 		} else if NormalizeKind(doc.Kind) == "timeseriesaggregation" && doc.ID == "" {
 			// Origin is mandatory for this kind and there is no fallback create

@@ -5,6 +5,7 @@
 - `/internal/agentmode`: Agent mode detection and structured error output for AI coding agents
 - `/internal/apply`: The `apply` command — orchestration only, delegates asset-specific logic to `internal/asset`
 - `/internal/authtokens`: The `auth-tokens` command group — `auth-tokens list`, `auth-tokens get`, `auth-tokens create`, `auth-tokens update`, `auth-tokens delete` (experimental, org-wide, no dataset). Not wired into `apply`, because `apply` cannot deliver a new token's secret
+- `/internal/awsmetricscrapeconfigs`: The `aws-metric-scrape-configs` command group — `get`, `update`, `delete` (experimental, org-wide, no dataset). One config per AWS integration, addressed by the integration id; no `list` or `create`, because the API has neither. The shared parse and import helpers live in `internal/asset/awsmetricscrapeconfig.go`
 - `/internal/asset`: Shared asset logic (types, import functions, display helpers) used by both `apply` and the per-asset CRUD commands
 - `/internal/checkrules`, `/internal/dashboards`, `/internal/recordingrules`, `/internal/syntheticchecks`, `/internal/views`: Per-asset CRUD commands — delegate asset-specific logic to `internal/asset`
 - `/internal/client`: API client factory and error handling

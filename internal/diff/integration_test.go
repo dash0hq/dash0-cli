@@ -574,3 +574,35 @@ spec:
 	require.NoError(t, err, output)
 	assert.Contains(t, output, "No differences")
 }
+
+func TestDiff_AwsMetricScrapeConfig(t *testing.T) {
+	const integrationID = "27755ed0-0009-422d-8c11-19c6dd72df98"
+	exported, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), "awsmetricscrapeconfigs", "get_configured.json"))
+	require.NoError(t, err)
+	cases := map[string]struct {
+		storedFixture string
+		wantOutput    string
+		wantErr       bool
+	}{
+		"exported config is unchanged":           {storedFixture: "awsmetricscrapeconfigs/get_configured.json", wantOutput: "No differences"},
+		"integration without config is a create": {storedFixture: "awsmetricscrapeconfigs/get_unconfigured.json", wantOutput: "Create AWS metric scrape config", wantErr: true},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			// diff only discovers .yaml files; JSON is valid YAML.
+			yamlFile := filepath.Join(t.TempDir(), "scrape.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, exported, 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, "/api/aws-metric-scrape-configs/"+integrationID, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: c.storedFixture, Validator: testutil.RequireHeaders})
+
+			output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+			assert.Equal(t, c.wantErr, err != nil, output)
+			assert.Contains(t, output, c.wantOutput)
+			for _, request := range server.Requests() {
+				assert.Equal(t, http.MethodGet, request.Method, "diff must never write")
+			}
+		})
+	}
+}

@@ -157,6 +157,17 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		return []docPlan{{displayKind: asset.CustomSkillKind, name: name, plan: plan}}, nil
 
+	case "awsmetricscrapeconfig":
+		cfg, _, err := asset.ParseAwsMetricScrapeConfig(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		plan, err := asset.PlanAwsMetricScrapeConfig(ctx, apiClient, cfg, doc.ID)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
+		}
+		return []docPlan{{displayKind: asset.AwsMetricScrapeConfigKind, name: dash0api.GetAwsMetricScrapeConfigName(cfg), plan: plan}}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)
 	}

@@ -209,6 +209,15 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		name = CustomSkillName(&skill)
 		id = CustomSkillKey(&skill)
 
+	case "awsmetricscrapeconfig":
+		var cfg dash0api.AwsMetricScrapeConfigDefinition
+		if err := dash0yaml.Unmarshal(data, &cfg); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetAwsMetricScrapeConfigName(&cfg)
+		// The integration id is the only key: there is one config per integration.
+		id = dash0api.GetAwsMetricScrapeConfigID(&cfg)
+
 	default:
 		var raw map[string]any
 		if err := dash0yaml.Unmarshal(data, &raw); err != nil {
