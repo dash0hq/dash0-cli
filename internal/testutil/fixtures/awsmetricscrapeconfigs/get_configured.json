@@ -1,0 +1,36 @@
+{
+  "apiVersion": "dash0.com/v1alpha1",
+  "kind": "Dash0AwsMetricScrapeConfig",
+  "metadata": {
+    "annotations": {
+      "dash0.com/created-at": "2026-10-29T10:52:45.653205Z",
+      "dash0.com/updated-at": "2026-10-29T10:52:45.653205Z"
+    },
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "27755ed0-0009-422d-8c11-19c6dd72df98",
+      "dash0.com/origin": "api-f5036b48-c11d-4998-a8f2-9dcb6f95dccd",
+      "dash0.com/source": "api"
+    },
+    "name": "production-account"
+  },
+  "spec": {
+    "namespaces": [
+      {
+        "filter": [
+          {
+            "key": "aws.lambda.function.name",
+            "operator": "starts_with",
+            "value": "checkout-"
+          }
+        ],
+        "metrics": ["Duration", "Errors", "Invocations"],
+        "namespace": "AWS/Lambda"
+      },
+      {
+        "metrics": ["BucketSizeBytes"],
+        "namespace": "AWS/S3"
+      }
+    ]
+  }
+}

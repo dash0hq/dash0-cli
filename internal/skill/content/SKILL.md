@@ -21,7 +21,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills` | Flag-based input, no dataset, experimental |
+| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
 
@@ -60,6 +60,7 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `Dash0NotificationChannel` | no ID field — `metadata.labels["dash0.com/origin"]` is the upsert key |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug — required and immutable; `spec.slug` wins when both are set); `dash0.com/origin` is optional |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) |
+| `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]`, the AWS integration id — **required**. One config per integration; `apply` replaces it (PUT), there is no create. `spec.namespaces` is required (`[]` stops all scraping). `dash0.com/origin` is never sent |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]`; `metadata.labels["dash0.com/id"]` only updates an existing skill when origin is absent |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]`, and it is **mandatory** — the API rejects an aggregation without one, so there is no POST fallback. A `dash0.com/id` in the body is ignored. Origins are unique per organization while each aggregation belongs to one dataset, so one document cannot serve two datasets |
 
@@ -170,6 +171,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `agent0` | Agent0 custom skill CRUD (`agent0 skills`; organization-level, experimental; `kind: Dash0Skill`) |
 | `api` | Raw HTTP passthrough to any Dash0 API endpoint |
 | `auth-tokens` | Auth token CRUD (organization-level, experimental; `create` needs `--secret-file` outside an interactive terminal; not supported by `apply`) |
+| `aws-metric-scrape-configs` | CloudWatch metric scrape config of an AWS integration: `get`, `update` (replace), `delete` (clear) by integration id (organization-level, experimental; also accepted by `apply` as `Dash0AwsMetricScrapeConfig`) |
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |

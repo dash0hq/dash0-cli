@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 401,
+    "message": "Unauthorized",
+    "traceId": "0af7651916cd43dd8448eb211c80319c"
+  }
+}
