@@ -80,7 +80,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		}
 		printImportResult(result)
 		return nil
-	case string(dash0api.V1alpha2):
+	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
 		filter, err := decodeV1Alpha2(raw)
 		if err != nil {
 			return err
