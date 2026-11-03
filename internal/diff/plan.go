@@ -137,6 +137,21 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		return []docPlan{{displayKind: "Dash0Team", name: name, plan: plan}}, nil
 
+	case "skill":
+		var skill dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &skill); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0Skill: %w", err)
+		}
+		name := asset.CustomSkillName(&skill)
+		plan, err := asset.PlanCustomSkill(ctx, apiClient, &skill)
+		if err != nil {
+			if explained := asset.ExplainCustomSkillError(err, name); explained != nil {
+				return nil, explained
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "Agent0 skill", AssetName: name})
+		}
+		return []docPlan{{displayKind: asset.CustomSkillKind, name: name, plan: plan}}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)
 	}

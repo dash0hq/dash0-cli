@@ -16,6 +16,7 @@
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
+| Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
 Synthetic check:

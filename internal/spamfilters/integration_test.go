@@ -437,7 +437,7 @@ spec:
 	// of substring matching on raw JSON.
 	var sent dash0api.SpamFilterV1Alpha2
 	require.NoError(t, json.Unmarshal(req.Body, &sent))
-	assert.Equal(t, dash0api.V1alpha2, sent.ApiVersion)
+	assert.Equal(t, dash0api.SpamFilterApiVersionV1Alpha2V1alpha2, sent.ApiVersion)
 	assert.Equal(t, dash0api.TelemetryFilterContextLog, sent.Spec.Context)
 	require.Len(t, sent.Spec.Filter, 1)
 	assert.Equal(t, "otel.log.severity.range", sent.Spec.Filter[0].Key)

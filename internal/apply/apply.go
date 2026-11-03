@@ -69,6 +69,7 @@ Supported asset types:
   - Dash0Team
   - Dash0TimeSeriesAggregation
   - Dash0Dataset
+  - Dash0Skill (Agent0 custom skill)
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -468,6 +469,21 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			return nil, err
 		}
 		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "skill":
+		var skill dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &skill); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0Skill: %w", err)
+		}
+		name := asset.CustomSkillName(&skill)
+		result, err := asset.ImportCustomSkill(ctx, apiClient, &skill)
+		if err != nil {
+			if explained := asset.ExplainCustomSkillError(err, name); explained != nil {
+				return nil, explained
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "Agent0 skill", AssetName: name})
+		}
+		return []applyResult{{kind: "Dash0Skill", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)

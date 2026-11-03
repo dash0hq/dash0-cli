@@ -103,7 +103,7 @@ func assertNewShapeSpec(t *testing.T, d *dash0api.DatasetDefinition, logsRetenti
 	assert.Equal(t, "dash0.com/v1alpha1", d.ApiVersion)
 	require.NotNil(t, d.Spec.Retention)
 	require.NotNil(t, d.Spec.Retention.Traces)
-	assert.Equal(t, dash0api.N60d, *d.Spec.Retention.Traces)
+	assert.Equal(t, dash0api.RetentionClassN60d, *d.Spec.Retention.Traces)
 	require.NotNil(t, d.Spec.Retention.Logs)
 	assert.Equal(t, logsRetention, *d.Spec.Retention.Logs)
 	require.NotNil(t, d.Spec.Privacy)
@@ -332,7 +332,7 @@ func TestGetDataset_JSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(output), &parsed))
 	assert.Equal(t, "production", dash0api.GetDatasetID(&parsed))
 	assert.Equal(t, "Production", parsed.Metadata.Name)
-	assertNewShapeSpec(t, &parsed, dash0api.N90d)
+	assertNewShapeSpec(t, &parsed, dash0api.RetentionClassN90d)
 }
 
 func TestGetDataset_YAML(t *testing.T) {
@@ -353,7 +353,7 @@ func TestGetDataset_YAML(t *testing.T) {
 
 	var parsed dash0api.DatasetDefinition
 	require.NoError(t, dash0yaml.Unmarshal([]byte(output), &parsed))
-	assertNewShapeSpec(t, &parsed, dash0api.N90d)
+	assertNewShapeSpec(t, &parsed, dash0api.RetentionClassN90d)
 }
 
 func TestGetDataset_InvalidFormatMakesNoAPICall(t *testing.T) {
@@ -422,7 +422,7 @@ func TestCreateDataset_PostsWhenPreflightIs404(t *testing.T) {
 	assert.Equal(t, dash0api.Dash0Dataset, body.Kind)
 	assert.Equal(t, "Production", body.Metadata.Name)
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
-	assertNewShapeSpec(t, &body, dash0api.N90d)
+	assertNewShapeSpec(t, &body, dash0api.RetentionClassN90d)
 	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
 }
 
@@ -450,7 +450,7 @@ func TestCreateDataset_PutsWhenPreflightHits(t *testing.T) {
 	body := decodeDataset(t, puts[0])
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
 	assert.Equal(t, "Production", body.Metadata.Name)
-	assertNewShapeSpec(t, &body, dash0api.N90d)
+	assertNewShapeSpec(t, &body, dash0api.RetentionClassN90d)
 	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
 }
 
@@ -609,7 +609,7 @@ spec:
 	assert.Nil(t, body.Metadata.Labels.Dash0Comversion, "server-managed version label must be stripped")
 	assert.Nil(t, body.Metadata.Labels.Dash0Comsource, "server-managed source label must be stripped")
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body), "the slug label must survive")
-	assertNewShapeSpec(t, &body, dash0api.N120d)
+	assertNewShapeSpec(t, &body, dash0api.RetentionClassN120d)
 	assert.Contains(t, output, "+    logs: 120d")
 }
 

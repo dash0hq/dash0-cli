@@ -7,10 +7,10 @@ Use the word "asset" consistently where appropriate.
 ## Top-level Asset Commands
 - Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`
 - Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`
-- Group related functionality: `config profiles` for profile management
+- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, and `auth-tokens` commands, use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -35,6 +35,11 @@ Without `--force`, a 404 must surface as a clean "asset not found" error (via `c
 The shared helper is `client.IsAlreadyDeleted(err, force, ectx)` in `internal/client/client.go`.
 Every delete path must call it before falling through to `client.HandleAPIError`; the helper prints an "already deleted" line to stderr and returns `true` when force is set and the error is a 404.
 This is a hard rule, not a guideline — adding a new delete command without this wiring is incomplete work and will be flagged in review.
+
+## Agent0 Subcommands (experimental)
+The `agent0` command groups what configures Agent0, the Dash0 AI agent.
+Its only child is `skills`, which manages Agent0 custom skills with the standard CRUD subcommands above.
+The nesting keeps `skills` apart from the top-level `skill` command, which installs this CLI's own Agent Skill.
 
 ## Config Profiles Subcommands
 The `config profiles` command uses:
@@ -121,6 +126,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dash0NotificationChannel`  | Notification channel |
 | `Dash0Dataset`              | Dataset              |
 | `Dash0AuthToken`            | Auth token           |
+| `Dash0Skill`                | Agent0 skill         |
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
 

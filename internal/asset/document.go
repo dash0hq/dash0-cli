@@ -201,6 +201,14 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		name = dash0api.GetDatasetName(&dataset)
 		id = dash0api.GetDatasetID(&dataset)
 
+	case "skill":
+		var skill dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(data, &skill); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = CustomSkillName(&skill)
+		id = CustomSkillKey(&skill)
+
 	default:
 		var raw map[string]any
 		if err := dash0yaml.Unmarshal(data, &raw); err != nil {

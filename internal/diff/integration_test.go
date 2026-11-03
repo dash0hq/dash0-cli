@@ -485,3 +485,65 @@ spec:
 	require.NoError(t, err, output)
 	assert.Contains(t, output, "No differences")
 }
+
+const skillDoc = `kind: Dash0Skill
+metadata:
+  labels:
+    dash0.com/origin: dash0-cli_incident-triage
+spec:
+  files:
+    - relativePath: SKILL.md
+      content: |
+        ---
+        name: incident-triage
+        description: Triage a production incident from its failed checks.
+        ---
+
+        Start from the failed check, then follow the trace to the failing service.
+    - relativePath: references/runbook.md
+      content: |
+        # Runbook
+
+        Check the deploy log first.
+  permissions:
+    - role: basic_member
+      actions:
+        - custom_skill:read
+      defaultEnabled: false
+`
+
+func TestDiff_Skill(t *testing.T) {
+	const skillOriginPath = "/api/agent0/custom-skills/dash0-cli_incident-triage"
+	cases := map[string]struct {
+		stored     testutil.MockResponse
+		wantOutput string
+		wantErr    bool
+	}{
+		"stored skill matches": {
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetSuccess, Validator: testutil.RequireHeaders},
+			wantOutput: "No differences",
+		},
+		"new origin is a create": {
+			stored:     testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders},
+			wantOutput: `Create Agent0 skill "incident-triage" (dash0-cli_incident-triage)`,
+			wantErr:    true,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "skill.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(skillDoc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, skillOriginPath, c.stored)
+
+			output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+			assert.Equal(t, c.wantErr, err != nil, "differences pending is reported as an error so the exit code is 1")
+			assert.Contains(t, output, c.wantOutput)
+			for _, request := range server.Requests() {
+				assert.Equal(t, http.MethodGet, request.Method, "diff must never write")
+			}
+		})
+	}
+}
