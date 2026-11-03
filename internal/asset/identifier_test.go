@@ -34,6 +34,8 @@ func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 		{"Dash0Team falls back to id", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dash0SpamFilter falls back to id", "kind: Dash0SpamFilter\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dash0Team prefers origin", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "o"},
+		{"Dash0Skill falls back to id", "kind: Dash0Skill\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
+		{"Dash0Skill prefers origin", "kind: Dash0Skill\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "o"},
 
 		// SLO ids are server-assigned, so an origin-only document is the
 		// recommended and most common hand-authored form -- reading only the id

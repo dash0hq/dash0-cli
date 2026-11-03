@@ -202,8 +202,8 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
 	timeRange := dash0api.TimeReferenceRange{
-		From: query.NormalizeTimestamp(flags.From),
-		To:   query.NormalizeTimestamp(flags.To),
+		From: dash0api.TimeReferenceFromString(query.NormalizeTimestamp(flags.From)),
+		To:   dash0api.TimeReferenceFromString(query.NormalizeTimestamp(flags.To)),
 	}
 
 	sampling := &dash0api.Sampling{
@@ -225,8 +225,8 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 			followRange = "1h"
 		}
 		followTimeRange := dash0api.TimeReferenceRange{
-			From: "now-" + followRange,
-			To:   "now",
+			From: dash0api.TimeReferenceFromString("now-" + followRange),
+			To:   dash0api.TimeReferenceFromString("now"),
 		}
 		followSampling := &dash0api.Sampling{
 			Mode:      dash0api.SamplingModeDisabled,

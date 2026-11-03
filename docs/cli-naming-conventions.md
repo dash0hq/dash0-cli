@@ -7,10 +7,10 @@ Use the word "asset" consistently where appropriate.
 ## Top-level Asset Commands
 - Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
 - Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`, `aws-metric-scrape-configs`
-- Group related functionality: `config profiles` for profile management
+- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, and `auth-tokens` commands, use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -48,6 +48,10 @@ The API has no list endpoint and no create, so `aws-metric-scrape-configs` has o
 
 `update` doubles as create, because a PUT replaces the config whether or not one exists, so there is no `create` alias to keep in sync.
 Success messages say `cleared`, not `deleted`, because the integration survives.
+## Agent0 Subcommands (experimental)
+The `agent0` command groups what configures Agent0, the Dash0 AI agent.
+Its only child is `skills`, which manages Agent0 custom skills with the standard CRUD subcommands above.
+The nesting keeps `skills` apart from the top-level `skill` command, which installs this CLI's own Agent Skill.
 
 ## Config Profiles Subcommands
 The `config profiles` command uses:
@@ -134,6 +138,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dash0NotificationChannel`  | Notification channel |
 | `Dash0Dataset`              | Dataset              |
 | `Dash0AuthToken`            | Auth token           |
+| `Dash0Skill`                | Agent0 skill         |
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
 | `Dash0AwsMetricScrapeConfig`| AWS metric scrape config |

@@ -9,7 +9,7 @@ import (
 )
 
 func TestParsePrecision(t *testing.T) {
-	timeRange := dash0api.TimeReferenceRange{From: "now-5m", To: "now"}
+	timeRange := dash0api.TimeReferenceRange{From: dash0api.TimeReferenceFromString("now-5m"), To: dash0api.TimeReferenceFromString("now")}
 
 	t.Run("empty value returns nil so the server applies its default", func(t *testing.T) {
 		s, err := ParsePrecision("", timeRange)

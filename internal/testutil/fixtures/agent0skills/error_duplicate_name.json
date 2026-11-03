@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Bad Request: The submitted custom skill has a name (\"incident-triage\") that another custom skill in this organization already uses. Skill names must be unique per organization."
+  }
+}
