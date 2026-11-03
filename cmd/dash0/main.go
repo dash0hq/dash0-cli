@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/dash0hq/dash0-api-client-go/profiles"
+	"github.com/dash0hq/dash0-cli/internal/agent0"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/authtokens"
@@ -75,6 +76,7 @@ func init() {
 	versionpkg.Version = version
 
 	// Register subcommands
+	rootCmd.AddCommand(agent0.NewAgent0Cmd())
 	rootCmd.AddCommand(apply.NewApplyCmd())
 	rootCmd.AddCommand(authtokens.NewAuthTokensCmd())
 	rootCmd.AddCommand(rawapi.NewAPICmd())

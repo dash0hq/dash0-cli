@@ -12,6 +12,7 @@
 - `/internal/confirmation`: Confirmation prompt for destructive operations (respects `--force` and agent mode)
 - `/internal/config`: Configuration management (profiles, resolution)
 - `/internal/experimental`: Gate for commands behind the `--experimental` (`-X`) flag
+- `/internal/agent0`: The `agent0` command group. `/internal/agent0/skills` holds `agent0 skills list`, `get`, `create`, `update`, and `delete` for Agent0 custom skills (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/customskill.go`
 - `/internal/datasets`: The `datasets` command group — `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/dataset.go`
 - `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
