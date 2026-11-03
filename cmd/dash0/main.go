@@ -331,8 +331,7 @@ func main() {
 	// cobra merges them lazily during Execute. Without this merge a boolean
 	// persistent flag before the subcommand (`dash0 --experimental diff ...`)
 	// is read as taking a value, swallows the subcommand name, and Traverse
-	// returns the root command, so diff's exit code 2 is lost. See
-	// TestTraverseTargetCommand.
+	// returns the root command. See TestTraverseTargetCommand.
 	rootCmd.Flags().AddFlagSet(rootCmd.PersistentFlags())
 
 	// Determine which command will be executed (best-effort; Traverse can still
@@ -408,11 +407,10 @@ func main() {
 		ctx = client.WithMaxRetries(ctx, &v)
 	}
 
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		cmdName := ""
-		if targetCmd != nil {
-			cmdName = targetCmd.Name()
-		}
+	if executedCmd, err := rootCmd.ExecuteContextC(ctx); err != nil {
+		// The executed command, not the pre-parse guess: Traverse misses diff
+		// behind a flag such as `--api-url <url>`, and diff exits 2 on error.
+		cmdName := executedCmd.Name()
 		// Pending differences are not a failure: diff already printed its
 		// report, so skip the "Error:" path and the usage text.
 		if !errors.As(err, new(*diff.PendingDifferencesError)) {

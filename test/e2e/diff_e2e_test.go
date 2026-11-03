@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
+	"github.com/testcontainers/testcontainers-go/exec"
 )
 
 // TestE2E_DiffSince_WholeFileDeletion runs `diff --since` against a real git
@@ -61,5 +62,31 @@ func TestE2E_DiffSince_UnresolvableRefExitsTwo(t *testing.T) {
 	}
 	if !strings.Contains(output, "could not be resolved") {
 		t.Errorf("expected the unresolvable-ref error, got:\n%s", output)
+	}
+}
+
+// TestE2E_Diff_UnreachableAPIWithFlagBeforeSubcommandExitsTwo pins exit 2 for a
+// failed fetch when a value flag comes before diff, the shape the pre-parse in
+// main() resolves to the root command.
+func TestE2E_Diff_UnreachableAPIWithFlagBeforeSubcommandExitsTwo(t *testing.T) {
+	ctx := context.Background()
+	repoDir, _ := testutil.BuildGitScenario(t, "whole-file-deletion")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	container := startContainer(ctx, t, mockServerPort(t, server))
+	copyScenarioIntoContainer(ctx, t, container, repoDir)
+
+	args := []string{"dash0", "--api-url", "http://127.0.0.1:1", "--auth-token", testAuthToken, "--experimental", "diff", "-f", "/work/repo"}
+	exitCode, reader, err := container.Exec(ctx, args, exec.WithEnv([]string{"DASH0_CONFIG_DIR=/tmp/dash0-config"}))
+	if err != nil {
+		t.Fatalf("failed to exec %v: %v", args, err)
+	}
+	output := drainExecOutput(reader)
+
+	if exitCode != 2 {
+		t.Fatalf("expected exit 2, got %d. Output:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "connection refused") {
+		t.Errorf("expected a connection error, got:\n%s", output)
 	}
 }
