@@ -1375,10 +1375,12 @@ $ echo $?
 
 Each file header is the path relative to `-f`'s target, as in `apply`, and files are listed in sorted order.
 
-Preview with no pending differences:
+Preview with no pending differences.
+Each unchanged asset gets a `no changes` line, then the summary line:
 
 ```bash
 $ dash0 --experimental diff -f dashboard.yaml
+Dashboard "Production Overview": no changes
 No differences
 $ echo $?
 0
@@ -1408,7 +1410,7 @@ $ echo $?
 
 In agent mode, `diff` reports the same information as JSON: an array of `{path, changes: [{op, kind, name, originOrId, since}]}`, `op` being `"create"`, `"update"`, or `"delete"` — the same shape `apply --dry-run --agent-mode` uses, except `diff` distinguishes `"create"` from `"update"` since that is the entire point of a pre-flight preview.
 `since` is set only on `"delete"` changes and names the `--since` ref the deletion was derived from.
-An unchanged update is omitted from the JSON output entirely, matching the human-readable output's "no differences" convention.
+An unchanged asset is left out of the JSON output, while the human-readable output lists it with a `no changes` line.
 
 `diff` needs a real `git` binary on `PATH` for `--since`, same as `apply --since`.
 It is unavailable from the `ghcr.io/dash0hq/cli` Docker image, which is built `FROM scratch` and has no shell or other tools installed.
