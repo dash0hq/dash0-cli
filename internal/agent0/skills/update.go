@@ -107,7 +107,15 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		if err != nil {
 			return err
 		}
-		return asset.PrintDiff(os.Stdout, assetType, asset.CustomSkillName(preview), before, preview)
+		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+			DisplayKind:     assetType,
+			Name:            asset.CustomSkillName(preview),
+			ID:              dash0api.GetCustomSkillID(before),
+			Before:          before,
+			After:           preview,
+			BeforeDeletedAt: asset.CustomSkillDeletedAt(before),
+			DryRun:          true,
+		})
 	}
 
 	result, err := apiClient.UpdateCustomSkill(ctx, key, &skill)
@@ -119,5 +127,13 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 	asset.SortCustomSkillPermissions(result)
 
-	return asset.PrintDiff(os.Stdout, assetType, asset.CustomSkillName(result), before, result)
+	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
+		DisplayKind:     assetType,
+		Name:            asset.CustomSkillName(result),
+		ID:              dash0api.GetCustomSkillID(result),
+		Before:          before,
+		After:           result,
+		BeforeDeletedAt: asset.CustomSkillDeletedAt(before),
+		AfterDeletedAt:  asset.CustomSkillDeletedAt(result),
+	})
 }

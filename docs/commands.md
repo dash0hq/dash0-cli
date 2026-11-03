@@ -1555,6 +1555,14 @@ spec:
 
 `apiVersion` is required, and `dash0.com/v1alpha1` is the only supported value.
 The dataset slug is `spec.slug` or, when that is absent, `metadata.labels["dash0.com/id"]`; `spec.slug` wins when a document carries both.
+It is required and cannot change after creation.
+`metadata.name` is the display name.
+Every `spec` field is optional: a field left out on create takes the server default, and a field left out on update keeps its stored value.
+`spec.retention` sets how long each signal is kept (`traces`, `logs`, `metrics`, `profiles`, `webEvents`).
+A retention class is the total number of days: `30d`, `60d`, `90d`, `120d`, `210d`, or `390d`.
+`spec.privacy` sets IP address storage, geolocation storage, and redaction.
+`spec.processing` sets span-event conversion, semantic convention upgrades, and darkplane opt-ins.
+A dataset document has no telemetry filters; spam filters own them.
 
 Agent0 skill (organization-level, no `--dataset`, requires `--experimental` for the `agent0 skills` commands):
 
@@ -1590,14 +1598,6 @@ The skill's name is the `name` in the `SKILL.md` frontmatter, and is unique per 
 The server rejects a `custom_skill:write` grant on a skill whose origin marks it as managed by Terraform, the Dash0 operator, or the Dash0 platform; `dash0-cli_` origins accept it.
 `dash0.com/enabled` is per user, so it is never sent; set `defaultEnabled: false` on a grant to ship the skill turned off for the users that grant matches.
 Only admins may set `defaultEnabled` on any grant; members only on their own user grant or on a grant to a team they belong to.
-It is required and cannot change after creation.
-`metadata.name` is the display name.
-Every `spec` field is optional: a field left out on create takes the server default, and a field left out on update keeps its stored value.
-`spec.retention` sets how long each signal is kept (`traces`, `logs`, `metrics`, `profiles`, `webEvents`).
-A retention class is the total number of days: `30d`, `60d`, `90d`, `120d`, `210d`, or `390d`.
-`spec.privacy` sets IP address storage, geolocation storage, and redaction.
-`spec.processing` sets span-event conversion, semantic convention upgrades, and darkplane opt-ins.
-A dataset document has no telemetry filters; spam filters own them.
 
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
@@ -3889,7 +3889,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: apply, api, auth-tokens, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

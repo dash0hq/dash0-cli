@@ -457,6 +457,46 @@ func TestUpdateSkill_Success(t *testing.T) {
 	assertWriteBody(t, decodeSkill(t, puts[0]))
 }
 
+func TestUpdateSkill_RestoresDeletedSkill(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	mockGet(server, pathByOrigin, http.StatusOK, testutil.FixtureAgent0SkillsGetDeleted)
+	server.On(http.MethodPut, pathByOrigin, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsUpdateSuccess, Validator: testutil.RequireHeaders})
+
+	output, _, err := runCmd(t, server.URL, "-X", "agent0", "skills", "update", "-f", writeYAML(t, skillYAML))
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Agent0 skill "incident-triage" restored`)
+}
+
+func TestUpdateSkill_DryRunOnDeletedSkill(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	mockGet(server, pathByOrigin, http.StatusOK, testutil.FixtureAgent0SkillsGetDeleted)
+
+	output, _, err := runCmd(t, server.URL, "-X", "agent0", "skills", "update", "-f", writeYAML(t, skillYAML), "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Agent0 skill "incident-triage" would be restored`)
+	assert.Empty(t, requestsFor(server, http.MethodPut, pathByOrigin))
+}
+
+func TestWriteSkill_FailsWhenResponseStillDeleted(t *testing.T) {
+	for _, command := range []string{"create", "update"} {
+		t.Run(command, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			mockGet(server, pathByOrigin, http.StatusOK, testutil.FixtureAgent0SkillsGetDeleted)
+			server.On(http.MethodPut, pathByOrigin, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsGetDeleted, Validator: testutil.RequireHeaders})
+
+			output, _, err := runCmd(t, server.URL, "-X", "agent0", "skills", command, "-f", writeYAML(t, skillYAML))
+
+			require.EqualError(t, err, `Agent0 skill "incident-triage" was saved, but the API still shows it as deleted`)
+			assert.NotContains(t, output, "restored")
+		})
+	}
+}
+
 func TestUpdateSkill_ByIDArgument(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())

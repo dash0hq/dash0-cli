@@ -40,18 +40,17 @@ func customSkillManifest(skill *dash0api.SkillDefinition) *dash0api.SkillFile {
 	return nil
 }
 
-// CustomSkillName returns the name of a custom skill: metadata.name when the API set it, otherwise
-// the name in the SKILL.md frontmatter, which is where the server reads it from. It returns "" when
+// CustomSkillName returns the name of a custom skill: the name in the SKILL.md frontmatter, which is
+// where the server reads it from, otherwise metadata.name. The frontmatter wins because an exported
+// document keeps the old metadata.name after the frontmatter renames the skill. It returns "" when
 // neither is available.
 func CustomSkillName(skill *dash0api.SkillDefinition) string {
-	if name := dash0api.GetCustomSkillName(skill); name != "" {
-		return name
+	if manifest := customSkillManifest(skill); manifest != nil {
+		if name := frontmatterName(manifest.Content); name != "" {
+			return name
+		}
 	}
-	manifest := customSkillManifest(skill)
-	if manifest == nil {
-		return ""
-	}
-	return frontmatterName(manifest.Content)
+	return dash0api.GetCustomSkillName(skill)
 }
 
 func frontmatterName(content string) string {
@@ -130,6 +129,9 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 		result, err = apiClient.CreateCustomSkill(ctx, skill)
 	}
 	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := RequireNotDeleted("Agent0 skill", CustomSkillName(result), dash0api.GetCustomSkillID(result), CustomSkillDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 

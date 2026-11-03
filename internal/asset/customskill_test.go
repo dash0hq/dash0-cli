@@ -37,12 +37,20 @@ func TestCustomSkillName(t *testing.T) {
 	}
 }
 
-func TestCustomSkillName_PrefersServerName(t *testing.T) {
-	skill := skillWithManifest("---\nname: from-file\n---\n")
-	name := "from-server"
+func TestCustomSkillName_FrontmatterWinsOverStaleMetadataName(t *testing.T) {
+	skill := skillWithManifest("---\nname: release-notes\n---\n")
+	name := "incident-triage"
 	skill.Metadata.Name = &name
 
-	assert.Equal(t, "from-server", CustomSkillName(skill))
+	assert.Equal(t, "release-notes", CustomSkillName(skill))
+}
+
+func TestCustomSkillName_FallsBackToMetadataName(t *testing.T) {
+	skill := skillWithManifest("# no frontmatter\n")
+	name := "incident-triage"
+	skill.Metadata.Name = &name
+
+	assert.Equal(t, "incident-triage", CustomSkillName(skill))
 }
 
 func TestValidateCustomSkill(t *testing.T) {
