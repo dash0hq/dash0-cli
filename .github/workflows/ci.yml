@@ -30,6 +30,8 @@ on:
         required: false
       DASH0_OAUTH_REFRESH_TOKEN:
         required: false
+      DASH0_AWS_INTEGRATION_ID:
+        required: false
 
 jobs:
   build:
@@ -332,7 +334,7 @@ jobs:
           DASH0_OTLP_URL: ${{ secrets.DASH0_OTLP_URL }}
           DASH0_DATASET: ${{ secrets.DASH0_DATASET }}
           # An AWS integration whose scrape config test_aws_metric_scrape_config_roundtrip
-          # replaces and restores. That test skips while the secret is unset.
+          # replaces and restores. That test fails in CI while the secret is unset.
           DASH0_AWS_INTEGRATION_ID: ${{ secrets.DASH0_AWS_INTEGRATION_ID }}
         run: bash test/roundtrip/${{ matrix.test }}.sh
 
@@ -344,4 +346,6 @@ jobs:
         # side; that will make OAuth roundtrip regressions block merges.
         if: matrix.token_kind == 'oauth' && env.skip != 'true'
         continue-on-error: true
+        env:
+          DASH0_AWS_INTEGRATION_ID: ${{ secrets.DASH0_AWS_INTEGRATION_ID }}
         run: bash test/roundtrip/${{ matrix.test }}.sh

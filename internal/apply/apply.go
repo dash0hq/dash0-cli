@@ -18,6 +18,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -431,6 +432,12 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
 			case doc.id == "":
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrAwsMetricScrapeConfigMissingID.Error()))
+			default:
+				// The client rejects a non-UUID id only when it sends the request,
+				// which would be after the documents before this one were applied.
+				if _, err := uuid.Parse(doc.id); err != nil {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: dash0.com/id %q is not a valid AWS integration id: it must be a UUID", doc.location(), doc.id))
+				}
 			}
 			for _, warning := range warnings {
 				validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))

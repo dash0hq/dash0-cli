@@ -292,6 +292,38 @@ spec:
 	assert.Empty(t, requestsFor(server, http.MethodPut))
 }
 
+// The server returns a namespace without metrics as [], so leaving metrics out
+// of the file must not show up as a change.
+func TestUpdate_DryRunOmittedMetricsIsNoChange(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := newServer(t)
+	server.On(http.MethodGet, apiPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: map[string]any{
+			"apiVersion": "dash0.com/v1alpha1",
+			"kind":       "Dash0AwsMetricScrapeConfig",
+			"metadata":   map[string]any{"name": "production-account", "labels": map[string]any{"dash0.com/id": integrationID}},
+			"spec":       map[string]any{"namespaces": []any{map[string]any{"namespace": "AWS/EC2", "metrics": []any{}}}},
+		},
+		Validator: testutil.RequireHeaders,
+	})
+
+	doc := `apiVersion: dash0.com/v1alpha1
+kind: Dash0AwsMetricScrapeConfig
+metadata:
+  labels:
+    dash0.com/id: ` + integrationID + `
+spec:
+  namespaces:
+    - namespace: AWS/EC2
+`
+	stdout, _, err := runCmd(t, server.URL, "update", "-f", writeYAML(t, doc), "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "no changes")
+	assert.Empty(t, requestsFor(server, http.MethodPut))
+}
+
 func TestUpdate_PositionalIDMustMatchFile(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := newServer(t)

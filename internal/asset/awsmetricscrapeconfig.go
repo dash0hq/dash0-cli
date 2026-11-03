@@ -166,7 +166,12 @@ func normalizeAwsMetricScrapeConfigForDiff(cfg *dash0api.AwsMetricScrapeConfigDe
 	sort.SliceStable(cfg.Spec.Namespaces, func(i, j int) bool {
 		return cfg.Spec.Namespaces[i].Namespace < cfg.Spec.Namespaces[j].Namespace
 	})
-	for _, ns := range cfg.Spec.Namespaces {
-		sort.Strings(ns.Metrics)
+	for i := range cfg.Spec.Namespaces {
+		// The server returns a namespace without metrics as [], so a nil list
+		// would show up as a change.
+		if cfg.Spec.Namespaces[i].Metrics == nil {
+			cfg.Spec.Namespaces[i].Metrics = []string{}
+		}
+		sort.Strings(cfg.Spec.Namespaces[i].Metrics)
 	}
 }

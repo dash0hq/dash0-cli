@@ -3361,6 +3361,11 @@ func TestApply_AwsMetricScrapeConfig_InvalidDocumentsFailValidation(t *testing.T
 			wantErr: `requires metadata.labels["dash0.com/id"]`,
 		},
 		{
+			name:    "integration id is not a UUID",
+			doc:     "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  labels:\n    dash0.com/id: prod-account\nspec:\n  namespaces: []\n",
+			wantErr: `dash0.com/id "prod-account" is not a valid AWS integration id`,
+		},
+		{
 			name:    "missing namespaces",
 			doc:     "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  labels:\n    dash0.com/id: " + awsScrapeIntegrationID + "\nspec:\n  namespace: []\n",
 			wantErr: "spec.namespaces is required",

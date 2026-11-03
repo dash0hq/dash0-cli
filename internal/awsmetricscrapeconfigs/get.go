@@ -70,9 +70,6 @@ func runGet(ctx context.Context, integrationID string, flags *getFlags) error {
 	if err != nil {
 		return client.HandleAPIError(err, errorContext(integrationID))
 	}
-	if err := requireConfig(cfg, integrationID); err != nil {
-		return err
-	}
 
 	switch format {
 	case "json":
