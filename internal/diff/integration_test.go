@@ -34,26 +34,36 @@ func withAgentMode(t *testing.T, enabled bool) {
 	t.Cleanup(func() { agentmode.Enabled = prev })
 }
 
-func writeViewFixture(t *testing.T, dir, name string) string {
+func writeViewFixture(t *testing.T, dir, file, id, name string) string {
 	t.Helper()
-	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte(`kind: View
+	path := filepath.Join(dir, file)
+	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`kind: View
 metadata:
-  name: my-view
+  name: %[2]s
   labels:
-    dash0.com/id: view-id
+    dash0.com/id: %[1]s
 spec:
   type: logs
   display:
-    name: my-view
-`), 0644))
+    name: %[2]s
+`, id, name)), 0644))
 	return path
+}
+
+func storedView(id, name string) *dash0api.ViewDefinition {
+	view := &dash0api.ViewDefinition{}
+	view.Kind = dash0api.ViewDefinitionKind("View")
+	view.Metadata.Name = name
+	view.Metadata.Labels = &dash0api.ViewLabels{Dash0Comid: &id}
+	view.Spec.Type = dash0api.ViewType("logs")
+	view.Spec.Display = dash0api.ViewDisplay{Name: name}
+	return view
 }
 
 func TestDiff_Create(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	tmpDir := t.TempDir()
-	yamlFile := writeViewFixture(t, tmpDir, "view.yaml")
+	yamlFile := writeViewFixture(t, tmpDir, "view.yaml", "view-id", "my-view")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
@@ -81,15 +91,9 @@ func TestDiff_Create(t *testing.T) {
 func TestDiff_UpdateWithNoChanges(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	tmpDir := t.TempDir()
-	yamlFile := writeViewFixture(t, tmpDir, "view.yaml")
+	yamlFile := writeViewFixture(t, tmpDir, "view.yaml", "view-id", "my-view")
 
-	id := "view-id"
-	existing := &dash0api.ViewDefinition{}
-	existing.Kind = dash0api.ViewDefinitionKind("View")
-	existing.Metadata.Name = "my-view"
-	existing.Metadata.Labels = &dash0api.ViewLabels{Dash0Comid: &id}
-	existing.Spec.Type = dash0api.ViewType("logs")
-	existing.Spec.Display = dash0api.ViewDisplay{Name: "my-view"}
+	existing := storedView("view-id", "my-view")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
@@ -114,14 +118,9 @@ func TestDiff_UpdateWithNoChanges(t *testing.T) {
 func TestDiff_UpdateWithChanges(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	tmpDir := t.TempDir()
-	yamlFile := writeViewFixture(t, tmpDir, "view.yaml")
+	yamlFile := writeViewFixture(t, tmpDir, "view.yaml", "view-id", "my-view")
 
-	id := "view-id"
-	existing := &dash0api.ViewDefinition{}
-	existing.Metadata.Name = "old-name"
-	existing.Metadata.Labels = &dash0api.ViewLabels{Dash0Comid: &id}
-	existing.Spec.Type = dash0api.ViewType("logs")
-	existing.Spec.Display = dash0api.ViewDisplay{Name: "old-name"}
+	existing := storedView("view-id", "old-name")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
@@ -150,7 +149,7 @@ func TestDiff_UpdateWithChanges(t *testing.T) {
 func TestDiff_FetchFailure_Aborts(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	tmpDir := t.TempDir()
-	yamlFile := writeViewFixture(t, tmpDir, "view.yaml")
+	yamlFile := writeViewFixture(t, tmpDir, "view.yaml", "view-id", "my-view")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
@@ -177,7 +176,7 @@ func TestDiff_JSONOutput_Create(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	withAgentMode(t, true)
 	tmpDir := t.TempDir()
-	yamlFile := writeViewFixture(t, tmpDir, "view.yaml")
+	yamlFile := writeViewFixture(t, tmpDir, "view.yaml", "view-id", "my-view")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
@@ -245,17 +244,11 @@ func TestDiff_Since_DeletionPreview(t *testing.T) {
 // differences" for an asset apply is about to bring back.
 func TestDiff_SoftDeletedAssetIsCreate(t *testing.T) {
 	testutil.SetupTestEnv(t)
-	yamlFile := writeViewFixture(t, t.TempDir(), "view.yaml")
+	yamlFile := writeViewFixture(t, t.TempDir(), "view.yaml", "view-id", "my-view")
 
-	id := "view-id"
 	deletedAt := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	existing := &dash0api.ViewDefinition{}
-	existing.Kind = dash0api.ViewDefinitionKind("View")
-	existing.Metadata.Name = "my-view"
-	existing.Metadata.Labels = &dash0api.ViewLabels{Dash0Comid: &id}
+	existing := storedView("view-id", "my-view")
 	existing.Metadata.Annotations = &dash0api.ViewAnnotations{Dash0ComdeletedAt: &deletedAt}
-	existing.Spec.Type = dash0api.ViewType("logs")
-	existing.Spec.Display = dash0api.ViewDisplay{Name: "my-view"}
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
@@ -364,7 +357,7 @@ func TestDiff_Since_RemovedTargetListsEveryDeletion(t *testing.T) {
 	git("config", "user.name", "test")
 	target := filepath.Join(repoDir, "views")
 	require.NoError(t, os.MkdirAll(target, 0o755))
-	writeViewFixture(t, target, "view.yaml")
+	writeViewFixture(t, target, "view.yaml", "view-id", "my-view")
 	git("add", "-A")
 	git("commit", "-q", "-m", "add view")
 	ref := git("rev-parse", "HEAD")
@@ -382,11 +375,45 @@ func TestDiff_Since_RemovedTargetListsEveryDeletion(t *testing.T) {
 }
 
 // The server stores member ids and the file lists emails, so diff resolves the
-// stored ids before it compares.
-func TestDiff_TeamMemberEmailsMatchStoredIDs(t *testing.T) {
-	testutil.SetupTestEnv(t)
-	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
-	doc := `apiVersion: dash0.com/v1alpha1
+// stored ids before it compares, with one members lookup per team. A failed
+// members lookup means diff cannot compare the team's members, so it aborts
+// like any other failed read instead of reporting a guessed update.
+func TestDiff_TeamMembers(t *testing.T) {
+	tests := []struct {
+		name    string
+		members testutil.MockResponse
+		check   func(t *testing.T, server *testutil.MockServer, output string, err error)
+	}{
+		{
+			name:    "emails match stored ids",
+			members: testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureMembersListSuccess, Validator: testutil.RequireHeaders},
+			check: func(t *testing.T, server *testutil.MockServer, output string, err error) {
+				require.NoError(t, err, output)
+				assert.Contains(t, output, "No differences")
+				assert.Equal(t, 1, countRequests(server, http.MethodGet, "/api/members"), "one members lookup must cover the stored and the local team")
+			},
+		},
+		{
+			name: "lookup failure aborts",
+			members: testutil.MockResponse{
+				StatusCode: http.StatusInternalServerError,
+				Body:       map[string]any{"error": map[string]any{"code": 500, "message": "boom"}},
+				Validator:  testutil.RequireHeaders,
+			},
+			check: func(t *testing.T, _ *testutil.MockServer, output string, err error) {
+				require.Error(t, err)
+				var pending *PendingDifferencesError
+				assert.False(t, errors.As(err, &pending), "a failed members lookup must exit 2, not 1")
+				assert.Contains(t, err.Error(), "boom", "the error must come from the members lookup")
+				assert.Empty(t, output, "no plan may be printed when a read fails")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+			doc := `apiVersion: dash0.com/v1alpha1
 kind: Dash0Team
 metadata:
   name: backend-team
@@ -398,58 +425,30 @@ spec:
   members:
     - alice@example.com
 `
-	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
-	var stored dash0api.TeamDefinitionV1Alpha1
-	require.NoError(t, dash0yaml.Unmarshal([]byte(doc), &stored))
-	stored.Spec.Members = []string{"user-1"}
+			require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+			var stored dash0api.TeamDefinitionV1Alpha1
+			require.NoError(t, dash0yaml.Unmarshal([]byte(doc), &stored))
+			stored.Spec.Members = []string{"user-1"}
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
-	server.On(http.MethodGet, "/api/members", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureMembersListSuccess, Validator: testutil.RequireHeaders})
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
+			server.On(http.MethodGet, "/api/members", tt.members)
 
-	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+			output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
 
-	require.NoError(t, err, output)
-	assert.Contains(t, output, "No differences")
+			tt.check(t, server, output, err)
+		})
+	}
 }
 
-// A failed members lookup means diff cannot compare the team's members, so it
-// aborts like any other failed read instead of reporting a guessed update.
-func TestDiff_TeamMemberLookupFailureAborts(t *testing.T) {
-	testutil.SetupTestEnv(t)
-	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
-	doc := `apiVersion: dash0.com/v1alpha1
-kind: Dash0Team
-metadata:
-  name: backend-team
-  labels:
-    dash0.com/origin: backend-team
-spec:
-  display:
-    name: Backend Team
-  members:
-    - alice@example.com
-`
-	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
-	var stored dash0api.TeamDefinitionV1Alpha1
-	require.NoError(t, dash0yaml.Unmarshal([]byte(doc), &stored))
-	stored.Spec.Members = []string{"user-1"}
-
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
-	server.On(http.MethodGet, "/api/members", testutil.MockResponse{
-		StatusCode: http.StatusInternalServerError,
-		Body:       map[string]any{"error": map[string]any{"code": 500, "message": "boom"}},
-		Validator:  testutil.RequireHeaders,
-	})
-
-	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
-
-	require.Error(t, err)
-	var pending *PendingDifferencesError
-	assert.False(t, errors.As(err, &pending), "a failed members lookup must exit 2, not 1")
-	assert.Contains(t, err.Error(), "boom", "the error must come from the members lookup")
-	assert.Empty(t, output, "no plan may be printed when a read fails")
+func countRequests(server *testutil.MockServer, method, path string) int {
+	count := 0
+	for _, req := range server.Requests() {
+		if req.Method == method && req.Path == path {
+			count++
+		}
+	}
+	return count
 }
 
 // A file whose assets are all unchanged has nothing pending, so it is left out
@@ -458,33 +457,12 @@ func TestDiff_JSONOutput_LeavesOutUnchangedFile(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	withAgentMode(t, true)
 	dir := t.TempDir()
-	writeView := func(file, id, name string) {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, file), []byte(fmt.Sprintf(`kind: View
-metadata:
-  name: %[2]s
-  labels:
-    dash0.com/id: %[1]s
-spec:
-  type: logs
-  display:
-    name: %[2]s
-`, id, name)), 0644))
-	}
-	writeView("changed.yaml", "view-changed", "new-name")
-	writeView("unchanged.yaml", "view-unchanged", "same-name")
-	stored := func(id, name string) *dash0api.ViewDefinition {
-		view := &dash0api.ViewDefinition{}
-		view.Kind = dash0api.ViewDefinitionKind("View")
-		view.Metadata.Name = name
-		view.Metadata.Labels = &dash0api.ViewLabels{Dash0Comid: &id}
-		view.Spec.Type = dash0api.ViewType("logs")
-		view.Spec.Display = dash0api.ViewDisplay{Name: name}
-		return view
-	}
+	writeViewFixture(t, dir, "changed.yaml", "view-changed", "new-name")
+	writeViewFixture(t, dir, "unchanged.yaml", "view-unchanged", "same-name")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/views/view-changed", testutil.MockResponse{StatusCode: http.StatusOK, Body: stored("view-changed", "old-name"), Validator: testutil.RequireHeaders})
-	server.On(http.MethodGet, "/api/views/view-unchanged", testutil.MockResponse{StatusCode: http.StatusOK, Body: stored("view-unchanged", "same-name"), Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/views/view-changed", testutil.MockResponse{StatusCode: http.StatusOK, Body: storedView("view-changed", "old-name"), Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/views/view-unchanged", testutil.MockResponse{StatusCode: http.StatusOK, Body: storedView("view-unchanged", "same-name"), Validator: testutil.RequireHeaders})
 
 	output, err := runDiffCmd(t, "-f", dir, "--api-url", server.URL)
 
@@ -717,7 +695,7 @@ spec:
   retention:
     logs: 60d
 `), 0644))
-	writeViewFixture(t, dir, "view.yaml")
+	writeViewFixture(t, dir, "view.yaml", "view-id", "my-view")
 	return dir
 }
 

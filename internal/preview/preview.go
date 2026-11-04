@@ -195,9 +195,9 @@ func (p *Plan) WriteJSON(w io.Writer, fromDirectory bool, fileArg, since string)
 			path = fileArg
 		}
 		changes := toJSON(group.Changes)
-		// A file whose every change is an unchanged update (diff only) is
-		// left out. apply --dry-run has no such change, so its output keeps
-		// every file.
+		// A file whose changes are all unchanged updates is left out. A file
+		// with no changes at all is kept, because a single-file target with an
+		// empty plan must still print [{path, changes: []}].
 		if len(changes) == 0 && len(group.Changes) > 0 {
 			continue
 		}

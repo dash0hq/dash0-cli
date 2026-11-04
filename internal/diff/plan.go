@@ -147,18 +147,17 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if err := dash0yaml.Unmarshal(doc.Raw, &team); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0Team: %w", err)
 		}
+		ectx := client.ErrorContext{AssetType: "team", AssetName: dash0api.GetTeamDisplayName(&team)}
 		plan, err := asset.PlanTeam(ctx, apiClient, &team)
 		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "team", AssetName: dash0api.GetTeamDisplayName(&team)})
+			return nil, client.HandleAPIError(err, ectx)
 		}
 		// The stored team holds member ids and the document may list emails,
 		// so compare both as emails. team is this preview's own copy and is
 		// never sent. A failed lookup aborts like any other failed read.
-		if before, ok := plan.Before.(*dash0api.TeamDefinitionV1Alpha1); ok {
-			for _, t := range []*dash0api.TeamDefinitionV1Alpha1{before, &team} {
-				if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, t); err != nil {
-					return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "team", AssetName: dash0api.GetTeamDisplayName(&team)})
-				}
+		if before, ok := plan.Before.(*dash0api.TeamDefinitionV1Alpha1); ok && before != nil {
+			if err := resolveMembersToEmails(ctx, apiClient, before, &team); err != nil {
+				return nil, client.HandleAPIError(err, ectx)
 			}
 		}
 		name := dash0api.GetTeamDisplayName(&team)
@@ -292,4 +291,25 @@ func readError(err error, inNewDataset bool) (bool, error) {
 		return true, nil
 	}
 	return false, err
+}
+
+// resolveMembersToEmails resolves the members of both teams with one members
+// lookup instead of one per team. A team without members is left as it is.
+func resolveMembersToEmails(ctx context.Context, apiClient dash0api.Client, before, local *dash0api.TeamDefinitionV1Alpha1) error {
+	beforeCount := len(before.Spec.Members)
+	ids := append(append([]string{}, before.Spec.Members...), local.Spec.Members...)
+	if len(ids) == 0 {
+		return nil
+	}
+	emails, err := apiClient.ResolveMemberIDsToEmails(ctx, ids)
+	if err != nil {
+		return err
+	}
+	if beforeCount > 0 {
+		before.Spec.Members = emails[:beforeCount]
+	}
+	if len(local.Spec.Members) > 0 {
+		local.Spec.Members = emails[beforeCount:]
+	}
+	return nil
 }
