@@ -110,6 +110,7 @@ $ echo $?
 In agent mode, `diff` reports the same information as JSON: an array of `{path, changes: [{op, kind, name, originOrId, since}]}`, `op` being `"create"`, `"update"`, or `"delete"` — the same shape `apply --dry-run --agent-mode` uses, except `diff` distinguishes `"create"` from `"update"` since that is the entire point of a pre-flight preview.
 `since` is set only on `"delete"` changes and names the `--since` ref the deletion was derived from.
 An unchanged asset is left out of the JSON output, while the human-readable output lists it with a `no changes` line.
+A file whose assets are all unchanged is left out too, so a run with no differences prints `[]`.
 
 `diff` needs a real `git` binary on `PATH` for `--since`, same as `apply --since`.
 It is unavailable from the `ghcr.io/dash0hq/cli` Docker image, which is built `FROM scratch` and has no shell or other tools installed.

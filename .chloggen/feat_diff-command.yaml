@@ -4,7 +4,7 @@ component: diff
 
 note: "Add the experimental `dash0 diff` command, which previews what `apply` would do (creates, updates, and, with `--since`, deletions) without ever mutating anything."
 
-issues: [256]
+issues: [232]
 
 subtext: |
   `diff` fetches each document's current state from Dash0 first, so it can accurately distinguish a create from

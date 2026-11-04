@@ -151,10 +151,15 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "team", AssetName: dash0api.GetTeamDisplayName(&team)})
 		}
-		// Before lists member emails, so resolve the document's members too.
-		// team is this preview's own copy and is never sent.
-		if plan.Action == asset.ActionUpdated {
-			_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, &team)
+		// The stored team holds member ids and the document may list emails,
+		// so compare both as emails. team is this preview's own copy and is
+		// never sent. A failed lookup aborts like any other failed read.
+		if before, ok := plan.Before.(*dash0api.TeamDefinitionV1Alpha1); ok {
+			for _, t := range []*dash0api.TeamDefinitionV1Alpha1{before, &team} {
+				if err := dash0api.ResolveTeamMembersToEmails(ctx, apiClient, t); err != nil {
+					return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "team", AssetName: dash0api.GetTeamDisplayName(&team)})
+				}
+			}
 		}
 		name := dash0api.GetTeamDisplayName(&team)
 		if name == "" {

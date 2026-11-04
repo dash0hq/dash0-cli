@@ -413,6 +413,93 @@ spec:
 	assert.Contains(t, output, "No differences")
 }
 
+// A failed members lookup means diff cannot compare the team's members, so it
+// aborts like any other failed read instead of reporting a guessed update.
+func TestDiff_TeamMemberLookupFailureAborts(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	doc := `apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: backend-team
+spec:
+  display:
+    name: Backend Team
+  members:
+    - alice@example.com
+`
+	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+	var stored dash0api.TeamDefinitionV1Alpha1
+	require.NoError(t, dash0yaml.Unmarshal([]byte(doc), &stored))
+	stored.Spec.Members = []string{"user-1"}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/members", testutil.MockResponse{
+		StatusCode: http.StatusInternalServerError,
+		Body:       map[string]any{"error": map[string]any{"code": 500, "message": "boom"}},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	require.Error(t, err)
+	var pending *PendingDifferencesError
+	assert.False(t, errors.As(err, &pending), "a failed members lookup must exit 2, not 1")
+	assert.Contains(t, err.Error(), "boom", "the error must come from the members lookup")
+	assert.Empty(t, output, "no plan may be printed when a read fails")
+}
+
+// A file whose assets are all unchanged has nothing pending, so it is left out
+// of the agent-mode JSON.
+func TestDiff_JSONOutput_LeavesOutUnchangedFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	withAgentMode(t, true)
+	dir := t.TempDir()
+	writeView := func(file, id, name string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, file), []byte(fmt.Sprintf(`kind: View
+metadata:
+  name: %[2]s
+  labels:
+    dash0.com/id: %[1]s
+spec:
+  type: logs
+  display:
+    name: %[2]s
+`, id, name)), 0644))
+	}
+	writeView("changed.yaml", "view-changed", "new-name")
+	writeView("unchanged.yaml", "view-unchanged", "same-name")
+	stored := func(id, name string) *dash0api.ViewDefinition {
+		view := &dash0api.ViewDefinition{}
+		view.Kind = dash0api.ViewDefinitionKind("View")
+		view.Metadata.Name = name
+		view.Metadata.Labels = &dash0api.ViewLabels{Dash0Comid: &id}
+		view.Spec.Type = dash0api.ViewType("logs")
+		view.Spec.Display = dash0api.ViewDisplay{Name: name}
+		return view
+	}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/view-changed", testutil.MockResponse{StatusCode: http.StatusOK, Body: stored("view-changed", "old-name"), Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/views/view-unchanged", testutil.MockResponse{StatusCode: http.StatusOK, Body: stored("view-unchanged", "same-name"), Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", dir, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	var files []struct {
+		Path    string            `json:"path"`
+		Changes []json.RawMessage `json:"changes"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &files), output)
+	require.Len(t, files, 1, output)
+	assert.Equal(t, "changed.yaml", files[0].Path)
+	assert.Len(t, files[0].Changes, 1)
+}
+
 // A dataset update keeps every spec field the file leaves out, so a partial
 // file that matches the stored values is not a change.
 func TestDiff_PartialDatasetKeepsStoredFields(t *testing.T) {

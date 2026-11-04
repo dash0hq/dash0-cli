@@ -171,7 +171,7 @@ type fileJSON struct {
 
 // WriteJSON writes the agent-mode {path, changes} array. A single-file or stdin
 // target is one entry keyed by fileArg. Changes that are not pending are left
-// out.
+// out, and so is a file that has no pending change.
 func (p *Plan) WriteJSON(w io.Writer, fromDirectory bool, fileArg, since string) error {
 	toJSON := func(changes []Change) []changeJSON {
 		out := make([]changeJSON, 0, len(changes))
@@ -194,7 +194,14 @@ func (p *Plan) WriteJSON(w io.Writer, fromDirectory bool, fileArg, since string)
 		if !fromDirectory {
 			path = fileArg
 		}
-		out = append(out, fileJSON{Path: path, Changes: toJSON(group.Changes)})
+		changes := toJSON(group.Changes)
+		// A file whose every change is an unchanged update (diff only) is
+		// left out. apply --dry-run has no such change, so its output keeps
+		// every file.
+		if len(changes) == 0 && len(group.Changes) > 0 {
+			continue
+		}
+		out = append(out, fileJSON{Path: path, Changes: changes})
 	}
 
 	encoder := json.NewEncoder(w)

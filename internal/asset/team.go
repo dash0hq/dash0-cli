@@ -51,6 +51,9 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 
 	// Emails render membership changes as "-bob@example.com" rather than
 	// opaque ids. A failed lookup leaves the raw ids in place.
+	if before, ok := plan.Before.(*dash0api.TeamDefinitionV1Alpha1); ok {
+		_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, before)
+	}
 	_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, result)
 
 	name := dash0api.GetTeamDisplayName(result)
@@ -65,7 +68,8 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 // empty, so the write falls back to POST. It returns any preflight error other
 // than "not found".
 //
-// The server stores member ids, so spec.members on Before is resolved to emails.
+// The server stores member ids, so spec.members on Before holds ids. Callers
+// resolve them to emails and decide whether a failed lookup matters.
 func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) (ImportPlan, error) {
 	// StripTeamServerFields clears the dash0.com/id label, so read it first.
 	origin := dash0api.GetTeamOrigin(team)
@@ -85,6 +89,5 @@ func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.Tea
 		return plan, ignoreNotFound(err)
 	}
 	plan.Key, plan.Action, plan.Before = lookupKey, ActionUpdated, existing
-	_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, existing)
 	return plan, nil
 }
