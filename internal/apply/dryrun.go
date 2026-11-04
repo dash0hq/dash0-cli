@@ -62,30 +62,23 @@ func renderDryRunText(plan *preview.Plan, validatedFileSet map[string]bool, from
 		}
 	}
 
-	if !fromDirectory {
-		for _, change := range plan.Flat() {
-			fmt.Printf("  * %s\n", renderDryRunLine(change))
+	for _, group := range plan.Groups(fromDirectory) {
+		indent := "  "
+		if fromDirectory {
+			fmt.Printf("  %s\n", group.File)
+			indent = "    "
 		}
-		return
-	}
-
-	for _, file := range plan.Files() {
-		fmt.Printf("  %s\n", file)
-		for _, change := range plan.Changes(file) {
-			fmt.Printf("    * %s\n", renderDryRunLine(change))
+		for _, change := range group.Changes {
+			fmt.Printf("%s* %s\n", indent, renderDryRunLine(change))
 		}
 	}
 }
 
 func renderDryRunLine(change preview.Change) string {
-	verb := "Apply"
 	if change.Op == "delete" {
-		verb = "Delete"
+		return preview.DeleteLine(change)
 	}
-	if change.Detail != "" {
-		return fmt.Sprintf("%s %s %q (%s)", verb, asset.KindDisplayName(change.Kind), change.Name, change.Detail)
-	}
-	return fmt.Sprintf("%s %s %s", verb, asset.KindDisplayName(change.Kind), asset.FormatNameAndID(change.Name, change.OriginOrID))
+	return fmt.Sprintf("Apply %s %s", asset.KindDisplayName(change.Kind), asset.FormatNameAndID(change.Name, change.OriginOrID))
 }
 
 // adds only when the target was a directory — a single-file or stdin target

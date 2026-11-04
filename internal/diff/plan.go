@@ -101,6 +101,11 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, fmt.Errorf("failed to parse Dash0Dataset: %w", err)
 		}
 		plan, err := asset.PlanDataset(ctx, apiClient, &ds)
+		// A spec field left out of the document keeps its stored value on
+		// update, so the preview is the document merged onto the stored dataset.
+		if err == nil && plan.Action == asset.ActionUpdated {
+			plan.Proposed, err = asset.PreviewUpdate[dash0api.DatasetDefinition](plan.Before, &ds)
+		}
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "dataset", AssetID: plan.Key})
 		}
@@ -145,6 +150,11 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		plan, err := asset.PlanTeam(ctx, apiClient, &team)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "team", AssetName: dash0api.GetTeamDisplayName(&team)})
+		}
+		// Before lists member emails, so resolve the document's members too.
+		// team is this preview's own copy and is never sent.
+		if plan.Action == asset.ActionUpdated {
+			_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, &team)
 		}
 		name := dash0api.GetTeamDisplayName(&team)
 		if name == "" {

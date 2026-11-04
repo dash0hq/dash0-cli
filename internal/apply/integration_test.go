@@ -3422,3 +3422,47 @@ func TestApply_AwsMetricScrapeConfig_DryRun(t *testing.T) {
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, `Apply AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`)`)
 }
+
+// apply resolves member ids to emails only for the stored and the returned
+// team, which the diff prints. It must not also resolve the document it sends.
+func TestApply_Team_ResolvesMembersOnlyForTheDiff(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: backend-team
+spec:
+  display:
+    name: Backend Team
+  members:
+    - alice@example.com
+`), 0644))
+	stored := dash0api.TeamDefinitionV1Alpha1{}
+	stored.Metadata.Name = "backend-team"
+	stored.Spec.Display.Name = "Backend Team"
+	stored.Spec.Members = []string{"user-1"}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/members", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureMembersListSuccess, Validator: testutil.RequireHeaders})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr, output)
+
+	listMembersCalls := 0
+	for _, request := range server.Requests() {
+		if request.Method == http.MethodGet && request.Path == "/api/members" {
+			listMembersCalls++
+		}
+	}
+	assert.Equal(t, 2, listMembersCalls, "one lookup for the stored team and one for the returned team")
+}

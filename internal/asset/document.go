@@ -403,3 +403,41 @@ func ReadDirectory(dirPath string) ([]Document, error) {
 
 	return allDocs, nil
 }
+
+// ReadInput reads -f the way apply and diff do: stdin ("-"), a single file, or
+// a directory (recursively). With --since, a target that was removed or holds
+// no YAML file anymore is an all-deletions run, not an error, so it returns no
+// documents. targetVanished reports that the target no longer exists, so
+// fromDirectory is a guess the caller corrects from git history.
+func ReadInput(file string, sinceFlagSet bool) (documents []Document, fromDirectory, targetVanished bool, err error) {
+	if file == "-" {
+		documents, err = ReadMultiDocumentYAML("-", os.Stdin)
+		if err != nil {
+			return nil, false, false, FormatValidationError(err.Error())
+		}
+		return documents, false, false, nil
+	}
+
+	info, statErr := os.Stat(file)
+	switch {
+	case statErr != nil && sinceFlagSet && os.IsNotExist(statErr):
+		return nil, true, true, nil
+	case statErr != nil:
+		return nil, false, false, fmt.Errorf("failed to read input: %w", statErr)
+	case info.IsDir():
+		documents, err = ReadDirectory(file)
+		if err != nil {
+			if sinceFlagSet && errors.Is(err, ErrNoYAMLFilesFound) {
+				return nil, true, false, nil
+			}
+			return nil, true, false, FormatValidationError(err.Error())
+		}
+		return documents, true, false, nil
+	}
+
+	documents, err = ReadMultiDocumentYAML(file, nil)
+	if err != nil {
+		return nil, false, false, FormatValidationError(err.Error())
+	}
+	return documents, false, false, nil
+}

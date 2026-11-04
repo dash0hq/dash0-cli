@@ -153,58 +153,12 @@ type applyResult struct {
 }
 
 func runApply(ctx context.Context, flags *applyFlags) error {
-	var documents []asset.Document
-	var fromDirectory bool
-	// targetVanished records that fromDirectory was only a guess (always
-	// true) because the target no longer exists on disk at all, so os.Stat
-	// couldn't say whether it used to be a file or a directory. Once
-	// computeDeletionPlan runs, it can answer that from git history at the
-	// --since ref, and the guess is corrected below -- otherwise a vanished
-	// single-file target would render like a multi-file directory scan
-	// (grouped by its git-recorded path instead of the literal -f argument).
-	var targetVanished bool
-	var err error
-
-	if flags.File == "-" {
-		// Read from stdin
-		documents, err = asset.ReadMultiDocumentYAML("-", os.Stdin)
-		if err != nil {
-			return asset.FormatValidationError(err.Error())
-		}
-	} else {
-		info, statErr := os.Stat(flags.File)
-		switch {
-		case statErr != nil && flags.SinceFlagSet && os.IsNotExist(statErr):
-			// --since's target no longer exists on disk at all: every asset
-			// definition under it was deleted, and (for a directory target)
-			// the directory itself was removed along with them. This is a
-			// legitimate all-deletions run, the same as the existing-but-
-			// empty-directory case below -- continue with zero current
-			// documents and let computeDeletionPlan report every asset found
-			// at the --since ref as a deletion.
-			fromDirectory = true
-			targetVanished = true
-		case statErr != nil:
-			return fmt.Errorf("failed to read input: %w", statErr)
-		case info.IsDir():
-			fromDirectory = true
-			documents, err = asset.ReadDirectory(flags.File)
-			if err != nil {
-				if flags.SinceFlagSet && errors.Is(err, asset.ErrNoYAMLFilesFound) {
-					// Every asset definition that used to live in this
-					// directory was deleted, but the (now-empty) directory
-					// itself survives. Same all-deletions case as above.
-					documents = nil
-				} else {
-					return asset.FormatValidationError(err.Error())
-				}
-			}
-		default:
-			documents, err = asset.ReadMultiDocumentYAML(flags.File, nil)
-			if err != nil {
-				return asset.FormatValidationError(err.Error())
-			}
-		}
+	// When the target vanished, fromDirectory is only a guess; computeDeletionPlan
+	// answers it from git history at the --since ref below, so a vanished
+	// single-file target does not render like a directory scan.
+	documents, fromDirectory, targetVanished, err := asset.ReadInput(flags.File, flags.SinceFlagSet)
+	if err != nil {
+		return err
 	}
 
 	if len(documents) == 0 && !flags.SinceFlagSet {
@@ -333,16 +287,8 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	return nil
 }
 
-func normalizeKind(kind string) string {
-	// Normalize common variations
-	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
-	k = strings.ReplaceAll(k, "_", "")
-	k = strings.TrimPrefix(k, "dash0")
-	return k
-}
-
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	switch normalizeKind(doc.Kind) {
+	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "persesdashboard":
 		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
 		if err != nil {
@@ -626,7 +572,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.D
 func datasetsFirst(documents []asset.Document) []asset.Document {
 	var datasets, rest []asset.Document
 	for _, doc := range documents {
-		if normalizeKind(doc.Kind) == "dataset" {
+		if asset.NormalizeKind(doc.Kind) == "dataset" {
 			datasets = append(datasets, doc)
 		} else {
 			rest = append(rest, doc)

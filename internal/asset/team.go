@@ -2,7 +2,6 @@ package asset
 
 import (
 	"context"
-	"slices"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
@@ -66,18 +65,14 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 // empty, so the write falls back to POST. It returns any preflight error other
 // than "not found".
 //
-// The server stores member ids while a document usually lists emails, so
-// spec.members on Before and Proposed is resolved to emails. Proposed is a copy,
-// and team itself is sent as written.
+// The server stores member ids, so spec.members on Before is resolved to emails.
 func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) (ImportPlan, error) {
 	// StripTeamServerFields clears the dash0.com/id label, so read it first.
 	origin := dash0api.GetTeamOrigin(team)
 	id := dash0api.GetTeamID(team)
 	dash0api.StripTeamServerFields(team)
 
-	proposed := *team
-	proposed.Spec.Members = slices.Clone(team.Spec.Members)
-	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: &proposed}
+	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: team}
 	lookupKey := origin
 	if lookupKey == "" {
 		lookupKey = id
@@ -91,6 +86,5 @@ func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.Tea
 	}
 	plan.Key, plan.Action, plan.Before = lookupKey, ActionUpdated, existing
 	_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, existing)
-	_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, &proposed)
 	return plan, nil
 }

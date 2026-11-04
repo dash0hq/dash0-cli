@@ -59,11 +59,14 @@ Adding a CRUD command without wiring it into `apply` is incomplete work and will
 
 Concretely, in `internal/apply/apply.go`:
 
-1. Add the asset's `kind` (and any CRD aliases — e.g. `PersesDashboard` for dashboards, `PrometheusRule` for check rules and recording rules) to `isValidKind` and `normalizeKind`.
+1. Add the asset's normalized `kind` (and any CRD aliases, e.g. `PersesDashboard` for dashboards, `PrometheusRule` for check rules and recording rules) to `ValidKinds` in `internal/asset/kind.go`.
 2. Add a `case` in `parseDocumentHeader` that unmarshals the document into the appropriate typed struct and extracts `name` and `id`.
 3. Add a `case` in `applyDocument` that parses the raw bytes, calls the corresponding `asset.Import<Asset>(...)` helper, and returns an `applyResult`.
 4. Update the human-readable list of supported kinds in the `Long` description and in the validation error message inside `runApply`.
 5. If the asset has multiple schema versions (e.g., `apiVersion: v1alpha1` vs `v1alpha2`), validate the apiVersion during the validation phase using a `Detect<Asset>APIVersion` helper from `internal/asset/`, so a typo fails up front rather than mid-apply.
+6. Add a matching `case` in `planDocument` in `internal/diff/plan.go` that calls the asset's `asset.Plan<Asset>(...)` step, so `diff` previews the new kind.
+   `TestPlanDocument_PlansEveryKindApplyAccepts` fails when a kind in `ValidKinds` has no case there.
+   `TestParseDocumentHeader_DecodesEveryValidKind` and `TestApplyDocument_AppliesEveryValidKind` do the same for steps 2 and 3.
 
 The shared import logic lives in `internal/asset/<asset>.go` (an `Import<Asset>` function) so that `apply` and the dedicated `create` command call the same code path.
 

@@ -106,15 +106,39 @@ func (p *Plan) Changes(file string) []Change {
 	return p.byFile[file]
 }
 
-// Flat returns every change in one list sorted by OriginOrID, for a single-file
-// or stdin target, which has no file grouping to show.
-func (p *Plan) Flat() []Change {
+// Group is the changes of one file. File is empty for a single-file or stdin
+// target.
+type Group struct {
+	File    string
+	Changes []Change
+}
+
+// Groups returns one group per file for a directory target. A single-file or
+// stdin target has no file grouping to show, so it gets one group with every
+// change sorted by OriginOrID.
+func (p *Plan) Groups(fromDirectory bool) []Group {
+	var groups []Group
+	if fromDirectory {
+		for _, file := range p.Files() {
+			groups = append(groups, Group{File: file, Changes: p.byFile[file]})
+		}
+		return groups
+	}
 	var flat []Change
 	for _, file := range p.Files() {
 		flat = append(flat, p.byFile[file]...)
 	}
 	sort.SliceStable(flat, func(i, j int) bool { return flat[i].OriginOrID < flat[j].OriginOrID })
-	return flat
+	return []Group{{Changes: flat}}
+}
+
+// DeleteLine is the line apply --dry-run and diff print for a deletion.
+func DeleteLine(change Change) string {
+	kind := asset.KindDisplayName(change.Kind)
+	if change.Detail != "" {
+		return fmt.Sprintf("Delete %s %q (%s)", kind, change.Name, change.Detail)
+	}
+	return fmt.Sprintf("Delete %s %s", kind, asset.FormatNameAndID(change.Name, change.OriginOrID))
 }
 
 // PendingCount returns how many changes would modify Dash0.
@@ -165,12 +189,12 @@ func (p *Plan) WriteJSON(w io.Writer, fromDirectory bool, fileArg, since string)
 	}
 
 	out := []fileJSON{}
-	if fromDirectory {
-		for _, file := range p.Files() {
-			out = append(out, fileJSON{Path: file, Changes: toJSON(p.byFile[file])})
+	for _, group := range p.Groups(fromDirectory) {
+		path := group.File
+		if !fromDirectory {
+			path = fileArg
 		}
-	} else {
-		out = append(out, fileJSON{Path: fileArg, Changes: toJSON(p.Flat())})
+		out = append(out, fileJSON{Path: path, Changes: toJSON(group.Changes)})
 	}
 
 	encoder := json.NewEncoder(w)

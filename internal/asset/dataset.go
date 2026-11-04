@@ -76,10 +76,8 @@ func ImportDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash
 }
 
 // PlanDataset reads the stored dataset that ImportDataset would write, keyed by
-// its slug. A spec field left out of the document keeps its stored value on
-// update, so Proposed is the document merged onto the stored dataset. Any
-// preflight error other than "not found" is returned, because it decides
-// between PUT and POST.
+// its slug. Any preflight error other than "not found" is returned, because it
+// decides between PUT and POST.
 func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0api.DatasetDefinition) (ImportPlan, error) {
 	if err := ValidateDataset(dataset); err != nil {
 		return ImportPlan{}, err
@@ -92,10 +90,6 @@ func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0a
 	if err != nil {
 		return plan, ignoreNotFound(err)
 	}
-	merged, err := PreviewUpdate[dash0api.DatasetDefinition](existing, dataset)
-	if err != nil {
-		return plan, err
-	}
-	plan.Action, plan.Before, plan.Proposed = ActionUpdated, existing, merged
+	plan.Action, plan.Before = ActionUpdated, existing
 	return plan, nil
 }

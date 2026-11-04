@@ -5,6 +5,7 @@ package diff
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -733,4 +734,32 @@ spec:
 			assert.Empty(t, output)
 		})
 	}
+}
+
+// A failed read aborts the preview, so diff stops starting new reads once one
+// has failed instead of reading every document.
+func TestDiff_FetchFailure_StopsStartingReads(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := t.TempDir()
+	const documents = 3 * maxConcurrentReads
+	for i := range documents {
+		path := filepath.Join(dir, fmt.Sprintf("view-%02d.yaml", i))
+		require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf("kind: View\nmetadata:\n  name: view-%02d\n  labels:\n    dash0.com/id: view-%02d\nspec:\n  type: logs\n", i, i)), 0644))
+	}
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusUnauthorized, BodyFile: testutil.FixtureDashboardsUnauthorized, Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", dir, "--api-url", server.URL)
+
+	require.Error(t, err)
+	var pending *PendingDifferencesError
+	assert.False(t, errors.As(err, &pending))
+	assert.Empty(t, output)
+	reads := 0
+	for _, request := range server.Requests() {
+		if request.Method == http.MethodGet && viewIDPattern.MatchString(request.Path) {
+			reads++
+		}
+	}
+	assert.LessOrEqual(t, reads, maxConcurrentReads, "only the reads already running when the first one failed may reach the API")
 }

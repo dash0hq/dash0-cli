@@ -2,11 +2,11 @@ package diff
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 
@@ -86,7 +86,7 @@ Requires the -X (or --experimental) flag.` + internal.CONFIG_HINT,
 }
 
 func runDiff(ctx context.Context, flags *diffFlags) error {
-	documents, fromDirectory, targetVanished, err := readDocuments(flags.File, flags.SinceFlagSet)
+	documents, fromDirectory, targetVanished, err := asset.ReadInput(flags.File, flags.SinceFlagSet)
 	if err != nil {
 		return err
 	}
@@ -147,8 +147,8 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 const maxConcurrentReads = 8
 
 // planDocuments plans every document in parallel. The result keeps document
-// order, and the error reported is the first one in document order, so the
-// output does not depend on which read finishes first.
+// order, and the error reported is the first one in document order among the
+// reads that ran.
 //
 // Datasets are planned before every other kind, as apply applies them first.
 // An asset in a dataset this run creates cannot be stored yet, and the API
@@ -170,22 +170,29 @@ func planDocuments(ctx context.Context, apiClient dash0api.Client, documents []a
 	return planned, nil
 }
 
-// planEach plans, in parallel, the documents that match selects.
+// planEach plans, in parallel, the documents that match selects. It starts no
+// new read once one has failed, because any failure aborts the preview.
 func planEach(ctx context.Context, apiClient dash0api.Client, documents []asset.Document, dataset *string, inNewDataset bool, selects func(asset.Document) bool, planned []plannedDoc, errs []error) {
 	slots := make(chan struct{}, maxConcurrentReads)
 	var wg sync.WaitGroup
+	var failed atomic.Bool
 	for i, doc := range documents {
 		if !selects(doc) {
 			continue
 		}
-		wg.Add(1)
 		slots <- struct{}{}
+		if failed.Load() {
+			<-slots
+			break
+		}
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
 			plans, err := planDocument(ctx, apiClient, doc, dataset, inNewDataset)
 			if err != nil {
 				errs[i] = fmt.Errorf("%s (%s): %w", doc.Location(), doc.Kind, err)
+				failed.Store(true)
 				return
 			}
 			planned[i] = plannedDoc{doc: doc, plans: plans}
@@ -230,42 +237,4 @@ func createsDataset(planned []plannedDoc, dataset *string) bool {
 		}
 	}
 	return false
-}
-
-// readDocuments reads file the same way apply does: stdin ("-"), a single
-// file, or a directory (recursively). With --since, a target that was removed
-// or holds no YAML file anymore is an all-deletions run, not an error, so it
-// returns no documents. targetVanished reports that the target no longer
-// exists, which leaves the directory question to git history.
-func readDocuments(file string, sinceFlagSet bool) (documents []asset.Document, fromDirectory, targetVanished bool, err error) {
-	if file == "-" {
-		documents, err = asset.ReadMultiDocumentYAML("-", os.Stdin)
-		if err != nil {
-			return nil, false, false, asset.FormatValidationError(err.Error())
-		}
-		return documents, false, false, nil
-	}
-
-	info, statErr := os.Stat(file)
-	switch {
-	case statErr != nil && sinceFlagSet && os.IsNotExist(statErr):
-		return nil, true, true, nil
-	case statErr != nil:
-		return nil, false, false, fmt.Errorf("failed to read input: %w", statErr)
-	case info.IsDir():
-		documents, err = asset.ReadDirectory(file)
-		if err != nil {
-			if sinceFlagSet && errors.Is(err, asset.ErrNoYAMLFilesFound) {
-				return nil, true, false, nil
-			}
-			return nil, true, false, asset.FormatValidationError(err.Error())
-		}
-		return documents, true, false, nil
-	}
-
-	documents, err = asset.ReadMultiDocumentYAML(file, nil)
-	if err != nil {
-		return nil, false, false, asset.FormatValidationError(err.Error())
-	}
-	return documents, false, false, nil
 }

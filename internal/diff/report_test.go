@@ -6,6 +6,7 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	gitutil "github.com/dash0hq/dash0-cli/internal/git"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,4 +150,26 @@ func TestBuildPlan_MixedCreateAndDeleteInSameFile(t *testing.T) {
 	require.Equal(t, []string{"assets.yaml"}, plan.Files(), "the create and the deletion from the same file must merge into one entry")
 	require.Len(t, plan.Changes("assets.yaml"), 2)
 	assert.Equal(t, 2, plan.PendingCount())
+}
+
+// A single-file target has no file grouping, so the text lists every change
+// in the same identifier order as the JSON, even when the deletion is keyed by
+// its path in git.
+func TestRenderReportText_SingleFileMixesDeletionsInIdentifierOrder(t *testing.T) {
+	planned := []plannedDoc{{
+		doc:   viewDoc("/abs/assets.yaml", "b-view"),
+		plans: []docPlan{{displayKind: "View", name: "survivor", plan: asset.ImportPlan{Key: "b-view", Action: asset.ActionCreated, Proposed: &dash0api.ViewDefinition{}}}},
+	}}
+	sincePlan := &gitutil.SincePlan{
+		Plan:  gitutil.DeletionPlan{ByIdentifier: []gitutil.Deletion{{Kind: "view", Identifier: "a-view", Path: "assets.yaml#1"}}},
+		Names: map[string]string{"assets.yaml#1": "removed"},
+	}
+	plan, err := buildPlan(planned, sincePlan)
+	require.NoError(t, err)
+
+	output := testutil.CaptureStdout(t, func() {
+		require.NoError(t, renderReportText(plan, false, plan.PendingCount()))
+	})
+
+	assert.Equal(t, "Delete View \"removed\" (a-view)\nCreate View \"survivor\" (b-view)\n", output)
 }

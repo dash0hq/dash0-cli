@@ -61,34 +61,41 @@ func renderReport(planned []plannedDoc, sincePlan *gitutil.SincePlan, fromDirect
 	return pending, nil
 }
 
+// renderReportText groups a directory target by file. A single-file or stdin
+// target has no grouping, so it lists every change in the JSON's order.
 func renderReportText(plan *preview.Plan, fromDirectory bool, pending int) error {
-	for _, file := range plan.Files() {
+	for _, group := range plan.Groups(fromDirectory) {
 		prefix := ""
 		if fromDirectory {
-			fmt.Printf("%s\n", file)
+			fmt.Printf("%s\n", group.File)
 			prefix = "  "
 		}
-		for _, change := range plan.Changes(file) {
-			kind := asset.KindDisplayName(change.Kind)
-			switch {
-			case change.Op == "create":
-				fmt.Printf("%sCreate %s %s\n", prefix, kind, asset.FormatNameAndID(change.Name, change.OriginOrID))
-			case change.Op == "delete" && change.Detail != "":
-				fmt.Printf("%sDelete %s %q (%s)\n", prefix, kind, change.Name, change.Detail)
-			case change.Op == "delete":
-				fmt.Printf("%sDelete %s %s\n", prefix, kind, asset.FormatNameAndID(change.Name, change.OriginOrID))
-			case change.Diff == "":
-				fmt.Printf("%s%s %q: no changes\n", prefix, kind, change.Name)
-			default:
-				if err := asset.WriteDiff(os.Stdout, change.Diff); err != nil {
-					return err
-				}
-			}
+		if err := printChanges(group.Changes, prefix); err != nil {
+			return err
 		}
 	}
 
 	if pending == 0 {
 		fmt.Println("No differences")
+	}
+	return nil
+}
+
+func printChanges(changes []preview.Change, prefix string) error {
+	for _, change := range changes {
+		kind := asset.KindDisplayName(change.Kind)
+		switch {
+		case change.Op == "create":
+			fmt.Printf("%sCreate %s %s\n", prefix, kind, asset.FormatNameAndID(change.Name, change.OriginOrID))
+		case change.Op == "delete":
+			fmt.Printf("%s%s\n", prefix, preview.DeleteLine(change))
+		case change.Diff == "":
+			fmt.Printf("%s%s %q: no changes\n", prefix, kind, change.Name)
+		default:
+			if err := asset.WriteDiff(os.Stdout, change.Diff); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

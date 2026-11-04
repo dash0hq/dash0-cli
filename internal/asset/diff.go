@@ -168,7 +168,7 @@ func marshalForDiff(asset any) (string, error) {
 // asset and writes it to w. If there are no changes, a "no changes" message is
 // printed instead.
 func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
-	text, err := unifiedDiff(displayKind, before, after)
+	text, err := UnifiedDiff(displayKind, before, after)
 	if err != nil {
 		return err
 	}
@@ -178,17 +178,17 @@ func PrintDiff(w io.Writer, displayKind, name string, before, after any) error {
 		return nil
 	}
 
-	return writeDiff(w, text)
+	return WriteDiff(w, text)
 }
 
 // PrintChanges writes the unified diff between the before and after states of
 // an asset to w, and writes nothing when they are the same.
 func PrintChanges(w io.Writer, displayKind string, before, after any) error {
-	text, err := unifiedDiff(displayKind, before, after)
+	text, err := UnifiedDiff(displayKind, before, after)
 	if err != nil || text == "" {
 		return err
 	}
-	return writeDiff(w, text)
+	return WriteDiff(w, text)
 }
 
 // semanticCompareConfig returns the per-kind options for dash0yaml.Equivalent
@@ -218,15 +218,6 @@ func semanticCompareConfig(asset any) (extraIgnoredFields, preservedAnnotationKe
 // they are semantically the same. dash0 diff uses it to compare each update
 // once and print the same text later with WriteDiff.
 func UnifiedDiff(displayKind string, before, after any) (string, error) {
-	return unifiedDiff(displayKind, before, after)
-}
-
-// WriteDiff writes text from UnifiedDiff to w, colorized unless color is off.
-func WriteDiff(w io.Writer, text string) error {
-	return writeDiff(w, text)
-}
-
-func unifiedDiff(displayKind string, before, after any) (string, error) {
 	after = withOmittedFieldsAsStored(before, after)
 	beforeYAML, err := marshalForDiff(before)
 	if err != nil {
@@ -277,7 +268,8 @@ func unifiedDiff(displayKind string, before, after any) (string, error) {
 	return text, nil
 }
 
-func writeDiff(w io.Writer, text string) error {
+// WriteDiff writes text from UnifiedDiff to w, colorized unless color is off.
+func WriteDiff(w io.Writer, text string) error {
 	if dashcolor.NoColor {
 		_, err := io.WriteString(w, text)
 		return err

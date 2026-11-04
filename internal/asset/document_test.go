@@ -642,3 +642,17 @@ func TestParseDocumentHeader_Skill(t *testing.T) {
 		})
 	}
 }
+
+// Every kind in ValidKinds must have a ParseDocumentHeader case. The default
+// case reads any map, so a missing case shows up as no decode error for a
+// document whose fields have the wrong types.
+func TestParseDocumentHeader_DecodesEveryValidKind(t *testing.T) {
+	for _, kind := range ValidKinds {
+		t.Run(kind, func(t *testing.T) {
+			raw := "kind: " + kind + "\nid: [1]\nlabels: 1\nannotations: 1\nmetadata: 1\nspec: 1\n"
+			_, _, _, err := ParseDocumentHeader([]byte(raw))
+			require.Error(t, err, "no ParseDocumentHeader case decodes kind %q", kind)
+			assert.NotContains(t, err.Error(), "unsupported kind")
+		})
+	}
+}
