@@ -268,3 +268,55 @@ func TestQuerySpans_BackwardCompatWithExperimentalFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "GET /api/users")
 }
+
+func TestQuerySpans_ExplorerURLGoesToStderrInTableOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"spans", "query", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "Open this query in Dash0:")
+	assert.NotContains(t, stdout, "Open this query in Dash0:")
+}
+
+func TestQuerySpans_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalSpansCmd()
+	cmd.SetArgs([]string{"spans", "query", "-o", "json", "--api-url", server.URL, "--auth-token", testSpansAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(output), &payload))
+	assert.Contains(t, payload, "dash0ExplorerUrl")
+	assert.Contains(t, payload, "resourceSpans")
+}

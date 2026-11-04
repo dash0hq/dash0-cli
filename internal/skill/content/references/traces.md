@@ -19,6 +19,7 @@ _For the exact, always-current flag list, run `dash0 --agent-mode traces get --h
 The `<trace-id>` argument must be 32 hex characters.
 
 In table format, spans are displayed as a hierarchical tree with child spans indented under their parents.
+A link that opens the same trace in the Dash0 traces explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Get all spans in a trace:
 

@@ -224,9 +224,9 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 	case queryFormatTable:
 		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
+		return streamCSV(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
 	case queryFormatJSON:
-		return collectAndRenderJSON(iter, totalLimit)
+		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
@@ -378,13 +378,11 @@ func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHead
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	if explorerURL != "" {
-		fmt.Printf("\nOpen this query in Dash0:\n    %s\n", explorerURL)
-	}
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 
-func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
+func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
 		if err := query.WriteCSVHeader(w, cols); err != nil {
@@ -403,10 +401,11 @@ func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: failedChecksAssetType})
 	}
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 
-func collectAndRenderJSON(iter *dash0api.Iter[dash0api.Issue], totalLimit int64) error {
+func collectAndRenderJSON(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, explorerURL string) error {
 	var issues []dash0api.Issue
 	var total int64
 	for iter.Next() {
@@ -423,9 +422,9 @@ func collectAndRenderJSON(iter *dash0api.Iter[dash0api.Issue], totalLimit int64)
 	if issues == nil {
 		issues = []dash0api.Issue{}
 	}
-	wrapper := map[string]any{
+	wrapper := query.AddExplorerURL(map[string]any{
 		"issues": issues,
-	}
+	}, explorerURL)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(wrapper)

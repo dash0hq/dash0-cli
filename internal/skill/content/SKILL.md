@@ -99,6 +99,16 @@ Common attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.sev
 
 By default the API applies adaptive sampling to log and span queries for speed on large datasets. Pass `--precision disabled` to `logs query` or `spans query` for deterministic, complete results (higher latency) on narrow lookups like a specific trace or request ID; `--precision adaptive` is the explicit default. `traces get` always disables sampling and doesn't accept the flag; `metrics instant` and `failed-checks query` don't honor it.
 
+## Explorer deep links
+
+`logs query`, `spans query`, `failed-checks query`, and `traces get` print a link that reopens the same query in the Dash0 web app, below the results, prefixed by `Open this query in Dash0:` (`Open this trace in Dash0:` for `traces get`). The link carries the filters, time range, and dataset, so it is what to hand a human who should look at the same result set.
+
+Where it appears depends on the format. In `json` output — the agent-mode default — it is a top-level `dash0ExplorerUrl` field, a sibling of `resourceLogs`/`resourceSpans`/`issues`, so reading stdout alone is enough. In `table` and `csv` output it goes to stderr instead, keeping the piped result stream clean.
+
+The field is omitted when no link could be built (`api-url` unset or unparseable), so its presence means a link is available. It is emitted even when the query matched nothing. `metrics instant` emits no deep link.
+
+Note that `logs query`, `spans query`, and `traces get` emit OTLP/JSON, and `dash0ExplorerUrl` is a Dash0 extension to it: a strict OpenTelemetry protobuf-JSON parser rejects unknown fields, so strip it with `jq 'del(.dash0ExplorerUrl)'` before feeding that output to one.
+
 ## Common workflows for AI agents
 
 ### Set up credentials from environment variables

@@ -15,6 +15,8 @@ _For the exact, always-current flag list, run `dash0 --agent-mode spans query --
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
+A link that reopens the same query in the Dash0 traces explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
+
 Query recent spans (last 15 minutes, up to 50 spans):
 
 ```bash

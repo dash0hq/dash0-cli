@@ -244,9 +244,9 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 	case queryFormatTable:
 		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
+		return streamCSV(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
 	case queryFormatJSON:
-		return collectAndRenderJSON(iter, totalLimit)
+		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
@@ -363,13 +363,11 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, s
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	if explorerURL != "" {
-		fmt.Printf("\nOpen this query in Dash0:\n    %s\n", explorerURL)
-	}
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 
-func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
+func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
 		if err := query.WriteCSVHeader(w, cols); err != nil {
@@ -388,10 +386,11 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, ski
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: logRecordsAssetType})
 	}
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 
-func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) error {
+func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, explorerURL string) error {
 	var allResourceLogs []dash0api.ResourceLogs
 	var totalRecords int64
 
@@ -413,9 +412,9 @@ func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit
 	if allResourceLogs == nil {
 		allResourceLogs = []dash0api.ResourceLogs{}
 	}
-	wrapper := map[string]any{
+	wrapper := query.AddExplorerURL(map[string]any{
 		"resourceLogs": allResourceLogs,
-	}
+	}, explorerURL)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(wrapper)

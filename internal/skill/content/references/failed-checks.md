@@ -16,6 +16,8 @@ _For the exact, always-current flag list, run `dash0 --agent-mode failed-checks 
 The `--status` and `--active` flags are convenience shortcuts that translate into the equivalent `--filter` expressions on the well-known issue attributes the alerting API exposes (`dash0.issue.status` and `dash0.issue.end_time`).
 Custom labels — for example a team-defined `priority` or `owner` label — must be filtered through `--filter`.
 
+A link that reopens the same query in the Dash0 failed checks view is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
+
 Aliases: `list`, `ls`.
 
 List currently active (unresolved) issues:

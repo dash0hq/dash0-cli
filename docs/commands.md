@@ -1795,6 +1795,7 @@ They share a common set of characteristics:
 - Pagination: `--limit`.
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
 - Sampling flag: `--precision` to disable [adaptive sampling](#precision-mode-adaptive-sampling) on `logs query` and `spans query` (`traces get` always disables it; `metrics instant` and `failed-checks query` do not honor it).
+- A deep link that reopens the same query in the Dash0 web app: on stderr in `table` and `csv` output, and as a `dash0ExplorerUrl` field in `json` output (see [explorer deep links](#explorer-deep-links)).
 
 ### `logs query`
 
@@ -1818,6 +1819,8 @@ dash0 logs query [flags]
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
+
+A link that reopens the same query in the Dash0 logs explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Query recent logs (last 15 minutes, up to 50 records):
 
@@ -1911,6 +1914,8 @@ dash0 spans query [flags]
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
+A link that reopens the same query in the Dash0 traces explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
+
 Query recent spans (last 15 minutes, up to 50 spans):
 
 ```bash
@@ -1988,6 +1993,7 @@ dash0 traces get <trace-id> [flags]
 The `<trace-id>` argument must be 32 hex characters.
 
 In table format, spans are displayed as a hierarchical tree with child spans indented under their parents.
+A link that opens the same trace in the Dash0 traces explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Get all spans in a trace:
 
@@ -2164,6 +2170,8 @@ dash0 failed-checks query [flags]
 
 The `--status` and `--active` flags are convenience shortcuts that translate into the equivalent `--filter` expressions on the well-known issue attributes the alerting API exposes (`dash0.issue.status` and `dash0.issue.end_time`).
 Custom labels — for example a team-defined `priority` or `owner` label — must be filtered through `--filter`.
+
+A link that reopens the same query in the Dash0 failed checks view is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Aliases: `list`, `ls`.
 
@@ -2392,6 +2400,71 @@ Aliases that contain spaces must be quoted: `--column "start time"`.
 
 The `--column` flag is not supported with JSON output.
 Using `--column` with `-o json` returns an error.
+
+### Explorer deep links
+
+`logs query`, `spans query`, `failed-checks query`, and `traces get` print a link that reopens the same query in the corresponding Dash0 explorer.
+The link carries the filters, the time range, and the dataset, so following it lands on the same result set in the web app, ready to narrow further or share with a colleague.
+
+Where the link appears depends on the output format:
+
+- In `table` and `csv` output it is written to **stderr**, after the results, separated by a blank line.
+  Keeping it off stdout means piping or redirecting the results never picks up a stray line — a CSV stream stays parseable.
+- In `json` output it is carried **in the document itself**, as a top-level `dash0ExplorerUrl` field.
+  This is what makes the link reachable in agent mode, where JSON is the default and stdout is usually all that is consumed.
+
+In `table` output:
+
+```bash
+$ dash0 logs query --filter "otel.log.severity.range is ERROR"
+TIMESTAMP                 SEVERITY  BODY
+2026-02-16T09:12:04.789Z  ERROR     Connection timeout
+...
+
+Open this query in Dash0:
+    https://app.dash0.com/goto/logs?filter=%5B%7B%22key%22%3A%22otel.log.severity.range%22...&from=now-15m&to=now
+```
+
+`traces get` prints `Open this trace in Dash0:` instead, with a link carrying the trace ID.
+
+In `json` output:
+
+```bash
+$ dash0 logs query --filter "otel.log.severity.range is ERROR" -o json
+{
+  "dash0ExplorerUrl": "https://app.dash0.com/goto/logs?filter=...&from=now-15m&to=now",
+  "resourceLogs": [
+    ...
+  ]
+}
+```
+
+The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`) is unaffected.
+It is omitted entirely when no link could be built, so its presence means a link is available.
+
+> [!NOTE]
+> `logs query`, `spans query`, and `traces get` emit OTLP/JSON, and `dash0ExplorerUrl` is a Dash0 extension to that document.
+> A strict OpenTelemetry protobuf-JSON parser rejects unknown fields by default, so a consumer feeding this output directly into one must either enable its discard-unknown-fields option or strip the field first, for example with `jq 'del(.dash0ExplorerUrl)'`.
+
+Which explorer each command opens:
+
+| Command | Explorer page | Carried in the link |
+|---------|---------------|---------------------|
+| `logs query` | `/goto/logs` | `--filter`, `--from`, `--to`, dataset |
+| `spans query` | `/goto/traces/explorer` | `--filter`, `--from`, `--to`, dataset |
+| `failed-checks query` | `/goto/alerting/failed-checks` | `--filter`, `--status`, `--active`, `--from`, `--to`, dataset |
+| `traces get` | `/goto/traces/explorer` | trace ID, dataset |
+
+On `failed-checks query`, `--status` and `--active` are expanded into their equivalent `dash0.issue.status` and `dash0.issue.end_time` filters before the link is built, so they are carried like any other filter.
+`metrics instant` prints no deep link.
+
+Two more details are worth knowing before scripting against this:
+
+- **Emitted even when nothing matched.** A query with no results prints `No log records found.` and still offers the link, so the empty result can be inspected in the UI.
+- **Omitted when the web app host cannot be derived.** The link is built from the API URL by replacing the host with `app.<registrable-domain>` — `https://api.eu-west-1.aws.dash0.com` yields `https://app.dash0.com`. If `api-url` is unset or unparseable, the link is skipped rather than emitted broken.
+
+The `dataset` parameter is omitted when the resolved dataset is `default`, since the web app opens that dataset anyway.
+`--skip-header` affects only the table header, not the link.
 
 ## Send commands
 

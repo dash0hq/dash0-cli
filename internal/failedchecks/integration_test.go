@@ -5,6 +5,7 @@ package failedchecks
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -224,4 +225,92 @@ func TestQueryFailedChecks_Unauthorized(t *testing.T) {
 		strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "401"),
 		"expected auth/401-related error, got: %s", err.Error(),
 	)
+}
+
+func TestQueryFailedChecks_ExplorerURLGoesToStderrInTableOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathFailedChecks, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newFailedChecksCmd()
+	cmd.SetArgs([]string{"failed-checks", "query", "--api-url", server.URL, "--auth-token", testFailedChecksToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "Open this query in Dash0:")
+	assert.NotContains(t, stdout, "Open this query in Dash0:")
+}
+
+func TestQueryFailedChecks_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathFailedChecks, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newFailedChecksCmd()
+	cmd.SetArgs([]string{"failed-checks", "query", "-o", "json", "--api-url", server.URL, "--auth-token", testFailedChecksToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(output), &payload))
+	assert.Contains(t, payload, "dash0ExplorerUrl")
+	assert.Contains(t, payload, "issues")
+}
+
+// --status and --active are shortcuts for filters on well-known issue
+// attributes, and are expanded before the link is built, so they are carried
+// like any other filter.
+func TestQueryFailedChecks_ExplorerURLCarriesStatusAndActiveShortcuts(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathFailedChecks, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newFailedChecksCmd()
+	cmd.SetArgs([]string{"failed-checks", "query", "-o", "json", "--active", "--status", "critical",
+		"--api-url", server.URL, "--auth-token", testFailedChecksToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(output), &payload))
+
+	var explorerURL string
+	require.NoError(t, json.Unmarshal(payload["dash0ExplorerUrl"], &explorerURL))
+
+	decoded, decodeErr := url.QueryUnescape(explorerURL)
+	require.NoError(t, decodeErr)
+	assert.Contains(t, decoded, "dash0.issue.status")
+	assert.Contains(t, decoded, "dash0.issue.end_time")
 }
