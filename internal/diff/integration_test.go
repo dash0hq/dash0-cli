@@ -3,6 +3,7 @@
 package diff
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -608,6 +609,128 @@ func TestDiff_AwsMetricScrapeConfig(t *testing.T) {
 			for _, request := range server.Requests() {
 				assert.Equal(t, http.MethodGet, request.Method, "diff must never write")
 			}
+		})
+	}
+}
+
+// writeNewDatasetWithView writes a dataset document for slug "staging" and a
+// view document next to it, the shape of a run that creates a dataset and
+// fills it.
+func writeNewDatasetWithView(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dataset.yaml"), []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Staging
+  labels:
+    dash0.com/id: staging
+spec:
+  retention:
+    logs: 60d
+`), 0644))
+	writeViewFixture(t, dir, "view.yaml")
+	return dir
+}
+
+var forbiddenResponse = testutil.MockResponse{
+	StatusCode: http.StatusForbidden,
+	Body:       map[string]any{"error": map[string]any{"code": 403, "message": "Forbidden: The given principal does not have the required permissions."}},
+	Validator:  testutil.RequireHeaders,
+}
+
+// The API answers 403 for a read in a dataset that does not exist yet. apply
+// creates the dataset first, so the view in it is a create, not an error.
+func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writeNewDatasetWithView(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, viewIDPattern, forbiddenResponse)
+
+	output, err := runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Equal(t, 2, pending.Count)
+	assert.Contains(t, output, `Create Dataset "Staging" (staging)`)
+	assert.Contains(t, output, `Create View "my-view" (view-id)`)
+}
+
+// A token without access to an existing dataset also gets a 404 for the
+// dataset and a 403 for the view, so the dropped 403 must be visible.
+func TestDiff_DroppedForbiddenReadWarnsOnStderr(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	withAgentMode(t, true)
+	dir := writeNewDatasetWithView(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, viewIDPattern, forbiddenResponse)
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+	})
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Equal(t, 2, pending.Count)
+	assert.True(t, json.Valid([]byte(output)), "stdout must stay valid JSON in agent mode: %s", output)
+	assert.Contains(t, stderr,
+		`warning: View "my-view" (view-id): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
+}
+
+// A 403 is only read as "nothing stored" for the dataset this run creates.
+// Anywhere else it is a real permission error and aborts the preview.
+func TestDiff_ForbiddenReadOutsideNewDatasetAborts(t *testing.T) {
+	var stored dash0api.DatasetDefinition
+	require.NoError(t, dash0yaml.Unmarshal([]byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: Staging
+  labels:
+    dash0.com/id: staging
+spec:
+  retention:
+    logs: 60d
+`), &stored))
+	notFound := testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	}
+
+	for _, tc := range []struct {
+		name           string
+		datasetRead    testutil.MockResponse
+		datasetFlagArg string
+	}{
+		{name: "dataset already exists", datasetRead: testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders}, datasetFlagArg: "staging"},
+		{name: "view read from another dataset", datasetRead: notFound, datasetFlagArg: "production"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := writeNewDatasetWithView(t)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, "/api/datasets/staging", tc.datasetRead)
+			server.OnPattern(http.MethodGet, viewIDPattern, forbiddenResponse)
+
+			output, err := runDiffCmd(t, "-f", dir, "--dataset", tc.datasetFlagArg, "--api-url", server.URL)
+
+			require.Error(t, err)
+			var pending *PendingDifferencesError
+			assert.False(t, errors.As(err, &pending), "a real 403 must abort, not report pending differences")
+			assert.Contains(t, err.Error(), "403")
+			assert.Empty(t, output)
 		})
 	}
 }

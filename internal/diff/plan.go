@@ -16,12 +16,17 @@ type docPlan struct {
 	displayKind string
 	name        string
 	plan        asset.ImportPlan
+	// readDenied reports that the read answered 403 and the plan assumes a
+	// create, because this run creates the dataset.
+	readDenied bool
 }
 
 // planDocument reads the stored state of every asset doc would write, through
 // the same asset.Plan* step apply runs before its write. Any read error other
 // than "not found" is returned, so the caller can abort the whole preview.
-func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]docPlan, error) {
+// inNewDataset reports that this run creates the dataset, so a 403 from a
+// dataset-scoped read means nothing is stored, and the plan stays a create.
+func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "persesdashboard":
 		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
@@ -29,6 +34,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, err
 		}
 		plan, err := asset.PlanDashboard(ctx, apiClient, dashboard, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "dashboard", AssetID: plan.Key})
 		}
@@ -36,13 +42,13 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if name == "" {
 			name = dashboard.Metadata.Name
 		}
-		return []docPlan{{displayKind: "Dashboard", name: name, plan: plan}}, nil
+		return []docPlan{{displayKind: "Dashboard", name: name, plan: plan, readDenied: denied}}, nil
 
 	case "checkrule":
-		return planCheckRules(ctx, apiClient, doc, dataset)
+		return planCheckRules(ctx, apiClient, doc, dataset, inNewDataset)
 
 	case "prometheusrule":
-		return planPrometheusRule(ctx, apiClient, doc, dataset)
+		return planPrometheusRule(ctx, apiClient, doc, dataset, inNewDataset)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -50,6 +56,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, fmt.Errorf("failed to parse SyntheticCheck: %w", err)
 		}
 		plan, err := asset.PlanSyntheticCheck(ctx, apiClient, &check, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "synthetic check", AssetID: plan.Key})
 		}
@@ -58,7 +65,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if before, ok := plan.Before.(*dash0api.SyntheticCheckDefinition); ok && before.Metadata.Labels != nil && before.Metadata.Labels.Dash0Comid != nil && check.Metadata.Labels != nil {
 			check.Metadata.Labels.Dash0Comid = before.Metadata.Labels.Dash0Comid
 		}
-		return []docPlan{{displayKind: doc.Kind, name: check.Metadata.Name, plan: plan}}, nil
+		return []docPlan{{displayKind: doc.Kind, name: check.Metadata.Name, plan: plan, readDenied: denied}}, nil
 
 	case "slo":
 		var slo dash0api.SloDefinition
@@ -66,10 +73,11 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, fmt.Errorf("failed to parse SLO: %w", err)
 		}
 		plan, err := asset.PlanSLO(ctx, apiClient, &slo, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "SLO", AssetName: dash0api.GetSLOName(&slo)})
 		}
-		return []docPlan{{displayKind: "SLO", name: dash0api.GetSLOName(&slo), plan: plan}}, nil
+		return []docPlan{{displayKind: "SLO", name: dash0api.GetSLOName(&slo), plan: plan, readDenied: denied}}, nil
 
 	case "timeseriesaggregation":
 		var aggregation dash0api.TimeSeriesAggregationDefinition
@@ -77,6 +85,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, fmt.Errorf("failed to parse Dash0TimeSeriesAggregation: %w", err)
 		}
 		plan, err := asset.PlanTimeSeriesAggregation(ctx, apiClient, &aggregation, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			// The cross-dataset collision carries its own explanation.
 			if asset.IsTimeSeriesAggregationWrongDataset(err) {
@@ -84,7 +93,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			}
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "time series aggregation", AssetID: plan.Key})
 		}
-		return []docPlan{{displayKind: "Dash0TimeSeriesAggregation", name: dash0api.GetTimeSeriesAggregationName(&aggregation), plan: plan}}, nil
+		return []docPlan{{displayKind: "Dash0TimeSeriesAggregation", name: dash0api.GetTimeSeriesAggregationName(&aggregation), plan: plan, readDenied: denied}}, nil
 
 	case "dataset":
 		var ds dash0api.DatasetDefinition
@@ -103,6 +112,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, fmt.Errorf("failed to parse View: %w", err)
 		}
 		plan, err := asset.PlanView(ctx, apiClient, &view, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "view", AssetID: plan.Key})
 		}
@@ -111,10 +121,10 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if before, ok := plan.Before.(*dash0api.ViewDefinition); ok && before.Metadata.Labels != nil && before.Metadata.Labels.Dash0Comid != nil {
 			view.Metadata.Labels.Dash0Comid = before.Metadata.Labels.Dash0Comid
 		}
-		return []docPlan{{displayKind: doc.Kind, name: view.Metadata.Name, plan: plan}}, nil
+		return []docPlan{{displayKind: doc.Kind, name: view.Metadata.Name, plan: plan, readDenied: denied}}, nil
 
 	case "spamfilter":
-		return planSpamFilter(ctx, apiClient, doc, dataset)
+		return planSpamFilter(ctx, apiClient, doc, dataset, inNewDataset)
 
 	case "notificationchannel":
 		var channel dash0api.NotificationChannelDefinition
@@ -175,7 +185,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 
 // planCheckRules handles a CheckRule document, or the alerting rules of a
 // PrometheusRule CRD: asset.ParseCheckRules returns one rule per alert.
-func planCheckRules(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]docPlan, error) {
+func planCheckRules(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	rules, err := asset.ParseCheckRules(doc.Raw)
 	if err != nil {
 		return nil, err
@@ -183,17 +193,18 @@ func planCheckRules(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 	var plans []docPlan
 	for _, rule := range rules {
 		plan, err := asset.PlanCheckRule(ctx, apiClient, rule, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return plans, client.HandleAPIError(err, client.ErrorContext{AssetType: "check rule", AssetID: plan.Key, AssetName: rule.Name})
 		}
-		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan})
+		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied})
 	}
 	return plans, nil
 }
 
 // planPrometheusRule handles a PrometheusRule CRD with alerting rules,
 // recording rules, or both, the same way applyPrometheusRule dispatches it.
-func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]docPlan, error) {
+func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	crd, err := asset.ParsePrometheusRuleCRD(doc.Raw)
 	if err != nil {
 		return nil, err
@@ -201,7 +212,7 @@ func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asse
 
 	var plans []docPlan
 	if asset.PrometheusRuleHasAlerts(crd) {
-		alertPlans, err := planCheckRules(ctx, apiClient, doc, dataset)
+		alertPlans, err := planCheckRules(ctx, apiClient, doc, dataset, inNewDataset)
 		plans = append(plans, alertPlans...)
 		if err != nil {
 			return plans, err
@@ -211,17 +222,18 @@ func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asse
 	if recordingOnly := asset.RecordingOnlyPrometheusRule(crd); recordingOnly != nil {
 		name := dash0api.GetRecordingRuleName(recordingOnly)
 		plan, err := asset.PlanRecordingRule(ctx, apiClient, recordingOnly, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return plans, client.HandleAPIError(err, client.ErrorContext{AssetType: "recording rule", AssetID: plan.Key, AssetName: name})
 		}
-		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan})
+		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied})
 	}
 	return plans, nil
 }
 
 // planSpamFilter handles v1alpha1 and v1alpha2 spam filter documents. The
 // apiVersion field selects the schema.
-func planSpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]docPlan, error) {
+func planSpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	apiVersion, err := asset.DetectSpamFilterAPIVersion(doc.Raw)
 	if err != nil {
 		return nil, err
@@ -234,10 +246,11 @@ func planSpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)
 		}
 		plan, err := asset.PlanSpamFilter(ctx, apiClient, &filter, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "spam filter", AssetID: plan.Key})
 		}
-		return []docPlan{{displayKind: doc.Kind, name: dash0api.GetSpamFilterName(&filter), plan: plan}}, nil
+		return []docPlan{{displayKind: doc.Kind, name: dash0api.GetSpamFilterName(&filter), plan: plan, readDenied: denied}}, nil
 
 	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
 		var filter dash0api.SpamFilterV1Alpha2
@@ -245,13 +258,23 @@ func planSpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)
 		}
 		plan, err := asset.PlanSpamFilterV1Alpha2(ctx, apiClient, &filter, dataset)
+		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "spam filter", AssetID: plan.Key})
 		}
-		return []docPlan{{displayKind: doc.Kind, name: filter.Metadata.Name, plan: plan}}, nil
+		return []docPlan{{displayKind: doc.Kind, name: filter.Metadata.Name, plan: plan, readDenied: denied}}, nil
 
 	default:
 		// Unreachable: DetectSpamFilterAPIVersion only returns supported values or an error.
 		return nil, fmt.Errorf("unsupported spam filter apiVersion %q", apiVersion)
 	}
+}
+
+// readError drops the 403 of a read in a dataset this run creates, and
+// reports that it did.
+func readError(err error, inNewDataset bool) (bool, error) {
+	if inNewDataset && dash0api.IsForbidden(err) {
+		return true, nil
+	}
+	return false, err
 }

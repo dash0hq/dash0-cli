@@ -1359,6 +1359,10 @@ For an update, `diff` prints a unified diff between the fetched state and the lo
 A document with no identifier, or one whose identifier does not match any existing asset, is reported as a create.
 An asset that exists but is soft-deleted is also reported as a create, since `apply` restores it.
 
+A document in a dataset that a `Dash0Dataset` document in the same run creates is reported as a create too, because `apply` applies datasets first.
+The API denies the read of such a document, so `diff` shows it as a create without its stored state, and prints a warning for it on stderr.
+With a token that can only see some datasets, `diff` cannot tell a dataset that does not exist from one the token cannot see, so it can report both the dataset and its assets as creates.
+
 The comparison is semantic, not a raw text diff.
 Key order, duration formatting (`2m` and `2m0s` are the same value), int-vs-float differences between YAML and JSON, and API-populated defaults absent from the local document never count as a change.
 Slice order is ignored only for fields that are sets, such as `spec.permissions`, notification channels, and synthetic check locations; reordering any other list, such as `spec.filter`, is a change.
@@ -1367,6 +1371,10 @@ For datasets, a `spec` field left out of the file keeps its stored value, so it 
 For teams, stored member ids are compared as email addresses, so a file that lists emails matches.
 Fields the API adds on write, such as the `dash0.com/source` label, the `dash0.com/enabled: "true"` annotation, and a check rule's default `enabled` and `interval`, do not count as a change when the local document leaves them out.
 A real change next to an ignored reorder may still show that reorder in the printed diff, but the comparison never reports a false "no differences".
+
+A notification channel's `spec.frequency` and a time series aggregation's `spec.priority` go back to their defaults, `10m0s` and `2`, when the local document leaves them out.
+`diff` therefore shows a stored value that differs from the default as a change to the default, and a stored default as no change.
+A grant in an Agent0 skill's `spec.permissions` that leaves out `defaultEnabled` keeps its stored value, so that is not a change either.
 
 All documents are fetched before anything is printed.
 If any single fetch fails for a reason other than the asset simply not existing yet — an auth failure, a 5xx, a network error — the entire preview is aborted and nothing is printed, so a partial, misleading report is never shown.

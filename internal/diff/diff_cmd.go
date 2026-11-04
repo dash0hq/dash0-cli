@@ -131,6 +131,7 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 	if err != nil {
 		return err
 	}
+	warnDeniedReads(planned, dataset)
 
 	pending, err := renderReport(planned, sincePlan, fromDirectory, flags.File, flags.Since)
 	if err != nil {
@@ -148,18 +149,41 @@ const maxConcurrentReads = 8
 // planDocuments plans every document in parallel. The result keeps document
 // order, and the error reported is the first one in document order, so the
 // output does not depend on which read finishes first.
+//
+// Datasets are planned before every other kind, as apply applies them first.
+// An asset in a dataset this run creates cannot be stored yet, and the API
+// answers 403 instead of 404 for a read in a dataset that does not exist.
 func planDocuments(ctx context.Context, apiClient dash0api.Client, documents []asset.Document, dataset *string) ([]plannedDoc, error) {
 	planned := make([]plannedDoc, len(documents))
 	errs := make([]error, len(documents))
+	isDataset := func(doc asset.Document) bool { return asset.NormalizeKind(doc.Kind) == "dataset" }
+
+	planEach(ctx, apiClient, documents, dataset, false, isDataset, planned, errs)
+	if err := firstError(errs); err != nil {
+		return nil, err
+	}
+	inNewDataset := createsDataset(planned, dataset)
+	planEach(ctx, apiClient, documents, dataset, inNewDataset, func(doc asset.Document) bool { return !isDataset(doc) }, planned, errs)
+	if err := firstError(errs); err != nil {
+		return nil, err
+	}
+	return planned, nil
+}
+
+// planEach plans, in parallel, the documents that match selects.
+func planEach(ctx context.Context, apiClient dash0api.Client, documents []asset.Document, dataset *string, inNewDataset bool, selects func(asset.Document) bool, planned []plannedDoc, errs []error) {
 	slots := make(chan struct{}, maxConcurrentReads)
 	var wg sync.WaitGroup
 	for i, doc := range documents {
+		if !selects(doc) {
+			continue
+		}
 		wg.Add(1)
 		slots <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			plans, err := planDocument(ctx, apiClient, doc, dataset)
+			plans, err := planDocument(ctx, apiClient, doc, dataset, inNewDataset)
 			if err != nil {
 				errs[i] = fmt.Errorf("%s (%s): %w", doc.Location(), doc.Kind, err)
 				return
@@ -168,12 +192,44 @@ func planDocuments(ctx context.Context, apiClient dash0api.Client, documents []a
 		}()
 	}
 	wg.Wait()
+}
+
+func firstError(errs []error) error {
 	for _, err := range errs {
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return planned, nil
+	return nil
+}
+
+// warnDeniedReads names each asset whose 403 was dropped, because a token
+// without access to an existing dataset gets the same answers.
+func warnDeniedReads(planned []plannedDoc, dataset *string) {
+	for _, pd := range planned {
+		for _, p := range pd.plans {
+			if p.readDenied {
+				fmt.Fprintf(os.Stderr, "warning: %s %q (%s): read denied in dataset %q, assumed new because this run creates %q; a token without access to %q gives the same result\n",
+					asset.KindDisplayName(p.displayKind), p.name, p.plan.Key, *dataset, *dataset, *dataset)
+			}
+		}
+	}
+}
+
+// createsDataset reports whether a planned Dash0Dataset document creates the
+// dataset the dataset-scoped documents of this run are read from.
+func createsDataset(planned []plannedDoc, dataset *string) bool {
+	if dataset == nil {
+		return false
+	}
+	for _, pd := range planned {
+		for _, p := range pd.plans {
+			if p.displayKind == "Dash0Dataset" && p.plan.Action == asset.ActionCreated && p.plan.Key == *dataset {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // readDocuments reads file the same way apply does: stdin ("-"), a single

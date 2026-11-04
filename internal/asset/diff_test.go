@@ -852,3 +852,142 @@ func TestUnifiedDiff_CheckRuleWithoutEnabled(t *testing.T) {
 		})
 	}
 }
+
+func unmarshalForTest[T any](t *testing.T, document string) *T {
+	t.Helper()
+	var value T
+	require.NoError(t, dash0yaml.Unmarshal([]byte(document), &value))
+	return &value
+}
+
+// The API stores the default frequency, 10m0s, when a write leaves frequency
+// out, even over another stored value.
+func TestUnifiedDiff_NotificationChannelWithoutFrequency(t *testing.T) {
+	const channel = `kind: Dash0NotificationChannel
+metadata:
+  name: alerts
+  labels:
+    dash0.com/origin: alerts
+spec:
+  type: webhook
+  config:
+    url: https://example.com/hook
+    method: POST
+`
+	cases := map[string]struct {
+		storedFrequency string
+		wantDiff        string
+	}{
+		"keeps the default":             {storedFrequency: "10m0s", wantDiff: ""},
+		"resets a non-default to 10m0s": {storedFrequency: "30m0s", wantDiff: "+  frequency: 10m0s"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			stored := unmarshalForTest[dash0api.NotificationChannelDefinition](t, channel+"  frequency: "+c.storedFrequency+"\n")
+			local := unmarshalForTest[dash0api.NotificationChannelDefinition](t, channel)
+
+			text, err := UnifiedDiff("Notification channel", stored, local)
+
+			require.NoError(t, err)
+			if c.wantDiff == "" {
+				assert.Empty(t, text)
+			} else {
+				assert.Contains(t, text, "-  frequency: "+c.storedFrequency)
+				assert.Contains(t, text, c.wantDiff)
+			}
+			assert.Nil(t, local.Spec.Frequency, "the comparison must not change the document apply sends")
+		})
+	}
+}
+
+// The API stores the default priority, 2, when a write leaves priority out,
+// even over another stored value.
+func TestUnifiedDiff_TimeSeriesAggregationWithoutPriority(t *testing.T) {
+	const aggregation = `kind: Dash0TimeSeriesAggregation
+metadata:
+  name: duration
+  labels:
+    dash0.com/origin: duration
+spec:
+  enabled: true
+  match:
+    metricNameMatcher:
+      operator: is
+      value: http.server.request.duration
+  sample:
+    interval: 5m
+`
+	cases := map[string]struct {
+		storedPriority string
+		wantDiff       string
+	}{
+		"keeps the default":         {storedPriority: "2", wantDiff: ""},
+		"resets a non-default to 2": {storedPriority: "4", wantDiff: "+  priority: 2"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			stored := unmarshalForTest[dash0api.TimeSeriesAggregationDefinition](t, aggregation+"  priority: "+c.storedPriority+"\n")
+			local := unmarshalForTest[dash0api.TimeSeriesAggregationDefinition](t, aggregation)
+
+			text, err := UnifiedDiff("Time series aggregation", stored, local)
+
+			require.NoError(t, err)
+			if c.wantDiff == "" {
+				assert.Empty(t, text)
+			} else {
+				assert.Contains(t, text, "-  priority: "+c.storedPriority)
+				assert.Contains(t, text, c.wantDiff)
+			}
+			assert.Nil(t, local.Spec.Priority, "the comparison must not change the document apply sends")
+		})
+	}
+}
+
+// The API keeps a grant's stored defaultEnabled when a write leaves it out.
+func TestUnifiedDiff_SkillGrantWithoutDefaultEnabled(t *testing.T) {
+	skill := func(defaultEnabled string) string {
+		document := `kind: Dash0Skill
+metadata:
+  labels:
+    dash0.com/origin: dash0-cli_triage
+spec:
+  files:
+    - relativePath: SKILL.md
+      content: "---\nname: triage\n---\nBody.\n"
+  permissions:
+    - role: basic_member
+      actions:
+        - custom_skill:read
+`
+		if defaultEnabled != "" {
+			document += "      defaultEnabled: " + defaultEnabled + "\n"
+		}
+		return document
+	}
+	cases := map[string]struct {
+		stored, local string
+		wantDiff      string
+	}{
+		"omitted over a stored true":  {stored: "true", local: "", wantDiff: ""},
+		"omitted over a stored false": {stored: "false", local: "", wantDiff: ""},
+		"explicit true over a false":  {stored: "false", local: "true", wantDiff: "+    defaultEnabled: true"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			stored := unmarshalForTest[dash0api.SkillDefinition](t, skill(c.stored))
+			local := unmarshalForTest[dash0api.SkillDefinition](t, skill(c.local))
+
+			text, err := UnifiedDiff("Agent0 skill", stored, local)
+
+			require.NoError(t, err)
+			if c.wantDiff == "" {
+				assert.Empty(t, text)
+			} else {
+				assert.Contains(t, text, c.wantDiff)
+			}
+			if c.local == "" {
+				assert.Nil(t, (*local.Spec.Permissions)[0].DefaultEnabled, "the comparison must not change the document apply sends")
+			}
+		})
+	}
+}

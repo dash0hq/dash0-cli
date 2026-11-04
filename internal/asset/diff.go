@@ -227,7 +227,7 @@ func WriteDiff(w io.Writer, text string) error {
 }
 
 func unifiedDiff(displayKind string, before, after any) (string, error) {
-	after = withCheckRuleEnabledDefault(before, after)
+	after = withOmittedFieldsAsStored(before, after)
 	beforeYAML, err := marshalForDiff(before)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal before state: %w", err)
@@ -311,14 +311,77 @@ func writeColorizedDiff(w io.Writer, text string) error {
 	return nil
 }
 
+// Server defaults the API stores when a write leaves the field out, even over
+// a stored value that differs.
+const (
+	notificationChannelDefaultFrequency  = "10m0s"
+	timeSeriesAggregationDefaultPriority = 2
+)
+
+// withOmittedFieldsAsStored returns after with each field it leaves out set to
+// what the API stores for that write. The semantic comparison drops a stored
+// value that after leaves out, so without this a write that resets the field
+// to its default would show as no change, and a write that keeps the stored
+// value would show as a removal.
+func withOmittedFieldsAsStored(before, after any) any {
+	switch stored := before.(type) {
+	case *dash0api.PrometheusAlertRule:
+		return withCheckRuleEnabledDefault(stored, after)
+	case *dash0api.NotificationChannelDefinition:
+		channel, ok := after.(*dash0api.NotificationChannelDefinition)
+		if !ok || channel == nil || stored == nil || stored.Spec.Frequency == nil || channel.Spec.Frequency != nil {
+			return after
+		}
+		withDefault := *channel
+		frequency := notificationChannelDefaultFrequency
+		withDefault.Spec.Frequency = &frequency
+		return &withDefault
+	case *dash0api.TimeSeriesAggregationDefinition:
+		aggregation, ok := after.(*dash0api.TimeSeriesAggregationDefinition)
+		if !ok || aggregation == nil || stored == nil || stored.Spec.Priority == nil || aggregation.Spec.Priority != nil {
+			return after
+		}
+		withDefault := *aggregation
+		priority := timeSeriesAggregationDefaultPriority
+		withDefault.Spec.Priority = &priority
+		return &withDefault
+	case *dash0api.SkillDefinition:
+		return withStoredSkillDefaultEnabled(stored, after)
+	}
+	return after
+}
+
+// withStoredSkillDefaultEnabled returns after with each grant that leaves
+// defaultEnabled out set to the stored grant's value, because the API keeps
+// that value on such a write.
+func withStoredSkillDefaultEnabled(stored *dash0api.SkillDefinition, after any) any {
+	skill, ok := after.(*dash0api.SkillDefinition)
+	if !ok || skill == nil || skill.Spec.Permissions == nil || stored == nil || stored.Spec.Permissions == nil {
+		return after
+	}
+	storedDefaults := map[string]*bool{}
+	for _, grant := range *stored.Spec.Permissions {
+		storedDefaults[permissionSortKey(grant.Role, grant.TeamId, grant.UserId)] = grant.DefaultEnabled
+	}
+	grants := make([]dash0api.SkillPermission, len(*skill.Spec.Permissions))
+	copy(grants, *skill.Spec.Permissions)
+	for i, grant := range grants {
+		if grant.DefaultEnabled == nil {
+			grants[i].DefaultEnabled = storedDefaults[permissionSortKey(grant.Role, grant.TeamId, grant.UserId)]
+		}
+	}
+	withStored := *skill
+	withStored.Spec.Permissions = &grants
+	return &withStored
+}
+
 // withCheckRuleEnabledDefault returns after with the server default for
 // enabled, true, when after leaves enabled out and before is a disabled rule.
 // The API enables a rule whose PUT has no enabled field, while the semantic
 // comparison drops a stored false that after leaves out, so the re-enabled
 // rule would show as no change.
-func withCheckRuleEnabledDefault(before, after any) any {
-	stored, ok := before.(*dash0api.PrometheusAlertRule)
-	if !ok || stored == nil || stored.Enabled == nil || *stored.Enabled {
+func withCheckRuleEnabledDefault(stored *dash0api.PrometheusAlertRule, after any) any {
+	if stored == nil || stored.Enabled == nil || *stored.Enabled {
 		return after
 	}
 	rule, ok := after.(*dash0api.PrometheusAlertRule)
