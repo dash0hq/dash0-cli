@@ -181,6 +181,11 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 
 // negotiateAgain waits before the next negotiation round, or fails once the rounds are used up.
 func (u *uploader) negotiateAgain(ctx context.Context, round int, buildID, reason string) error {
+	// Forcing again can invalidate an upload in progress, and a forced retry would need to know which destinations
+	// already have the file, so a forced upload is never negotiated again.
+	if u.force {
+		return fmt.Errorf("delivery is incomplete: the forced upload of %q reached only some destinations, and a forced upload is not negotiated again: %s", buildID, reason)
+	}
 	if round >= u.maxRetries {
 		return fmt.Errorf("delivery is incomplete: the debuginfo service still asked to check again after %d attempts: %s", round+1, reason)
 	}

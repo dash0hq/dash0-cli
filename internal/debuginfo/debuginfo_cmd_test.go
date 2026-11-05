@@ -658,3 +658,23 @@ func TestUpload_FailsWhenOneTargetFails(t *testing.T) {
 	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
 	assert.Equal(t, []string{"token-b"}, service.markedIDs)
 }
+
+func TestUpload_ForcedUploadIsNotNegotiatedAgain(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{UploadTargets: []*debuginfopb.UploadInstructions{
+			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
+		}, RetryRequired: true}
+	}
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir, "--force")...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), `the forced upload of "app.example.com/assets/app.js" reached only some destinations`)
+	assert.NotContains(t, output, "uploaded")
+	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
+	assert.Equal(t, []string{"token-a", "token-b"}, service.markedIDs)
+	assert.Equal(t, 1, service.calls["ShouldInitiateUpload"])
+}
