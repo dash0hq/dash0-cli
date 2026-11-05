@@ -31,11 +31,11 @@ func (t *assetResponseTransport) RoundTrip(req *http.Request) (*http.Response, e
 	}
 	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	if readErr == nil && !strings.Contains(resp.Header.Get("Content-Type"), "json") {
+		readErr = fmt.Errorf("expected a JSON Content-Type, received %q", resp.Header.Get("Content-Type"))
+	}
 	if readErr == nil {
 		readErr = schema.validate(body)
-	}
-	if readErr == nil && !strings.Contains(resp.Header.Get("Content-Type"), "json") {
-		readErr = fmt.Errorf("expected a JSON Content-Type")
 	}
 	if readErr != nil {
 		// Report decoding failures when the SDK reads the body, not as transport
@@ -59,24 +59,49 @@ type malformedResponseError struct {
 }
 
 func (e *malformedResponseError) Error() string {
-	detail := e.cause.Error()
+	message := fmt.Sprintf("invalid API response for %s (%s %s):\n  %s",
+		e.asset, e.method, e.path, strings.ReplaceAll(responseErrorDetail(e.cause), "\n", "\n  "))
+	if e.method == http.MethodPost || e.method == http.MethodPut {
+		message += "\nWarning: The write may already have been applied. Check the asset in Dash0 before retrying."
+		if e.method == http.MethodPost {
+			message += " Retrying a create without an identifier can create a duplicate."
+		}
+	}
+	return message + "\nHint: Update the CLI to the latest version; if this persists, report it with the command and endpoint."
+}
+
+func responseErrorDetail(err error) string {
+	var itemErr *responseListItemError
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	switch {
-	case errors.As(e.cause, &typeErr):
+	case errors.As(err, &itemErr):
+		return itemErr.Error()
+	case errors.As(err, &typeErr):
 		field := typeErr.Field
 		if field == "" {
 			field = "$"
 		}
-		detail = fmt.Sprintf("field %q: expected %s, received %s", field, typeErr.Type, typeErr.Value)
-	case errors.As(e.cause, &syntaxErr):
-		detail = fmt.Sprintf("invalid JSON at byte %d: %s", syntaxErr.Offset, syntaxErr.Error())
+		return fmt.Sprintf("field %q: expected %s, received %s", field, typeErr.Type, typeErr.Value)
+	case errors.As(err, &syntaxErr):
+		return fmt.Sprintf("invalid JSON at byte %d: %s", syntaxErr.Offset, syntaxErr.Error())
+	default:
+		return err.Error()
 	}
-	return fmt.Sprintf("invalid API response for %s (%s %s):\n  %s\nHint: Update the CLI to the latest version; if this persists, report it with the command and endpoint.",
-		e.asset, e.method, e.path, detail)
 }
 
 func (e *malformedResponseError) Unwrap() error { return e.cause }
+
+type responseListItemError struct {
+	index int
+	cause error
+}
+
+func (e *responseListItemError) Error() string {
+	return fmt.Sprintf("list item %d:\n  %s", e.index, strings.ReplaceAll(responseErrorDetail(e.cause), "\n", "\n  "))
+}
+
+func (e *responseListItemError) Unwrap() error { return e.cause }
 
 type responseSchema struct {
 	asset    string
@@ -90,10 +115,13 @@ func assetResponseSchema(req *http.Request) *responseSchema {
 	if req.Method != http.MethodGet && req.Method != http.MethodPost && req.Method != http.MethodPut {
 		return nil
 	}
-	if !strings.HasPrefix(req.URL.Path, "/api/") {
+	// An escaped slash belongs to the identifier, not to the endpoint path.
+	// Splitting URL.Path would bypass validation for origins such as gitops/prod.
+	path := req.URL.EscapedPath()
+	if !strings.HasPrefix(path, "/api/") {
 		return nil
 	}
-	path := strings.TrimPrefix(req.URL.Path, "/api/")
+	path = strings.TrimPrefix(path, "/api/")
 	if strings.HasPrefix(path, "alerting/check-rules") {
 		path = strings.TrimPrefix(path, "alerting/")
 	}
@@ -180,7 +208,7 @@ func (s *responseSchema) validate(body []byte) error {
 		}
 		for i, item := range items {
 			if err := s.validateItem(item); err != nil {
-				return fmt.Errorf("list item %d:\n  %w", i, err)
+				return &responseListItemError{index: i, cause: err}
 			}
 		}
 		return nil

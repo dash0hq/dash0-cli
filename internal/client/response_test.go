@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -36,6 +37,10 @@ func TestAssetResponseTransport(t *testing.T) {
 		{"null spec", http.MethodGet, "/api/views/id", "application/json", `{"kind":"Dash0View","metadata":{"name":"test"},"spec":null}`, http.StatusOK, true, true},
 		{"null list item", http.MethodGet, "/api/views", "application/json", `[null]`, http.StatusOK, true, true},
 		{"wrong content type", http.MethodGet, "/api/views", "text/plain", `[]`, http.StatusOK, true, true},
+		{"HTML proxy response", http.MethodGet, "/api/views", "text/html", `<html>Bad proxy</html>`, http.StatusOK, true, true},
+		{"missing content type", http.MethodGet, "/api/views", "", `[]`, http.StatusOK, true, true},
+		{"escaped origin", http.MethodGet, "/api/notification-channels/gitops%2Fprod", "application/json", `null`, http.StatusOK, true, true},
+		{"escaped check rule id", http.MethodGet, "/api/alerting/check-rules/gitops%2Fprod", "application/json", `null`, http.StatusOK, true, true},
 		{"created response", http.MethodPost, "/api/views", "application/json", `{"metadata":`, http.StatusCreated, true, true},
 		{"HTTP error unchanged", http.MethodGet, "/api/views/id", "application/json", `not JSON`, http.StatusBadRequest, false, false},
 		{"delete unchanged", http.MethodDelete, "/api/views/id", "application/json", ``, http.StatusOK, false, false},
@@ -60,10 +65,53 @@ func TestAssetResponseTransport(t *testing.T) {
 				assert.NotContains(t, err.Error(), "private")
 				var malformed *malformedResponseError
 				assert.ErrorAs(t, err, &malformed)
+				if !strings.Contains(tc.contentType, "json") {
+					assert.Contains(t, err.Error(), "expected a JSON Content-Type, received "+strconv.Quote(tc.contentType))
+				}
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tc.body, string(body))
 			}
+		})
+	}
+}
+
+func TestMalformedResponseError_ListContext(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, detail string
+	}{
+		{"type", `[{"id":"valid"},{"id":123}]`, `field "id": expected string, received number`},
+		{"required", `[{"id":"valid"},{"id":null}]`, `required field "id" is missing or null`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "https://example.test/api/dashboards", nil)
+			require.NoError(t, err)
+			cause := assetResponseSchema(req).validate([]byte(tc.body))
+			require.Error(t, cause)
+			wrapped := &malformedResponseError{asset: "dashboard", method: req.Method, path: req.URL.Path, cause: cause}
+			assert.Contains(t, wrapped.Error(), "\n  list item 1:\n    "+tc.detail+"\nHint:")
+			if tc.name == "type" {
+				var typeErr *json.UnmarshalTypeError
+				assert.ErrorAs(t, wrapped, &typeErr)
+			}
+		})
+	}
+}
+
+func TestMalformedResponseError_WriteWarning(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			err := &malformedResponseError{asset: "view", method: method, path: "/api/views", cause: io.ErrUnexpectedEOF}
+			if method == http.MethodGet {
+				assert.NotContains(t, err.Error(), "write may already have been applied")
+			} else {
+				assert.Contains(t, err.Error(), "write may already have been applied")
+				assert.Contains(t, err.Error(), "Check the asset in Dash0 before retrying")
+			}
+			if method == http.MethodPost {
+				assert.Contains(t, err.Error(), "can create a duplicate")
+			}
+			assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 		})
 	}
 }
