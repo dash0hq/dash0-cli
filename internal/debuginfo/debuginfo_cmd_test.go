@@ -644,14 +644,17 @@ func TestUpload_FailsWhenOneTargetFails(t *testing.T) {
 			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
 		}}
 	}
-	service.putStatusByPath = map[string]int{"/backend-b": http.StatusForbidden}
+	service.putStatusByPath = map[string]int{"/backend-a": http.StatusForbidden}
 	dir := writeBuildOutput(t)
 
 	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
-	assert.Contains(t, err.Error(), "upload target 2 of 2")
+	assert.Contains(t, err.Error(), "upload target 1 of 2")
+	assert.NotContains(t, err.Error(), "upload target 2 of 2")
 	assert.NotContains(t, output, "uploaded")
-	assert.Equal(t, []string{"token-a"}, service.markedIDs)
+	// Target 1 failing does not hold back target 2.
+	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
+	assert.Equal(t, []string{"token-b"}, service.markedIDs)
 }
