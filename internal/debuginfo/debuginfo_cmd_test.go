@@ -2,6 +2,7 @@ package debuginfo
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -10,13 +11,16 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 const testAuthToken = "auth_test_token"
@@ -26,6 +30,10 @@ type fakeDebuginfoService struct {
 
 	strategy  debuginfopb.UploadInstructions_UploadStrategy
 	signedURL string
+	// failBuildIDs makes ShouldInitiateUpload fail with that error for the build ID.
+	failBuildIDs map[string]error
+	// existingInInitiate makes InitiateUpload answer AlreadyExists, as when another upload won the race.
+	existingInInitiate bool
 
 	mutex          sync.Mutex
 	stored         map[string][]byte
@@ -46,6 +54,9 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 	service.record(ctx, request.GetType())
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
+	if err := service.failBuildIDs[request.GetBuildId()]; err != nil {
+		return nil, err
+	}
 	if _, exists := service.stored[request.GetBuildId()]; exists && !request.GetForce() {
 		return &debuginfopb.ShouldInitiateUploadResponse{Reason: "Debuginfo already exists."}, nil
 	}
@@ -54,6 +65,9 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 
 func (service *fakeDebuginfoService) InitiateUpload(ctx context.Context, request *debuginfopb.InitiateUploadRequest) (*debuginfopb.InitiateUploadResponse, error) {
 	service.record(ctx, request.GetType())
+	if service.existingInInitiate {
+		return nil, status.Error(codes.AlreadyExists, "already uploaded by another client")
+	}
 	return &debuginfopb.InitiateUploadResponse{UploadInstructions: &debuginfopb.UploadInstructions{
 		BuildId:        request.GetBuildId(),
 		UploadId:       "upload-" + request.GetBuildId(),
@@ -222,4 +236,55 @@ func TestUpload_SourceMaps(t *testing.T) {
 			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
 		})
 	}
+}
+
+func TestUpload_DryRunRejectsInvalidSourceMap(t *testing.T) {
+	dir := writeBuildOutput(t)
+	writeFile(t, dir, "assets/broken.js", "broken")
+	writeFile(t, dir, "assets/broken.js.map", "not json")
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--dry-run")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "broken.js.map is not valid JSON")
+}
+
+func TestUpload_PermissionErrorHintsAtIngestDebuginfo(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.failBuildIDs = map[string]error{"app.example.com/assets/app.js": status.Error(codes.PermissionDenied, "missing permission")}
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", writeBuildOutput(t), "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must grant the ingest:debuginfo permission")
+}
+
+func TestUpload_AlreadyExistsOnInitiateIsSkipped(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.existingInInitiate = true
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeBuildOutput(t), "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" skipped: already uploaded by another client`)
+}
+
+func TestUpload_AgentModePrintsResultsUploadedBeforeAFailure(t *testing.T) {
+	previous := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = previous })
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.failBuildIDs = map[string]error{"app.example.com/assets/later.js": status.Error(codes.Unavailable, "down")}
+	dir := writeBuildOutput(t)
+	writeFile(t, dir, "assets/later.js", "later")
+	writeFile(t, dir, "assets/later.js.map", "{}")
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	var results []uploadResult
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, "app.example.com/assets/app.js", results[0].BuildID)
+	assert.Equal(t, outcomeUploaded, results[0].Status)
 }

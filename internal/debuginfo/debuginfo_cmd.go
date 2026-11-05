@@ -120,6 +120,13 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		return err
 	}
 
+	// Check every bundle first, so a broken map fails the dry run and not a real run halfway through.
+	for _, artifact := range artifacts {
+		if _, err := artifact.readBundle(); err != nil {
+			return err
+		}
+	}
+
 	results := make([]uploadResult, 0, len(artifacts))
 	if flags.DryRun {
 		for _, artifact := range artifacts {
@@ -153,6 +160,9 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		}
 		outcome, reason, err := debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, body)
 		if err != nil {
+			if agentmode.Enabled {
+				_ = printJSON(results)
+			}
 			return fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
 		}
 		result := uploadResult{sourceMapArtifact: artifact, Status: outcome, Reason: reason}

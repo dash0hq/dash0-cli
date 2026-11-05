@@ -15,7 +15,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
-| [Send](#send-commands) | `logs send`, `spans send`, `debuginfo upload` | OTLP-based, repeatable attribute flags; `debuginfo upload` is experimental |
+| [Send](#send-commands) | `logs send`, `spans send`, `debuginfo upload` | `logs send` and `spans send` are OTLP-based, with repeatable attribute flags; `debuginfo upload` is experimental and uploads to the Dash0 debuginfo gRPC service |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
@@ -2574,6 +2574,8 @@ A script without that comment uses `<file>.map`.
 Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
 When `<path>` is a single script, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory, and `--source-map` to name the map yourself.
 
+Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
+
 Source maps that Dash0 already has are skipped.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
 
@@ -4091,7 +4093,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, debuginfo, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

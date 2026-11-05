@@ -6,10 +6,13 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/dash0hq/dash0-cli/internal/version"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
@@ -25,6 +28,9 @@ import (
 const debuginfoGRPCPort = "4317"
 
 const uploadChunkSize = 512 * 1024
+
+// ponytail: one timeout for the whole PUT; size it from the bundle if multi-hundred-MB maps show up.
+var signedURLClient = &http.Client{Timeout: 5 * time.Minute}
 
 // debuginfoTarget keeps the port of raw only when it came from --endpoint, because the port of an
 // OTLP URL is the port of the OTLP ingress, not of the debuginfo service.
@@ -132,7 +138,7 @@ func (u *uploader) putSignedURL(ctx context.Context, signedURL string, body []by
 	if err != nil {
 		return fmt.Errorf("invalid signed upload URL from the debuginfo service:\n  %w", err)
 	}
-	response, err := http.DefaultClient.Do(request)
+	response, err := signedURLClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("failed to upload to the signed URL:\n  %w", err)
 	}
@@ -148,19 +154,19 @@ func (u *uploader) stream(ctx context.Context, instructions *debuginfopb.UploadI
 	if err != nil {
 		return rpcError("open the upload stream", err)
 	}
-	if err := uploadStream.Send(&debuginfopb.UploadRequest{Data: &debuginfopb.UploadRequest_Info{Info: &debuginfopb.UploadInfo{
+	sendErr := uploadStream.Send(&debuginfopb.UploadRequest{Data: &debuginfopb.UploadRequest_Info{Info: &debuginfopb.UploadInfo{
 		BuildId: instructions.GetBuildId(), UploadId: instructions.GetUploadId(), Type: instructions.GetType(),
-	}}}); err != nil {
-		return rpcError("send the upload header", err)
-	}
-	for offset := 0; offset < len(body); offset += uploadChunkSize {
+	}}})
+	for offset := 0; sendErr == nil && offset < len(body); offset += uploadChunkSize {
 		end := min(offset+uploadChunkSize, len(body))
-		if err := uploadStream.Send(&debuginfopb.UploadRequest{Data: &debuginfopb.UploadRequest_ChunkData{ChunkData: body[offset:end]}}); err != nil {
-			break // the real error surfaces from CloseAndRecv
-		}
+		sendErr = uploadStream.Send(&debuginfopb.UploadRequest{Data: &debuginfopb.UploadRequest_ChunkData{ChunkData: body[offset:end]}})
 	}
+	// Send returns io.EOF when the server ends the stream; the server's status comes from CloseAndRecv.
 	if _, err := uploadStream.CloseAndRecv(); err != nil {
 		return rpcError("stream the upload", err)
+	}
+	if sendErr != nil && !errors.Is(sendErr, io.EOF) {
+		return rpcError("stream the upload", sendErr)
 	}
 	return nil
 }

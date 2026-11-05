@@ -106,7 +106,7 @@ func joinBaseURL(baseURL, relativePath string) (string, error) {
 }
 
 // https://tc39.es/ecma426/#sec-linking-generated-code
-var sourceMappingURLComment = regexp.MustCompile(`(?m)^[ \t]*//[#@][ \t]*sourceMappingURL=([^\s'"]+)[ \t]*$`)
+var sourceMappingURLComment = regexp.MustCompile(`(?m)^[ \t]*//[#@][ \t]*sourceMappingURL=([^\s'"]+)[ \t]*\r?$`)
 
 type skippedScript struct {
 	Script string

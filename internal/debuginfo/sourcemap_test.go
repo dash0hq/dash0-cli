@@ -103,6 +103,19 @@ func TestDiscoverSourceMaps_FollowsSourceMappingURLComment(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "maps/nested.js.map"), artifacts[1].SourceMap)
 }
 
+func TestDiscoverSourceMaps_FollowsCommentWithCRLFLineEndings(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "app.js", "x\r\n//# sourceMappingURL=other.js.map\r\n")
+	writeFile(t, dir, "other.js.map", "{}")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "https://app.example.com/")
+
+	require.NoError(t, err)
+	assert.Empty(t, skipped)
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, filepath.Join(dir, "other.js.map"), artifacts[0].SourceMap)
+}
+
 func TestDiscoverSourceMaps_SkipsScriptsWhoseCommentCannotBeFollowed(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "missing.js", "x\n//# sourceMappingURL=gone.js.map\n")

@@ -27,6 +27,8 @@ A script without that comment uses `<file>.map`.
 Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
 When `<path>` is a single script, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory, and `--source-map` to name the map yourself.
 
+Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
+
 Source maps that Dash0 already has are skipped.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
 
