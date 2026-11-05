@@ -2578,6 +2578,7 @@ Every script must be non-empty and every source map must be valid JSON; the comm
 
 Source maps that Dash0 already has are skipped.
 A step that fails with a temporary error, such as an unavailable service or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
+When the debuginfo service sends the upload to several destinations, the command uploads to each one and checks again until every destination has the file; a file that is still not delivered after `--max-retries` checks fails.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
 
 Preview the source maps of a Vite build served from the site root:

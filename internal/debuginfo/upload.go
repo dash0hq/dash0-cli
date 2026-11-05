@@ -33,8 +33,7 @@ const uploadChunkSize = 512 * 1024
 // ponytail: one timeout for the whole PUT; size it from the bundle if multi-hundred-MB maps show up.
 var signedURLClient = &http.Client{Timeout: 5 * time.Minute}
 
-// Backoff before retry n (from 0) is a random duration in [d/2, d], with d = retryBaseDelay * 2^n capped at
-// retryMaxDelay. A variable, so that tests can shorten it.
+// The backoff of a retry, see wait. Variables, so that tests can shorten them.
 var (
 	retryBaseDelay = 500 * time.Millisecond
 	retryMaxDelay  = 5 * time.Second
@@ -93,8 +92,12 @@ const (
 	outcomeSkipped  uploadOutcome = "skipped"
 )
 
-// upload retries each step on its own, not the whole flow: once InitiateUpload succeeds, the service marks the
-// build ID as uploading, and a new ShouldInitiateUpload answers "upload in progress" until that upload is stale.
+// upload negotiates and uploads one artifact. Each RPC and each PUT is retried on its own, not the whole flow: once
+// InitiateUpload succeeds, the service marks the build ID as uploading, and a new ShouldInitiateUpload answers
+// "upload in progress" until that upload is stale.
+//
+// A service that fans out to several destinations returns one upload target per destination, and sets
+// retry_required while some destinations are unresolved. upload then negotiates again, up to u.maxRetries times.
 func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType debuginfopb.DebuginfoType, body []byte) (uploadOutcome, string, error) {
 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+u.authToken)
 	bodyHash, err := hash.Reader(bytes.NewReader(body))
@@ -105,61 +108,114 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 	// from asking public debuginfod servers about it.
 	buildIDType := debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH
 
-	var should *debuginfopb.ShouldInitiateUploadResponse
-	err = u.retry(ctx, "check whether to upload "+buildID, func() (err error) {
-		should, err = u.client.ShouldInitiateUpload(ctx, &debuginfopb.ShouldInitiateUploadRequest{
-			BuildId: buildID, Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
+	uploaded := false
+	for round := 0; ; round++ {
+		var should *debuginfopb.ShouldInitiateUploadResponse
+		err := u.retry(ctx, "check whether to upload "+buildID, func() (err error) {
+			should, err = u.client.ShouldInitiateUpload(ctx, &debuginfopb.ShouldInitiateUploadRequest{
+				BuildId: buildID, Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
+			})
+			return err
 		})
-		return err
-	})
-	if err != nil {
-		return "", "", rpcError("check whether to upload", err)
-	}
-	if !should.GetShouldInitiateUpload() {
-		return outcomeSkipped, should.GetReason(), nil
-	}
+		if err != nil {
+			return "", "", rpcError("check whether to upload", err)
+		}
+		if !should.GetShouldInitiateUpload() {
+			if should.GetRetryRequired() {
+				if err := u.negotiateAgain(ctx, round, buildID, should.GetReason()); err != nil {
+					return "", "", err
+				}
+				continue
+			}
+			if uploaded {
+				return outcomeUploaded, "", nil
+			}
+			return outcomeSkipped, should.GetReason(), nil
+		}
 
-	var initiated *debuginfopb.InitiateUploadResponse
-	err = u.retry(ctx, "start the upload of "+buildID, func() (err error) {
-		initiated, err = u.client.InitiateUpload(ctx, &debuginfopb.InitiateUploadRequest{
-			BuildId: buildID, Size: int64(len(body)), Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
+		var initiated *debuginfopb.InitiateUploadResponse
+		err = u.retry(ctx, "start the upload of "+buildID, func() (err error) {
+			initiated, err = u.client.InitiateUpload(ctx, &debuginfopb.InitiateUploadRequest{
+				BuildId: buildID, Size: int64(len(body)), Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
+				SupportsMultipleUploads: true,
+			})
+			return err
 		})
-		return err
-	})
-	if status.Code(err) == codes.AlreadyExists {
-		return outcomeSkipped, status.Convert(err).Message(), nil
-	}
-	if err != nil {
-		return "", "", rpcError("start the upload", err)
-	}
-	instructions := initiated.GetUploadInstructions()
+		if status.Code(err) == codes.AlreadyExists && !uploaded {
+			return outcomeSkipped, status.Convert(err).Message(), nil
+		}
+		if err != nil {
+			return "", "", rpcError("start the upload", err)
+		}
 
-	switch instructions.GetUploadStrategy() {
+		targets := initiated.GetUploadTargets()
+		if legacy := initiated.GetUploadInstructions(); legacy != nil {
+			if len(targets) > 0 {
+				return "", "", errors.New("the debuginfo service broke the upload protocol: it returned both upload_instructions and upload_targets")
+			}
+			targets = []*debuginfopb.UploadInstructions{legacy}
+		}
+		// Upload to every target, even when one fails, so that one bad destination does not hold back the others.
+		var targetErrs []error
+		for index, target := range targets {
+			if err := u.uploadTarget(ctx, buildID, debuginfoType, target, body); err != nil {
+				targetErrs = append(targetErrs, fmt.Errorf("upload target %d of %d: %w", index+1, len(targets), err))
+			}
+		}
+		if err := errors.Join(targetErrs...); err != nil {
+			return "", "", err
+		}
+		uploaded = uploaded || len(targets) > 0
+
+		if !initiated.GetRetryRequired() {
+			if !uploaded {
+				return outcomeSkipped, "the debuginfo service returned no upload targets", nil
+			}
+			return outcomeUploaded, "", nil
+		}
+		if err := u.negotiateAgain(ctx, round, buildID, "some destinations are not resolved yet"); err != nil {
+			return "", "", err
+		}
+	}
+}
+
+// negotiateAgain waits before the next negotiation round, or fails once the rounds are used up.
+func (u *uploader) negotiateAgain(ctx context.Context, round int, buildID, reason string) error {
+	if round >= u.maxRetries {
+		return fmt.Errorf("delivery is incomplete: the debuginfo service still asked to check again after %d attempts: %s", round+1, reason)
+	}
+	return u.wait(ctx, round, "check "+buildID+" again", reason)
+}
+
+// uploadTarget uploads body as one target asks, then marks that target's upload as finished.
+func (u *uploader) uploadTarget(ctx context.Context, buildID string, debuginfoType debuginfopb.DebuginfoType, target *debuginfopb.UploadInstructions, body []byte) error {
+	var err error
+	switch target.GetUploadStrategy() {
 	case debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL:
-		err = u.retry(ctx, "upload "+buildID, func() error { return putSignedURL(ctx, instructions.GetSignedUrl(), body) })
+		err = u.retry(ctx, "upload "+buildID, func() error { return putSignedURL(ctx, target.GetSignedUrl(), body) })
 	case debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC:
-		err = u.retry(ctx, "upload "+buildID, func() error { return u.stream(ctx, instructions, body) })
+		err = u.retry(ctx, "upload "+buildID, func() error { return u.stream(ctx, target, body) })
 		if err != nil {
 			err = rpcError("stream the upload", err)
 		}
 	default:
-		err = fmt.Errorf("the debuginfo service asked for upload strategy %s, which this CLI does not support", instructions.GetUploadStrategy())
+		err = fmt.Errorf("the debuginfo service asked for upload strategy %s, which this CLI does not support", target.GetUploadStrategy())
 	}
 	if err != nil {
-		return "", "", err
+		return err
 	}
 
 	// Repeating MarkUploadFinished is safe: the service checks the upload ID and sets the state to uploaded again.
 	err = u.retry(ctx, "finish the upload of "+buildID, func() error {
 		_, err := u.client.MarkUploadFinished(ctx, &debuginfopb.MarkUploadFinishedRequest{
-			BuildId: buildID, UploadId: instructions.GetUploadId(), Type: debuginfoType,
+			BuildId: buildID, UploadId: target.GetUploadId(), Type: debuginfoType,
 		})
 		return err
 	})
 	if err != nil {
-		return "", "", rpcError("finish the upload", err)
+		return rpcError("finish the upload", err)
 	}
-	return outcomeUploaded, "", nil
+	return nil
 }
 
 // retry calls call until it succeeds, fails with an error that a retry cannot fix, or used up u.maxRetries.
@@ -169,14 +225,26 @@ func (u *uploader) retry(ctx context.Context, what string, call func() error) er
 		if err == nil || attempt >= u.maxRetries || !isRetryable(err) {
 			return err
 		}
-		delay := min(retryBaseDelay<<attempt, retryMaxDelay)
-		delay = delay/2 + rand.N(delay/2+1)
-		fmt.Fprintf(os.Stderr, "Retrying to %s in %s (retry %d of %d): %s\n", what, delay.Round(time.Millisecond), attempt+1, u.maxRetries, retryReason(err))
-		select {
-		case <-ctx.Done():
+		if u.wait(ctx, attempt, what, retryReason(err)) != nil {
 			return err
-		case <-time.After(delay):
 		}
+	}
+}
+
+// wait prints the retry on stderr and sleeps the backoff before retry n (from 0): a random duration in [d/2, d],
+// with d = retryBaseDelay * 2^n capped at retryMaxDelay. It returns the context error when ctx ends first.
+func (u *uploader) wait(ctx context.Context, n int, what, reason string) error {
+	delay := retryMaxDelay
+	if n < 30 { // a larger shift overflows
+		delay = min(retryBaseDelay<<n, retryMaxDelay)
+	}
+	delay = delay/2 + rand.N(delay/2+1)
+	fmt.Fprintf(os.Stderr, "Retrying to %s in %s (retry %d of %d): %s\n", what, delay.Round(time.Millisecond), n+1, u.maxRetries, reason)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
 	}
 }
 

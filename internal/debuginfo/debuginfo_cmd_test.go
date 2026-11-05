@@ -41,11 +41,19 @@ type fakeDebuginfoService struct {
 	stepErrors map[string][]error
 	// putStatuses holds the HTTP statuses that the next signed URL PUTs answer, in order.
 	putStatuses []int
+	// putStatusByPath makes every signed URL PUT to that path answer the HTTP status.
+	putStatusByPath map[string]int
+	// shouldAnswer and initiateAnswer, when set and returning non-nil, replace the answer to the nth call (from 1).
+	shouldAnswer   func(call int) *debuginfopb.ShouldInitiateUploadResponse
+	initiateAnswer func(call int) *debuginfopb.InitiateUploadResponse
 
 	mutex          sync.Mutex
 	calls          map[string]int
 	puts           int
 	hashes         []string
+	putPaths       []string
+	markedIDs      []string
+	supportsMulti  []bool
 	stored         map[string][]byte
 	pending        map[string][]byte
 	authorizations []string
@@ -84,6 +92,11 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 	if err := service.failBuildIDs[request.GetBuildId()]; err != nil {
 		return nil, err
 	}
+	if service.shouldAnswer != nil {
+		if answer := service.shouldAnswer(service.calls["ShouldInitiateUpload"]); answer != nil {
+			return answer, nil
+		}
+	}
 	if _, exists := service.stored[request.GetBuildId()]; exists && !request.GetForce() {
 		return &debuginfopb.ShouldInitiateUploadResponse{Reason: "Debuginfo already exists."}, nil
 	}
@@ -97,7 +110,14 @@ func (service *fakeDebuginfoService) InitiateUpload(ctx context.Context, request
 	}
 	service.mutex.Lock()
 	service.hashes = append(service.hashes, request.GetHash())
+	service.supportsMulti = append(service.supportsMulti, request.GetSupportsMultipleUploads())
+	call := service.calls["InitiateUpload"]
 	service.mutex.Unlock()
+	if service.initiateAnswer != nil {
+		if answer := service.initiateAnswer(call); answer != nil {
+			return answer, nil
+		}
+	}
 	if service.existingInInitiate {
 		return nil, status.Error(codes.AlreadyExists, "already uploaded by another client")
 	}
@@ -143,6 +163,7 @@ func (service *fakeDebuginfoService) MarkUploadFinished(ctx context.Context, req
 	}
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
+	service.markedIDs = append(service.markedIDs, request.GetUploadId())
 	service.stored[request.GetBuildId()] = service.pending[request.GetBuildId()]
 	return &debuginfopb.MarkUploadFinishedResponse{}, nil
 }
@@ -160,6 +181,11 @@ func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstruct
 		service.mutex.Lock()
 		defer service.mutex.Unlock()
 		service.puts++
+		service.putPaths = append(service.putPaths, request.URL.Path)
+		if code, ok := service.putStatusByPath[request.URL.Path]; ok {
+			writer.WriteHeader(code)
+			return
+		}
 		if len(service.putStatuses) > 0 {
 			code := service.putStatuses[0]
 			service.putStatuses = service.putStatuses[1:]
@@ -466,4 +492,166 @@ func TestUpload_SendsTheXXHashOfTheBundle(t *testing.T) {
 	bundle := encodeSourceMapBundle([]byte("console.log('app')"), []byte(`{"version":3,"sources":["app.ts"],"mappings":""}`))
 	want := fmt.Sprintf("%016x", xxhash.Sum64(bundle))
 	assert.Equal(t, []string{want, want}, service.hashes)
+}
+
+const testBuildID = "app.example.com/assets/app.js"
+
+// signedTarget is an upload target that PUTs to path on the fake signed URL server.
+func (service *fakeDebuginfoService) signedTarget(uploadID, path string) *debuginfopb.UploadInstructions {
+	return &debuginfopb.UploadInstructions{
+		BuildId:        testBuildID,
+		UploadId:       uploadID,
+		UploadStrategy: debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL,
+		SignedUrl:      service.signedURL + path,
+		Type:           debuginfopb.DebuginfoType_DEBUGINFO_TYPE_SOURCE_MAP,
+	}
+}
+
+func temporaryNo(call int) *debuginfopb.ShouldInitiateUploadResponse {
+	return &debuginfopb.ShouldInitiateUploadResponse{Reason: "upload in progress", RetryRequired: true}
+}
+
+func TestUpload_LegacyUploadInstructionsStillUpload(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, []string{"/app.example.com/assets/app.js"}, service.putPaths)
+	assert.Equal(t, []string{"upload-app.example.com/assets/app.js"}, service.markedIDs)
+}
+
+func TestUpload_UploadsToEveryTarget(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{UploadTargets: []*debuginfopb.UploadInstructions{
+			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
+		}}
+	}
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
+	assert.Equal(t, []string{"token-a", "token-b"}, service.markedIDs)
+}
+
+func TestUpload_InitiateAdvertisesMultipleUploads(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true}, service.supportsMulti)
+}
+
+func TestUpload_RejectsResponseWithBothShapes(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{
+			UploadInstructions: service.signedTarget("legacy", "/legacy"),
+			UploadTargets:      []*debuginfopb.UploadInstructions{service.signedTarget("token-a", "/backend-a")},
+		}
+	}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "both upload_instructions and upload_targets")
+	assert.Empty(t, service.putPaths)
+}
+
+func TestUpload_ChecksAgainWhenTheNoIsTemporary(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.shouldAnswer = func(call int) *debuginfopb.ShouldInitiateUploadResponse {
+		if call == 1 {
+			return temporaryNo(call)
+		}
+		return nil
+	}
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_FailsWhenTheNoStaysTemporary(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.shouldAnswer = temporaryNo
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "delivery is incomplete")
+	assert.NotContains(t, output, "skipped")
+	// The default of --max-retries is 3: one check and three more.
+	assert.Equal(t, 4, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_NegotiatesAgainAfterInitiateRetryRequired(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{
+			UploadTargets: []*debuginfopb.UploadInstructions{service.signedTarget("token-a", "/backend-a")}, RetryRequired: true,
+		}
+	}
+	service.shouldAnswer = func(call int) *debuginfopb.ShouldInitiateUploadResponse {
+		if call == 2 {
+			return &debuginfopb.ShouldInitiateUploadResponse{Reason: "Debuginfo already exists."}
+		}
+		return nil
+	}
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+	assert.Equal(t, []string{"token-a"}, service.markedIDs)
+}
+
+func TestUpload_FailsWhenInitiateStaysRetryRequired(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{
+			UploadTargets: []*debuginfopb.UploadInstructions{service.signedTarget("token-a", "/backend-a")}, RetryRequired: true,
+		}
+	}
+	service.shouldAnswer = func(int) *debuginfopb.ShouldInitiateUploadResponse {
+		return &debuginfopb.ShouldInitiateUploadResponse{ShouldInitiateUpload: true}
+	}
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "delivery is incomplete")
+	assert.NotContains(t, output, "uploaded")
+	assert.Equal(t, 4, service.calls["InitiateUpload"])
+}
+
+func TestUpload_FailsWhenOneTargetFails(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{UploadTargets: []*debuginfopb.UploadInstructions{
+			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
+		}}
+	}
+	service.putStatusByPath = map[string]int{"/backend-b": http.StatusForbidden}
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "upload target 2 of 2")
+	assert.NotContains(t, output, "uploaded")
+	assert.Equal(t, []string{"token-a"}, service.markedIDs)
 }
