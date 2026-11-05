@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -827,4 +829,208 @@ func TestDiff_FetchFailure_StopsStartingReads(t *testing.T) {
 		}
 	}
 	assert.LessOrEqual(t, reads, maxConcurrentReads, "only the reads already running when the first one failed may reach the API")
+}
+
+// TestDiff_TeamOriginUnresolvableFallsBackToID pins that a team carrying both
+// dash0.com/origin and dash0.com/id is found when the origin cannot be
+// resolved but the id can.
+//
+// SSO/SCIM-provisioned teams carry an origin like
+// "saml://samlc_<x>/scim_grp_<y>". `dash0 -X teams get -o yaml` exports both
+// labels, but PlanTeam reads only by the origin whenever one is present, and
+// the teams endpoint answers that origin with 404 -- verified against a live
+// org, both percent-escaped and raw, while the same team's id resolves fine.
+// The export of a team that plainly exists is therefore reported as a create.
+//
+// The origin stays the write key, as documented -- this only widens the read,
+// mirroring the id fallback PlanTeam already applies when origin is absent.
+func TestDiff_TeamOriginUnresolvableFallsBackToID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const (
+		origin = "saml://samlc_3HaZJapoevVMBqEQlS26ECW7SIs/scim_grp_3HrbZLyAWOCqso7zjnuJKfeBa92"
+		teamID = "team_01m6dypvgbex58dp137ngtrhhp"
+	)
+
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	doc := fmt.Sprintf(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: Dash0PushGroup
+  labels:
+    dash0.com/id: %s
+    dash0.com/origin: %s
+spec:
+  display:
+    name: Dash0PushGroup
+  members: []
+`, teamID, origin)
+	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+
+	var stored dash0api.TeamDefinitionV1Alpha1
+	require.NoError(t, dash0yaml.Unmarshal([]byte(doc), &stored))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// The identity provider's origin is not an addressable key for this endpoint.
+	server.On(http.MethodGet, "/api/teams/"+origin, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+	})
+	server.On(http.MethodGet, "/api/teams/"+teamID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{"team": &stored},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	require.NoError(t, err, output)
+	assert.Contains(t, output, "No differences", "an existing team must not be reported as a create just because its origin is unresolvable")
+	assert.Equal(t, 1, countRequests(server, http.MethodGet, "/api/teams/"+teamID), "the id must be tried once the origin read 404s")
+}
+
+// TestDiff_TeamOriginWithSlashIsPercentEscapedIntoThePath pins the escaping
+// of an origin that contains characters significant in a URL path.
+//
+// This passes today and is a regression pin, not a defect: the generated
+// client escapes path parameters, so "saml://a/b" is sent as
+// "saml:%2F%2Fa%2Fb" rather than becoming extra path segments. It is recorded
+// next to the fallback test above so the two are not conflated -- escaping is
+// correct and still does not make an identity-provider origin resolvable,
+// which is why the fallback is needed.
+func TestDiff_TeamOriginWithSlashIsPercentEscapedIntoThePath(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const origin = "saml://samlc_abc/scim_grp_def"
+
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(fmt.Sprintf(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: Dash0PushGroup
+  labels:
+    dash0.com/origin: %s
+spec:
+  display:
+    name: Dash0PushGroup
+  members: []
+`, origin)), 0644))
+
+	var escapedPath string
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/"+origin, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator: func(r *http.Request) error {
+			escapedPath = r.URL.EscapedPath()
+			return nil
+		},
+	})
+
+	_, _ = runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	assert.Equal(t, "/api/teams/"+url.PathEscape(origin), escapedPath,
+		"an origin with path-significant characters must be percent-escaped, not concatenated raw")
+}
+
+// TestDiff_JSONKindMatchesApplyDryRun pins that `diff --agent-mode` and
+// `apply --dry-run --agent-mode` report the same "kind" for the same document.
+//
+// The agent-mode JSON of the two commands is documented as the same shape,
+// with "op" the only intended difference (diff distinguishes create from
+// update). They disagree on "kind" for any document whose `kind:` is not the
+// CLI's own display name for the asset: apply emits the document's declared
+// kind (asset.Document.Kind), while diff emits a display kind hardcoded per
+// branch of planDocument -- so a PersesDashboard reads as "PersesDashboard"
+// from apply and "Dashboard" from diff. Consumers such as the sync-assets
+// GitHub Action key off this field.
+//
+// PrometheusRule is deliberately not covered here: apply reports one row for
+// the CRD while diff reports one row per alert, which is a documented
+// difference in granularity, not a disagreement about one row's kind.
+func TestDiff_JSONKindMatchesApplyDryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	withAgentMode(t, true)
+
+	dir := t.TempDir()
+	yamlFile := filepath.Join(dir, "perses.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: my-perses-dashboard
+spec:
+  display:
+    name: My Perses Dashboard
+  duration: 5m
+  panels: {}
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	diffOutput, _ := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	applyCmd := apply.NewApplyCmd()
+	applyCmd.SetArgs([]string{"-f", yamlFile, "--dry-run", "--api-url", server.URL, "--auth-token", testAuthToken})
+	var applyErr error
+	applyOutput := testutil.CaptureStdout(t, func() { applyErr = applyCmd.Execute() })
+	require.NoError(t, applyErr, applyOutput)
+
+	kindsOf := func(t *testing.T, raw string) []string {
+		t.Helper()
+		var files []struct {
+			Changes []struct {
+				Kind string `json:"kind"`
+			} `json:"changes"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(raw), &files), raw)
+		var kinds []string
+		for _, f := range files {
+			for _, c := range f.Changes {
+				kinds = append(kinds, c.Kind)
+			}
+		}
+		return kinds
+	}
+
+	assert.Equal(t, kindsOf(t, applyOutput), kindsOf(t, diffOutput),
+		"diff and apply --dry-run must agree on the kind they report for the same document")
+}
+
+// TestDiff_Since_MultiAlertCRDRemovalListsEachAlert pins that removing a whole
+// multi-alert PrometheusRule CRD is previewed as one deletion per alert,
+// keyed on the derived id each alert's check rule actually lives at.
+//
+// A CRD with two or more alerting rules upserts each alert at
+// "<dash0.com/id>--<slug of '<group> - <alert>'>", so nothing is ever stored
+// at the CRD's literal dash0.com/id. Today the preview collapses the removal
+// into a single row -- Delete PrometheusRule "<crd name>" (<crd id>) -- naming
+// a kind that is not a check rule and an id no check rule has, while hiding
+// which alerts go away. The run itself does delete both derived check rules
+// (verified against a live org: both carried dash0.com/deleted-at afterwards),
+// so the preview under-reports what apply --since actually does.
+//
+// This is shared code: preview.Plan.AddDeletions backs both `diff --since` and
+// `apply --since`, so apply's own output has the same gap.
+func TestDiff_Since_MultiAlertCRDRemovalListsEachAlert(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir, ref := testutil.BuildGitScenario(t, "prometheus-multi-alert-crd-removal")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+	})
+
+	output, err := runDiffCmd(t, "-f", repoDir, "--since", ref, "--api-url", server.URL)
+
+	require.Error(t, err)
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending)
+
+	assert.Contains(t, output, `Delete Check rule "Alerting - HighLatency" (service-rule-id--alerting-highlatency)`,
+		"each alert of a removed multi-alert CRD must be listed at the derived id its check rule lives at")
+	assert.Contains(t, output, `Delete Check rule "Alerting - HighErrorRate" (service-rule-id--alerting-higherrorrate)`,
+		"each alert of a removed multi-alert CRD must be listed at the derived id its check rule lives at")
+	assert.NotContains(t, output, `Delete PrometheusRule "service-alerts" (service-rule-id)`,
+		"no check rule is stored at a multi-alert CRD's literal dash0.com/id, so it must not be reported as the thing being deleted")
 }

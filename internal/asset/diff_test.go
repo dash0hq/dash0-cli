@@ -991,3 +991,70 @@ spec:
 		})
 	}
 }
+
+// TestPrintDiff_NotificationChannel_FrequencyFormatEquivalence_NoChanges pins
+// that spec.frequency written in a shorthand Go duration ("30m") is the same
+// value as the canonical form the API stores and returns ("30m0s"), so it is
+// not a change.
+//
+// A check rule's "for" already behaves this way (see
+// TestPrintDiff_CheckRule_DurationFormatEquivalence_NoChanges) because it
+// round-trips through a typed duration. NotificationChannelSpec.Frequency is a
+// bare string (dash0api.Duration = string), so the two spellings compare
+// unequal and a channel authored with a shorthand duration can never diff
+// clean -- `dash0 diff` reports it as pending forever and exits 1.
+func TestPrintDiff_NotificationChannel_FrequencyFormatEquivalence_NoChanges(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	stored := dash0api.Duration("30m0s")
+	local := dash0api.Duration("30m")
+
+	before := &dash0api.NotificationChannelDefinition{
+		Metadata: dash0api.NotificationChannelMetadata{Name: "Difftest Channel"},
+		Spec: dash0api.NotificationChannelSpec{
+			Type:      dash0api.NotificationChannelType("email_v2"),
+			Frequency: &stored,
+		},
+	}
+	after := &dash0api.NotificationChannelDefinition{
+		Metadata: dash0api.NotificationChannelMetadata{Name: "Difftest Channel"},
+		Spec: dash0api.NotificationChannelSpec{
+			Type:      dash0api.NotificationChannelType("email_v2"),
+			Frequency: &local,
+		},
+	}
+
+	text, err := UnifiedDiff("", before, after)
+	require.NoError(t, err)
+	assert.Empty(t, text, "spec.frequency \"30m\" and \"30m0s\" are the same duration and must not be reported as a change")
+}
+
+// A genuinely different frequency must still be reported, so the
+// format-tolerant comparison above cannot swallow a real change.
+func TestPrintDiff_NotificationChannel_FrequencyRealChange_Detected(t *testing.T) {
+	dashcolor.NoColor = true
+	defer func() { dashcolor.NoColor = false }()
+
+	stored := dash0api.Duration("30m0s")
+	local := dash0api.Duration("10m")
+
+	before := &dash0api.NotificationChannelDefinition{
+		Metadata: dash0api.NotificationChannelMetadata{Name: "Difftest Channel"},
+		Spec: dash0api.NotificationChannelSpec{
+			Type:      dash0api.NotificationChannelType("email_v2"),
+			Frequency: &stored,
+		},
+	}
+	after := &dash0api.NotificationChannelDefinition{
+		Metadata: dash0api.NotificationChannelMetadata{Name: "Difftest Channel"},
+		Spec: dash0api.NotificationChannelSpec{
+			Type:      dash0api.NotificationChannelType("email_v2"),
+			Frequency: &local,
+		},
+	}
+
+	text, err := UnifiedDiff("", before, after)
+	require.NoError(t, err)
+	assert.NotEmpty(t, text, "a genuinely different frequency must not be swallowed by the format-tolerant comparison")
+}
