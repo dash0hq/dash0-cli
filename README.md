@@ -788,6 +788,21 @@ dash0 -X api POST /api/signal-to-metrics/configs -f config.json
 dash0 -X api /api/organization/settings --dataset ""
 ```
 
+### Debuginfo upload (experimental)
+
+The `debuginfo upload` command uploads source maps so Dash0 can resolve browser profile frames to the original source.
+Pass the build output directory and the public URL it is served from.
+
+```bash
+# Preview what would be uploaded
+dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
+```
+
+```bash
+# Upload the source maps of a Next.js build
+dash0 -X debuginfo upload --type source-map .next/static --base-url https://app.example.com/_next/static/
+```
+
 ### Local OTLP proxy (experimental)
 
 The `otlp proxy` command runs a long-lived local OTLP forwarder.

@@ -19,7 +19,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Configuration | `config profiles`, `config show` | Profile management, no API calls |
 | Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
-| Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
+| Send | `logs send`, `spans send`, `debuginfo upload` | OTLP-based, repeatable attribute flags; `debuginfo upload` is experimental |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
@@ -175,6 +175,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |
+| `debuginfo` | Upload source maps so Dash0 can symbolize browser profiles (`debuginfo upload`, experimental) |
 | `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
 | `failed-checks` | Query active and historical alerting issues |
 | `login` | OAuth 2.0 login/logout and profile authentication states |

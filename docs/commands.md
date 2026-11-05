@@ -15,7 +15,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
-| [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
+| [Send](#send-commands) | `logs send`, `spans send`, `debuginfo upload` | OTLP-based, repeatable attribute flags; `debuginfo upload` is experimental |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
@@ -2538,6 +2538,67 @@ dash0 spans send --name "db-query" \
     --trace-id 0af7651916cd43dd8448eb211c80319c \
     --parent-span-id b7ad6b7169203331
 ```
+
+### `debuginfo upload` (experimental)
+
+Upload debug information to Dash0, so that Dash0 can resolve the frames of profiles to function names, files, and lines when you read them.
+Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
+The auth token must grant the `ingest:debuginfo` permission; an ingest token works.
+
+```bash
+dash0 -X debuginfo upload --type <type> <path> [flags]
+```
+
+`--type` selects what to upload: `debuginfo`, `executable`, `sources`, or `source-map`.
+Only `source-map` is supported yet; the other types fail with a "not supported yet" error.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--type` | | Type of debug information (required) |
+| `--base-url` | | Public URL that `<path>` is served from |
+| `--script-url` | | Public URL of the script, when `<path>` is a single script |
+| `--source-map` | `<path>.map` | Source map of the script, when `<path>` is a single script |
+| `--endpoint` | the host of the OTLP URL on port 4317 | URL of the Dash0 debuginfo gRPC service |
+| `--otlp-url` | | OTLP endpoint URL (overrides active profile) |
+| `--auth-token` | | Auth token (overrides active profile) |
+| `--dry-run` | `false` | List what would be uploaded without uploading |
+| `--force` | `false` | Upload even when Dash0 already has the debug information |
+
+Dash0 matches a source map to a browser profile frame by the URL the script is served from.
+The key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.
+A URL whose path contains a character Dash0 cannot look up, such as `%`, `~`, or `*`, fails before any upload.
+
+When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file that has a `<file>.map` next to it is uploaded, and its URL is `--base-url` plus its path relative to `<path>`.
+Scripts without a source map are skipped and counted on stderr.
+When `<path>` is a single script, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory.
+
+Source maps that Dash0 already has are skipped.
+A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
+
+Preview the source maps of a Vite build served from the site root:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
+Dry run: 2 source maps found
+  app.example.com/assets/index-B2xk9.js <- dist/assets/index-B2xk9.js, dist/assets/index-B2xk9.js.map
+  app.example.com/assets/vendor-C81fa.js <- dist/assets/vendor-C81fa.js, dist/assets/vendor-C81fa.js.map
+```
+
+Upload the source maps of a Next.js build:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map .next/static --base-url https://app.example.com/_next/static/
+Source map "app.example.com/_next/static/chunks/main-4f2a.js" uploaded
+Source map "app.example.com/_next/static/chunks/pages/_app-91c3.js" skipped: Debuginfo already exists and is not marked as invalid, therefore no new upload is needed.
+```
+
+Upload one script and its source map:
+
+```bash
+dash0 -X debuginfo upload --type source-map dist/assets/app.js --script-url https://app.example.com/assets/app.js
+```
+
+In agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl`, `script`, `sourceMap`, and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
 
 ## Daemon commands
 
