@@ -3,9 +3,7 @@ package debuginfo
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +14,7 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/version"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
+	"github.com/parca-dev/parca/pkg/hash"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -85,14 +84,16 @@ const (
 
 func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType debuginfopb.DebuginfoType, body []byte) (uploadOutcome, string, error) {
 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+u.authToken)
-	digest := sha256.Sum256(body)
-	hash := hex.EncodeToString(digest[:])
+	bodyHash, err := hash.Reader(bytes.NewReader(body))
+	if err != nil {
+		return "", "", err
+	}
 	// The build ID of a source map is a script URL, not a hash, but the hash type keeps the service
 	// from asking public debuginfod servers about it.
 	buildIDType := debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH
 
 	should, err := u.client.ShouldInitiateUpload(ctx, &debuginfopb.ShouldInitiateUploadRequest{
-		BuildId: buildID, Hash: hash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
+		BuildId: buildID, Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
 	})
 	if err != nil {
 		return "", "", rpcError("check whether to upload", err)
@@ -102,7 +103,7 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 	}
 
 	initiated, err := u.client.InitiateUpload(ctx, &debuginfopb.InitiateUploadRequest{
-		BuildId: buildID, Size: int64(len(body)), Hash: hash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
+		BuildId: buildID, Size: int64(len(body)), Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
 	})
 	if status.Code(err) == codes.AlreadyExists {
 		return outcomeSkipped, status.Convert(err).Message(), nil

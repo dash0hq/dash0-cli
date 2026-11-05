@@ -3,6 +3,7 @@ package debuginfo
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
@@ -40,6 +42,7 @@ type fakeDebuginfoService struct {
 	pending        map[string][]byte
 	authorizations []string
 	types          []debuginfopb.DebuginfoType
+	hashes         []string
 }
 
 func (service *fakeDebuginfoService) record(ctx context.Context, debuginfoType debuginfopb.DebuginfoType) {
@@ -54,6 +57,7 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 	service.record(ctx, request.GetType())
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
+	service.hashes = append(service.hashes, request.GetHash())
 	if err := service.failBuildIDs[request.GetBuildId()]; err != nil {
 		return nil, err
 	}
@@ -65,6 +69,9 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 
 func (service *fakeDebuginfoService) InitiateUpload(ctx context.Context, request *debuginfopb.InitiateUploadRequest) (*debuginfopb.InitiateUploadResponse, error) {
 	service.record(ctx, request.GetType())
+	service.mutex.Lock()
+	service.hashes = append(service.hashes, request.GetHash())
+	service.mutex.Unlock()
 	if service.existingInInitiate {
 		return nil, status.Error(codes.AlreadyExists, "already uploaded by another client")
 	}
@@ -287,4 +294,19 @@ func TestUpload_AgentModePrintsResultsUploadedBeforeAFailure(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, "app.example.com/assets/app.js", results[0].BuildID)
 	assert.Equal(t, outcomeUploaded, results[0].Status)
+}
+
+func uploadArgs(endpoint string) []string {
+	return []string{"--type", "source-map", "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken}
+}
+
+func TestUpload_SendsTheXXHashOfTheBundle(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	bundle := encodeSourceMapBundle([]byte("console.log('app')"), []byte(`{"version":3,"sources":["app.ts"],"mappings":""}`))
+	want := fmt.Sprintf("%016x", xxhash.Sum64(bundle))
+	assert.Equal(t, []string{want, want}, service.hashes)
 }

@@ -5,6 +5,7 @@ go 1.26.10
 toolchain go1.27.3
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cli/browser v1.3.0
 	github.com/dash0hq/dash0-api-client-go v1.30.0
 	github.com/google/uuid v1.6.0
@@ -41,7 +42,6 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
