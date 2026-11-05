@@ -30,6 +30,7 @@ When `<path>` is a single script, pass `--script-url` with its full URL, or `--b
 Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
 
 Source maps that Dash0 already has are skipped.
+A step that fails with a temporary error, such as an unavailable service or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
 
 Preview the source maps of a Vite build served from the site root:

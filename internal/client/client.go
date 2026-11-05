@@ -48,7 +48,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		return nil, err
 	}
 
-	maxRetries, err := resolveMaxRetries(ctx)
+	maxRetries, err := ResolveMaxRetries(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 		return nil, err
 	}
 
-	maxRetries, err := resolveMaxRetries(ctx)
+	maxRetries, err := ResolveMaxRetries(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -144,10 +144,10 @@ func ResolveApiUrl(ctx context.Context, flagApiUrl string) string {
 	return ""
 }
 
-// resolveMaxRetries returns the maximum number of retries for API requests.
+// ResolveMaxRetries returns the maximum number of retries for API requests.
 // It checks (in order): the --max-retries flag from context, the
 // DASH0_MAX_RETRIES environment variable, then falls back to DefaultMaxRetries (3).
-func resolveMaxRetries(ctx context.Context) (int, error) {
+func ResolveMaxRetries(ctx context.Context) (int, error) {
 	// Check --max-retries flag from context (persistent flag on root command).
 	if cmd, ok := ctx.Value(maxRetriesCmdKey{}).(*int); ok && cmd != nil && *cmd >= 0 {
 		return validateMaxRetries(*cmd, "--max-retries flag")

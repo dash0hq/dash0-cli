@@ -147,7 +147,11 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 	if err != nil {
 		return err
 	}
-	debuginfoUploader, closeConnection, err := dialUploader(target, transport, authToken, flags.Force)
+	maxRetries, err := client.ResolveMaxRetries(cmd.Context())
+	if err != nil {
+		return err
+	}
+	debuginfoUploader, closeConnection, err := dialUploader(target, transport, authToken, flags.Force, maxRetries)
 	if err != nil {
 		return err
 	}

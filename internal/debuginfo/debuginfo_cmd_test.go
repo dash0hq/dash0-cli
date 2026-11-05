@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
@@ -36,13 +37,19 @@ type fakeDebuginfoService struct {
 	failBuildIDs map[string]error
 	// existingInInitiate makes InitiateUpload answer AlreadyExists, as when another upload won the race.
 	existingInInitiate bool
+	// stepErrors holds, per RPC name, the errors that the next calls of that RPC return, in order.
+	stepErrors map[string][]error
+	// putStatuses holds the HTTP statuses that the next signed URL PUTs answer, in order.
+	putStatuses []int
 
 	mutex          sync.Mutex
+	calls          map[string]int
+	puts           int
+	hashes         []string
 	stored         map[string][]byte
 	pending        map[string][]byte
 	authorizations []string
 	types          []debuginfopb.DebuginfoType
-	hashes         []string
 }
 
 func (service *fakeDebuginfoService) record(ctx context.Context, debuginfoType debuginfopb.DebuginfoType) {
@@ -53,11 +60,27 @@ func (service *fakeDebuginfoService) record(ctx context.Context, debuginfoType d
 	service.types = append(service.types, debuginfoType)
 }
 
-func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, request *debuginfopb.ShouldInitiateUploadRequest) (*debuginfopb.ShouldInitiateUploadResponse, error) {
-	service.record(ctx, request.GetType())
+// step counts a call of the RPC and returns the next injected error for it, if any.
+func (service *fakeDebuginfoService) step(name string) error {
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
+	service.calls[name]++
+	if len(service.stepErrors[name]) == 0 {
+		return nil
+	}
+	err := service.stepErrors[name][0]
+	service.stepErrors[name] = service.stepErrors[name][1:]
+	return err
+}
+
+func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, request *debuginfopb.ShouldInitiateUploadRequest) (*debuginfopb.ShouldInitiateUploadResponse, error) {
+	service.record(ctx, request.GetType())
+	if err := service.step("ShouldInitiateUpload"); err != nil {
+		return nil, err
+	}
+	service.mutex.Lock()
 	service.hashes = append(service.hashes, request.GetHash())
+	defer service.mutex.Unlock()
 	if err := service.failBuildIDs[request.GetBuildId()]; err != nil {
 		return nil, err
 	}
@@ -69,6 +92,9 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 
 func (service *fakeDebuginfoService) InitiateUpload(ctx context.Context, request *debuginfopb.InitiateUploadRequest) (*debuginfopb.InitiateUploadResponse, error) {
 	service.record(ctx, request.GetType())
+	if err := service.step("InitiateUpload"); err != nil {
+		return nil, err
+	}
 	service.mutex.Lock()
 	service.hashes = append(service.hashes, request.GetHash())
 	service.mutex.Unlock()
@@ -85,6 +111,9 @@ func (service *fakeDebuginfoService) InitiateUpload(ctx context.Context, request
 }
 
 func (service *fakeDebuginfoService) Upload(stream debuginfopb.DebuginfoService_UploadServer) error {
+	if err := service.step("Upload"); err != nil {
+		return err
+	}
 	header, err := stream.Recv()
 	if err != nil {
 		return err
@@ -109,6 +138,9 @@ func (service *fakeDebuginfoService) Upload(stream debuginfopb.DebuginfoService_
 
 func (service *fakeDebuginfoService) MarkUploadFinished(ctx context.Context, request *debuginfopb.MarkUploadFinishedRequest) (*debuginfopb.MarkUploadFinishedResponse, error) {
 	service.record(ctx, request.GetType())
+	if err := service.step("MarkUploadFinished"); err != nil {
+		return nil, err
+	}
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
 	service.stored[request.GetBuildId()] = service.pending[request.GetBuildId()]
@@ -117,7 +149,7 @@ func (service *fakeDebuginfoService) MarkUploadFinished(ctx context.Context, req
 
 func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstructions_UploadStrategy) (*fakeDebuginfoService, string) {
 	t.Helper()
-	service := &fakeDebuginfoService{strategy: strategy, stored: map[string][]byte{}, pending: map[string][]byte{}}
+	service := &fakeDebuginfoService{strategy: strategy, stored: map[string][]byte{}, pending: map[string][]byte{}, calls: map[string]int{}}
 
 	signedURLServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, _ := io.ReadAll(request.Body)
@@ -126,8 +158,17 @@ func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstruct
 			return
 		}
 		service.mutex.Lock()
+		defer service.mutex.Unlock()
+		service.puts++
+		if len(service.putStatuses) > 0 {
+			code := service.putStatuses[0]
+			service.putStatuses = service.putStatuses[1:]
+			if code != http.StatusOK {
+				writer.WriteHeader(code)
+				return
+			}
+		}
 		service.pending[request.URL.Path[1:]] = body
-		service.mutex.Unlock()
 	}))
 	t.Cleanup(signedURLServer.Close)
 	service.signedURL = signedURLServer.URL
@@ -140,6 +181,12 @@ func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstruct
 	t.Cleanup(server.Stop)
 
 	return service, "http://" + listener.Addr().String()
+}
+
+func TestMain(m *testing.M) {
+	retryBaseDelay = time.Millisecond
+	retryMaxDelay = 5 * time.Millisecond
+	m.Run()
 }
 
 func newTestRootCmd() *cobra.Command {
@@ -298,6 +345,116 @@ func TestUpload_AgentModePrintsResultsUploadedBeforeAFailure(t *testing.T) {
 
 func uploadArgs(endpoint string) []string {
 	return []string{"--type", "source-map", "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken}
+}
+
+func unavailable(times int) []error {
+	errs := make([]error, times)
+	for i := range errs {
+		errs[i] = status.Error(codes.Unavailable, "try again")
+	}
+	return errs
+}
+
+func TestUpload_RetriesOnlyTheStepThatFailed(t *testing.T) {
+	for _, step := range []string{"ShouldInitiateUpload", "InitiateUpload", "Upload", "MarkUploadFinished"} {
+		t.Run(step, func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+			service.stepErrors = map[string][]error{step: unavailable(2)}
+
+			output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			want := map[string]int{"ShouldInitiateUpload": 1, "InitiateUpload": 1, "Upload": 1, "MarkUploadFinished": 1}
+			want[step] = 3
+			assert.Equal(t, want, service.calls)
+		})
+	}
+}
+
+func TestUpload_NonRetryableCodeFailsOnFirstAttempt(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stepErrors = map[string][]error{"InitiateUpload": {status.Error(codes.InvalidArgument, "bad build ID")}}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bad build ID (InvalidArgument)")
+	assert.Equal(t, 1, service.calls["InitiateUpload"])
+}
+
+func TestUpload_GivesUpAfterMaxRetriesAndNamesTheFile(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stepErrors = map[string][]error{"MarkUploadFinished": unavailable(10)}
+	dir := writeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "failed to finish the upload: try again (Unavailable)")
+	// The default of --max-retries is 3: one attempt and three retries.
+	assert.Equal(t, 4, service.calls["MarkUploadFinished"])
+}
+
+func TestUpload_RetriesRetryableGRPCCodes(t *testing.T) {
+	for _, code := range []codes.Code{codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted} {
+		t.Run(code.String(), func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+			service.stepErrors = map[string][]error{"ShouldInitiateUpload": {status.Error(code, "busy")}}
+
+			output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+		})
+	}
+}
+
+func TestUpload_SignedURLRetriesTemporaryHTTPStatuses(t *testing.T) {
+	for _, code := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+			service.putStatuses = []int{code, http.StatusOK}
+
+			output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			assert.Equal(t, 2, service.puts)
+		})
+	}
+}
+
+func TestUpload_SignedURLDoesNotRetryForbidden(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.putStatuses = []int{http.StatusForbidden, http.StatusOK}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP status 403 Forbidden")
+	assert.Equal(t, 1, service.puts)
+}
+
+func TestRetry_StopsWhenContextIsCancelledDuringBackoff(t *testing.T) {
+	previous := retryBaseDelay
+	retryBaseDelay, retryMaxDelay = time.Minute, time.Minute
+	t.Cleanup(func() { retryBaseDelay, retryMaxDelay = previous, 5*time.Millisecond })
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	calls := 0
+
+	started := time.Now()
+	err := (&uploader{maxRetries: 3}).retry(ctx, "test", func() error {
+		calls++
+		return status.Error(codes.Unavailable, "down")
+	})
+
+	assert.Less(t, time.Since(started), 5*time.Second)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+	assert.Equal(t, 1, calls)
 }
 
 func TestUpload_SendsTheXXHashOfTheBundle(t *testing.T) {
