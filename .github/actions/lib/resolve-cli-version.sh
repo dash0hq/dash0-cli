@@ -42,9 +42,15 @@ echo "skip-install=false" >> "$GITHUB_OUTPUT"
 VERSION="${CLI_VERSION:-}"
 if [ -z "$VERSION" ]; then
   echo "Fetching latest Dash0 CLI version..."
-  VERSION=$(git ls-remote --tags --sort=-version:refname https://github.com/dash0hq/dash0-cli.git \
-    | grep -v '\^{}' | head -1 | cut -f2 | sed 's|refs/tags/v||')
-  if [ -z "$VERSION" ]; then
+  # Resolve the latest PUBLISHED release, not the newest tag. The release tag is
+  # pushed before GoReleaser uploads the assets, so between the two the newest tag
+  # names a version whose download URL 404s. `/releases/latest` only ever points at
+  # a non-draft, non-prerelease release, so its asset download is always available.
+  # The redirect is followed without a token; the repo is public.
+  LATEST_RELEASE_URL=$(curl --proto '=https' --tlsv1.2 -LsS -o /dev/null -w '%{url_effective}' \
+    https://github.com/dash0hq/dash0-cli/releases/latest) || true
+  VERSION="${LATEST_RELEASE_URL##*/releases/tag/v}"
+  if [ -z "$VERSION" ] || [ "$VERSION" = "$LATEST_RELEASE_URL" ]; then
     echo "::error::Could not determine latest Dash0 CLI version"
     exit 1
   fi

@@ -1,0 +1,9 @@
+change_type: bug_fix
+component: github-actions
+note: The `setup` action resolves the latest **published** CLI release instead of the newest git tag, so it no longer fails with a 404 while a release is still building.
+issues: [352]
+subtext: |
+  The release tag is pushed before GoReleaser uploads the assets, leaving a window
+  (about 7 minutes for v1.20.0) in which the newest tag names a version whose download
+  URL 404s. Resolving `/releases/latest` only ever yields a release whose assets exist.
+change_logs: [user]
