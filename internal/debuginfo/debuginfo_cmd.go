@@ -1,7 +1,6 @@
 package debuginfo
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/dash0hq/dash0-cli/internal/output"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
 	"github.com/spf13/cobra"
 )
@@ -100,8 +100,8 @@ Files that Dash0 already has are skipped; pass --force to replace them.` + inter
 
 type uploadResult struct {
 	sourceMapArtifact
-	Status string `json:"status"`
-	Reason string `json:"reason,omitempty"`
+	Status uploadOutcome `json:"status"`
+	Reason string        `json:"reason,omitempty"`
 }
 
 func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
@@ -123,7 +123,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 	results := make([]uploadResult, 0, len(artifacts))
 	if flags.DryRun {
 		for _, artifact := range artifacts {
-			results = append(results, uploadResult{sourceMapArtifact: artifact, Status: "pending"})
+			results = append(results, uploadResult{sourceMapArtifact: artifact, Status: outcomePending})
 		}
 		return printDryRun(results)
 	}
@@ -136,7 +136,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 	if err != nil {
 		return err
 	}
-	target, transport, err := debuginfoTarget(flags.Endpoint, otlpURL)
+	target, transport, err := debuginfoTarget(otlpURL, flags.Endpoint != "")
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		if err != nil {
 			return fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
 		}
-		result := uploadResult{sourceMapArtifact: artifact, Status: string(outcome), Reason: reason}
+		result := uploadResult{sourceMapArtifact: artifact, Status: outcome, Reason: reason}
 		results = append(results, result)
 		if !agentmode.Enabled {
 			printResultLine(result)
@@ -235,7 +235,7 @@ func printDryRun(results []uploadResult) error {
 }
 
 func printResultLine(result uploadResult) {
-	if result.Status == string(outcomeSkipped) {
+	if result.Status == outcomeSkipped {
 		fmt.Printf("Source map %q skipped: %s\n", result.BuildID, result.Reason)
 		return
 	}
@@ -243,9 +243,7 @@ func printResultLine(result uploadResult) {
 }
 
 func printJSON(results []uploadResult) error {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(results)
+	return output.NewFormatter(output.FormatJSON, os.Stdout).PrintJSON(results)
 }
 
 func pluralize(count int, noun string) string {

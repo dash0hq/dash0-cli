@@ -26,17 +26,15 @@ const debuginfoGRPCPort = "4317"
 
 const uploadChunkSize = 512 * 1024
 
-func debuginfoTarget(endpoint, otlpURL string) (string, credentials.TransportCredentials, error) {
-	raw := endpoint
-	if raw == "" {
-		raw = otlpURL
-	}
+// debuginfoTarget keeps the port of raw only when it came from --endpoint, because the port of an
+// OTLP URL is the port of the OTLP ingress, not of the debuginfo service.
+func debuginfoTarget(raw string, explicitEndpoint bool) (string, credentials.TransportCredentials, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Hostname() == "" {
 		return "", nil, fmt.Errorf("invalid debuginfo endpoint %q: expected a URL like https://ingress.eu-west-1.aws.dash0.com:4317", raw)
 	}
 	port := debuginfoGRPCPort
-	if endpoint != "" && parsed.Port() != "" {
+	if explicitEndpoint && parsed.Port() != "" {
 		port = parsed.Port()
 	}
 	target := net.JoinHostPort(parsed.Hostname(), port)
@@ -51,10 +49,9 @@ func debuginfoTarget(endpoint, otlpURL string) (string, credentials.TransportCre
 }
 
 type uploader struct {
-	client     debuginfopb.DebuginfoServiceClient
-	authToken  string
-	httpClient *http.Client
-	force      bool
+	client    debuginfopb.DebuginfoServiceClient
+	authToken string
+	force     bool
 }
 
 func dialUploader(target string, transport credentials.TransportCredentials, authToken string, force bool) (*uploader, func() error, error) {
@@ -66,16 +63,16 @@ func dialUploader(target string, transport credentials.TransportCredentials, aut
 		return nil, nil, fmt.Errorf("failed to connect to the debuginfo service at %s:\n  %w", target, err)
 	}
 	return &uploader{
-		client:     debuginfopb.NewDebuginfoServiceClient(conn),
-		authToken:  authToken,
-		httpClient: http.DefaultClient,
-		force:      force,
+		client:    debuginfopb.NewDebuginfoServiceClient(conn),
+		authToken: authToken,
+		force:     force,
 	}, conn.Close, nil
 }
 
 type uploadOutcome string
 
 const (
+	outcomePending  uploadOutcome = "pending"
 	outcomeUploaded uploadOutcome = "uploaded"
 	outcomeSkipped  uploadOutcome = "skipped"
 )
@@ -135,7 +132,7 @@ func (u *uploader) putSignedURL(ctx context.Context, signedURL string, body []by
 	if err != nil {
 		return fmt.Errorf("invalid signed upload URL from the debuginfo service:\n  %w", err)
 	}
-	response, err := u.httpClient.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("failed to upload to the signed URL:\n  %w", err)
 	}
