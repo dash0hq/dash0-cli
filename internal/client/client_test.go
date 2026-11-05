@@ -60,7 +60,7 @@ func TestResolveMaxRetries_Default(t *testing.T) {
 	t.Setenv("DASH0_MAX_RETRIES", "")
 	os.Unsetenv("DASH0_MAX_RETRIES")
 
-	n, err := resolveMaxRetries(context.Background())
+	n, err := ResolveMaxRetries(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, DefaultMaxRetries, n)
 }
@@ -68,7 +68,7 @@ func TestResolveMaxRetries_Default(t *testing.T) {
 func TestResolveMaxRetries_FromEnv(t *testing.T) {
 	t.Setenv("DASH0_MAX_RETRIES", "2")
 
-	n, err := resolveMaxRetries(context.Background())
+	n, err := ResolveMaxRetries(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, 2, n)
 }
@@ -76,7 +76,7 @@ func TestResolveMaxRetries_FromEnv(t *testing.T) {
 func TestResolveMaxRetries_Zero(t *testing.T) {
 	t.Setenv("DASH0_MAX_RETRIES", "0")
 
-	n, err := resolveMaxRetries(context.Background())
+	n, err := ResolveMaxRetries(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, 0, n)
 }
@@ -84,7 +84,7 @@ func TestResolveMaxRetries_Zero(t *testing.T) {
 func TestResolveMaxRetries_InvalidNonInteger(t *testing.T) {
 	t.Setenv("DASH0_MAX_RETRIES", "abc")
 
-	_, err := resolveMaxRetries(context.Background())
+	_, err := ResolveMaxRetries(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must be an integer")
 }
@@ -92,7 +92,7 @@ func TestResolveMaxRetries_InvalidNonInteger(t *testing.T) {
 func TestResolveMaxRetries_Negative(t *testing.T) {
 	t.Setenv("DASH0_MAX_RETRIES", "-1")
 
-	_, err := resolveMaxRetries(context.Background())
+	_, err := ResolveMaxRetries(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must not be negative")
 }
@@ -100,7 +100,7 @@ func TestResolveMaxRetries_Negative(t *testing.T) {
 func TestResolveMaxRetries_ExceedsMax(t *testing.T) {
 	t.Setenv("DASH0_MAX_RETRIES", "10")
 
-	_, err := resolveMaxRetries(context.Background())
+	_, err := ResolveMaxRetries(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must not exceed")
 }
@@ -110,7 +110,7 @@ func TestResolveMaxRetries_FlagTakesPrecedence(t *testing.T) {
 
 	flagValue := 1
 	ctx := WithMaxRetries(context.Background(), &flagValue)
-	n, err := resolveMaxRetries(ctx)
+	n, err := ResolveMaxRetries(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, n)
 }
@@ -120,7 +120,7 @@ func TestResolveMaxRetries_FlagZeroOverridesEnv(t *testing.T) {
 
 	flagValue := 0
 	ctx := WithMaxRetries(context.Background(), &flagValue)
-	n, err := resolveMaxRetries(ctx)
+	n, err := ResolveMaxRetries(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, n)
 }
@@ -128,7 +128,7 @@ func TestResolveMaxRetries_FlagZeroOverridesEnv(t *testing.T) {
 func TestResolveMaxRetries_FlagExceedsMax(t *testing.T) {
 	flagValue := 10
 	ctx := WithMaxRetries(context.Background(), &flagValue)
-	_, err := resolveMaxRetries(ctx)
+	_, err := ResolveMaxRetries(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must not exceed")
 }

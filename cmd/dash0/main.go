@@ -22,6 +22,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/datasets"
+	"github.com/dash0hq/dash0-cli/internal/debuginfo"
 	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
@@ -87,6 +88,7 @@ func init() {
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
 	rootCmd.AddCommand(datasets.NewDatasetsCmd())
+	rootCmd.AddCommand(debuginfo.NewDebuginfoCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
 	rootCmd.AddCommand(login.NewLoginCmd())
 	rootCmd.AddCommand(login.NewLogoutCmd())

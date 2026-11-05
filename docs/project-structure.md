@@ -15,6 +15,7 @@
 - `/internal/experimental`: Gate for commands behind the `--experimental` (`-X`) flag
 - `/internal/agent0`: The `agent0` command group. `/internal/agent0/skills` holds `agent0 skills list`, `get`, `create`, `update`, and `delete` for Agent0 custom skills (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/customskill.go`
 - `/internal/datasets`: The `datasets` command group — `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/dataset.go`
+- `/internal/debuginfo`: The `debuginfo upload` command (experimental) — uploads debug information to the Dash0 debuginfo gRPC service with the upstream Parca client. Only source maps are supported yet
 - `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)

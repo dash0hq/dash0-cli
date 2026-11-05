@@ -48,7 +48,7 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		return nil, err
 	}
 
-	maxRetries, err := resolveMaxRetries(ctx)
+	maxRetries, err := ResolveMaxRetries(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -71,36 +71,12 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 // Flag overrides (otlpUrl, authToken) are applied on top of the context configuration.
 func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (dash0api.Client, error) {
 	cfg := profiles.FromContext(ctx)
-
-	var finalOtlpUrl, finalAuthToken string
-	if cfg != nil {
-		finalOtlpUrl = cfg.OtlpUrl
-		finalAuthToken = cfg.AuthToken
-	}
-
-	// Apply flag overrides
-	if otlpUrl != "" {
-		finalOtlpUrl = otlpUrl
-	}
-	if authToken != "" {
-		finalAuthToken = authToken
-	}
-
-	if err := checkOAuthEmpty(ctx, cfg, finalAuthToken); err != nil {
-		return nil, err
-	}
-	if err := checkOAuthOnOtlp(ctx, cfg, finalAuthToken); err != nil {
+	finalOtlpUrl, finalAuthToken, err := ResolveOtlpCredentials(ctx, otlpUrl, authToken)
+	if err != nil {
 		return nil, err
 	}
 
-	if finalOtlpUrl == "" {
-		return nil, fmt.Errorf("otlp-url is required; provide it as a flag, environment variable, or configure a profile")
-	}
-	if finalAuthToken == "" {
-		return nil, fmt.Errorf("auth-token is required; provide it as a flag, environment variable, or configure a profile")
-	}
-
-	maxRetries, err := resolveMaxRetries(ctx)
+	maxRetries, err := ResolveMaxRetries(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +94,43 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 	return client, nil
 }
 
+// ResolveOtlpCredentials returns the OTLP URL and the static auth token for
+// commands that talk to the Dash0 ingress, applying flag overrides on top of
+// the context configuration.
+func ResolveOtlpCredentials(ctx context.Context, otlpUrl, authToken string) (string, string, error) {
+	cfg := profiles.FromContext(ctx)
+
+	var finalOtlpUrl, finalAuthToken string
+	if cfg != nil {
+		finalOtlpUrl = cfg.OtlpUrl
+		finalAuthToken = cfg.AuthToken
+	}
+
+	// Apply flag overrides
+	if otlpUrl != "" {
+		finalOtlpUrl = otlpUrl
+	}
+	if authToken != "" {
+		finalAuthToken = authToken
+	}
+
+	if err := checkOAuthEmpty(ctx, cfg, finalAuthToken); err != nil {
+		return "", "", err
+	}
+	if err := checkOAuthOnOtlp(ctx, cfg, finalAuthToken); err != nil {
+		return "", "", err
+	}
+
+	if finalOtlpUrl == "" {
+		return "", "", fmt.Errorf("otlp-url is required; provide it as a flag, environment variable, or configure a profile")
+	}
+	if finalAuthToken == "" {
+		return "", "", fmt.Errorf("auth-token is required; provide it as a flag, environment variable, or configure a profile")
+	}
+
+	return finalOtlpUrl, finalAuthToken, nil
+}
+
 // ResolveApiUrl returns the effective API URL from context and flag overrides.
 // This is useful when the resolved URL is needed outside of client creation
 // (e.g. for constructing deeplink URLs).
@@ -131,10 +144,10 @@ func ResolveApiUrl(ctx context.Context, flagApiUrl string) string {
 	return ""
 }
 
-// resolveMaxRetries returns the maximum number of retries for API requests.
+// ResolveMaxRetries returns the maximum number of retries for API requests.
 // It checks (in order): the --max-retries flag from context, the
 // DASH0_MAX_RETRIES environment variable, then falls back to DefaultMaxRetries (3).
-func resolveMaxRetries(ctx context.Context) (int, error) {
+func ResolveMaxRetries(ctx context.Context) (int, error) {
 	// Check --max-retries flag from context (persistent flag on root command).
 	if cmd, ok := ctx.Value(maxRetriesCmdKey{}).(*int); ok && cmd != nil && *cmd >= 0 {
 		return validateMaxRetries(*cmd, "--max-retries flag")
