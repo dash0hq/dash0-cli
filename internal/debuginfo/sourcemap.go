@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -104,11 +105,47 @@ func joinBaseURL(baseURL, relativePath string) (string, error) {
 	return base.String(), nil
 }
 
-// discoverSourceMaps walks dir and pairs every script with the source map next to it (<script>.map).
-// It returns the pairs, sorted by build ID, and the scripts that have no source map.
-func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []string, error) {
+// https://tc39.es/ecma426/#sec-linking-generated-code
+var sourceMappingURLComment = regexp.MustCompile(`(?m)^[ \t]*//[#@][ \t]*sourceMappingURL=([^\s'"]+)[ \t]*$`)
+
+type skippedScript struct {
+	Script string
+	Reason string
+}
+
+// locateSourceMap follows the last sourceMappingURL comment of the script, because bundlers such as
+// Turbopack name the map differently from the script, and falls back to <script>.map without one.
+// It returns an empty path and a reason when the script has no source map it can upload.
+func locateSourceMap(scriptPath string) (string, string, error) {
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read script:\n  %w", err)
+	}
+	mapPath := scriptPath + ".map"
+	if matches := sourceMappingURLComment.FindAllSubmatch(script, -1); len(matches) > 0 {
+		mapURL := string(matches[len(matches)-1][1])
+		parsed, err := url.Parse(mapURL)
+		switch {
+		case err != nil:
+			return "", fmt.Sprintf("its sourceMappingURL %q is not a valid URL", mapURL), nil
+		case parsed.Scheme == "data":
+			return "", "its source map is inline (data: URL), which is not supported", nil
+		case parsed.Scheme != "" || parsed.Host != "" || strings.HasPrefix(parsed.Path, "/"):
+			return "", fmt.Sprintf("its sourceMappingURL %q is not a path relative to the script", mapURL), nil
+		}
+		mapPath = filepath.Join(filepath.Dir(scriptPath), filepath.FromSlash(parsed.Path))
+	}
+	if info, err := os.Stat(mapPath); err != nil || info.IsDir() {
+		return "", fmt.Sprintf("source map %s not found", mapPath), nil
+	}
+	return mapPath, "", nil
+}
+
+// discoverSourceMaps walks dir and pairs every script with its source map (see locateSourceMap).
+// It returns the pairs, sorted by build ID, and the scripts it skipped.
+func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScript, error) {
 	var artifacts []sourceMapArtifact
-	var unpaired []string
+	var skipped []skippedScript
 	err := filepath.WalkDir(dir, func(filePath string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -116,9 +153,12 @@ func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []string, err
 		if entry.IsDir() || !isScript(entry.Name()) {
 			return nil
 		}
-		mapPath := filePath + ".map"
-		if info, statErr := os.Stat(mapPath); statErr != nil || info.IsDir() {
-			unpaired = append(unpaired, filePath)
+		mapPath, skipReason, err := locateSourceMap(filePath)
+		if err != nil {
+			return err
+		}
+		if skipReason != "" {
+			skipped = append(skipped, skippedScript{Script: filePath, Reason: skipReason})
 			return nil
 		}
 		relativePath, err := filepath.Rel(dir, filePath)
@@ -140,5 +180,5 @@ func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []string, err
 		return nil, nil, err
 	}
 	sort.Slice(artifacts, func(i, j int) bool { return artifacts[i].BuildID < artifacts[j].BuildID })
-	return artifacts, unpaired, nil
+	return artifacts, skipped, nil
 }

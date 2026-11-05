@@ -64,7 +64,7 @@ func TestDiscoverSourceMaps(t *testing.T) {
 	writeFile(t, dir, "orphan.js.map", "{}")
 	writeFile(t, dir, "styles.css", "body{}")
 
-	artifacts, unpaired, err := discoverSourceMaps(dir, "https://app.example.com/static")
+	artifacts, skipped, err := discoverSourceMaps(dir, "https://app.example.com/static")
 
 	require.NoError(t, err)
 	assert.Equal(t, []sourceMapArtifact{
@@ -81,7 +81,46 @@ func TestDiscoverSourceMaps(t *testing.T) {
 			SourceMap: filepath.Join(dir, "chunks/vendor.mjs.map"),
 		},
 	}, artifacts)
-	assert.Equal(t, []string{filepath.Join(dir, "no-map.js")}, unpaired)
+	require.Len(t, skipped, 1)
+	assert.Equal(t, filepath.Join(dir, "no-map.js"), skipped[0].Script)
+}
+
+func TestDiscoverSourceMaps_FollowsSourceMappingURLComment(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "chunks/07g2mnivp-btw.js", "console.log(1)\n//# sourceMappingURL=21dgws7yamugy.js.map\n")
+	writeFile(t, dir, "chunks/21dgws7yamugy.js.map", "{}")
+	writeFile(t, dir, "chunks/07g2mnivp-btw.js.map", "{}")
+	writeFile(t, dir, "chunks/nested.js", "x\n//# sourceMappingURL=../maps/nested.js.map")
+	writeFile(t, dir, "maps/nested.js.map", "{}")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "https://app.example.com/_next/static/")
+
+	require.NoError(t, err)
+	assert.Empty(t, skipped)
+	require.Len(t, artifacts, 2)
+	assert.Equal(t, "app.example.com/_next/static/chunks/07g2mnivp-btw.js", artifacts[0].BuildID)
+	assert.Equal(t, filepath.Join(dir, "chunks/21dgws7yamugy.js.map"), artifacts[0].SourceMap)
+	assert.Equal(t, filepath.Join(dir, "maps/nested.js.map"), artifacts[1].SourceMap)
+}
+
+func TestDiscoverSourceMaps_SkipsScriptsWhoseCommentCannotBeFollowed(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "missing.js", "x\n//# sourceMappingURL=gone.js.map\n")
+	writeFile(t, dir, "missing.js.map", "{}")
+	writeFile(t, dir, "inline.js", "x\n//# sourceMappingURL=data:application/json;base64,e30=\n")
+	writeFile(t, dir, "remote.js", "x\n//# sourceMappingURL=https://cdn.example.com/remote.js.map\n")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "https://app.example.com/")
+
+	require.NoError(t, err)
+	assert.Empty(t, artifacts)
+	reasons := map[string]string{}
+	for _, script := range skipped {
+		reasons[filepath.Base(script.Script)] = script.Reason
+	}
+	assert.Contains(t, reasons["missing.js"], "gone.js.map not found")
+	assert.Contains(t, reasons["inline.js"], "inline (data: URL)")
+	assert.Contains(t, reasons["remote.js"], "not a path relative to the script")
 }
 
 func TestDiscoverSourceMaps_RejectsFileNameDash0CannotLookUp(t *testing.T) {

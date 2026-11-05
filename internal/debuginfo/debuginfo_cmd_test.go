@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -168,6 +169,17 @@ func TestUpload_RequiresExperimentalFlag(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "experimental")
+}
+
+func TestUpload_SingleScriptFollowsSourceMappingURLComment(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "app.js", "x\n//# sourceMappingURL=other.js.map\n")
+	writeFile(t, dir, "other.js.map", "{}")
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", filepath.Join(dir, "app.js"), "--script-url", "https://app.example.com/app.js", "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, filepath.Join(dir, "other.js.map"))
 }
 
 func TestUpload_DryRunListsBuildIDs(t *testing.T) {

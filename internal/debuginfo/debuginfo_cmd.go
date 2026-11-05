@@ -61,7 +61,8 @@ func newUploadCmd() *cobra.Command {
 Only source-map is supported yet.
 
 For source maps, <path> is a script or a build output directory.
-In a directory, every .js, .mjs, and .cjs file that has a <file>.map next to it is uploaded.
+In a directory, every .js, .mjs, and .cjs file with a source map is uploaded. The source map is the
+file named by the //# sourceMappingURL= comment of the script, or <file>.map when it has none.
 Dash0 matches a source map to a browser profile frame by the URL the script is served from, so pass
 --base-url with the public URL of the directory, or --script-url with the full URL of a single script.
 Files that Dash0 already has are skipped; pass --force to replace them.` + internal.CONFIG_HINT,
@@ -88,7 +89,7 @@ Files that Dash0 already has are skipped; pass --force to replace them.` + inter
 	cmd.Flags().StringVar(&flags.Type, "type", "", "Type of debug information: "+debuginfoTypeNames+" (required; only source-map is supported yet)")
 	cmd.Flags().StringVar(&flags.BaseURL, "base-url", "", "Public URL that <path> is served from; the URL of each script is this URL plus its path relative to <path>")
 	cmd.Flags().StringVar(&flags.ScriptURL, "script-url", "", "Public URL of the script, when <path> is a single script")
-	cmd.Flags().StringVar(&flags.SourceMap, "source-map", "", "Source map of the script, when <path> is a single script (default: <path>.map)")
+	cmd.Flags().StringVar(&flags.SourceMap, "source-map", "", "Source map of the script, when <path> is a single script (default: the file its sourceMappingURL comment names, or <path>.map)")
 	cmd.Flags().StringVar(&flags.Endpoint, "endpoint", "", "URL of the Dash0 debuginfo gRPC service (default: the host of the OTLP URL on port 4317)")
 	cmd.Flags().StringVar(&flags.OtlpUrl, "otlp-url", "", "OTLP endpoint URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile); it must grant ingest:debuginfo")
@@ -179,12 +180,15 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 		if flags.BaseURL == "" {
 			return nil, fmt.Errorf("--base-url is required when <path> is a directory")
 		}
-		artifacts, unpaired, err := discoverSourceMaps(inputPath, flags.BaseURL)
+		artifacts, skipped, err := discoverSourceMaps(inputPath, flags.BaseURL)
 		if err != nil {
 			return nil, err
 		}
-		if len(unpaired) > 0 {
-			fmt.Fprintf(os.Stderr, "Skipped %s without a source map next to it\n", pluralize(len(unpaired), "script"))
+		for _, script := range skipped {
+			fmt.Fprintf(os.Stderr, "Skipped %s: %s\n", script.Script, script.Reason)
+		}
+		if len(skipped) > 0 {
+			fmt.Fprintf(os.Stderr, "Skipped %s without a source map to upload\n", pluralize(len(skipped), "script"))
 		}
 		if len(artifacts) == 0 {
 			return nil, fmt.Errorf("no script with a source map found in %s", inputPath)
@@ -207,7 +211,14 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 	}
 	mapPath := flags.SourceMap
 	if mapPath == "" {
-		mapPath = inputPath + ".map"
+		located, skipReason, err := locateSourceMap(inputPath)
+		if err != nil {
+			return nil, err
+		}
+		if skipReason != "" {
+			return nil, fmt.Errorf("%s: %s; pass --source-map to name the map", inputPath, skipReason)
+		}
+		mapPath = located
 	}
 	return []sourceMapArtifact{{BuildID: buildID, ScriptURL: scriptURL, Script: inputPath, SourceMap: mapPath}}, nil
 }

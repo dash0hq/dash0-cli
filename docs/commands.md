@@ -2557,7 +2557,7 @@ Only `source-map` is supported yet; the other types fail with a "not supported y
 | `--type` | | Type of debug information (required) |
 | `--base-url` | | Public URL that `<path>` is served from |
 | `--script-url` | | Public URL of the script, when `<path>` is a single script |
-| `--source-map` | `<path>.map` | Source map of the script, when `<path>` is a single script |
+| `--source-map` | the file the `sourceMappingURL` comment names, or `<path>.map` | Source map of the script, when `<path>` is a single script |
 | `--endpoint` | the host of the OTLP URL on port 4317 | URL of the Dash0 debuginfo gRPC service |
 | `--otlp-url` | | OTLP endpoint URL (overrides active profile) |
 | `--auth-token` | | Auth token (overrides active profile) |
@@ -2568,9 +2568,11 @@ Dash0 matches a source map to a browser profile frame by the URL the script is s
 The key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.
 A URL whose path contains a character Dash0 cannot look up, such as `%`, `~`, or `*`, fails before any upload.
 
-When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file that has a `<file>.map` next to it is uploaded, and its URL is `--base-url` plus its path relative to `<path>`.
-Scripts without a source map are skipped and counted on stderr.
-When `<path>` is a single script, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory.
+When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file with a source map is uploaded, and its URL is `--base-url` plus its path relative to `<path>`.
+The source map is the file named by the last `//# sourceMappingURL=` comment of the script, relative to the script, so builds that name the map differently from the script, such as Turbopack, work.
+A script without that comment uses `<file>.map`.
+Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
+When `<path>` is a single script, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory, and `--source-map` to name the map yourself.
 
 Source maps that Dash0 already has are skipped.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
