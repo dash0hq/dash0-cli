@@ -105,7 +105,7 @@ By default the API applies adaptive sampling to log and span queries for speed o
 
 Where it appears depends on the format. In `json` output — the agent-mode default — it is a top-level `dash0ExplorerUrl` field, a sibling of `resourceLogs`/`resourceSpans`/`issues`, so reading stdout alone is enough. In `table` and `csv` output it goes to stderr instead, keeping the piped result stream clean.
 
-The field is omitted when no link could be built (`api-url` unset or unparseable). An `api-url` that is an IP address still yields a link, and that link does not resolve. It is emitted even when the query matched nothing. `metrics instant` emits no deep link.
+The field is omitted when no link could be built (an `api-url` host with a single label, such as `localhost`, or an IPv6 address). An IPv4 `api-url` still yields a link, and that link does not resolve. It is emitted even when the query matched nothing. `metrics instant` emits no deep link.
 
 Note that `logs query`, `spans query`, and `traces get` emit OTLP/JSON, and `dash0ExplorerUrl` is a Dash0 extension to it: a strict OpenTelemetry protobuf-JSON parser rejects unknown fields, so strip it with `jq 'del(.dash0ExplorerUrl)'` before feeding that output to one.
 

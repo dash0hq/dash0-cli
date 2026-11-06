@@ -2464,8 +2464,8 @@ Two more details are worth knowing before scripting against this:
   A query with no results prints `No log records found.` and still offers the link, so the empty result can be inspected in the UI.
 - **Omitted when the web app host cannot be derived.**
   The link is built from the API URL by replacing the host with `app.` plus the last two labels of the host, so `https://api.eu-west-1.aws.dash0.com` yields `https://app.dash0.com`.
-  If `api-url` is unset or unparseable, the link is skipped.
-  An `api-url` that is an IP address, such as `http://127.0.0.1:8080`, still yields a link, and that link does not resolve.
+  If the host has a single label, such as `localhost`, or is an IPv6 address, the link is skipped.
+  An IPv4 address, such as `http://127.0.0.1:8080`, still yields a link, and that link does not resolve.
 
 The `dataset` parameter is omitted when the resolved dataset is `default`, since the web app opens that dataset anyway.
 `--skip-header` affects only the header row of `table` and `csv` output, not the link.

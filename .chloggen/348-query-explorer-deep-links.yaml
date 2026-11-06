@@ -18,7 +18,7 @@ issues: [348]
 subtext: |
   `logs query`, `spans query`, `failed-checks query`, and `traces get` carry the link in `json` output as a top-level `dash0ExplorerUrl` field, next to the payload, so it is available in agent mode, where `json` is the default.
   In `table` and `csv` output the link now goes to stderr instead of stdout, so redirecting or piping the results no longer picks up a stray line.
-  The field is omitted when no link can be built, for example when `api-url` is unset.
+  The field is omitted when no link can be built, for example when the `api-url` host is `localhost`.
   Consumers that parse the OTLP/JSON of `logs query`, `spans query`, or `traces get` with a strict OpenTelemetry protobuf-JSON parser need to discard unknown fields, or strip the field with `jq 'del(.dash0ExplorerUrl)'`.
 
 # If your change doesn't affect end users or the exported elements of any package,
