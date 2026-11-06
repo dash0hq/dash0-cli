@@ -17,7 +17,7 @@ description: Use when working with Dash0 observability data or configuration via
 |----------|----------|-----------------|
 | Authentication | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | Configuration | `config profiles`, `config show` | Profile management, no API calls |
-| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -39,7 +39,7 @@ Agent mode optimizes the CLI for AI agents: JSON output by default, structured `
 
 ## How asset commands work
 
-All nine asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
+All ten asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
 
 `dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic.
 
@@ -184,6 +184,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `notification-channels` | Notification channel CRUD (organization-level, no dataset) |
 | `otlp` | Local OTLP forwarding proxy (`otlp proxy`) |
 | `recording-rules` | Recording rule CRUD (PrometheusRule CRD format) |
+| `signal-to-metrics-rules` | Signal-to-metrics rule CRUD and `test` (alias `s2m`; turns logs or spans into metrics) |
 | `slos` | SLO CRUD (`apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1, not upstream-identical; `dash0.com/origin` is the upsert key) |
 | `spam-filters` | Spam filter CRUD (v1alpha1 and v1alpha2) |
 | `spans` | Query and send spans |

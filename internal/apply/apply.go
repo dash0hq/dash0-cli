@@ -73,6 +73,7 @@ Supported asset types:
   - Dash0NotificationChannel
   - Dash0Team
   - Dash0TimeSeriesAggregation
+  - Dash0SignalToMetrics (signal-to-metrics rule)
   - Dash0Dataset
   - Dash0AwsMetricScrapeConfig
   - Dash0Skill (Agent0 custom skill)
@@ -373,7 +374,7 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			// place to deliver it, so a created token's secret would be lost.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.location(), doc.kind))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0SignalToMetrics, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.location(), doc.kind))
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -634,6 +635,15 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// dry-run output names the key being used, which an exported
 		// document's server-assigned id would not.
 		id = asset.GetTimeSeriesAggregationOrigin(&aggregation)
+
+	case "signaltometrics":
+		var rule dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetSignalToMetricsName(&rule)
+		// Rules upsert by origin, falling back to dash0.com/id.
+		id = asset.SignalToMetricsRuleKey(&rule)
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
@@ -972,6 +982,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			})
 		}
 		return []applyResult{{kind: "Dash0TimeSeriesAggregation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "signaltometrics":
+		var rule dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(doc.raw, &rule); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0SignalToMetrics: %w", err)
+		}
+		result, err := asset.ImportSignalToMetricsRule(ctx, apiClient, &rule, dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "signal-to-metrics rule",
+				AssetName: dash0api.GetSignalToMetricsName(&rule),
+			})
+		}
+		return []applyResult{{kind: "Dash0SignalToMetrics", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
