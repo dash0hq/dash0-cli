@@ -4,7 +4,7 @@ component: telemetry-transformation-rules
 
 note: "Manage telemetry transformation rules with `telemetry-transformation-rules list|get|create|update|delete` and `apply`."
 
-issues: []
+issues: [356]
 
 subtext: |
   `apply` accepts `Dash0TelemetryTransformationRule` documents and reconciles them by a stable origin, including recovery after deletion.
