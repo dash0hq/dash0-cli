@@ -27,6 +27,11 @@ func buildPlan(planned []plannedDoc, sincePlan *gitutil.SincePlan) (*preview.Pla
 		documents = append(documents, pd.doc)
 		for _, p := range pd.plans {
 			change := preview.Change{Op: "create", Kind: p.displayKind, Name: p.name, OriginOrID: p.plan.Key}
+			// A PrometheusRule expands to check rules and a recording rule,
+			// which apply --dry-run's one CRD row has no kind for.
+			if asset.NormalizeKind(pd.doc.Kind) != "prometheusrule" {
+				change.Kind, change.TextKind = pd.doc.Kind, p.displayKind
+			}
 			if p.plan.Action == asset.ActionUpdated {
 				text, err := asset.UnifiedDiff(asset.KindDisplayName(p.displayKind), p.plan.Before, p.plan.Proposed)
 				if err != nil {
@@ -83,7 +88,7 @@ func renderReportText(plan *preview.Plan, fromDirectory bool, pending int) error
 
 func printChanges(changes []preview.Change, prefix string) error {
 	for _, change := range changes {
-		kind := asset.KindDisplayName(change.Kind)
+		kind := change.TextKindName()
 		switch {
 		case change.Op == "create":
 			fmt.Printf("%sCreate %s %s\n", prefix, kind, asset.FormatNameAndID(change.Name, change.OriginOrID))

@@ -22,6 +22,19 @@ type Change struct {
 	Detail string
 	// Diff is the unified diff of an update, empty when nothing changed.
 	Diff string
+	// TextKind replaces Kind in text output when set. diff prints the kind
+	// apply prints, and its JSON carries the declared kind, as apply --dry-run
+	// does, so one PersesDashboard is "Dashboard" in text and
+	// "PersesDashboard" in JSON for both commands.
+	TextKind string
+}
+
+// TextKindName is the kind name text output shows for the change.
+func (c Change) TextKindName() string {
+	if c.TextKind != "" {
+		return asset.KindDisplayName(c.TextKind)
+	}
+	return asset.KindDisplayName(c.Kind)
 }
 
 // Pending reports whether the change would modify Dash0. An update with no
@@ -75,7 +88,12 @@ func (p *Plan) AddDeletions(sincePlan *gitutil.SincePlan, documents []asset.Docu
 			name = "<name>"
 		}
 		basePath, _ := gitutil.SplitMultiDocPath(deletion.Path)
-		p.Add(gitutil.StripScope(basePath, sincePlan.Scope), Change{Op: "delete", Kind: deletion.Kind, Name: name, OriginOrID: deletion.Identifier})
+		file := gitutil.StripScope(basePath, sincePlan.Scope)
+		if deletion.Kind == "prometheusrule" && len(deletion.PrometheusAlerts) > 1 {
+			added += p.addMultiAlertCRDDeletion(file, name, deletion, sincePlan.DeclaredCheckRuleIDs)
+			continue
+		}
+		p.Add(file, Change{Op: "delete", Kind: deletion.Kind, Name: name, OriginOrID: deletion.Identifier})
 		added++
 	}
 	for _, alert := range sincePlan.Plan.AlertsByName {
@@ -86,6 +104,27 @@ func (p *Plan) AddDeletions(sincePlan *gitutil.SincePlan, documents []asset.Docu
 			OriginOrID: alert.CRDIdentifier,
 			Detail:     fmt.Sprintf("alert removed from PrometheusRule %s", alert.CRDIdentifier),
 		})
+		added++
+	}
+	return added
+}
+
+// addMultiAlertCRDDeletion lists a removed CRD with two or more alerts as one
+// check rule per alert, at the derived id apply --since deletes, because
+// nothing is stored at the CRD's own identifier. A declared id is left out,
+// as apply skips it.
+func (p *Plan) addMultiAlertCRDDeletion(file, crdName string, deletion gitutil.Deletion, declared map[string]bool) int {
+	added := 0
+	ids := asset.CheckRuleIDsOccupiedByCRD(deletion.Identifier, deletion.PrometheusAlerts)
+	for i, alert := range deletion.PrometheusAlerts {
+		if declared[ids[i]] {
+			continue
+		}
+		p.Add(file, Change{Op: "delete", Kind: "checkrule", Name: alert.CheckRuleName(), OriginOrID: ids[i]})
+		added++
+	}
+	if deletion.PrometheusHadRecordingRule {
+		p.Add(file, Change{Op: "delete", Kind: "recordingrule", Name: crdName, OriginOrID: deletion.Identifier})
 		added++
 	}
 	return added
@@ -134,7 +173,7 @@ func (p *Plan) Groups(fromDirectory bool) []Group {
 
 // DeleteLine is the line apply --dry-run and diff print for a deletion.
 func DeleteLine(change Change) string {
-	kind := asset.KindDisplayName(change.Kind)
+	kind := change.TextKindName()
 	if change.Detail != "" {
 		return fmt.Sprintf("Delete %s %q (%s)", kind, change.Name, change.Detail)
 	}

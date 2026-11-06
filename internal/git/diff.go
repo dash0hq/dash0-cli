@@ -38,6 +38,10 @@ type Deletion struct {
 	// those derived ids individually, since Identifier alone only ever
 	// named a check rule for a single-alert CRD.
 	PrometheusAlerts []asset.PrometheusAlertName
+	// PrometheusHadRecordingRule reports that the CRD had a recording rule at
+	// the "before" snapshot, when Kind is "prometheusrule". The preview needs
+	// it to list that deletion once it lists a multi-alert CRD per alert.
+	PrometheusHadRecordingRule bool
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -88,6 +92,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
+			deletion.PrometheusHadRecordingRule = before.PrometheusRecordingRoleByIdentifier[key.Identifier]
 		}
 		plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 	}

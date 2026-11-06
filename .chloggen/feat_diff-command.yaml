@@ -14,5 +14,9 @@ subtext: |
   formatting, int-vs-float representation, and API-populated defaults never produce a spurious "changed" result.
   `apply --since --dry-run` no longer lists the deletion of a check rule that `-f` still declares, because the real
   run skips that deletion.
+  `apply --since --dry-run` lists a removed PrometheusRule with two or more alerts as one check rule deletion per
+  alert, at the id the run deletes, instead of one PrometheusRule row.
+  `apply` and `teams create -f` update a team at its `dash0.com/id` when its `dash0.com/origin` is not found, so a
+  re-applied export of an SSO/SCIM-provisioned team no longer creates a second team.
 
 change_logs: [user]

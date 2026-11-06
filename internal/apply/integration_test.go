@@ -4,6 +4,7 @@ package apply
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -3465,4 +3466,92 @@ spec:
 		}
 	}
 	assert.Equal(t, 2, listMembersCalls, "one lookup for the stored team and one for the returned team")
+}
+
+const (
+	unresolvableTeamOrigin = "saml://samlc_abc/scim_grp_def"
+	unresolvableTeamID     = "team_01m6dypvgbex58dp137ngtrhhp"
+)
+
+// applyTeamWithUnresolvableOrigin applies a team that carries both labels,
+// where the origin read is answered 404 and the id read with idGetStatus, and
+// returns the output and the requests sent.
+func applyTeamWithUnresolvableOrigin(t *testing.T, idGetStatus int) (string, []testutil.RecordedRequest) {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, fmt.Appendf(nil, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: Dash0PushGroup
+  labels:
+    dash0.com/id: %s
+    dash0.com/origin: %s
+spec:
+  display:
+    name: Dash0PushGroup
+  members: []
+`, unresolvableTeamID, unresolvableTeamOrigin), 0644))
+	stored := dash0api.TeamDefinitionV1Alpha1{}
+	stored.Metadata.Name = "Dash0PushGroup"
+	stored.Spec.Display.Name = "Dash0PushGroup"
+
+	notFound := testutil.MockResponse{StatusCode: http.StatusNotFound, Body: map[string]any{"error": map[string]any{"code": 404, "message": "not found"}}, Validator: testutil.RequireHeaders}
+	idGet := notFound
+	if idGetStatus == http.StatusOK {
+		idGet = testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders}
+	}
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/"+unresolvableTeamOrigin, notFound)
+	server.On(http.MethodGet, "/api/teams/"+unresolvableTeamID, idGet)
+	server.On(http.MethodPut, "/api/teams/"+unresolvableTeamOrigin, testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, "/api/teams/"+unresolvableTeamID, testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+	require.NoError(t, cmdErr, output)
+
+	var requests []testutil.RecordedRequest
+	for _, request := range server.Requests() {
+		if strings.HasPrefix(request.Path, "/api/teams/") {
+			requests = append(requests, request)
+		}
+	}
+	return output, requests
+}
+
+func methodsAndPaths(requests []testutil.RecordedRequest) []string {
+	out := make([]string, 0, len(requests))
+	for _, request := range requests {
+		out = append(out, request.Method+" "+request.Path)
+	}
+	return out
+}
+
+// An exported SSO/SCIM team carries an origin the teams endpoint cannot
+// resolve, and an id it can. Writing at the origin would create a second team.
+func TestApply_Team_OriginNotFoundUpdatesAtID(t *testing.T) {
+	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusOK)
+
+	assert.Equal(t, []string{
+		"GET /api/teams/" + unresolvableTeamOrigin,
+		"GET /api/teams/" + unresolvableTeamID,
+		"PUT /api/teams/" + unresolvableTeamID,
+	}, methodsAndPaths(requests))
+	assert.Contains(t, output, `Team "Dash0PushGroup"`)
+	assert.NotContains(t, output, "created")
+}
+
+// When neither label names a stored team, the origin stays the write key.
+func TestApply_Team_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
+	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusNotFound)
+
+	assert.Equal(t, []string{
+		"GET /api/teams/" + unresolvableTeamOrigin,
+		"GET /api/teams/" + unresolvableTeamID,
+		"PUT /api/teams/" + unresolvableTeamOrigin,
+	}, methodsAndPaths(requests))
+	assert.Contains(t, output, `Team "Dash0PushGroup" created`)
 }

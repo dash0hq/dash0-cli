@@ -64,9 +64,10 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 }
 
 // PlanTeam picks the team's upsert key and reads the stored team that
-// ImportTeam would write. Origin wins over id. On the id path a 404 leaves Key
-// empty, so the write falls back to POST. It returns any preflight error other
-// than "not found".
+// ImportTeam would write. Origin wins over id, unless the origin is not found
+// and the id is, then the team is updated at the id. On the id path a 404
+// leaves Key empty, so the write falls back to POST. It returns any preflight
+// error other than "not found".
 //
 // The server stores member ids, so spec.members on Before holds ids. Callers
 // resolve them to emails and decide whether a failed lookup matters.
@@ -85,6 +86,13 @@ func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.Tea
 		return plan, nil
 	}
 	existing, err := apiClient.GetTeam(ctx, lookupKey)
+	// An identity-provider origin such as "saml://..." is not addressable,
+	// while the exported id of the same team is, so updating at the id keeps
+	// apply from creating a second team.
+	if dash0api.IsNotFound(err) && lookupKey == origin && id != "" {
+		lookupKey = id
+		existing, err = apiClient.GetTeam(ctx, id)
+	}
 	if err != nil {
 		return plan, ignoreNotFound(err)
 	}

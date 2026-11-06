@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
@@ -77,6 +78,14 @@ func marshalForDiff(asset any) (string, error) {
 			return "", fmt.Errorf("failed to unmarshal notification channel: %w", err)
 		}
 		dash0api.StripNotificationChannelServerFields(&c)
+		// The API stores frequency in Go's canonical form ("30m0s"), so a
+		// file that writes "30m" would otherwise never diff clean.
+		if c.Spec.Frequency != nil {
+			if frequency, err := time.ParseDuration(string(*c.Spec.Frequency)); err == nil {
+				canonical := dash0api.Duration(frequency.String())
+				c.Spec.Frequency = &canonical
+			}
+		}
 		stripped = &c
 	case *dash0api.DatasetDefinition:
 		var d dash0api.DatasetDefinition
