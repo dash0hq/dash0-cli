@@ -201,6 +201,8 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteView(ctx, identifier, dataset)
 	case "spamfilter":
 		err = apiClient.DeleteSpamFilter(ctx, identifier, dataset)
+	case "telemetrytransformationrule":
+		err = apiClient.DeleteTelemetryTransformationRule(ctx, identifier, nil, dataset)
 	case "notificationchannel":
 		err = apiClient.DeleteNotificationChannel(ctx, identifier)
 	case "team":

@@ -86,6 +86,10 @@ func (c *keyRecordingClient) GetGenerativeAiEvaluation(_ context.Context, key st
 	return nil, c.notFound("GetGenerativeAiEvaluation", key)
 }
 
+func (c *keyRecordingClient) GetTelemetryTransformationRule(_ context.Context, key string, _ *string) (*dash0api.TelemetryTransformationRuleDefinition, error) {
+	return nil, c.notFound("GetTelemetryTransformationRule", key)
+}
+
 func (c *keyRecordingClient) GetSpamFilter(_ context.Context, key string, _ *string) (dash0api.SpamFilterObject, error) {
 	return nil, c.notFound("GetSpamFilter", key)
 }
@@ -172,6 +176,9 @@ func characterizationDocument(kind string, variant identifierVariant) string {
 		// dataset for the turn-on warning.
 		return "kind: Dash0Sampling\nmetadata:\n  name: n\n" + labelBlock +
 			"spec:\n  display:\n    name: n\n  enabled: false\n  conditions:\n    kind: error\n    spec: {}\n"
+	case "telemetrytransformationrule":
+		return "kind: Dash0TelemetryTransformationRule\nmetadata:\n  name: n\n" + labelBlock +
+			"spec:\n  enabled: false\n  signal: logs\n  context: log\n  transformations:\n    - name: t\n      statements:\n        - set(log.body, \"x\")\n"
 	case "awsmetricscrapeconfig":
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + labelBlock + "spec:\n  namespaces: []\n"
 	}
@@ -322,6 +329,12 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withOrigin:  {"o", "o", "GetSamplingRule(o)"},
 			withID:      {"i", "i", "GetSamplingRule(i)"},
 			withBoth:    {"o", "o", "GetSamplingRule(o)"},
+		},
+		"telemetrytransformationrule": {
+			withNeither: {"", "", ""},
+			withOrigin:  {"o", "o", "GetTelemetryTransformationRule(o)"},
+			withID:      {"i", "i", "GetTelemetryTransformationRule(i) error: telemetry transformation rule \"n\" not found (status: 404)"},
+			withBoth:    {"o", "o", "GetTelemetryTransformationRule(o)"},
 		},
 	}
 

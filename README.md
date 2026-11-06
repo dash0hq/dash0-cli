@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `EphemeralDashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
+Supported asset types: `Dashboard`, `EphemeralDashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0TelemetryTransformationRule`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
 
 From a single file:
 
@@ -403,7 +403,7 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 
 ### Asset CRUD commands
 
-Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`) supports the same five subcommands.
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `telemetry-transformation-rules`) supports the same five subcommands.
 Substitute the asset noun in the examples below.
 
 List all assets of a type:
@@ -506,6 +506,38 @@ Create a rule from a file:
 ```bash
 dash0 sampling-rules create -f sampling-rule.yaml
 ```
+
+### Telemetry transformation rules (unreleased)
+
+`dash0 telemetry-transformation-rules` manages dataset-scoped rules with `list` (`ls`), `get`, `create` (`add`), `update`, and `delete` (`remove`).
+There is no short top-level alias.
+The stable client, specification, and launch gates still apply; no release version is promised.
+
+List rules in any shared asset output format (`table`, `wide`, `csv`, `json`, or `yaml`):
+
+```bash
+dash0 telemetry-transformation-rules list --dataset default -o wide
+```
+
+List output omits stored examples and is not a safe complete backup.
+Export each rule with `get` to keep its examples:
+
+```bash
+dash0 telemetry-transformation-rules get <origin-or-id> -o yaml > transformation-rule.yaml
+```
+
+`create -f` always POSTs and rejects duplicate origins; it never implicitly upserts.
+`update [origin-or-id] -f` replaces an existing rule and fails if it does not exist.
+Omitting `spec.examples` from a replacement removes stored examples.
+
+For repeatable create-or-update, pin a fixed, unique `dash0.com/origin` and use `apply`:
+
+```bash
+dash0 apply -f transformation-rule.yaml --dry-run
+```
+
+The current `Dash0TelemetryTransformationRule` model has no `apiVersion` field and uses ordered, named `spec.transformations`, each with `name` and `statements`.
+See the [full reference](docs/commands.md#telemetry-transformation-rules) for concurrency tokens, reconciliation, and a disabled synthetic logs example with 2 transformations and a nested OTLP example.
 
 ### Logging
 

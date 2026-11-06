@@ -95,7 +95,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics", "sampling":
+	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics", "sampling", "telemetrytransformationrule":
 		if origin != "" {
 			return origin, nil
 		}
