@@ -1,0 +1,60 @@
+kind: Dash0TelemetryTransformationRule
+metadata:
+  name: roundtrip-synthetic-log-transformation
+  labels:
+    dash0.com/origin: roundtrip-synthetic-log-transformation
+spec:
+  enabled: false
+  display:
+    name: Roundtrip synthetic log transformation
+  signal: logs
+  context: log
+  priority: 100
+  conditions:
+    - 'resource.attributes["service.name"] == "dash0-cli-roundtrip-synthetic"'
+    - 'attributes["roundtrip.synthetic"] == true'
+  transformations:
+    - name: Set synthetic marker
+      statements:
+        - 'set(attributes["roundtrip.stage"], "first")'
+        - 'set(attributes["roundtrip.stage"], "second")'
+    - name: Copy synthetic marker
+      statements:
+        - 'set(attributes["roundtrip.copied"], attributes["roundtrip.stage"])'
+        - 'set(attributes["roundtrip.result"], "synthetic")'
+  examples:
+    - name: Synthetic log with nested attributes
+      otlp:
+        resourceLogs:
+          - resource:
+              attributes:
+                - key: service.name
+                  value:
+                    stringValue: dash0-cli-roundtrip-synthetic
+            scopeLogs:
+              - scope:
+                  name: dash0-cli-roundtrip-synthetic
+                  version: "1.0"
+                logRecords:
+                  - timeUnixNano: "1700000000000000000"
+                    severityNumber: 9
+                    severityText: INFO
+                    body:
+                      stringValue: Synthetic CLI roundtrip log
+                    attributes:
+                      - key: roundtrip.synthetic
+                        value:
+                          boolValue: true
+                      - key: roundtrip.payload
+                        value:
+                          kvlistValue:
+                            values:
+                              - key: source
+                                value:
+                                  stringValue: synthetic
+                              - key: items
+                                value:
+                                  arrayValue:
+                                    values:
+                                      - stringValue: synthetic-item
+                                      - intValue: "42"

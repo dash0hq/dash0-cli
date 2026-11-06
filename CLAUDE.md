@@ -43,7 +43,7 @@ Detailed guidelines are split into focused documents:
 **Origin** and **ID** are distinct concepts — do not conflate them.
 
 - **Origin** identifies which system is the authoritative source of truth for an asset (e.g., `dash0-cli`, `terraform`, `ui`).
-  It is provenance/ownership metadata, not a lookup key.
+  It is provenance/ownership metadata; some kinds also use it as their external lookup key, as listed below.
   It is stored as the label `dash0.com/origin` on check rules, synthetic checks, and views.
   The CLI strips it before sending assets to the API (`StripXxxServerFields`), because the CLI should not claim ownership when the asset may be managed by another system.
 
@@ -63,6 +63,15 @@ Detailed guidelines are split into focused documents:
   - Datasets: `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent, is the slug — required, immutable, and the only identifier; `dash0.com/origin` is optional. The CLI preflights `GET /api/datasets/{slug}` and PUTs on hit, POSTs on 404, or surfaces other errors. `apply --since` deletes a dataset removed from git like any other kind, as a 30-day soft delete; in agent mode it needs `--force`.
   - AWS metric scrape configs: `metadata.labels["dash0.com/id"]` is the AWS integration id and the only key. There is one config per integration, PUT replaces it, and DELETE clears it while keeping the integration. The CLI never sends `dash0.com/origin`, and `spec.namespaces` is required, because the client sends a missing list as `[]`, which stops all scraping.
   - Agent0 skills (`Dash0Skill`): `metadata.labels["dash0.com/origin"]` is the upsert key, and PUT by origin creates the skill when the origin is new, so there is no POST fallback. `metadata.labels["dash0.com/id"]` is an update-only fallback when origin is absent: the CLI preflights `GET /api/agent0/custom-skills/{id}` and fails on 404. A document with neither POSTs. Read the origin and ID before `StripCustomSkillServerFields`, which drops `spec.source` and the per-user `dash0.com/enabled` annotation that a write must never send.
+  - Telemetry transformation rules (`Dash0TelemetryTransformationRule`, unreleased): origin is the client-set, immutable external identifier; ID is server-assigned.
+    `create` always POSTs and rejects duplicate origins.
+    `update` GETs the full existing rule before replacement PUT and never creates on 404.
+    `apply` selects origin, or ID only when origin is absent: GET hit means PUT; GET 404 with origin means POST; only explicit POST 409 means GET again and PUT the active rule, or PUT by origin to revive a tombstone after another 404.
+    Unknown ID-only documents fail; documents with neither label POST.
+    Preserve an explicit `dash0.com/updated-at` token; otherwise use the full GET's token.
+    Missing `spec.examples` removes stored examples, so list exports, which omit them, are not complete backups.
+    The current model has named ordered `spec.transformations` and no `apiVersion` field.
+    SC-946 development uses the immutable SC-948 client commit `9f69c9bc6c5e`; stable client, specification, and launch gates still apply, with no promised release version.
   - Teams: `metadata.labels["dash0.com/origin"]` is the primary upsert key; `metadata.labels["dash0.com/id"]` is honored as a fallback when origin is absent. The CLI preflights `GET /api/teams/{id}` and PUTs on hit, POSTs on 404 (cross-org apply), or surfaces other errors.
 
   The user-facing documentation of these fields, including the rationale for idempotent upsert, lives in the [Asset identifiers and idempotent upsert](docs/commands.md#asset-identifiers-and-idempotent-upsert) section of `docs/commands.md`.

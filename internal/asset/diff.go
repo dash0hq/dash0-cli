@@ -137,6 +137,24 @@ func marshalForDiff(asset any) (string, error) {
 		// keeping it would show up as a phantom removal in `update --dry-run`.
 		dash0api.ClearTimeSeriesAggregationID(&a)
 		stripped = &a
+	case *dash0api.TelemetryTransformationRuleDefinition:
+		rule, err := ParseTelemetryTransformationRule(jsonBytes)
+		if err != nil {
+			return "", err
+		}
+		rule.Metadata.Labels = nil
+		rule.Metadata.Annotations = nil
+		if rule.Spec.Priority == nil {
+			priority := 200
+			rule.Spec.Priority = &priority
+		}
+		if rule.Spec.Conditions != nil && len(*rule.Spec.Conditions) == 0 {
+			rule.Spec.Conditions = nil
+		}
+		if rule.Spec.Examples != nil && len(*rule.Spec.Examples) == 0 {
+			rule.Spec.Examples = nil
+		}
+		stripped = rule
 	case *dash0api.AwsMetricScrapeConfigDefinition:
 		var c dash0api.AwsMetricScrapeConfigDefinition
 		if err := dash0yaml.Unmarshal(jsonBytes, &c); err != nil {

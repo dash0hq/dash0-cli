@@ -73,6 +73,7 @@ Supported asset types:
   - Dash0NotificationChannel
   - Dash0Team
   - Dash0TimeSeriesAggregation
+  - Dash0TelemetryTransformationRule
   - Dash0Dataset
   - Dash0AwsMetricScrapeConfig
   - Dash0Skill (Agent0 custom skill)
@@ -373,7 +374,11 @@ func validateDocuments(documents []assetDocument) (validationErrors, validationW
 			// place to deliver it, so a created token's secret would be lost.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.location(), doc.kind))
 		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.location(), doc.kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0TelemetryTransformationRule, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.location(), doc.kind))
+		} else if normalizeKind(doc.kind) == "telemetrytransformationrule" {
+			if _, err := asset.ParseTelemetryTransformationRule(doc.raw); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err))
+			}
 		} else if normalizeKind(doc.kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -634,6 +639,17 @@ func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// dry-run output names the key being used, which an exported
 		// document's server-assigned id would not.
 		id = asset.GetTimeSeriesAggregationOrigin(&aggregation)
+
+	case "telemetrytransformationrule":
+		rule, parseErr := asset.ParseTelemetryTransformationRule(data)
+		if parseErr != nil {
+			return "", "", "", parseErr
+		}
+		name = dash0api.GetTelemetryTransformationRuleName(rule)
+		id = asset.GetTelemetryTransformationRuleOrigin(rule)
+		if id == "" {
+			id = dash0api.GetTelemetryTransformationRuleID(rule)
+		}
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
@@ -972,6 +988,17 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 			})
 		}
 		return []applyResult{{kind: "Dash0TimeSeriesAggregation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "telemetrytransformationrule":
+		rule, err := asset.ParseTelemetryTransformationRule(doc.raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportTelemetryTransformationRule(ctx, apiClient, rule, dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "telemetry transformation rule", AssetName: dash0api.GetTelemetryTransformationRuleName(rule)})
+		}
+		return []applyResult{{kind: "Dash0TelemetryTransformationRule", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1

@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `telemetry-transformation-rules`, `apply` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -525,9 +525,10 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All eleven of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
-Eight of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
+These command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `telemetry-transformation-rules`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
+`notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`); the other groups are dataset-scoped.
 The examples below use `dashboards`, but the same patterns apply to every command group.
+Telemetry transformation rules are unreleased and have different create, replacement, and export semantics, described in [Telemetry transformation rules](#telemetry-transformation-rules).
 
 ### `list`
 
@@ -563,6 +564,8 @@ Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   gitops/pro
 
 Use `-o json` or `-o yaml` to get the full asset definitions, suitable for backup or re-applying with `apply -f -`.
 The YAML output is a multi-document stream (documents separated by `---`) so it can be piped directly to `dash0 apply -f -`.
+This is not a complete backup for telemetry transformation rules: their list endpoint omits stored `spec.examples` in every output format.
+Fetch each rule with `telemetry-transformation-rules get <origin-or-id> -o yaml` to include examples; reapplying a list export removes those examples.
 Use `-o csv` for a pipe-friendly, machine-readable format with the same columns as `wide`:
 
 ```bash
@@ -673,6 +676,9 @@ $ dash0 dashboards create -f dashboard.yaml
 Dashboard "My Dashboard" restored
 ```
 
+Telemetry transformation rules are an exception: `create` always POSTs and rejects duplicate origins.
+Use `apply` to reconcile or restore a rule by origin.
+
 Aliases: `add`
 
 ### `update`
@@ -780,7 +786,7 @@ For `dashboards`, `check-rules`, `views`, `spam-filters`, `time-series-aggregati
 For `datasets`, a mistyped slug prints `Dataset "<typo>" deleted`, and no dataset is deleted.
 The CLI does not preflight with a GET to close that gap, because one command that did would be the only one to error on a missing asset.
 
-The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
+The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `telemetry-transformation-rules`, `teams`, `datasets`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
 In the multi-target `remove` variants the check runs per member, so one concurrently-removed member does not fail the whole `--force` call — the loop keeps going.
 See also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
 
@@ -799,6 +805,7 @@ Aliases: `remove`
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
+| Telemetry transformation rules | `dash0 telemetry-transformation-rules <subcommand>` | Unreleased. Dataset-scoped, no short top-level alias. `create` is POST-only; `update` replaces an existing rule; `apply` reconciles by origin, then ID. List output omits stored examples |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
@@ -807,10 +814,12 @@ Aliases: `remove`
 ### Asset identifiers and idempotent upsert
 
 Every asset type accepts a user-defined identifier in its YAML/JSON document.
-When the identifier is present, both `create` and `apply` perform an **upsert** (PUT) against that identifier: the asset is created on the first call and replaced on every subsequent call.
-When the identifier is absent, both commands perform a plain create (POST) and the server assigns a fresh ID on each invocation — repeated runs produce duplicate assets.
+For most kinds, when the identifier is present, both `create` and `apply` perform an **upsert** (PUT) against that identifier: the asset is created on the first call and replaced on every subsequent call.
+Telemetry transformation rules differ: `create` always POSTs, while `apply` GETs first and chooses POST or replacement PUT as described [below](#telemetry-transformation-rules).
+When the identifier is absent, both commands perform a plain create (POST) and the server assigns a fresh ID on each invocation, so repeated runs can produce duplicate assets.
 
-Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent, which is what GitOps and CI/CD workflows need.
+Pinning a stable identifier in the source document makes `apply` idempotent for GitOps and CI/CD workflows.
+It also makes `create` idempotent for kinds that support upsert, but not for telemetry transformation rules.
 
 The identifier field location varies by asset kind:
 
@@ -826,13 +835,15 @@ The identifier field location varies by asset kind:
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
+| `Dash0TelemetryTransformationRule` | `metadata.labels["dash0.com/origin"]`, then `metadata.labels["dash0.com/id"]` | Origin is client-set and immutable; ID is server-assigned. `create` always POSTs and rejects a duplicate origin. `apply` GETs by origin or ID, PUTs on a hit, and POSTs on 404 only with an origin; an unknown ID-only document fails. With neither label, it POSTs. Pin a fixed, unique origin for repeat apply |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level Agent0 custom skill. `dash0.com/origin` is the upsert key: `PUT /api/agent0/custom-skills/{origin}` creates the skill when the origin is new and replaces it otherwise. Use a `dash0-cli_` prefix so Dash0 shows the skill as managed by the CLI. When only `dash0.com/id` is present the CLI preflights `GET /api/agent0/custom-skills/{id}`: on hit it PUTs, on 404 it fails instead of creating, because the id is server-assigned. A document with neither label creates the skill with POST; the skill name, from the `SKILL.md` frontmatter, is unique per organization, so a second apply fails with a name collision instead of creating a duplicate |
 | `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
-The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
+The `dash0.com/id` label identifies an asset and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`) and is the external identifier for some kinds.
+For telemetry transformation rules, `dash0.com/id` is server-assigned, while a fixed, unique `dash0.com/origin` makes repeat apply idempotent.
 Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
 
 For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
@@ -843,6 +854,7 @@ Stripping origin keeps an `apply` from claiming ownership of an asset that Terra
 Dashboards are a third case: they use `metadata.dash0Extensions.id`, and the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never use origin as a dashboard upsert key.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
+For telemetry transformation rules, use `get`, not `list`, to preserve stored examples in this workflow.
 
 #### Multi-alert PrometheusRule CRDs
 
@@ -985,10 +997,102 @@ That takes precedence over the rule-beats-document behavior above: a rule settin
 The losing value is not discarded either, it stays on the check rule as an ordinary annotation, which is usually how you notice.
 Use one spelling throughout a document.
 
+### `telemetry-transformation-rules`
+
+`telemetry-transformation-rules` manages dataset-scoped rules with no short top-level alias.
+This command is unreleased; the stable client, specification, and launch gates still apply, and no release version is promised.
+Preview and policy commands are out of scope.
+
+The command uses the shared asset flags: `--dataset`, `--api-url`, `--auth-token`, and `-o`/`--output`, plus the operation-specific flags below.
+Dataset resolution follows the common flag, environment, and profile precedence.
+Human output defaults to `table`; agent mode defaults to `json`.
+
+| Subcommand | Alias | Syntax |
+|------------|-------|--------|
+| `list` | `ls` | `dash0 telemetry-transformation-rules list` |
+| `get` | | `dash0 telemetry-transformation-rules get <origin-or-id>` |
+| `create` | `add` | `dash0 telemetry-transformation-rules create -f <file>` |
+| `update` | | `dash0 telemetry-transformation-rules update [origin-or-id] -f <file>` |
+| `delete` | `remove` | `dash0 telemetry-transformation-rules delete <origin-or-id>` |
+
+| Flag | Short | Applies to | Description |
+|------|-------|------------|-------------|
+| `--output` | `-o` | All subcommands | Shared output flag; default `table`, or `json` in agent mode; list formats below |
+| `--limit` | `-l` | `list` | Maximum number of results, default 50 |
+| `--all` | `-a` | `list` | Return all results, ignoring the limit |
+| `--skip-header` | | `list` | Omit the header from `table`, `wide`, and `csv` |
+| `--file` | `-f` | `create`, `update` | Required YAML/JSON input path, or `-` for stdin |
+| `--dry-run` | | `create`, `update` | Validate or show a replacement diff without writing |
+| `--force` | | `delete` | Skip confirmation; tolerate a not-found response |
+
+`list` supports `table`, `wide`, `csv`, `json`, and `yaml`.
+Table output has `NAME`, `ID`, `SIGNAL`, and `ENABLED` columns; `wide` and CSV add `DATASET` and `ORIGIN`.
+It deliberately omits stored `spec.examples`, including in JSON and YAML, so it is not a safe complete backup.
+Single-rule `get -o yaml` or `get -o json` returns the full rule with its examples.
+Do not feed a list export into a replacement unless deleting all stored examples is intentional.
+
+Export one complete rule, including its examples:
+
+```bash
+dash0 telemetry-transformation-rules get dash0-cli_synthetic-log-normalization --dataset default -o yaml > transformation-rule.yaml
+```
+
+`create` always POSTs a new rule and never implicitly upserts, even when the file has an origin.
+A duplicate origin returns a conflict instead of replacing the existing rule.
+Use `-f -` for stdin; `--dry-run` validates without writing.
+
+```bash
+dash0 telemetry-transformation-rules create -f transformation-rule.yaml --dry-run
+```
+
+`update` replaces an existing rule, not a patch and not a create.
+If the positional argument is absent, the file's `metadata.labels["dash0.com/origin"]` wins, with `dash0.com/id` as the fallback.
+The CLI rejects path/body identifier mismatches rather than writing to a different rule.
+It GETs the full rule before replacement PUT; an unknown rule returns 404 and never falls back to create.
+GET does not return tombstones, so use `apply` by origin, not `update`, to restore a deleted rule.
+
+```bash
+dash0 telemetry-transformation-rules update -f transformation-rule.yaml
+```
+
+Replacement PUT preserves an explicitly supplied `metadata.annotations["dash0.com/updated-at"]` concurrency token.
+If the file omits it, the CLI uses the token from the full-rule preflight GET.
+A stale explicit token remains stale and the API rejects it with `superseded_version`; the CLI does not silently overwrite it with a fresh one.
+Omitting `spec.examples` removes stored examples, because PUT replaces the whole rule.
+
+Delete by origin or ID, using `--force` to skip confirmation:
+
+```bash
+dash0 telemetry-transformation-rules delete dash0-cli_synthetic-log-normalization --force
+```
+
+The document kind is `Dash0TelemetryTransformationRule`.
+The current model has no `apiVersion` field; do not add one or require it.
+Use `spec.transformations`, an ordered list of objects with `name` and `statements`, not the obsolete flat `spec.statements` field.
+Transformations and their statements run in their listed order.
+
+`spec.priority` accepts only `0`, `100`, `200`, `300`, or `400`, defaults to `200`, and runs lower values first.
+Rules with the same priority sort by `metadata.name`, then creation time, then ID.
+`spec.conditions` is a list of OTTL conditions combined with OR that gates all transformations of the rule.
+The required fields are `kind`, `metadata.name`, `spec.enabled`, `spec.signal`, `spec.context`, and a non-empty `spec.transformations` list.
+Every transformation requires a `name` and `statements`.
+
+| `spec.signal` | Valid `spec.context` values |
+|---------------|-----------------------------|
+| `logs` | `resource`, `scope`, `log` |
+| `traces` | `resource`, `scope`, `span`, `spanevent` |
+| `metrics` | `resource`, `scope`, `metric`, `datapoint` |
+| `profiles` | `resource`, `scope`, `profile` |
+
+Each `spec.examples` entry has a `name` and an `otlp` object containing an OTLP/JSON export request for the rule's signal.
+These objects can contain arbitrary nested OTLP objects and arrays, including resource and scope data.
+There may be at most 10 examples, each at most 64 KiB of compact JSON, with at least 1 telemetry item.
+Examples are stored configuration, not telemetry subject to telemetry retention; use synthetic data without secrets or personal information.
+
 ### `apply`
 
 Apply asset definitions from a file, directory, or stdin.
-If an asset already exists (matched by ID), it is updated; otherwise it is created.
+If an asset already exists, matched by its kind-specific origin or ID, it is updated; otherwise it is created where that kind supports creation.
 
 ```bash
 dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-non-ancestor-ref]]
@@ -1012,7 +1116,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0TelemetryTransformationRule`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1084,6 +1188,23 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > You therefore cannot apply one document to two datasets, as you can for every other asset kind.
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+
+`Dash0TelemetryTransformationRule` documents use the dataset-scoped telemetry transformation rules endpoint.
+They support multi-document files, `--dry-run`, and `--since` deletion by origin, falling back to ID.
+Use a fixed, unique `metadata.labels["dash0.com/origin"]` for repeat apply; it takes precedence over `dash0.com/id`.
+
+The reconciliation sequence differs from unconditional PUT upserts:
+
+- With an origin or ID, GET the full rule first; on a hit, replacement PUT preserves the explicit updated-at token, or uses the preflight token if the document has none.
+- On GET 404 with an origin, POST the new rule.
+  Only an explicit POST 409 triggers another GET: PUT the active rule with the same token rules if found, or PUT by origin to revive its tombstone if that GET still returns 404.
+- On GET 404 with only an ID, fail instead of creating a duplicate.
+  Other GET or POST failures surface as errors, not create-or-update fallbacks.
+- With neither origin nor ID, use plain POST; repeated applies can create duplicates.
+
+Every replacement includes exactly the document's examples; missing `spec.examples` removes stored examples.
+Use single-rule `get` exports when examples must survive, not `list` exports.
+The [rule document format](#telemetry-transformation-rules) uses ordered named transformations and has no `apiVersion` field.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
@@ -1352,7 +1473,8 @@ spec:
     name: Production Overview
 ```
 
-Pinning `apiVersion` on every user-authored file is a defense against silent migrations: today the server infers the default version when the field is omitted, but the same document with an explicit `apiVersion` will keep the same shape when a future default changes.
+For models that define `apiVersion`, pinning it on user-authored files is a defense against silent migrations: today the server infers the default version when the field is omitted, but the same document with an explicit `apiVersion` will keep the same shape when a future default changes.
+`Dash0TelemetryTransformationRule` has no `apiVersion` field in the current model.
 
 The user-defined identifier lives in `metadata.dash0Extensions.id` (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
 `metadata.name` is the CRD-style metadata name and is independent of `spec.display.name`, which is the title shown in the UI.
@@ -1666,6 +1788,70 @@ spec:
 The three names are independent: setting `metadata.name`, `spec.display.name`, or the origin does not change either of the others.
 
 Optional `spec` fields: `priority` (the lower the value, the earlier Dash0 evaluates the aggregation), `sample.delay`, `sample.staleAfter`, `match.otherFilters`, and `attributeModifications`.
+
+Telemetry transformation rule (unreleased, dataset-scoped, disabled synthetic logs example):
+
+```yaml
+kind: Dash0TelemetryTransformationRule
+metadata:
+  name: synthetic-log-normalization
+  labels:
+    dash0.com/origin: dash0-cli_synthetic-log-normalization
+spec:
+  enabled: false
+  display:
+    name: Synthetic log normalization
+  priority: 200
+  signal: logs
+  context: log
+  conditions:
+    - 'resource.attributes["service.name"] == "synthetic-transform-demo"'
+  transformations:
+    - name: Normalize body
+      statements:
+        - 'set(body, "Synthetic log normalized")'
+    - name: Normalize severity
+      statements:
+        - 'set(severity_text, "INFO")'
+        - 'set(severity_number, 9)'
+  examples:
+    - name: Nested synthetic log
+      otlp:
+        resourceLogs:
+          - resource:
+              attributes:
+                - key: service.name
+                  value:
+                    stringValue: synthetic-transform-demo
+            scopeLogs:
+              - scope:
+                  name: synthetic-example
+                logRecords:
+                  - severityNumber: 9
+                    body:
+                      kvlistValue:
+                        values:
+                          - key: message
+                            value:
+                              stringValue: Synthetic log
+                          - key: details
+                            value:
+                              kvlistValue:
+                                values:
+                                  - key: attempt
+                                    value:
+                                      intValue: "1"
+                                  - key: flags
+                                    value:
+                                      arrayValue:
+                                        values:
+                                          - boolValue: true
+```
+
+This rule stays disabled until `spec.enabled` is explicitly set to `true`.
+The fixed origin makes `apply` repeatable, while `create` remains POST-only and rejects a duplicate origin.
+Export with `get` to keep the nested example; a replacement without `spec.examples` deletes it.
+See [Telemetry transformation rules](#telemetry-transformation-rules) for signal/context combinations, priorities, conditions, and concurrency tokens.
 
 AWS metric scrape config (organization-level, no `--dataset`, requires `--experimental` for the `aws-metric-scrape-configs` commands):
 
@@ -4028,7 +4214,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, telemetry-transformation-rules, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents
@@ -4075,6 +4261,8 @@ dash0 apply -f dashboard.yaml
 ### Bulk export all assets of one type
 
 The YAML output contains full asset definitions as a multi-document stream, ready to be re-applied.
+Telemetry transformation rules are an exception: `list` omits stored examples and is not a complete backup.
+Use `telemetry-transformation-rules get <origin-or-id> -o yaml` for each rule; reapplying a list export removes its examples.
 
 Export all dashboards to a file:
 

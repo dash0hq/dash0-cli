@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DASH0="${SCRIPT_DIR}/../../build/dash0"
+DASH0="${DASH0_BIN:-${SCRIPT_DIR}/../../build/dash0}"
+export DASH0_BIN="$DASH0"
 
 PASSED=0
 FAILED=0
@@ -29,8 +30,13 @@ if [ "${#LOCAL_TESTS[@]}" -gt 0 ]; then
     if bash "$script"; then
       PASSED=$((PASSED + 1))
     else
-      FAILED=$((FAILED + 1))
-      FAILURES+=("$name")
+      status=$?
+      if [ "$status" -eq 77 ]; then
+        SKIPPED=$((SKIPPED + 1))
+      else
+        FAILED=$((FAILED + 1))
+        FAILURES+=("$name")
+      fi
     fi
     echo
   done
@@ -70,6 +76,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_apply_notification_channel_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_notification_channel_assets_warning.sh"
   "${SCRIPT_DIR}/test_apply_time_series_aggregation_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_telemetry_transformation_rule_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_agent0_skill_idempotency.sh"
   "${SCRIPT_DIR}/test_agent0_skill_roundtrip.sh"
   "${SCRIPT_DIR}/test_apply_dataset_idempotency.sh"
@@ -86,6 +93,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_team_roundtrip.sh"
   "${SCRIPT_DIR}/test_team_declarative_roundtrip.sh"
   "${SCRIPT_DIR}/test_time_series_aggregation_roundtrip.sh"
+  "${SCRIPT_DIR}/test_telemetry_transformation_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_dataset_roundtrip.sh"
   "${SCRIPT_DIR}/test_auth_token_roundtrip.sh"
   "${SCRIPT_DIR}/test_aws_metric_scrape_config_roundtrip.sh"
@@ -108,7 +116,7 @@ if [ -n "${DASH0_OTLP_URL:-}" ] || [ -n "$OTLP_URL_FROM_PROFILE" ]; then
 else
   echo "Note: DASH0_OTLP_URL is not configured; skipping OTLP round-trip tests."
   echo
-  SKIPPED=${#OTLP_TESTS[@]}
+  SKIPPED=$((SKIPPED + ${#OTLP_TESTS[@]}))
 fi
 
 for script in "${TESTS[@]}"; do
@@ -120,8 +128,13 @@ for script in "${TESTS[@]}"; do
   if bash "$script"; then
     PASSED=$((PASSED + 1))
   else
-    FAILED=$((FAILED + 1))
-    FAILURES+=("$name")
+    status=$?
+    if [ "$status" -eq 77 ]; then
+      SKIPPED=$((SKIPPED + 1))
+    else
+      FAILED=$((FAILED + 1))
+      FAILURES+=("$name")
+    fi
   fi
   echo
 done
