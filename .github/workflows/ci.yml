@@ -336,7 +336,14 @@ jobs:
           # An AWS integration whose scrape config test_aws_metric_scrape_config_roundtrip
           # replaces and restores. That test fails in CI while the secret is unset.
           DASH0_AWS_INTEGRATION_ID: ${{ secrets.DASH0_AWS_INTEGRATION_ID }}
-        run: bash test/roundtrip/${{ matrix.test }}.sh
+        run: |
+          status=0
+          bash test/roundtrip/${{ matrix.test }}.sh || status=$?
+          if [ "$status" -eq 77 ] && [[ '${{ matrix.test }}' == test_telemetry_transformation_rule_roundtrip || '${{ matrix.test }}' == test_apply_telemetry_transformation_rule_idempotency ]]; then
+            echo '::notice::Telemetry transformation roundtrip skipped: token lacks permission (403).'
+            exit 0
+          fi
+          exit "$status"
 
       - name: Run ${{ matrix.test }} (OAuth token)
         # `continue-on-error: true` lets the OAuth matrix run informationally
@@ -348,4 +355,11 @@ jobs:
         continue-on-error: true
         env:
           DASH0_AWS_INTEGRATION_ID: ${{ secrets.DASH0_AWS_INTEGRATION_ID }}
-        run: bash test/roundtrip/${{ matrix.test }}.sh
+        run: |
+          status=0
+          bash test/roundtrip/${{ matrix.test }}.sh || status=$?
+          if [ "$status" -eq 77 ] && [[ '${{ matrix.test }}' == test_telemetry_transformation_rule_roundtrip || '${{ matrix.test }}' == test_apply_telemetry_transformation_rule_idempotency ]]; then
+            echo '::notice::Telemetry transformation roundtrip skipped: token lacks permission (403).'
+            exit 0
+          fi
+          exit "$status"

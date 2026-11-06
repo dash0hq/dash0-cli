@@ -1,0 +1,15 @@
+change_type: new_component
+
+component: telemetry-transformation-rules
+
+note: "Manage telemetry transformation rules with `telemetry-transformation-rules list|get|create|update|delete` and `apply`."
+
+issues: []
+
+subtext: |
+  `apply` accepts `Dash0TelemetryTransformationRule` documents and reconciles them by a stable origin, including recovery after deletion.
+  Create uses POST; update replaces an existing rule and never creates an unknown target.
+  Named transformations and statements retain their order. Updates preserve explicit concurrency tokens and reject stale versions.
+  Export complete rules with `get`: list omits stored examples, and omitting examples from a replacement removes them.
+
+change_logs: []

@@ -15,13 +15,13 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/authtokens"
 	"github.com/dash0hq/dash0-cli/internal/awsmetricscrapeconfigs"
-	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
-	"github.com/dash0hq/dash0-cli/internal/failedchecks"
+	"github.com/dash0hq/dash0-cli/internal/client"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/datasets"
+	"github.com/dash0hq/dash0-cli/internal/failedchecks"
 	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
@@ -36,6 +36,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
+	"github.com/dash0hq/dash0-cli/internal/telemetrytransformationrules"
 	"github.com/dash0hq/dash0-cli/internal/timeseriesaggregations"
 	"github.com/dash0hq/dash0-cli/internal/tracing"
 	versionpkg "github.com/dash0hq/dash0-cli/internal/version"
@@ -101,6 +102,7 @@ func init() {
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())
 	rootCmd.AddCommand(timeseriesaggregations.NewTimeSeriesAggregationsCmd())
+	rootCmd.AddCommand(telemetrytransformationrules.NewTelemetryTransformationRulesCmd())
 	rootCmd.AddCommand(tracing.NewSpansCmd())
 	rootCmd.AddCommand(tracing.NewTracesCmd())
 	rootCmd.AddCommand(views.NewViewsCmd())
