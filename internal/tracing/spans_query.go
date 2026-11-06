@@ -253,14 +253,20 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamTable(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
 		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
+	return nil
 }
 
 func resolveSpanQueryColumns(columns []string) ([]query.ColumnDef, error) {
@@ -371,7 +377,7 @@ func countSpans(resourceSpans []dash0api.ResourceSpans) int64 {
 	return count
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamTable(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	total, err := iterateSpans(iter, totalLimit, func(r flatSpanRecord) {
@@ -386,11 +392,10 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, 
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 
-func streamCSV(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamCSV(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
 		if err := query.WriteCSVHeader(w, cols); err != nil {
@@ -409,7 +414,6 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, sk
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: spansAssetType})
 	}
-	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 

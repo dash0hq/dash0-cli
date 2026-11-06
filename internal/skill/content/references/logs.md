@@ -16,7 +16,7 @@ _For the exact, always-current flag list, run `dash0 --agent-mode logs query --h
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
 
-A link that reopens the same query in the Dash0 logs explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
+A link that reopens the same query in the Dash0 logs explorer is emitted alongside the results — see [explorer deep links](https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#explorer-deep-links).
 
 Query recent logs (last 15 minutes, up to 50 records):
 

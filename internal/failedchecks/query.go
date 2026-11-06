@@ -222,14 +222,20 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamTable(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
 		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
+	return nil
 }
 
 func resolveColumns(columns []string) ([]query.ColumnDef, error) {
@@ -363,7 +369,7 @@ func iterateIssues(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, emit f
 	return total, iter.Err()
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	total, err := iterateIssues(iter, totalLimit, func(f flatIssue) {
@@ -378,11 +384,10 @@ func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHead
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 
-func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
 		if err := query.WriteCSVHeader(w, cols); err != nil {
@@ -401,7 +406,6 @@ func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: failedChecksAssetType})
 	}
-	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 	return nil
 }
 

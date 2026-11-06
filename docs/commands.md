@@ -2440,7 +2440,7 @@ $ dash0 logs query --filter "otel.log.severity.range is ERROR" -o json
 ```
 
 The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`) is unaffected.
-It is omitted entirely when no link could be built, so its presence means a link is available.
+It is omitted entirely when no link could be built.
 
 > [!NOTE]
 > `logs query`, `spans query`, and `traces get` emit OTLP/JSON, and `dash0ExplorerUrl` is a Dash0 extension to that document.
@@ -2460,11 +2460,15 @@ On `failed-checks query`, `--status` and `--active` are expanded into their equi
 
 Two more details are worth knowing before scripting against this:
 
-- **Emitted even when nothing matched.** A query with no results prints `No log records found.` and still offers the link, so the empty result can be inspected in the UI.
-- **Omitted when the web app host cannot be derived.** The link is built from the API URL by replacing the host with `app.<registrable-domain>` — `https://api.eu-west-1.aws.dash0.com` yields `https://app.dash0.com`. If `api-url` is unset or unparseable, the link is skipped rather than emitted broken.
+- **Emitted even when nothing matched.**
+  A query with no results prints `No log records found.` and still offers the link, so the empty result can be inspected in the UI.
+- **Omitted when the web app host cannot be derived.**
+  The link is built from the API URL by replacing the host with `app.` plus the last two labels of the host, so `https://api.eu-west-1.aws.dash0.com` yields `https://app.dash0.com`.
+  If `api-url` is unset or unparseable, the link is skipped.
+  An `api-url` that is an IP address, such as `http://127.0.0.1:8080`, still yields a link, and that link does not resolve.
 
 The `dataset` parameter is omitted when the resolved dataset is `default`, since the web app opens that dataset anyway.
-`--skip-header` affects only the table header, not the link.
+`--skip-header` affects only the header row of `table` and `csv` output, not the link.
 
 ## Send commands
 

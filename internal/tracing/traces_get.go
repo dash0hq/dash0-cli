@@ -256,14 +256,20 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 
 	switch format {
 	case getFormatTable:
-		return renderTable(results, flags.SkipHeader, cols, explorerURL)
+		err = renderTable(results, flags.SkipHeader, cols)
 	case getFormatCSV:
-		return renderCSV(results, flags.SkipHeader, cols, explorerURL)
+		err = renderCSV(results, flags.SkipHeader, cols)
 	case getFormatJSON:
 		return renderJSON(results, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelTrace, explorerURL)
+	return nil
 }
 
 func resolveTraceColumns(columns []string) ([]query.ColumnDef, error) {
@@ -442,7 +448,7 @@ func buildTree(spans []flatTraceSpan) []flatTraceSpan {
 	return result
 }
 
-func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	for _, tr := range results {
@@ -458,11 +464,10 @@ func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef, 
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
 	}
-	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelTrace, explorerURL)
 	return nil
 }
 
-func renderCSV(results []traceGroup, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func renderCSV(results []traceGroup, skipHeader bool, cols []query.ColumnDef) error {
 	w := csv.NewWriter(os.Stdout)
 	if !skipHeader {
 		if err := query.WriteCSVHeader(w, cols); err != nil {
@@ -482,7 +487,6 @@ func renderCSV(results []traceGroup, skipHeader bool, cols []query.ColumnDef, ex
 			w.Flush()
 		}
 	}
-	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelTrace, explorerURL)
 	return nil
 }
 
