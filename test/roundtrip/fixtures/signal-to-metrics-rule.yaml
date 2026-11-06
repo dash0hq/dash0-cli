@@ -1,0 +1,20 @@
+kind: Dash0SignalToMetrics
+metadata:
+  name: roundtrip-s2m
+  labels:
+    dash0.com/origin: roundtrip-s2m
+spec:
+  display:
+    name: roundtrip-s2m
+  # Disabled, so a leaked rule produces no metric.
+  enabled: false
+  match:
+    signal: logs
+    filters:
+      - key: service.name
+        operator: is
+        value: dash0-cli-roundtrip
+  output:
+    name: dash0_cli.roundtrip.log_count
+    description: Log records sent by the dash0-cli roundtrip tests
+    interval: 5m

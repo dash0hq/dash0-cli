@@ -21,12 +21,12 @@ Query parameters are baked into the path.
 
 Relative paths must start with `/api/` and are resolved against the profile's `api-url`:
 
-- `dash0 -X api /api/signal-to-metrics/configs` → `<api-url>/api/signal-to-metrics/configs`
+- `dash0 -X api /api/sampling-rules` → `<api-url>/api/sampling-rules`
 
 Absolute URLs (`http://` or `https://`) are passed through verbatim.
 Query parameters are part of the path:
 
-- `dash0 -X api "/api/signal-to-metrics/configs?limit=50"`
+- `dash0 -X api "/api/agentic-workflows?folderPath=oncall"`
 
 #### Method
 
@@ -73,7 +73,7 @@ Use `-v` to see the full request line, outbound headers, request body, response 
 GET — dataset auto-injected from the active profile:
 
 ```bash
-dash0 -X api /api/signal-to-metrics/configs
+dash0 -X api /api/sampling-rules
 ```
 
 GET against an organization-level endpoint that does not take a dataset:
@@ -85,30 +85,30 @@ dash0 -X api /api/organization/settings --dataset ""
 GET with query parameters baked into the path:
 
 ```bash
-dash0 -X api "/api/signal-to-metrics/configs?limit=50&enabled=true"
+dash0 -X api "/api/agentic-workflows?folderPath=oncall"
 ```
 
 POST with a payload from a file:
 
 ```bash
-dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+dash0 -X api POST /api/sampling-rules -f sampling-rule.json
 ```
 
-POST with a payload from stdin and a custom header (the `echo | dash0 …` pipeline is a single command):
+POST with a payload from stdin and a custom header (the `cat | dash0 …` pipeline is a single command):
 
 ```bash
-echo '{"name":"my-config","enabled":true}' \
-  | dash0 -X api POST /api/signal-to-metrics/configs -f - -H 'X-Request-Id: abc123'
+cat sampling-rule.json \
+  | dash0 -X api POST /api/sampling-rules -f - -H 'X-Request-Id: abc123'
 ```
 
 DELETE with an explicit dataset override:
 
 ```bash
-dash0 -X api delete /api/signal-to-metrics/configs/<id> --dataset production
+dash0 -X api delete /api/sampling-rules/<id> --dataset production
 ```
 
 Debug a failing request:
 
 ```bash
-dash0 -X api POST /api/signal-to-metrics/configs -f config.json -v
+dash0 -X api POST /api/sampling-rules -f sampling-rule.json -v
 ```

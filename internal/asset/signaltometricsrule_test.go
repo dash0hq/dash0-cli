@@ -1,0 +1,139 @@
+package asset
+
+import (
+	"testing"
+	"time"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func signalToMetricsRuleWithLabels(origin, id string) *dash0api.SignalToMetricsDefinition {
+	labels := &dash0api.SignalToMetricsLabels{}
+	if origin != "" {
+		labels.Dash0Comorigin = &origin
+	}
+	if id != "" {
+		labels.Dash0Comid = &id
+	}
+	return &dash0api.SignalToMetricsDefinition{
+		Metadata: dash0api.SignalToMetricsMetadata{Labels: labels},
+	}
+}
+
+func TestGetSignalToMetricsRuleOrigin(t *testing.T) {
+	tests := []struct {
+		name string
+		rule *dash0api.SignalToMetricsDefinition
+		want string
+	}{
+		{name: "origin set", rule: signalToMetricsRuleWithLabels("dash0-cli_checkout-errors", ""), want: "dash0-cli_checkout-errors"},
+		{name: "labels present, origin absent", rule: signalToMetricsRuleWithLabels("", "some-id"), want: ""},
+		{name: "no labels at all", rule: &dash0api.SignalToMetricsDefinition{}, want: ""},
+		{name: "nil rule", rule: nil, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, GetSignalToMetricsRuleOrigin(tt.rule))
+		})
+	}
+}
+
+// StripSignalToMetricsServerFields clears the origin label, so the import
+// helper must read it first or every origin document would POST a duplicate.
+func TestGetSignalToMetricsRuleOrigin_MustBeReadBeforeStrip(t *testing.T) {
+	rule := signalToMetricsRuleWithLabels("dash0-cli_checkout-errors", "")
+
+	require.Equal(t, "dash0-cli_checkout-errors", GetSignalToMetricsRuleOrigin(rule))
+
+	dash0api.StripSignalToMetricsServerFields(rule)
+
+	assert.Empty(t, GetSignalToMetricsRuleOrigin(rule),
+		"Strip clears the origin label; the import helper must read it first")
+}
+
+func TestSignalToMetricsRuleKey(t *testing.T) {
+	assert.Equal(t, "my-origin", SignalToMetricsRuleKey(signalToMetricsRuleWithLabels("my-origin", "my-id")), "origin wins over id")
+	assert.Equal(t, "my-id", SignalToMetricsRuleKey(signalToMetricsRuleWithLabels("", "my-id")))
+	assert.Empty(t, SignalToMetricsRuleKey(signalToMetricsRuleWithLabels("", "")))
+	assert.Empty(t, SignalToMetricsRuleKey(nil))
+}
+
+func TestSignalToMetricsRuleDeletedAt(t *testing.T) {
+	deletedAt := time.Date(2026, 10, 22, 11, 30, 0, 0, time.UTC)
+
+	assert.Nil(t, SignalToMetricsRuleDeletedAt(nil))
+	assert.Nil(t, SignalToMetricsRuleDeletedAt(&dash0api.SignalToMetricsDefinition{}))
+	assert.Equal(t, &deletedAt, SignalToMetricsRuleDeletedAt(&dash0api.SignalToMetricsDefinition{
+		Metadata: dash0api.SignalToMetricsMetadata{
+			Annotations: &dash0api.SignalToMetricsGroupAnnotations{Dash0ComdeletedAt: &deletedAt},
+		},
+	}))
+}
+
+func TestSignalToMetricsRuleUsesOrigin(t *testing.T) {
+	usesOrigin, err := SignalToMetricsRuleUsesOrigin([]byte(`kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+`))
+	require.NoError(t, err)
+	assert.True(t, usesOrigin)
+
+	usesOrigin, err = SignalToMetricsRuleUsesOrigin([]byte(`kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+`))
+	require.NoError(t, err)
+	assert.False(t, usesOrigin)
+
+	_, err = SignalToMetricsRuleUsesOrigin([]byte("metadata: ["))
+	require.Error(t, err)
+}
+
+func TestKindDisplayName_SignalToMetricsRule(t *testing.T) {
+	assert.Equal(t, "Signal-to-metrics rule", KindDisplayName("Dash0SignalToMetrics"))
+}
+
+func TestIsValidKind_SignalToMetricsRule(t *testing.T) {
+	assert.True(t, IsValidKind("Dash0SignalToMetrics"))
+	assert.False(t, IsValidKind("Dash0SignalToMetricsRule"))
+}
+
+func TestExtractIdentifier_SignalToMetricsRule(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels string
+		want   string
+	}{
+		{
+			name: "origin wins over id",
+			labels: `    dash0.com/origin: dash0-cli_checkout-errors
+    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+`,
+			want: "dash0-cli_checkout-errors",
+		},
+		{
+			name: "id when origin is absent",
+			labels: `    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+`,
+			want: "7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d",
+		},
+		{name: "neither label", labels: "    team: checkout\n", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			identifier, err := ExtractIdentifier([]byte(`kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-errors
+  labels:
+` + tt.labels))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, identifier)
+		})
+	}
+}

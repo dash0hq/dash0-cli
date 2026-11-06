@@ -1,0 +1,8 @@
+change_type: new_component
+component: signal-to-metrics-rules
+note: "Manage signal-to-metrics rules with `signal-to-metrics-rules` (alias `s2m`) and `apply`."
+issues: [354]
+subtext: |
+  `apply` accepts the `Dash0SignalToMetrics` kind and upserts by `dash0.com/origin`, and `apply --since` deletes a rule removed from git.
+  `s2m test -f <file>` validates a rule and counts the logs or spans it matches over a time window, without creating it.
+change_logs: []

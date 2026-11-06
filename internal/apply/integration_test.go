@@ -3422,3 +3422,89 @@ func TestApply_AwsMetricScrapeConfig_DryRun(t *testing.T) {
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, `Apply AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`)`)
 }
+
+const (
+	apiPathSignalToMetrics = "/api/signal-to-metrics"
+
+	signalToMetricsRuleDoc = `kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+spec:
+  display:
+    name: Checkout error logs
+  enabled: true
+  match:
+    signal: logs
+    filters:
+      - key: service.name
+        operator: is
+        value: checkout
+      - key: otel.log.severity.range
+        operator: is
+        value: ERROR
+  output:
+    name: checkout.error_logs
+    description: Error log records emitted by the checkout service
+    interval: 1m
+    keepResourceAttributes:
+      - operator: is
+        value: service.name
+`
+)
+
+var signalToMetricsOriginOrIDPattern = regexp.MustCompile(`^/api/signal-to-metrics/[^/]+$`)
+
+func TestApply_SignalToMetricsRule_CreatedByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, signalToMetricsOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "signaltometricsrules/error_not_found.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, signalToMetricsOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_success.json", Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, signalToMetricsRuleDoc, "--dataset", "staging")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d) created`)
+	put := findRequest(server.Requests(), http.MethodPut, apiPathSignalToMetrics+"/dash0-cli_checkout-errors")
+	require.NotNil(t, put, "an origin document upserts by PUT to its origin")
+	assert.Contains(t, put.Query, "dataset=staging", "signal-to-metrics rules are dataset-scoped")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSignalToMetrics), "PUT by origin is an upsert, so no POST")
+}
+
+// The fixture is what the server returns for signalToMetricsRuleDoc, so a
+// re-apply must report no changes despite the server-managed fields.
+func TestApply_SignalToMetricsRule_UnchangedReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, signalToMetricsOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_success.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, signalToMetricsOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/update_response.json", Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, signalToMetricsRuleDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "no changes")
+}
+
+func TestApply_SignalToMetricsRule_RestoresDeletedRule(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, signalToMetricsOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_deleted.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, signalToMetricsOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/update_response.json", Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, signalToMetricsRuleDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "restored")
+}
+
+func TestApply_SignalToMetricsRule_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, err := runApplyDoc(t, server.URL, signalToMetricsRuleDoc, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (dash0-cli_checkout-errors)`)
+	assert.Empty(t, server.Requests())
+}

@@ -887,3 +887,26 @@ func TestParseDocumentHeader_Skill(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDocumentHeader_SignalToMetricsRule(t *testing.T) {
+	cases := map[string]struct {
+		labels string
+		wantID string
+	}{
+		"origin wins":    {"    dash0.com/origin: dash0-cli_checkout-errors\n    dash0.com/id: 7c1e2a4b\n", "dash0-cli_checkout-errors"},
+		"id fallback":    {"    dash0.com/id: 7c1e2a4b\n", "7c1e2a4b"},
+		"no identifiers": {"    team: checkout\n", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			doc := "kind: Dash0SignalToMetrics\nmetadata:\n  name: checkout-errors\n  labels:\n" + c.labels + "spec:\n  display:\n    name: Checkout error logs\n"
+
+			kind, docName, id, err := parseDocumentHeader([]byte(doc))
+
+			require.NoError(t, err)
+			assert.Equal(t, "Dash0SignalToMetrics", kind)
+			assert.Equal(t, "Checkout error logs", docName)
+			assert.Equal(t, c.wantID, id)
+		})
+	}
+}

@@ -79,6 +79,11 @@ type Snapshot struct {
 	// an id the document never learned.
 	SLOUsesOriginByIdentifier map[string]bool
 
+	// SignalToMetricsRuleUsesOriginByIdentifier is the same signal for
+	// signal-to-metrics rules (per asset.SignalToMetricsRuleUsesOrigin), whose
+	// ids are also server-assigned.
+	SignalToMetricsRuleUsesOriginByIdentifier map[string]bool
+
 	// Paths is the set of every file path scanned, regardless of whether it
 	// parsed into a recognized kind. Used to check whether a NoIdentifier
 	// document's file still exists at all in the other snapshot.
@@ -97,14 +102,15 @@ type Snapshot struct {
 
 func newSnapshot() Snapshot {
 	return Snapshot{
-		Identifiers:                         map[IdentifierKey]string{},
-		NoIdentifier:                        map[string]NoIdentifierDoc{},
-		PrometheusAlertsByIdentifier:        map[string][]asset.PrometheusAlertName{},
-		PrometheusRecordingRoleByIdentifier: map[string]bool{},
-		SpamFilterUsesOriginByIdentifier:    map[string]bool{},
-		SLOUsesOriginByIdentifier:           map[string]bool{},
-		Paths:                               map[string]bool{},
-		RawContent:                          map[string][]byte{},
+		Identifiers:                               map[IdentifierKey]string{},
+		NoIdentifier:                              map[string]NoIdentifierDoc{},
+		PrometheusAlertsByIdentifier:              map[string][]asset.PrometheusAlertName{},
+		PrometheusRecordingRoleByIdentifier:       map[string]bool{},
+		SpamFilterUsesOriginByIdentifier:          map[string]bool{},
+		SLOUsesOriginByIdentifier:                 map[string]bool{},
+		SignalToMetricsRuleUsesOriginByIdentifier: map[string]bool{},
+		Paths:      map[string]bool{},
+		RawContent: map[string][]byte{},
 	}
 }
 
@@ -316,6 +322,14 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to determine SLO identifier source: %w", err)
 			}
 			snap.SLOUsesOriginByIdentifier[identifier] = usesOrigin
+		}
+
+		if normalizedKind == "signaltometrics" {
+			usesOrigin, err := asset.SignalToMetricsRuleUsesOrigin(docBytes)
+			if err != nil {
+				return fmt.Errorf("failed to determine signal-to-metrics rule identifier source: %w", err)
+			}
+			snap.SignalToMetricsRuleUsesOriginByIdentifier[identifier] = usesOrigin
 		}
 	}
 	return nil
