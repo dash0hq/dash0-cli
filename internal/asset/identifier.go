@@ -2,7 +2,6 @@ package asset
 
 import (
 	"fmt"
-	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
@@ -65,7 +64,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 
 	origin := probe.Metadata.Labels["dash0.com/origin"]
 
-	switch normalizeKindForIdentifier(probe.Kind) {
+	switch NormalizeKind(probe.Kind) {
 	case "dashboard":
 		return probe.Metadata.Dash0Extensions.ID, nil
 	case "checkrule":
@@ -88,10 +87,4 @@ func ExtractIdentifier(data []byte) (string, error) {
 	default:
 		return probe.Metadata.Labels["dash0.com/id"], nil
 	}
-}
-
-func normalizeKindForIdentifier(kind string) string {
-	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
-	k = strings.ReplaceAll(k, "_", "")
-	return strings.TrimPrefix(k, "dash0")
 }

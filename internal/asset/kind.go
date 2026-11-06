@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -20,13 +21,13 @@ func NormalizeKind(kind string) string {
 // handle. Used to distinguish a genuine Dash0 document from unrelated YAML
 // (e.g. a stray Kubernetes ConfigMap) that happens to sit in a scanned scope.
 func IsValidKind(kind string) bool {
-	switch NormalizeKind(kind) {
-	case "dashboard", "checkrule", "syntheticcheck", "slo", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team", "timeseriesaggregation", "dataset", "skill", "awsmetricscrapeconfig":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(ValidKinds, NormalizeKind(kind))
 }
+
+// ValidKinds lists every normalized kind apply accepts. Tests check that
+// ParseDocumentHeader, applyDocument, and diff's planDocument each handle every
+// one, so a kind missing from any of them fails a test.
+var ValidKinds = []string{"dashboard", "checkrule", "syntheticcheck", "slo", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team", "timeseriesaggregation", "dataset", "skill", "awsmetricscrapeconfig"}
 
 // KindDisplayName returns the human-readable name for an asset kind.
 // Multi-word kinds like "CheckRule" become "Check rule" and "SyntheticCheck"

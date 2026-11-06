@@ -136,14 +136,14 @@ func TestComputeDeletionPlan_WholeFileDeletion(t *testing.T) {
 	flags := &applyFlags{File: dir, Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	require.Len(t, dp.plan.ByIdentifier, 1)
-	deletion := dp.plan.ByIdentifier[0]
+	require.Len(t, dp.Plan.ByIdentifier, 1)
+	deletion := dp.Plan.ByIdentifier[0]
 	assert.Equal(t, "dashboard", deletion.Kind)
 	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", deletion.Identifier)
-	assert.Empty(t, dp.warning)
-	// dp.names is resolved from git history at the --since ref, not from
+	assert.Empty(t, dp.Warning)
+	// dp.Names is resolved from git history at the --since ref, not from
 	// current disk contents (the file no longer exists on disk).
-	assert.Equal(t, "My Dashboard", dp.names[deletion.Path])
+	assert.Equal(t, "My Dashboard", dp.Names[deletion.Path])
 }
 
 // TestComputeDeletionPlan_SingleFileTargetStillExists is a regression test
@@ -180,7 +180,7 @@ spec:
 	flags := &applyFlags{File: target, Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err, "a single-file -f target that still exists must not fail to locate its repository")
-	assert.True(t, dp.plan.IsEmpty(), "the file is unchanged since before, so there is nothing to delete")
+	assert.True(t, dp.Plan.IsEmpty(), "the file is unchanged since before, so there is nothing to delete")
 }
 
 // testSinceRepoAllDeleted creates a temp git repo with two asset files at ref
@@ -236,11 +236,11 @@ func TestComputeDeletionPlan_AllFilesDeleted(t *testing.T) {
 	flags := &applyFlags{File: dir, Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	require.Len(t, dp.plan.ByIdentifier, 2)
+	require.Len(t, dp.Plan.ByIdentifier, 2)
 
-	identifiers := []string{dp.plan.ByIdentifier[0].Identifier, dp.plan.ByIdentifier[1].Identifier}
+	identifiers := []string{dp.Plan.ByIdentifier[0].Identifier, dp.Plan.ByIdentifier[1].Identifier}
 	assert.ElementsMatch(t, []string{"a1b2c3d4-5678-90ab-cdef-1234567890ab", "b2c3d4e5-6789-01bc-def0-234567890abc"}, identifiers)
-	assert.Empty(t, dp.warning)
+	assert.Empty(t, dp.Warning)
 }
 
 // TestComputeDeletionPlan_TargetDirectoryRemoved is a regression test for a
@@ -280,9 +280,9 @@ spec:
 	flags := &applyFlags{File: target, Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	require.Len(t, dp.plan.ByIdentifier, 1)
-	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.plan.ByIdentifier[0].Identifier)
-	assert.Empty(t, dp.warning)
+	require.Len(t, dp.Plan.ByIdentifier, 1)
+	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.Plan.ByIdentifier[0].Identifier)
+	assert.Empty(t, dp.Warning)
 }
 
 // TestComputeDeletionPlan_DanglingSymlinkTargetIsTreatedAsMissing is a
@@ -328,8 +328,8 @@ spec:
 	flags := &applyFlags{File: target, Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err, "a dangling symlink target must be treated the same as a missing one, not fail to resolve")
-	require.Len(t, dp.plan.ByIdentifier, 1)
-	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.plan.ByIdentifier[0].Identifier)
+	require.Len(t, dp.Plan.ByIdentifier, 1)
+	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.Plan.ByIdentifier[0].Identifier)
 }
 
 // TestComputeDeletionPlan_SubdirectoryRenamedWithinScope pins the documented
@@ -372,8 +372,8 @@ spec:
 	flags := &applyFlags{File: filepath.Join(dir, "dashboards"), Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	assert.True(t, dp.plan.IsEmpty(), "renaming a subdirectory within the scanned scope must not be reported as a deletion")
-	assert.Empty(t, dp.warning)
+	assert.True(t, dp.Plan.IsEmpty(), "renaming a subdirectory within the scanned scope must not be reported as a deletion")
+	assert.Empty(t, dp.Warning)
 }
 
 // TestComputeDeletionPlan_TargetItselfRenamedIsReportedAsDeletion documents
@@ -417,32 +417,9 @@ spec:
 	flags := &applyFlags{File: filepath.Join(dir, "dashboards"), Since: before}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	require.Len(t, dp.plan.ByIdentifier, 1)
-	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.plan.ByIdentifier[0].Identifier)
-	assert.Empty(t, dp.warning)
-}
-
-// TestSplitMultiDocPath is a table test for the "#<index>" suffix
-// internal/git/snapshot.go appends to the second and later documents' paths
-// in a multi-document file.
-func TestSplitMultiDocPath(t *testing.T) {
-	cases := []struct {
-		path         string
-		wantBase     string
-		wantDocIndex int
-	}{
-		{"assets.yaml", "assets.yaml", 0},
-		{"assets.yaml#1", "assets.yaml", 1},
-		{"assets.yaml#12", "assets.yaml", 12},
-		// A literal "#" not followed by digits is not a multi-document
-		// suffix -- treat the whole string as the path.
-		{"weird#name.yaml", "weird#name.yaml", 0},
-	}
-	for _, c := range cases {
-		base, idx := splitMultiDocPath(c.path)
-		assert.Equal(t, c.wantBase, base, "path %q", c.path)
-		assert.Equal(t, c.wantDocIndex, idx, "path %q", c.path)
-	}
+	require.Len(t, dp.Plan.ByIdentifier, 1)
+	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.Plan.ByIdentifier[0].Identifier)
+	assert.Empty(t, dp.Warning)
 }
 
 // TestCheckRuleIDsOccupiedByCRD_SingleAlertUsesLiteralIdentifier pins that a
@@ -472,105 +449,6 @@ func TestCheckRuleIDsOccupiedByCRD_MultiAlertUsesDerivedIDs(t *testing.T) {
 		asset.DeriveAlertCheckRuleID("shared-id", "g - B"),
 	}, ids)
 	assert.NotContains(t, ids, "shared-id", "a multi-alert CRD's alerts never live at the literal shared id")
-}
-
-// TestResolveDeletionNames_MultiDocumentFile is a regression test for a bug
-// where a deletion candidate from the second (or later) document in a
-// multi-document file failed to resolve a name at all, because its Path
-// carries a "#<index>" suffix that doesn't match any real git blob path —
-// resolveDeletionNames must strip the suffix to read the file, then use the
-// index to pick the right document out of the file's content.
-func TestResolveDeletionNames_MultiDocumentFile(t *testing.T) {
-	dir := t.TempDir()
-	runGitCmd(t, dir, "init", "-q", "-b", "main")
-	runGitCmd(t, dir, "config", "user.email", "test@example.com")
-	runGitCmd(t, dir, "config", "user.name", "Test")
-	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-
-	writeFileFixture(t, dir, "assets.yaml", `apiVersion: dash0.com/v1alpha1
-kind: View
-metadata:
-  name: first-view
-  labels:
-    dash0.com/id: view-id
-spec:
-  query: "true"
----
-apiVersion: dash0.com/v1alpha1
-kind: CheckRule
-id: rule-id
-name: Second Document Rule
-expression: up == 0
-`)
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "seed")
-
-	repo := gitutil.Repo{Dir: dir}
-	before, err := gitutil.BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
-	require.NoError(t, err)
-
-	deletions := []gitutil.Deletion{
-		{Kind: "view", Identifier: "view-id", Path: "assets.yaml"},
-		{Kind: "checkrule", Identifier: "rule-id", Path: "assets.yaml#1"},
-	}
-	names := resolveDeletionNames(before, deletions)
-	assert.Equal(t, "first-view", names["assets.yaml"])
-	assert.Equal(t, "Second Document Rule", names["assets.yaml#1"])
-}
-
-// TestResolveDeletionNames_ReusesBeforeSnapshotContent is a regression test
-// pinning that resolveDeletionNames never reads git again: it must resolve
-// every name from before.RawContent, which BuildSnapshotFromRef already
-// populated while building the "before" snapshot. Deleting the git repo
-// entirely (but keeping before, already built beforehand) proves this --
-// a version of resolveDeletionNames that shelled out to git a second time
-// would find nothing to read and return an empty map, not the real names.
-func TestResolveDeletionNames_ReusesBeforeSnapshotContent(t *testing.T) {
-	dir := t.TempDir()
-	runGitCmd(t, dir, "init", "-q", "-b", "main")
-	runGitCmd(t, dir, "config", "user.email", "test@example.com")
-	runGitCmd(t, dir, "config", "user.name", "Test")
-	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-	writeFileFixture(t, dir, "dashboard.yaml", `kind: Dashboard
-metadata:
-  name: my-dashboard
-  dash0Extensions:
-    id: gone-id
-spec:
-  display:
-    name: My Dashboard
-`)
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "seed")
-
-	repo := gitutil.Repo{Dir: dir}
-	before, err := gitutil.BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
-	require.NoError(t, err)
-
-	// The repository (and thus any chance of a second git read succeeding)
-	// is gone by the time resolveDeletionNames runs.
-	require.NoError(t, os.RemoveAll(dir))
-
-	deletions := []gitutil.Deletion{
-		{Kind: "dashboard", Identifier: "gone-id", Path: "dashboard.yaml"},
-	}
-	names := resolveDeletionNames(before, deletions)
-	assert.Equal(t, "My Dashboard", names["dashboard.yaml"])
-}
-
-// TestResolveDeletionNames_MissingRawContentIsNonFatal is a regression test
-// pinning that a deletion candidate whose path was never captured in
-// before.RawContent (e.g. a since-rewritten blob a differently-scoped
-// snapshot never read) only omits that entry from the returned map -- it
-// must never panic or error the caller, since name resolution is display
-// polish, not something --since's actual deletion dispatch depends on.
-func TestResolveDeletionNames_MissingRawContentIsNonFatal(t *testing.T) {
-	before := gitutil.Snapshot{RawContent: map[string][]byte{}}
-	deletions := []gitutil.Deletion{
-		{Kind: "dashboard", Identifier: "gone-id", Path: "never-captured.yaml"},
-	}
-	names := resolveDeletionNames(before, deletions)
-	assert.Empty(t, names)
 }
 
 func TestComputeDeletionPlan_EmptyRef(t *testing.T) {
@@ -699,7 +577,7 @@ func TestComputeDeletionPlan_NonAncestorRef_NeverPromptsOrErrors(t *testing.T) {
 	flags := &applyFlags{File: dir, Since: branchA}
 	dp, err := computeDeletionPlan(context.Background(), flags)
 	require.NoError(t, err)
-	assert.Contains(t, dp.warning, "not an ancestor of HEAD")
+	assert.Contains(t, dp.Warning, "not an ancestor of HEAD")
 }
 
 // TestApplyDeletions_PrometheusRuleConfirmationPromptUsesConsistentCasing is
@@ -716,8 +594,8 @@ func TestApplyDeletions_PrometheusRuleConfirmationPromptUsesConsistentCasing(t *
 	restore := confirmation.SetReaderForTest(strings.NewReader("n\n"))
 	defer restore()
 
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "prometheusrule", Identifier: "shared-id"},
 			},

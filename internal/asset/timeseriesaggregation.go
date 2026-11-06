@@ -52,34 +52,14 @@ func ImportTimeSeriesAggregation(
 	aggregation *dash0api.TimeSeriesAggregationDefinition,
 	dataset *string,
 ) (ImportResult, error) {
-	origin := GetTimeSeriesAggregationOrigin(aggregation)
-	if origin == "" {
-		return ImportResult{}, ErrTimeSeriesAggregationMissingOrigin
-	}
-
-	dash0api.StripTimeSeriesAggregationServerFields(aggregation)
-
-	action := ActionCreated
-	var before any
-	existing, err := apiClient.GetTimeSeriesAggregation(ctx, origin, dataset)
-	switch {
-	case err == nil:
-		action, before = actionForExisting(TimeSeriesAggregationDeletedAt(existing)), existing
-	case dash0api.IsNotFound(err):
-		// The aggregation does not exist yet, so the PUT below creates it and
-		// ActionCreated is correct.
-	default:
-		// Whether the aggregation exists is now unknown. The PUT would fail
-		// the same way, so stopping here only avoids a write against unknown
-		// state and keeps Action honest. A 403 is the common case, since every
-		// endpoint for this kind needs the admin role. The cost is that a
-		// transient GET error fails a call the PUT might have completed.
-		return ImportResult{}, wrapIfWrongDataset(err, origin)
-	}
-
-	result, err := apiClient.UpdateTimeSeriesAggregation(ctx, origin, aggregation, dataset)
+	plan, err := PlanTimeSeriesAggregation(ctx, apiClient, aggregation, dataset)
 	if err != nil {
-		return ImportResult{}, wrapIfWrongDataset(err, origin)
+		return ImportResult{}, err
+	}
+
+	result, err := apiClient.UpdateTimeSeriesAggregation(ctx, plan.Key, aggregation, dataset)
+	if err != nil {
+		return ImportResult{}, wrapIfWrongDataset(err, plan.Key)
 	}
 	if err := RequireNotDeleted("Time series aggregation", dash0api.GetTimeSeriesAggregationName(result), dash0api.GetTimeSeriesAggregationID(result), TimeSeriesAggregationDeletedAt(result)); err != nil {
 		return ImportResult{}, err
@@ -88,10 +68,34 @@ func ImportTimeSeriesAggregation(
 	return ImportResult{
 		Name:   dash0api.GetTimeSeriesAggregationName(result),
 		ID:     dash0api.GetTimeSeriesAggregationID(result),
-		Action: action,
-		Before: before,
+		Action: plan.Action,
+		Before: plan.Before,
 		After:  result,
 	}, nil
+}
+
+// PlanTimeSeriesAggregation reads the stored aggregation that
+// ImportTimeSeriesAggregation would write, keyed by its mandatory origin.
+//
+// Any preflight error other than "not found" is returned, because whether the
+// aggregation exists is then unknown. The PUT would fail the same way, so
+// stopping here only avoids a write against unknown state and keeps Action
+// honest. A 403 is the common case, since every endpoint for this kind needs
+// the admin role.
+func PlanTimeSeriesAggregation(ctx context.Context, apiClient dash0api.Client, aggregation *dash0api.TimeSeriesAggregationDefinition, dataset *string) (ImportPlan, error) {
+	origin := GetTimeSeriesAggregationOrigin(aggregation)
+	if origin == "" {
+		return ImportPlan{}, ErrTimeSeriesAggregationMissingOrigin
+	}
+	dash0api.StripTimeSeriesAggregationServerFields(aggregation)
+
+	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: aggregation}
+	existing, err := apiClient.GetTimeSeriesAggregation(ctx, origin, dataset)
+	if err != nil {
+		return plan, wrapIfWrongDataset(ignoreNotFound(err), origin)
+	}
+	plan.Action, plan.Before = actionForExisting(TimeSeriesAggregationDeletedAt(existing)), existing
+	return plan, nil
 }
 
 // TimeSeriesAggregationDeletedAt returns when the aggregation was deleted, or

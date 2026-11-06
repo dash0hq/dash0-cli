@@ -15,20 +15,9 @@ import (
 // A PUT to the ID of a deleted dashboard brings it back, which is reported as
 // ActionRestored.
 func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
-	dash0api.StripDashboardServerFields(dashboard)
-
-	action := ActionCreated
-	var before any
-	id := ""
-	if dashboard.Metadata.Dash0Extensions != nil && dashboard.Metadata.Dash0Extensions.Id != nil {
-		id = *dashboard.Metadata.Dash0Extensions.Id
-	}
-	if id != "" {
-		existing, err := apiClient.GetDashboard(ctx, id, dataset)
-		if err == nil {
-			action, before = actionForExisting(DashboardDeletedAt(existing)), existing
-		}
-	}
+	// A failed preflight does not block the write: the PUT reports the same error.
+	plan, _ := PlanDashboard(ctx, apiClient, dashboard, dataset)
+	id := plan.Key
 
 	var (
 		result *dash0api.DashboardDefinition
@@ -56,7 +45,24 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if err := RequireNotDeleted("Dashboard", name, id, DashboardDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: name, ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: name, ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanDashboard reads the stored dashboard that ImportDashboard would write.
+// It returns any preflight error other than "not found".
+func PlanDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportPlan, error) {
+	dash0api.StripDashboardServerFields(dashboard)
+	plan := ImportPlan{Action: ActionCreated, Proposed: dashboard}
+	if dashboard.Metadata.Dash0Extensions == nil || dashboard.Metadata.Dash0Extensions.Id == nil || *dashboard.Metadata.Dash0Extensions.Id == "" {
+		return plan, nil
+	}
+	plan.Key = *dashboard.Metadata.Dash0Extensions.Id
+	existing, err := apiClient.GetDashboard(ctx, plan.Key, dataset)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Action, plan.Before = actionForExisting(DashboardDeletedAt(existing)), existing
+	return plan, nil
 }
 
 // DashboardDeletedAt returns when the dashboard was deleted, or nil when it is

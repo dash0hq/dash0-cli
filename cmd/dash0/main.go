@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,13 +16,14 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/authtokens"
 	"github.com/dash0hq/dash0-cli/internal/awsmetricscrapeconfigs"
-	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
-	"github.com/dash0hq/dash0-cli/internal/failedchecks"
+	"github.com/dash0hq/dash0-cli/internal/client"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/datasets"
+	"github.com/dash0hq/dash0-cli/internal/diff"
+	"github.com/dash0hq/dash0-cli/internal/failedchecks"
 	"github.com/dash0hq/dash0-cli/internal/help"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
@@ -86,6 +88,7 @@ func init() {
 	rootCmd.AddCommand(failedchecks.NewFailedChecksCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
+	rootCmd.AddCommand(diff.NewDiffCmd())
 	rootCmd.AddCommand(datasets.NewDatasetsCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
 	rootCmd.AddCommand(login.NewLoginCmd())
@@ -328,8 +331,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Determine which command will be executed (best-effort; Traverse may
-	// return the root command when persistent flags like -X come first).
+	// Traverse looks flags up in c.Flags(), which lacks persistent flags until
+	// cobra merges them lazily during Execute. Without this merge a boolean
+	// persistent flag before the subcommand (`dash0 --experimental diff ...`)
+	// is read as taking a value, swallows the subcommand name, and Traverse
+	// returns the root command. See TestTraverseTargetCommand.
+	rootCmd.Flags().AddFlagSet(rootCmd.PersistentFlags())
+
+	// Determine which command will be executed (best-effort; Traverse can still
+	// fall back to the root command for shapes it does not model).
 	targetCmd, _, _ := rootCmd.Traverse(os.Args[1:])
 
 	// Resolve agent mode before any output.
@@ -401,16 +411,36 @@ func main() {
 		ctx = client.WithMaxRetries(ctx, &v)
 	}
 
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		printError(err)
-		// Show usage only for flag/argument errors, not for runtime errors.
-		// Commands set SilenceUsage = true once past flag validation.
-		if !agentmode.Enabled && targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
-			fmt.Fprintln(os.Stderr)
-			_ = targetCmd.Usage()
+	if executedCmd, err := rootCmd.ExecuteContextC(ctx); err != nil {
+		// The executed command, not the pre-parse guess: Traverse misses diff
+		// behind a flag such as `--api-url <url>`, and diff exits 2 on error.
+		cmdName := executedCmd.Name()
+		// Pending differences are not a failure: diff already printed its
+		// report, so skip the "Error:" path and the usage text.
+		if !errors.As(err, new(*diff.PendingDifferencesError)) {
+			printError(err)
+			// Show usage only for flag/argument errors, not for runtime errors.
+			// Commands set SilenceUsage = true once past flag validation.
+			if !agentmode.Enabled && targetCmd != nil && targetCmd.Name() != "dash0" && !targetCmd.SilenceUsage {
+				fmt.Fprintln(os.Stderr)
+				_ = targetCmd.Usage()
+			}
 		}
-		os.Exit(1)
+		os.Exit(exitCodeForError(cmdName, err))
 	}
+}
+
+// exitCodeForError maps a command error to the process exit code. Every
+// command exits 1, except diff, which follows `kubectl diff`: 1 for pending
+// differences and 2 for a genuine error, so CI can tell the two apart.
+func exitCodeForError(cmdName string, err error) int {
+	if errors.As(err, new(*diff.PendingDifferencesError)) {
+		return 1
+	}
+	if cmdName == "diff" {
+		return 2
+	}
+	return 1
 }
 
 // installJSONHelp replaces the default help function on cmd and all

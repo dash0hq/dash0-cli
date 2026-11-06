@@ -32,46 +32,16 @@ import (
 // translated from internal IDs (what the server echoes) to email addresses,
 // so the apply diff renderer prints legible membership changes.
 func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) (ImportResult, error) {
-	// Capture identifiers before stripping — StripTeamServerFields clears the
-	// dash0.com/id label, so id-based routing must observe the input first.
-	origin := dash0api.GetTeamOrigin(team)
-	id := dash0api.GetTeamID(team)
-	dash0api.StripTeamServerFields(team)
-
-	action := ActionCreated
-	var before *dash0api.TeamDefinitionV1Alpha1
-	var upsertKey string
-	switch {
-	case origin != "":
-		upsertKey = origin
-		if existing, err := apiClient.GetTeam(ctx, origin); err == nil {
-			action = ActionUpdated
-			before = existing
-		}
-	case id != "":
-		// The preflight GET's outcome decides the route, so the kind of
-		// error matters. Only a genuine 404 permits POST fallback (cross-
-		// environment apply — the id belongs to another org). Any other
-		// error (5xx, auth failure, network blip) must surface — silently
-		// POSTing would create a duplicate on the very failure mode this
-		// path exists to prevent.
-		existing, err := apiClient.GetTeam(ctx, id)
-		switch {
-		case err == nil:
-			upsertKey = id
-			action = ActionUpdated
-			before = existing
-		case dash0api.IsNotFound(err):
-			// Fall through to POST.
-		default:
-			return ImportResult{}, err
-		}
+	hasOrigin := dash0api.GetTeamOrigin(team) != ""
+	plan, err := PlanTeam(ctx, apiClient, team)
+	// Only the id path's preflight decides the route, so only it can block the write.
+	if err != nil && !hasOrigin {
+		return ImportResult{}, err
 	}
 
 	var result *dash0api.TeamDefinitionV1Alpha1
-	var err error
-	if upsertKey != "" {
-		result, err = apiClient.UpsertTeam(ctx, upsertKey, team)
+	if plan.Key != "" {
+		result, err = apiClient.UpsertTeam(ctx, plan.Key, team)
 	} else {
 		result, err = apiClient.CreateTeam(ctx, team)
 	}
@@ -79,22 +49,53 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 		return ImportResult{}, err
 	}
 
-	// Translate spec.members from IDs to emails on both sides of the diff so
-	// membership changes render as "-bob@example.com" rather than opaque UUIDs.
-	// Failures are non-fatal — leave raw IDs in place if the members lookup
-	// fails for any reason.
-	_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, before)
+	// Emails render membership changes as "-bob@example.com" rather than
+	// opaque ids. A failed lookup leaves the raw ids in place.
+	if before, ok := plan.Before.(*dash0api.TeamDefinitionV1Alpha1); ok {
+		_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, before)
+	}
 	_ = dash0api.ResolveTeamMembersToEmails(ctx, apiClient, result)
 
-	resultID := dash0api.GetTeamID(result)
 	name := dash0api.GetTeamDisplayName(result)
 	if name == "" {
 		name = dash0api.GetTeamName(result)
 	}
-	var beforeAny any
-	if before != nil {
-		beforeAny = before
-	}
-	return ImportResult{Name: name, ID: resultID, Action: action, Before: beforeAny, After: result}, nil
+	return ImportResult{Name: name, ID: dash0api.GetTeamID(result), Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
+// PlanTeam picks the team's upsert key and reads the stored team that
+// ImportTeam would write. Origin wins over id, unless the origin is not found
+// and the id is, then the team is updated at the id. On the id path a 404
+// leaves Key empty, so the write falls back to POST. It returns any preflight
+// error other than "not found".
+//
+// The server stores member ids, so spec.members on Before holds ids. Callers
+// resolve them to emails and decide whether a failed lookup matters.
+func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) (ImportPlan, error) {
+	// StripTeamServerFields clears the dash0.com/id label, so read it first.
+	origin := dash0api.GetTeamOrigin(team)
+	id := dash0api.GetTeamID(team)
+	dash0api.StripTeamServerFields(team)
+
+	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: team}
+	lookupKey := origin
+	if lookupKey == "" {
+		lookupKey = id
+	}
+	if lookupKey == "" {
+		return plan, nil
+	}
+	existing, err := apiClient.GetTeam(ctx, lookupKey)
+	// An identity-provider origin such as "saml://..." is not addressable,
+	// while the exported id of the same team is, so updating at the id keeps
+	// apply from creating a second team.
+	if dash0api.IsNotFound(err) && lookupKey == origin && id != "" {
+		lookupKey = id
+		existing, err = apiClient.GetTeam(ctx, id)
+	}
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Key, plan.Action, plan.Before = lookupKey, ActionUpdated, existing
+	return plan, nil
+}

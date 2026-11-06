@@ -29,23 +29,13 @@ func RoutingAssetsWarning(channel *dash0api.NotificationChannelDefinition) strin
 // channel already exists.
 // When the input has no origin, CREATE is used and the server assigns an ID.
 func ImportNotificationChannel(ctx context.Context, apiClient dash0api.Client, channel *dash0api.NotificationChannelDefinition) (ImportResult, error) {
-	dash0api.StripNotificationChannelServerFields(channel)
-
-	action := ActionCreated
-	var before any
-	origin := dash0api.GetNotificationChannelOrigin(channel)
-	if origin != "" {
-		existing, err := apiClient.GetNotificationChannel(ctx, origin)
-		if err == nil {
-			action = ActionUpdated
-			before = existing
-		}
-	}
+	// A failed preflight does not block the write: the PUT reports the same error.
+	plan, _ := PlanNotificationChannel(ctx, apiClient, channel)
 
 	var result *dash0api.NotificationChannelDefinition
 	var err error
-	if origin != "" {
-		result, err = apiClient.UpdateNotificationChannel(ctx, origin, channel)
+	if plan.Key != "" {
+		result, err = apiClient.UpdateNotificationChannel(ctx, plan.Key, channel)
 	} else {
 		result, err = apiClient.CreateNotificationChannel(ctx, channel)
 	}
@@ -54,5 +44,23 @@ func ImportNotificationChannel(ctx context.Context, apiClient dash0api.Client, c
 	}
 
 	id := dash0api.GetNotificationChannelID(result)
-	return ImportResult{Name: dash0api.GetNotificationChannelName(result), ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: dash0api.GetNotificationChannelName(result), ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanNotificationChannel reads the stored channel that
+// ImportNotificationChannel would write, keyed by origin. It returns any
+// preflight error other than "not found".
+func PlanNotificationChannel(ctx context.Context, apiClient dash0api.Client, channel *dash0api.NotificationChannelDefinition) (ImportPlan, error) {
+	dash0api.StripNotificationChannelServerFields(channel)
+	origin := dash0api.GetNotificationChannelOrigin(channel)
+	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: channel}
+	if origin == "" {
+		return plan, nil
+	}
+	existing, err := apiClient.GetNotificationChannel(ctx, origin)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Action, plan.Before = ActionUpdated, existing
+	return plan, nil
 }

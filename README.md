@@ -384,6 +384,12 @@ Validate without applying:
 dash0 apply -f assets.yaml --dry-run
 ```
 
+Preview what `apply` would change against the live state, telling creates from updates (experimental, requires `-X`):
+
+```bash
+dash0 -X diff -f assets.yaml
+```
+
 Sync a directory to match its state as of a git ref, deleting assets removed since then (experimental, requires `-X`):
 
 ```bash

@@ -114,6 +114,7 @@ var topics = []topicSpec{
 		},
 		assetYAMLLabels: []string{"Dataset ("},
 	},
+	{name: "diff", sections: []string{"diff"}},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},
 	{name: "logs", sections: []string{"logs query", "logs send"}},

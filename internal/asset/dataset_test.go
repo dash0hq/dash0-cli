@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dashcolor "github.com/dash0hq/dash0-cli/internal/color"
@@ -116,4 +117,49 @@ func TestImportDataset_SendsNewSpecFields(t *testing.T) {
 	assert.Equal(t, anonymize, *rec.created.Spec.Privacy.IpAddresses.EndUser.Storage)
 	assert.Equal(t, upToCountry, *rec.created.Spec.Privacy.GeoLocation.EndUser.Storage)
 	assert.True(t, *rec.created.Spec.Processing.SpanEventsToLogs)
+}
+
+// storedDatasetClient serves a stored dataset that cannot be marshaled to
+// JSON, so building the diff preview fails, and records the update.
+type storedDatasetClient struct {
+	dash0api.Client
+	updated *dash0api.DatasetDefinition
+}
+
+func (storedDatasetClient) GetDataset(context.Context, string) (*dash0api.DatasetDefinition, error) {
+	outOfRange := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	return &dash0api.DatasetDefinition{
+		ApiVersion: DatasetAPIVersion,
+		Metadata: dash0api.DatasetMetadata{
+			Name:        "Prod",
+			Labels:      &dash0api.DatasetLabels{Dash0Comid: strPtr("prod")},
+			Annotations: &dash0api.DatasetAnnotations{Dash0ComcreatedAt: &outOfRange},
+		},
+	}, nil
+}
+
+func (c *storedDatasetClient) UpdateDataset(_ context.Context, _ string, d *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
+	c.updated = d
+	return d, nil
+}
+
+// The merge only builds the diff preview, so an apply must not depend on it.
+func TestImportDataset_DoesNotDependOnThePreviewMerge(t *testing.T) {
+	stored := &storedDatasetClient{}
+	storedDataset, err := stored.GetDataset(context.Background(), "prod")
+	require.NoError(t, err)
+	_, err = PreviewUpdate[dash0api.DatasetDefinition](storedDataset, &dash0api.DatasetDefinition{
+		ApiVersion: DatasetAPIVersion,
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("prod")}},
+	})
+	require.Error(t, err, "the stored dataset must break the preview merge, or this test proves nothing")
+
+	result, err := ImportDataset(context.Background(), stored, &dash0api.DatasetDefinition{
+		ApiVersion: DatasetAPIVersion,
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("prod")}},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, ActionUpdated, result.Action)
+	require.NotNil(t, stored.updated)
 }

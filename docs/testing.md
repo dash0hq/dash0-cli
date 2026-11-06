@@ -81,6 +81,7 @@ They need no live Dash0 credentials: the mock API server runs on the host and is
 - `test/e2e/Dockerfile` — a minimal Alpine image with `git` installed; never shipped, used only by this test tier.
 - `test/e2e/setup_test.go` — cross-compiles a linux binary for the container's architecture (on the host, so the module's local `go.mod` replace directives, if any, resolve normally) and builds the image once per test binary run.
 - `test/e2e/since_e2e_test.go` — one test per `--since` scenario fixture (see [Shared git-repo scenario fixtures](#shared-git-repo-scenario-fixtures) below), each starting a fresh container, copying the scenario's repo in, and asserting on `dash0`'s exit code and output.
+- `test/e2e/diff_e2e_test.go` — `diff --since` through the real binary: the deletion preview, the three-way exit code, and that `diff` sends no mutating request.
 - All files are tagged `//go:build e2e`, so `go build`/`go test` skip them unless `-tags e2e` is passed (as `make test-e2e` does).
 
 ## A note on container file ownership

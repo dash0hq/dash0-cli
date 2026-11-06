@@ -1,0 +1,46 @@
+kind: GitRepoFixture
+spec:
+  # A PrometheusRule CRD declaring two alerting rules under one dash0.com/id,
+  # removed entirely in the next commit. Each alert is upserted at its own
+  # derived id (<dash0.com/id>--<slug of "<group> - <alert>">), so the removal
+  # has to be reported as one deletion per alert; nothing is ever stored at the
+  # CRD's literal dash0.com/id. A surviving view keeps the target non-empty so
+  # this exercises the per-alert path, not the all-deletions path.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add a two-alert PrometheusRule and a view"
+        changes:
+          - op: add
+            name: rules.yaml
+            content: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: PrometheusRule
+              metadata:
+                name: service-alerts
+                labels:
+                  dash0.com/id: service-rule-id
+              spec:
+                groups:
+                  - name: Alerting
+                    rules:
+                      - alert: HighLatency
+                        expr: histogram_quantile(0.99, rate(latency_bucket[5m])) > 1
+                      - alert: HighErrorRate
+                        expr: sum(rate(errors[5m])) > 0.1
+          - op: add
+            name: view-b.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: View B
+                labels:
+                  dash0.com/id: view-b
+              spec:
+                query: "true"
+      - message: "remove the whole PrometheusRule CRD"
+        changes:
+          - op: delete
+            name: rules.yaml
