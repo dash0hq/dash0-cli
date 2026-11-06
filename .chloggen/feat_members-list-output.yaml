@@ -1,5 +1,0 @@
-change_type: enhancement
-component: members
-note: "Display organization roles in members list output."
-issues: [69]
-subtext: "The members list table displays full role values and leaves missing roles blank."
