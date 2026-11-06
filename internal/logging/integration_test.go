@@ -272,3 +272,124 @@ func TestQueryLogs_BackwardCompatWithExperimentalFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "Application started successfully")
 }
+
+// The deep link is commentary about the query, not part of its results, so in
+// table and CSV output it goes to stderr and never pollutes the piped stream.
+func TestQueryLogs_ExplorerURLGoesToStderrInTableOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "Open this query in Dash0:")
+	assert.NotContains(t, stdout, "Open this query in Dash0:")
+	assert.Contains(t, stdout, "Application started successfully", "results still go to stdout")
+}
+
+func TestQueryLogs_ExplorerURLGoesToStderrInCSVOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"logs", "query", "-o", "csv", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "Open this query in Dash0:")
+	assert.NotContains(t, stdout, "Open this query in Dash0:",
+		"a stray line here would corrupt the CSV for any parser reading stdout")
+}
+
+// In JSON output the link is carried in the document itself, as a sibling of
+// the OTLP payload, so an agent consuming stdout alone still gets it.
+func TestQueryLogs_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"logs", "query", "-o", "json", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload),
+		"stdout must remain a single valid JSON document")
+	assert.Contains(t, payload, "dash0ExplorerUrl")
+	assert.Contains(t, payload, "resourceLogs", "the OTLP payload stays at the top level")
+
+	var explorerURL string
+	require.NoError(t, json.Unmarshal(payload["dash0ExplorerUrl"], &explorerURL))
+	assert.Contains(t, explorerURL, "/goto/logs")
+
+	assert.NotContains(t, stderr, "Open this query in Dash0:",
+		"the link must not be duplicated onto stderr when it is already in the document")
+}
+
+// The link describes the query, not its results, so it is still offered when
+// nothing matched — that is often exactly when a human wants to look in the UI.
+func TestQueryLogs_ExplorerURLPrintedForEmptyResult(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQueryEmpty,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"logs", "query", "--api-url", server.URL, "--auth-token", testLogsAuthToken})
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		_ = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "Open this query in Dash0:")
+}

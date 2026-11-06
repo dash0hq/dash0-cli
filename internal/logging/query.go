@@ -242,14 +242,20 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamTable(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
+		err = streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
-		return collectAndRenderJSON(iter, totalLimit)
+		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
+	return nil
 }
 
 func resolveLogColumns(columns []string) ([]query.ColumnDef, error) {
@@ -348,7 +354,7 @@ func countRecords(resourceLogs []dash0api.ResourceLogs) int64 {
 	return count
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	total, err := iterateRecords(iter, totalLimit, func(r flatRecord) {
@@ -362,9 +368,6 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, s
 		fmt.Println("No log records found.")
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
-	}
-	if explorerURL != "" {
-		fmt.Printf("\nOpen this query in Dash0:\n    %s\n", explorerURL)
 	}
 	return nil
 }
@@ -391,7 +394,7 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, ski
 	return nil
 }
 
-func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64) error {
+func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit int64, explorerURL string) error {
 	var allResourceLogs []dash0api.ResourceLogs
 	var totalRecords int64
 
@@ -413,9 +416,9 @@ func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceLogs], totalLimit
 	if allResourceLogs == nil {
 		allResourceLogs = []dash0api.ResourceLogs{}
 	}
-	wrapper := map[string]any{
+	wrapper := query.AddExplorerURL(map[string]any{
 		"resourceLogs": allResourceLogs,
-	}
+	}, explorerURL)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(wrapper)

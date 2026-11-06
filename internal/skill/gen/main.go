@@ -425,6 +425,7 @@ var alwaysRewriteAnchors = map[string]string{
 // (e.g. metrics.md carries its own `#### Filter syntax`) keep the fast
 // in-file link.
 var intraDocAnchorRewrites = map[string]string{
+	"explorer-deep-links":              "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#explorer-deep-links",
 	"filter-syntax":                    "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#filter-syntax",
 	"precision-mode-adaptive-sampling": "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#precision-mode-adaptive-sampling",
 }
