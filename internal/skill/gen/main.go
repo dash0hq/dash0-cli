@@ -180,6 +180,13 @@ var topics = []topicSpec{
 		},
 	},
 	{
+		name:            "telemetry-transformation-rules",
+		includeQuickRef: true,
+		sections:        []string{"telemetry-transformation-rules"},
+		assetYAMLLabels: []string{"Telemetry transformation rule ("},
+		extraNote:       "For multi-document apply, origin-first reconciliation, `--dry-run`, and `--since` deletion, read `dash0 skill show apply`.",
+	},
+	{
 		name:            "time-series-aggregations",
 		includeQuickRef: true,
 		assetYAMLLabels: []string{"Time series aggregation ("},
@@ -435,6 +442,7 @@ var intraDocAnchorRewrites = map[string]string{
 	"explorer-deep-links":              "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#explorer-deep-links",
 	"filter-syntax":                    "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#filter-syntax",
 	"precision-mode-adaptive-sampling": "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#precision-mode-adaptive-sampling",
+	"telemetry-transformation-rules":   "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#telemetry-transformation-rules",
 }
 
 // hasHeadingAnchor reports whether content contains a heading whose

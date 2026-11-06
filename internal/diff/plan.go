@@ -95,6 +95,18 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		return []docPlan{{displayKind: "Dash0TimeSeriesAggregation", name: dash0api.GetTimeSeriesAggregationName(&aggregation), plan: plan, readDenied: denied}}, nil
 
+	case "telemetrytransformationrule":
+		rule, err := asset.ParseTelemetryTransformationRule(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		plan, err := asset.PlanTelemetryTransformationRule(ctx, apiClient, rule, dataset)
+		denied, err := readError(err, inNewDataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "telemetry transformation rule", AssetName: dash0api.GetTelemetryTransformationRuleName(rule)})
+		}
+		return []docPlan{{displayKind: "Dash0TelemetryTransformationRule", name: dash0api.GetTelemetryTransformationRuleName(rule), plan: plan, readDenied: denied}}, nil
+
 	case "dataset":
 		var ds dash0api.DatasetDefinition
 		if err := dash0yaml.Unmarshal(doc.Raw, &ds); err != nil {

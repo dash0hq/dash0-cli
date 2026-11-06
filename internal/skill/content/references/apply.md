@@ -5,7 +5,7 @@
 ### `apply`
 
 Apply asset definitions from a file, directory, or stdin.
-If an asset already exists (matched by ID), it is updated; otherwise it is created.
+If an asset already exists, matched by its kind-specific origin or ID, it is updated; otherwise it is created where that kind supports creation.
 
 ```bash
 dash0 apply -f <file|directory> [--dry-run] [--since <ref> [--force] [--accept-non-ancestor-ref]]
@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0TelemetryTransformationRule`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -101,6 +101,23 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > You therefore cannot apply one document to two datasets, as you can for every other asset kind.
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+
+`Dash0TelemetryTransformationRule` documents use the dataset-scoped telemetry transformation rules endpoint.
+They support multi-document files, `--dry-run`, and `--since` deletion by origin, falling back to ID.
+Use a fixed, unique `metadata.labels["dash0.com/origin"]` for repeat apply; it takes precedence over `dash0.com/id`.
+
+The reconciliation sequence differs from unconditional PUT upserts:
+
+- With an origin or ID, GET the full rule first; on a hit, replacement PUT preserves the explicit updated-at token, or uses the preflight token if the document has none.
+- On GET 404 with an origin, POST the new rule.
+  Only an explicit POST 409 triggers another GET: PUT the active rule with the same token rules if found, or PUT by origin to revive its tombstone if that GET still returns 404.
+- On GET 404 with only an ID, fail instead of creating a duplicate.
+  Other GET or POST failures surface as errors, not create-or-update fallbacks.
+- With neither origin nor ID, use plain POST; repeated applies can create duplicates.
+
+Every replacement includes exactly the document's examples; missing `spec.examples` removes stored examples.
+Use single-rule `get` exports when examples must survive, not `list` exports.
+The [rule document format](https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#telemetry-transformation-rules) uses ordered named transformations and has no `apiVersion` field.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
