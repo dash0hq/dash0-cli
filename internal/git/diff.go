@@ -80,7 +80,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 	var plan DeletionPlan
 
 	for key, path := range before.Identifiers {
-		if _, stillPresent := after.Identifiers[key]; stillPresent {
+		if survives(after, key) {
 			continue
 		}
 		deletion := Deletion{
@@ -207,4 +207,32 @@ func Diff(before, after Snapshot) DeletionPlan {
 	sort.Strings(plan.NoIdentifier)
 
 	return plan
+}
+
+// survives reports whether the asset behind key is still declared in after.
+// apply upserts PersesDashboard and Dashboard documents through the same
+// dashboard import (see applyDocument in internal/apply), so a file
+// re-authored from one kind spelling to the other under the same identifier
+// is still the same live dashboard, not a deletion. The key keeps its own
+// kind, so a real deletion is still reported under the spelling it had.
+func survives(after Snapshot, key IdentifierKey) bool {
+	if _, ok := after.Identifiers[key]; ok {
+		return true
+	}
+	if alias := equivalentDashboardKind(key.Kind); alias != "" {
+		_, ok := after.Identifiers[IdentifierKey{Kind: alias, Identifier: key.Identifier}]
+		return ok
+	}
+	return false
+}
+
+func equivalentDashboardKind(kind string) string {
+	switch kind {
+	case "dashboard":
+		return "persesdashboard"
+	case "persesdashboard":
+		return "dashboard"
+	default:
+		return ""
+	}
 }

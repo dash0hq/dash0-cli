@@ -620,6 +620,93 @@ spec:
 	assert.NotContains(t, stderr, "persesDashboard", "the kind name must never be turned into an invented hybrid casing either")
 }
 
+// TestApply_Since_DashboardReauthoredBetweenKindSpellingsIsNotDeleted is a
+// regression test for #270: apply upserts PersesDashboard and Dashboard
+// documents through the same dashboard import, so re-authoring a file from
+// one spelling to the other under the same identifier updates the live
+// dashboard. --since must not then DELETE that dashboard as if it had been
+// removed.
+func TestApply_Since_DashboardReauthoredBetweenKindSpellingsIsNotDeleted(t *testing.T) {
+	const persesYAML = `apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+  duration: 5m
+  panels: {}
+`
+	const plainYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  dash0Extensions:
+    id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
+	for _, tt := range []struct{ name, before, after string }{
+		{"PersesDashboard to Dashboard", persesYAML, plainYAML},
+		{"Dashboard to PersesDashboard", plainYAML, persesYAML},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "dashboard.yaml", tt.before)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			writeFileFixture(t, dir, "dashboard.yaml", tt.after)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "re-author dashboard")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureDashboardsImportSuccess,
+			})
+			server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+			// Any DELETE is the bug: fail it (with a status that is not
+			// retried) rather than let it pass as an idempotent "already
+			// deleted".
+			server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusBadRequest,
+				Body:       map[string]any{"error": "unexpected DELETE"},
+			})
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			stderr := testutil.CaptureStderr(t, func() {
+				testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+			})
+
+			require.NoError(t, cmdErr, "stderr: %s", stderr)
+			for _, req := range server.Requests() {
+				assert.NotEqual(t, http.MethodDelete, req.Method, "unexpected DELETE %s", req.Path)
+			}
+			assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, "/api/dashboards/"), "expected the dashboard to be updated")
+		})
+	}
+}
+
 // TestApply_Since_PrometheusRuleWholeCRDDeletion_RecordDroppedBeforeDeletion_StillDeletesRecordingRule
 // is a regression test for a bug where deleting a whole PrometheusRule CRD
 // undercounted which endpoints to clean up, based solely on the CRD's
