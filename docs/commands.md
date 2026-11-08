@@ -816,6 +816,14 @@ When the identifier is absent, both commands perform a plain create (POST) and t
 
 Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent, which is what GitOps and CI/CD workflows need.
 
+If the CLI reports an invalid API response after a create or update, the server may already have applied the write.
+Check the asset in Dash0 before retrying: a document without an identifier can create a second asset even though the first invocation reported an error.
+The error identifies the asset type and endpoint, includes decoding details when available, and warns about this possibility for POST and PUT responses.
+
+For dashboards, check rules, views, synthetic checks, recording rules, spam filters, notification channels, and teams addressed by origin, a preliminary GET supplies the existing state for reporting; a failed GET still allows the PUT to proceed.
+This lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
+Existing stricter preflights remain in effect: SLO preflights stop on errors other than 404, and reads that determine whether to POST or PUT (such as teams addressed by ID and datasets) also stop on non-404 errors.
+
 The identifier field location varies by asset kind:
 
 | Kind | Identifier field | Notes |
