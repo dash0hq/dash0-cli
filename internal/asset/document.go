@@ -178,6 +178,17 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// document's server-assigned id would not.
 		id = GetTimeSeriesAggregationOrigin(&aggregation)
 
+	case "telemetrytransformationrule":
+		rule, parseErr := ParseTelemetryTransformationRule(data)
+		if parseErr != nil {
+			return "", "", "", parseErr
+		}
+		name = dash0api.GetTelemetryTransformationRuleName(rule)
+		id = GetTelemetryTransformationRuleOrigin(rule)
+		if id == "" {
+			id = dash0api.GetTelemetryTransformationRuleID(rule)
+		}
+
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
 		if err := dash0yaml.Unmarshal(data, &team); err != nil {

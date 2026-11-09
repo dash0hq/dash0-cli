@@ -5,12 +5,13 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `telemetry-transformation-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `telemetry-transformation-rules`, `auth-tokens`, `aws-metric-scrape-configs`
 - Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0
+- `telemetry-transformation-rules` has no short top-level alias; use the full plural command name.
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `telemetry-transformation-rules`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -19,6 +20,11 @@ All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `s
 | `create`   | `add`    | Create a new asset from a file       |
 | `update`   | -        | Update an existing asset from a file |
 | `delete`   | `remove` | Delete an asset by ID                |
+
+For telemetry transformation rules, `get` and `delete` accept an origin or ID, and `update [origin-or-id] -f <file>` reads the body's origin, then ID, when the positional argument is absent.
+`create` is always POST-only and rejects duplicate origins; `update` requires an existing rule and never creates one.
+`apply` supports the same document format but reconciles by origin or ID, rather than sharing `create`'s POST-only behavior.
+The kind is `Dash0TelemetryTransformationRule`, with no `apiVersion` field in the current model.
 
 ### Idempotent `delete --force`
 Every `delete` subcommand — including `remove`-shaped variants like `members remove` and `teams remove-members` — must treat a 404 from the server as success when the caller passed `--force`.
@@ -141,6 +147,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dash0Skill`                | Agent0 skill         |
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
+| `Dash0TelemetryTransformationRule` | Telemetry transformation rule |
 | `Dash0AwsMetricScrapeConfig`| AWS metric scrape config |
 | `Dash0GenerativeAiEvaluation`| Eval |
 

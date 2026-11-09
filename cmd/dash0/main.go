@@ -39,6 +39,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
+	"github.com/dash0hq/dash0-cli/internal/telemetrytransformationrules"
 	"github.com/dash0hq/dash0-cli/internal/timeseriesaggregations"
 	"github.com/dash0hq/dash0-cli/internal/tracing"
 	versionpkg "github.com/dash0hq/dash0-cli/internal/version"
@@ -106,6 +107,7 @@ func init() {
 	rootCmd.AddCommand(syntheticchecks.NewSyntheticChecksCmd())
 	rootCmd.AddCommand(teams.NewTeamsCmd())
 	rootCmd.AddCommand(timeseriesaggregations.NewTimeSeriesAggregationsCmd())
+	rootCmd.AddCommand(telemetrytransformationrules.NewTelemetryTransformationRulesCmd())
 	rootCmd.AddCommand(tracing.NewSpansCmd())
 	rootCmd.AddCommand(tracing.NewTracesCmd())
 	rootCmd.AddCommand(views.NewViewsCmd())

@@ -1,0 +1,37 @@
+{
+  "kind": "Dash0TelemetryTransformationRule",
+  "metadata": {
+    "name": "normalize-logs",
+    "labels": {
+      "dash0.com/id": "ttr-123",
+      "dash0.com/origin": "dash0-cli-normalize-logs",
+      "dash0.com/dataset": "production",
+      "dash0.com/source": "dash0-cli"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-10-27T14:00:00Z",
+      "dash0.com/updated-at": "2026-10-27T14:03:08.123456789Z"
+    }
+  },
+  "spec": {
+    "enabled": false,
+    "display": {"name": "Normalize logs"},
+    "signal": "logs",
+    "context": "log",
+    "priority": 0,
+    "conditions": ["body != nil", "severity_number > 0"],
+    "transformations": [
+      {"name": "z-normalize", "statements": ["set(attributes[\"original\"], body)", "set(body, \"normalized\")"]},
+      {"name": "a-tag", "statements": ["set(attributes[\"normalized\"], true)"]}
+    ],
+    "examples": [{
+      "name": "Synthetic log",
+      "otlp": {
+        "resourceLogs": [{
+          "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "synthetic-demo"}}]},
+          "scopeLogs": [{"scope": {"name": "fixture"}, "logRecords": [{"body": {"stringValue": "demo log"}, "severityNumber": 9, "timeUnixNano": "1793109788123456789"}]}]
+        }]
+      }
+    }]
+  }
+}

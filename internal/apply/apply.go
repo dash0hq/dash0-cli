@@ -68,6 +68,7 @@ Supported asset types:
   - Dash0NotificationChannel
   - Dash0Team
   - Dash0TimeSeriesAggregation
+  - Dash0TelemetryTransformationRule
   - Dash0Dataset
   - Dash0Skill (Agent0 custom skill)
   - Dash0AwsMetricScrapeConfig
@@ -387,6 +388,17 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			})
 		}
 		return []applyResult{{kind: "Dash0TimeSeriesAggregation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "telemetrytransformationrule":
+		rule, err := asset.ParseTelemetryTransformationRule(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportTelemetryTransformationRule(ctx, apiClient, rule, dataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "telemetry transformation rule", AssetName: dash0api.GetTelemetryTransformationRuleName(rule)})
+		}
+		return []applyResult{{kind: "Dash0TelemetryTransformationRule", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
