@@ -259,14 +259,19 @@ func buildPostLoginRedirect(apiURL string, res callbackResult) string {
 // Production and staging Dash0 API hosts. Both shapes match:
 //
 //   - `api.dash0.com` / `api.dash0-dev.com` (the root)
-//   - `api.<region>.aws.dash0.com` / `api.<region>.aws.dash0-dev.com`
+//   - `api.<region>.<cloud>.dash0.com` / `api.<region>.<cloud>.dash0-dev.com`,
+//     where <cloud> is `aws` or `gcp`
+//
+// The cloud segment is an explicit alternation rather than a wildcard: it is
+// what keeps `api.<anything>.<anything>.dash0.com` from deriving a redirect
+// target, so a new cloud belongs here as a new alternative, not as `[a-z]+`.
 //
 // Anything else — including arbitrary sibling subdomains like
 // `api.staging.dash0.com` — is rejected so a future ad-hoc subdomain is
 // not silently treated as a redirect target.
 var (
-	prodAPIHostRE = regexp.MustCompile(`^api(\.[a-z0-9-]+\.aws)?\.dash0\.com$`)
-	devAPIHostRE  = regexp.MustCompile(`^api(\.[a-z0-9-]+\.aws)?\.dash0-dev\.com$`)
+	prodAPIHostRE = regexp.MustCompile(`^api(\.[a-z0-9-]+\.(aws|gcp))?\.dash0\.com$`)
+	devAPIHostRE  = regexp.MustCompile(`^api(\.[a-z0-9-]+\.(aws|gcp))?\.dash0-dev\.com$`)
 )
 
 // deriveAppHost returns the Dash0 web-app host the OAuth post-login redirect

@@ -15,6 +15,12 @@ func TestDeriveAppHost(t *testing.T) {
 		{"prod root", "https://api.dash0.com", "app.dash0.com"},
 		{"dev tenant", "https://api.dash0-dev.com", "app.dash0-dev.com"},
 		{"dev regional", "https://api.eu-west-1.aws.dash0-dev.com", "app.dash0-dev.com"},
+		// GCP regions serve the API on the same shape as AWS ones and must
+		// derive an app host too. These were rejected until the cloud segment
+		// became an alternation.
+		{"gcp prod", "https://api.europe-west4.gcp.dash0.com", "app.dash0.com"},
+		{"gcp dev", "https://api.europe-west4.gcp.dash0-dev.com", "app.dash0-dev.com"},
+		{"us-west-2 prod", "https://api.us-west-2.aws.dash0.com", "app.dash0.com"},
 		{"non-api host", "https://example.com", ""},
 		{"localhost", "http://127.0.0.1:8080", ""},
 		{"invalid URL", "not a url", ""},
@@ -29,6 +35,10 @@ func TestDeriveAppHost(t *testing.T) {
 		{"empty middle segment", "https://api..dash0.com", ""},
 		{"sibling of api in dash0", "https://api.attacker.dash0.com", ""},
 		{"wrong aws segment shape", "https://api.foo.bar.aws.dash0.com", ""},
+		// The cloud segment is an alternation, not a wildcard. An unrecognized
+		// one must not derive a host — that is what stops any two-segment
+		// sibling under dash0.com from becoming a redirect target.
+		{"unknown cloud segment", "https://api.foo.azure.dash0.com", ""},
 		// DNS hostnames are case-insensitive — Api.Dash0.com must derive
 		// the same app host as api.dash0.com.
 		{"mixed-case prod", "https://Api.Dash0.com", "app.dash0.com"},
