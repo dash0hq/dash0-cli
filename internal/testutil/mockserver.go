@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -245,11 +246,19 @@ const MockServerHost = "api.dash0.test"
 var routeMockHostOnce sync.Once
 
 // routeMockHostToLoopback makes http.DefaultTransport, which the CLI's API
-// clients use, connect to 127.0.0.1 for MockServerHost. Other hosts connect as
+// clients use, connect to 127.0.0.1 for MockServerHost, never through a proxy
+// from HTTP_PROXY, as for the 127.0.0.1 address itself. Other hosts connect as
 // before.
 func routeMockHostToLoopback() {
 	routeMockHostOnce.Do(func() {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
+		proxy := transport.Proxy
+		transport.Proxy = func(req *http.Request) (*url.URL, error) {
+			if req.URL.Hostname() == MockServerHost || proxy == nil {
+				return nil, nil
+			}
+			return proxy(req)
+		}
 		dial := transport.DialContext
 		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if host, port, err := net.SplitHostPort(addr); err == nil && host == MockServerHost {
