@@ -107,6 +107,9 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 	if d.Kind == "slo" && !d.SLOUsesOrigin {
 		fmt.Fprintf(os.Stderr, "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
 	}
+	if d.Kind == "generativeaievaluation" && !d.GenerativeAiEvaluationUsesOrigin {
+		fmt.Fprintf(os.Stderr, "warning: eval %s was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
+	}
 	if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
 		fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
 	}
@@ -207,6 +210,8 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteTeam(ctx, identifier)
 	case "skill":
 		err = apiClient.DeleteCustomSkill(ctx, identifier)
+	case "generativeaievaluation":
+		err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
 	case "dataset":
 		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
 		// The same path as `datasets delete`.

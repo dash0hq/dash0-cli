@@ -141,6 +141,13 @@ var topics = []topicSpec{
 			deletedAssetNote("recording-rules", "recording rule", "recording rules", "ID"),
 	},
 	{
+		name:            "evals",
+		includeQuickRef: true,
+		sections:        []string{"eval documents"},
+		assetYAMLLabels: []string{"Eval (generative AI evaluation"},
+		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
+	},
+	{
 		name:            "slos",
 		includeQuickRef: true,
 		sections:        []string{"slo documents and openslo v1 compatibility"},

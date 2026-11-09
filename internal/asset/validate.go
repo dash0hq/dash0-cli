@@ -22,7 +22,7 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 			// place to deliver it, so a created token's secret would be lost.
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.Location(), doc.Kind))
 		} else if !IsValidKind(doc.Kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.Location(), doc.Kind))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig, Dash0GenerativeAiEvaluation)", doc.Location(), doc.Kind))
 		} else if NormalizeKind(doc.Kind) == "spamfilter" {
 			// Catch unknown spam filter apiVersions during validation rather
 			// than after the first PUT, so a partial apply of a multi-doc input
@@ -65,6 +65,10 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 				if err := ValidateCustomSkill(&skill); err != nil {
 					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
 				}
+			}
+		} else if NormalizeKind(doc.Kind) == "generativeaievaluation" {
+			if _, err := ParseGenerativeAiEvaluation(doc.Raw); err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
 			}
 		} else if NormalizeKind(doc.Kind) == "awsmetricscrapeconfig" {
 			// A missing spec.namespaces would be sent as [] and stop all

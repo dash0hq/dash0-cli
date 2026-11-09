@@ -656,3 +656,26 @@ func TestParseDocumentHeader_DecodesEveryValidKind(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDocumentHeader_GenerativeAiEvaluation(t *testing.T) {
+	cases := map[string]struct {
+		labels string
+		wantID string
+	}{
+		"id wins for display": {"    dash0.com/origin: dash0-cli_relevance\n    dash0.com/id: eval_1\n", "eval_1"},
+		"origin fallback":     {"    dash0.com/origin: dash0-cli_relevance\n", "dash0-cli_relevance"},
+		"no identifiers":      {"    team: sre\n", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			doc := "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  name: relevance\n  labels:\n" + c.labels + "spec:\n  display:\n    name: Answer relevance\n"
+
+			kind, docName, id, err := ParseDocumentHeader([]byte(doc))
+
+			require.NoError(t, err)
+			assert.Equal(t, "Dash0GenerativeAiEvaluation", kind)
+			assert.Equal(t, "Answer relevance", docName, "the name comes from spec.display.name")
+			assert.Equal(t, c.wantID, id)
+		})
+	}
+}

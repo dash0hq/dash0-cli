@@ -1,0 +1,15 @@
+change_type: new_component
+
+component: evals
+
+note: "`dash0 -X evals list|get|create|update|delete` and `apply` manage the generative AI evaluations (evals) of a dataset."
+
+issues: [360]
+
+subtext: |
+  `apply` accepts `kind: Dash0GenerativeAiEvaluation` documents and upserts them by `dash0.com/origin`, with `dash0.com/id` as the fallback.
+  The CLI never sends `dash0.com/version`, so a write overwrites the stored eval unconditionally.
+  A change to `metadata.name` or to the judge output kind fails with an error that names the field and the fix.
+  `apply --since` deletes an eval whose document was removed from git.
+
+change_logs: []

@@ -192,6 +192,19 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		return []docPlan{{displayKind: asset.AwsMetricScrapeConfigKind, name: dash0api.GetAwsMetricScrapeConfigName(cfg), plan: plan}}, nil
 
+	case "generativeaievaluation":
+		var evaluation dash0api.GenerativeAiEvaluationDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &evaluation); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0GenerativeAiEvaluation: %w", err)
+		}
+		name := dash0api.GetGenerativeAiEvaluationName(&evaluation)
+		plan, err := asset.PlanGenerativeAiEvaluation(ctx, apiClient, &evaluation, dataset)
+		denied, err := readError(err, inNewDataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "eval", AssetName: name})
+		}
+		return []docPlan{{displayKind: "Dash0GenerativeAiEvaluation", name: name, plan: plan, readDenied: denied}}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)
 	}
