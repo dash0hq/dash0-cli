@@ -329,6 +329,38 @@ func TestQueryLogs_ExplorerURLGoesToStderrInCSVOutput(t *testing.T) {
 		"a stray line here would corrupt the CSV for any parser reading stdout")
 }
 
+// No Dash0 app host can be derived from an IP address, so the link is omitted
+// instead of pointing to a host such as app.0.1.
+func TestQueryLogs_NoExplorerURLForIPAddressAPIURL(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	ipURL := "http://" + server.Listener.Addr().String()
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"logs", "query", "-o", "json", "--api-url", ipURL, "--auth-token", testLogsAuthToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	assert.Contains(t, payload, "resourceLogs")
+	assert.NotContains(t, payload, "dash0ExplorerUrl")
+	assert.NotContains(t, stderr, "Open this query in Dash0:")
+}
+
 // In JSON output the link is carried in the document itself, as a sibling of
 // the OTLP payload, so an agent consuming stdout alone still gets it.
 func TestQueryLogs_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
