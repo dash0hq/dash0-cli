@@ -1,0 +1,12 @@
+change_type: bug_fix
+
+component: views
+
+note: "`views create`, `update`, `get`, and `apply` keep the `spec.frameFilters`, `spec.profileType`, `spec.stackFilters`, and `spec.sumBy` fields of profile views."
+
+issues: [359]
+
+subtext: |
+  Before, the CLI dropped these fields without a warning, so a profile view did not round-trip through `get -o yaml` and `apply`.
+
+change_logs: []
