@@ -10,6 +10,7 @@
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
+| Evals | `dash0 --experimental evals <subcommand>` | Experimental. Dataset-scoped generative AI evaluations; `kind: Dash0GenerativeAiEvaluation`; `metadata.labels["dash0.com/origin"]` is the upsert key. See [Eval documents](#eval-documents-experimental) |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |

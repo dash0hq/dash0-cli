@@ -71,6 +71,7 @@ Supported asset types:
   - Dash0Dataset
   - Dash0Skill (Agent0 custom skill)
   - Dash0AwsMetricScrapeConfig
+  - Dash0GenerativeAiEvaluation (eval)
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -444,6 +445,20 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
 		}
 		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+	case "generativeaievaluation":
+		var evaluation dash0api.GenerativeAiEvaluationDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &evaluation); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0GenerativeAiEvaluation: %w", err)
+		}
+		name := dash0api.GetGenerativeAiEvaluationName(&evaluation)
+		result, err := asset.ImportGenerativeAiEvaluation(ctx, apiClient, &evaluation, dataset)
+		if err != nil {
+			if explained := asset.ExplainGenerativeAiEvaluationError(err, name); explained != nil {
+				return nil, explained
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "eval", AssetName: name})
+		}
+		return []applyResult{{kind: "Dash0GenerativeAiEvaluation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)

@@ -1034,3 +1034,49 @@ func TestDiff_Since_MultiAlertCRDRemovalListsEachAlert(t *testing.T) {
 	assert.NotContains(t, output, `Delete PrometheusRule "service-alerts" (service-rule-id)`,
 		"no check rule is stored at a multi-alert CRD's literal dash0.com/id, so it must not be reported as the thing being deleted")
 }
+
+// A dropped 403 for an eval keeps its origin, so the warning names the eval by
+// the key that apply would PUT to.
+func TestDiff_EvalInDatasetCreatedInSameRunKeepsOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	withAgentMode(t, true)
+	dir := writeNewDatasetWithView(t)
+	require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "eval.yaml"), []byte(`kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+  labels:
+    dash0.com/origin: eval-origin
+spec:
+  enabled: true
+  judge:
+    model: standard
+    output:
+      kind: boolean
+    userPrompt: "{{ gen_ai.input.messages }}"
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: 1
+`), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodGet, "/api/generative-ai-evaluations/eval-origin", forbiddenResponse)
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+	})
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, output, `"originOrId": "eval-origin"`)
+	assert.Contains(t, stderr, `Eval "answer-relevance" (eval-origin): read denied`)
+}

@@ -46,7 +46,8 @@ type identifierProbe struct {
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill: dash0.com/origin, then dash0.com/id
+//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0GenerativeAiEvaluation:
+//     dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
 //     Dash0AwsMetricScrapeConfig):
 //     dash0.com/id
@@ -55,7 +56,7 @@ type identifierProbe struct {
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only SLOs, teams, spam filters, and Agent0 skills genuinely accept either field.
+// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, and evals genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
@@ -79,7 +80,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill":
+	case "slo", "spamfilter", "team", "skill", "generativeaievaluation":
 		if origin != "" {
 			return origin, nil
 		}

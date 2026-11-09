@@ -684,6 +684,23 @@ dash0 -X datasets create -f dataset.yaml
 dash0 -X datasets delete <id>
 ```
 
+### Evals (experimental)
+
+```bash
+# List the generative AI evaluations (evals) of the dataset
+dash0 -X evals list
+```
+
+```bash
+# Create or update an eval from a definition file
+dash0 -X apply -f eval.yaml
+```
+
+```bash
+# Export an eval, ready to re-apply
+dash0 -X evals get <origin-or-id> -o yaml > eval.yaml
+```
+
 ### Agent0 skills (experimental)
 
 ```bash

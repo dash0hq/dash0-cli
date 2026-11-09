@@ -96,6 +96,18 @@ const (
 	FixtureAgent0SkillsDuplicateName        = "agent0skills/error_duplicate_name.json"
 	FixtureAgent0SkillsDefaultEnabledDenied = "agent0skills/error_default_enabled_forbidden.json"
 
+	// Generative AI evaluation (eval) fixtures. The error messages are the server's own.
+	FixtureEvalsListSuccess         = "evals/list_success.json"
+	FixtureEvalsListEmpty           = "evals/list_empty.json"
+	FixtureEvalsGetSuccess          = "evals/get_success.json"
+	FixtureEvalsGetDeleted          = "evals/get_deleted.json"
+	FixtureEvalsCreateSuccess       = "evals/create_success.json"
+	FixtureEvalsUpdateSuccess       = "evals/update_success.json"
+	FixtureEvalsUpdateUnchanged     = "evals/update_unchanged.json"
+	FixtureEvalsNotFound            = "evals/error_not_found.json"
+	FixtureEvalsNameImmutable       = "evals/error_name_immutable.json"
+	FixtureEvalsOutputKindImmutable = "evals/error_output_kind_immutable.json"
+
 	// Datasets fixtures
 	FixtureDatasetsListSuccess   = "datasets/list_success.json"
 	FixtureDatasetsListEmpty     = "datasets/list_empty.json"

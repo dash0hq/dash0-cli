@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -526,8 +526,8 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All eleven of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
-Eight of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
+All twelve of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
+Nine of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
 The examples below use `dashboards`, but the same patterns apply to every command group.
 
 ### `list`
@@ -614,7 +614,7 @@ spec:
 ```
 
 `get` also returns a deleted asset, because the API keeps deleted assets instead of removing them.
-This applies to dashboards, check rules, synthetic checks, SLOs, views, recording rules, and time series aggregations.
+This applies to dashboards, check rules, synthetic checks, SLOs, evals, views, recording rules, and time series aggregations.
 The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`:
 
 ```bash
@@ -798,6 +798,7 @@ Aliases: `remove`
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
+| Evals | `dash0 --experimental evals <subcommand>` | Experimental. Dataset-scoped generative AI evaluations; `kind: Dash0GenerativeAiEvaluation`; `metadata.labels["dash0.com/origin"]` is the upsert key. See [Eval documents](#eval-documents-experimental) |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
@@ -836,6 +837,7 @@ The identifier field location varies by asset kind:
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
 | `SLO` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | OpenSLO v1 document (`apiVersion: openslo.com/v1`). SLO IDs are server-assigned (`slo_<ulid>`), so `dash0.com/origin` is the only client-settable upsert key and the recommended one. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/slos/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other errors surface. That POST fallback is not idempotent: the server assigns a new ID that the document does not carry, so each further apply POSTs again and creates another SLO — pin `dash0.com/origin` for any SLO applied more than once. A document with neither label creates a new SLO on every apply |
 | `View` | `metadata.labels["dash0.com/id"]` | |
+| `Dash0GenerativeAiEvaluation` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Eval (experimental). Eval IDs are server-assigned, so `dash0.com/origin` is the recommended key. `PUT /api/generative-ai-evaluations/{origin}` creates the eval when the origin is new, replaces it otherwise, and restores it when it was deleted. When only `dash0.com/id` is present the CLI preflights `GET /api/generative-ai-evaluations/{id}`: on hit it PUTs, on 404 it falls back to POST (a one-way create, like SLOs), and other errors surface. A document with neither label creates a new eval on every apply |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
@@ -847,7 +849,7 @@ The identifier field location varies by asset kind:
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
 Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
 
-For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
+For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, evals, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/generative-ai-evaluations/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
 Notification channels have no user-settable ID field at all, and for SLOs origin is not merely accepted but the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
@@ -1024,7 +1026,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1056,6 +1058,10 @@ On that POST fallback the foreign `dash0.com/id` is removed from the request bod
 The fallback is therefore a one-way create, not an idempotent one: the newly assigned ID is not written back into the document, so a second apply preflights the same unknown ID, 404s again, and POSTs a second SLO.
 Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
 A document with neither label creates a new SLO on every apply.
+
+`Dash0GenerativeAiEvaluation` documents are evals, dispatched to the dataset-scoped generative AI evaluations endpoint.
+`dash0.com/origin` is the upsert key, with `dash0.com/id` as the fallback, the same as for `SLO` documents above.
+See [Eval documents](#eval-documents-experimental) for the fields the CLI removes before it writes and the fields that cannot change after create.
 
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
@@ -1268,6 +1274,9 @@ keep.yaml: Dashboard "Production Overview" (a1b2c3d4-...) created
 Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), removed since --since ref? [y/N]: y
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
+
+A `Dash0GenerativeAiEvaluation` document removed since `<ref>` deletes the eval by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `evals delete`.
+As for SLOs, `--since` warns before it deletes an eval identified by `dash0.com/id` alone, because the live eval may sit at a different, server-assigned ID.
 
 A `Dash0Skill` document removed since `<ref>` deletes the skill by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `agent0 skills delete`.
 
@@ -1760,6 +1769,37 @@ The server rejects a `custom_skill:write` grant on a skill whose origin marks it
 `dash0.com/enabled` is per user, so it is never sent; set `defaultEnabled: false` on a grant to ship the skill turned off for the users that grant matches.
 Only admins may set `defaultEnabled` on any grant; members only on their own user grant or on a grant to a team they belong to.
 
+Eval (generative AI evaluation; dataset-scoped, requires `--experimental` for the `evals` commands):
+
+```yaml
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+  labels:
+    dash0.com/origin: dash0-cli_answer-relevance
+  annotations:
+    dash0.com/folder-path: /checkout
+spec:
+  display:
+    name: Answer relevance
+    description: Judges whether the answer addresses the question.
+  enabled: true
+  judge:
+    model: standard
+    output:
+      kind: boolean
+    systemPrompt: You judge whether an answer is relevant to the question.
+    userPrompt: "Question: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}"
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: 0.25
+```
+
+See [Eval documents](#eval-documents-experimental) for the fields that cannot change after create.
+
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
 ```yaml
@@ -1925,6 +1965,70 @@ SLO evaluation also applies a fixed 5-minute settling delay: at any moment the S
 The operator defines an `openslo.com/v1` `SLO` CRD (group `openslo.com`, kind `SLO`, version `v1`) whose spec is the same supported subset — `description`, `service`, `budgetingMethod`, `timeWindow`, an inline `indicator` with a `ratioMetric` over `good`/`total` Prometheus sources, and `objectives` — and it deliberately omits `alertPolicies` and `indicatorRef`.
 So one document body can be applied through the CLI, the Terraform provider, or `kubectl apply`.
 That CRD is not released yet ([dash0hq/dash0-operator#1247](https://github.com/dash0hq/dash0-operator/pull/1247)), so treat the `kubectl apply` path as forthcoming rather than available today.
+
+### Eval documents (experimental)
+
+An eval (generative AI evaluation) uses a judge model to score a sample of the generative AI spans in a dataset.
+`dash0 --experimental evals` manages evals with the five standard subcommands, and `apply` accepts `kind: Dash0GenerativeAiEvaluation` (see the [YAML example](#asset-yaml-formats)).
+The command is also available under the alias `generative-ai-evaluations`.
+
+List the evals of the dataset:
+
+```bash
+dash0 --experimental evals list -o wide
+```
+
+Export an eval to a file:
+
+```bash
+dash0 --experimental evals get dash0-cli_answer-relevance -o yaml > eval.yaml
+```
+
+Create an eval from a file:
+
+```bash
+dash0 --experimental evals create -f eval.yaml
+```
+
+Preview an update without applying it:
+
+```bash
+dash0 --experimental evals update -f eval.yaml --dry-run
+```
+
+Delete an eval without a confirmation prompt:
+
+```bash
+dash0 --experimental evals delete dash0-cli_answer-relevance --force
+```
+
+`get`, `update`, and `delete` take an ID or a `dash0.com/origin`.
+`update` addresses the eval by the argument, else the file's origin, else its ID, and fails with "not found" for an eval that does not exist, instead of creating one.
+`list -o wide` and `-o csv` add the `DATASET` and `ORIGIN` columns; there is no `URL` column.
+
+> [!IMPORTANT]
+> Eval origins are unique per organization, while each eval belongs to exactly one dataset.
+> You therefore cannot apply one document to two datasets.
+> The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
+> Use a distinct origin per dataset, for example `answer-relevance-staging`.
+
+**`metadata.name` and `spec.judge.output.kind` cannot change after create.**
+`metadata.name` identifies the eval and its results within the dataset and must be unique there; rename the eval in Dash0 with `spec.display.name` instead.
+Results are stored per output kind (`boolean`, `numeric`, or `categorical`), so a different output kind needs a new eval with a new `metadata.name` and origin.
+A write that changes either field fails with an error that names the field and the fix.
+
+**The CLI never sends `dash0.com/version`.**
+Without it the server overwrites the stored eval unconditionally, so a document exported earlier still applies after somebody changed the eval in the UI.
+The CLI also removes `dash0.com/id`, `dash0.com/source`, `dash0.com/dataset`, and the created, updated, and deleted timestamps before it writes; it keeps `dash0.com/origin`, `dash0.com/folder-path`, `dash0.com/sharing`, and the whole `spec`.
+
+**`spec.match.filters` must contain a `gen_ai.operation.name` filter with operator `is_set` and no value.**
+The server rejects a create or update without it.
+`evals create`, `evals update`, and `apply` check this filter before any API call, also with `--dry-run`.
+They also check that `metadata.name`, `spec.judge.model`, `spec.judge.output.kind`, and `spec.judge.userPrompt` are set, and that `spec.sample.rate` is between 0 and 1.
+`spec.enabled` and `spec.sample.rate` must be present, because a document without them would create an eval that never samples a trace.
+If one document of an `apply` fails this check, `apply` writes no document.
+
+Version history and eval templates are not available from the CLI.
 
 ## Query commands
 

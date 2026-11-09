@@ -132,6 +132,16 @@ func marshalForDiff(asset any) (string, error) {
 		// reflect only the user-authored document.
 		dash0api.StripSLOServerFields(&s)
 		stripped = &s
+	case *dash0api.GenerativeAiEvaluationDefinition:
+		var e dash0api.GenerativeAiEvaluationDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &e); err != nil {
+			return "", fmt.Errorf("failed to unmarshal eval: %w", err)
+		}
+		// The server bumps dash0.com/version and dash0.com/updated-at on every
+		// PUT, even for an unchanged body, so both sides are stripped to keep a
+		// reapply of unchanged content at "no changes".
+		dash0api.StripGenerativeAiEvaluationServerFields(&e)
+		stripped = &e
 	case *dash0api.TimeSeriesAggregationDefinition:
 		var a dash0api.TimeSeriesAggregationDefinition
 		if err := dash0yaml.Unmarshal(jsonBytes, &a); err != nil {

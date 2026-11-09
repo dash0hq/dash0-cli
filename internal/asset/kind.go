@@ -27,7 +27,7 @@ func IsValidKind(kind string) bool {
 // ValidKinds lists every normalized kind apply accepts. Tests check that
 // ParseDocumentHeader, applyDocument, and diff's planDocument each handle every
 // one, so a kind missing from any of them fails a test.
-var ValidKinds = []string{"dashboard", "checkrule", "syntheticcheck", "slo", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team", "timeseriesaggregation", "dataset", "skill", "awsmetricscrapeconfig"}
+var ValidKinds = []string{"dashboard", "checkrule", "syntheticcheck", "slo", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team", "timeseriesaggregation", "dataset", "skill", "awsmetricscrapeconfig", "generativeaievaluation"}
 
 // KindDisplayName returns the human-readable name for an asset kind.
 // Multi-word kinds like "CheckRule" become "Check rule" and "SyntheticCheck"
@@ -67,6 +67,8 @@ func KindDisplayName(kind string) string {
 		return "AWS metric scrape config"
 	case "skill":
 		return "Agent0 skill"
+	case "generativeaievaluation":
+		return GenerativeAiEvaluationDisplayName
 	default:
 		return kind
 	}

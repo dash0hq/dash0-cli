@@ -29,6 +29,10 @@ type Deletion struct {
 	// which for a server-assigned id may name no live SLO at all — see
 	// asset.SLOUsesOrigin.
 	SLOUsesOrigin bool
+	// GenerativeAiEvaluationUsesOrigin is the same signal for Kind
+	// "generativeaievaluation", whose ids are server-assigned too — see
+	// asset.GenerativeAiEvaluationUsesOrigin.
+	GenerativeAiEvaluationUsesOrigin bool
 	// PrometheusAlerts carries every alerting rule the CRD had at the
 	// "before" snapshot, when Kind is "prometheusrule" (nil for every other
 	// kind, and for a CRD with zero or one alert). A CRD with two or more
@@ -84,11 +88,12 @@ func Diff(before, after Snapshot) DeletionPlan {
 			continue
 		}
 		deletion := Deletion{
-			Kind:                 key.Kind,
-			Identifier:           key.Identifier,
-			Path:                 path,
-			SpamFilterUsesOrigin: before.SpamFilterUsesOriginByIdentifier[key.Identifier],
-			SLOUsesOrigin:        before.SLOUsesOriginByIdentifier[key.Identifier],
+			Kind:                             key.Kind,
+			Identifier:                       key.Identifier,
+			Path:                             path,
+			SpamFilterUsesOrigin:             before.SpamFilterUsesOriginByIdentifier[key.Identifier],
+			SLOUsesOrigin:                    before.SLOUsesOriginByIdentifier[key.Identifier],
+			GenerativeAiEvaluationUsesOrigin: before.GenerativeAiEvaluationUsesOriginByIdentifier[key.Identifier],
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
