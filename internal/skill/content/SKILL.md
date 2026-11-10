@@ -17,7 +17,7 @@ description: Use when working with Dash0 observability data or configuration via
 |----------|----------|-----------------|
 | Authentication | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | Configuration | `config profiles`, `config show` | Profile management, no API calls |
-| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -39,9 +39,9 @@ Agent mode optimizes the CLI for AI agents: JSON output by default, structured `
 
 ## How asset commands work
 
-All ten asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`.
+All eleven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`. `update`'s diff (and `diff`'s) is computed semantically: cosmetic differences (key order, duration formatting, int-vs-float, API-populated defaults) never produce a spurious "changed" result.
 
-`dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic.
+`dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic. `dash0 --experimental diff -f <file|directory>` previews what `apply` would do, fetching each document's current state from Dash0 first so it can tell a create from an update, without mutating anything; see the `diff` topic.
 
 ### Asset identifiers and idempotent upsert
 
@@ -99,6 +99,16 @@ Common attribute keys: `service.name`, `otel.log.severity.number`, `otel.log.sev
 ## Precision mode (adaptive sampling)
 
 By default the API applies adaptive sampling to log and span queries for speed on large datasets. Pass `--precision disabled` to `logs query` or `spans query` for deterministic, complete results (higher latency) on narrow lookups like a specific trace or request ID; `--precision adaptive` is the explicit default. `traces get` always disables sampling and doesn't accept the flag; `metrics instant` and `failed-checks query` don't honor it.
+
+## Explorer deep links
+
+`logs query`, `spans query`, `failed-checks query`, and `traces get` print a link that reopens the same query in the Dash0 web app, below the results, prefixed by `Open this query in Dash0:` (`Open this trace in Dash0:` for `traces get`). The link carries the filters, time range, and dataset, so it is what to hand a human who should look at the same result set.
+
+Where it appears depends on the format. In `json` output — the agent-mode default — it is a top-level `dash0ExplorerUrl` field, a sibling of `resourceLogs`/`resourceSpans`/`issues`, so reading stdout alone is enough. In `table` and `csv` output it goes to stderr instead, keeping the piped result stream clean.
+
+The field is omitted when no link could be built (an `api-url` host with a single label, such as `localhost`, or an IP address). It is emitted even when the query matched nothing. `metrics instant` emits no deep link.
+
+Note that `logs query`, `spans query`, and `traces get` emit OTLP/JSON, and `dash0ExplorerUrl` is a Dash0 extension to it: a strict OpenTelemetry protobuf-JSON parser rejects unknown fields, so strip it with `jq 'del(.dash0ExplorerUrl)'` before feeding that output to one.
 
 ## Common workflows for AI agents
 
@@ -160,7 +170,7 @@ dash0 apply -f assets/ --dry-run
 dash0 --experimental apply -f assets/ --since HEAD~1 --force
 ```
 
-Preview the plan first with `--dry-run` — see the `apply` topic for the full reference, including the GitHub Actions invocation pattern and ref-resolution edge cases.
+Preview the plan first with `dash0 --experimental diff -f assets/ --since HEAD~1` — see the `apply` topic for the full reference, including the GitHub Actions invocation pattern and ref-resolution edge cases.
 
 ## Topics
 
@@ -176,7 +186,9 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |
+| `diff` | Preview what `apply` would do (create, update, delete), without mutating anything |
 | `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
+| `evals` | Generative AI evaluation (eval) CRUD (dataset-scoped, experimental; `kind: Dash0GenerativeAiEvaluation`; `dash0.com/origin` is the upsert key; `metadata.name` and the judge output kind cannot change) |
 | `failed-checks` | Query active and historical alerting issues |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
 | `logs` | Query and send log records |

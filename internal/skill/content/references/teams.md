@@ -54,6 +54,7 @@ Create a team. Two modes are supported.
 
 **Declarative** — read a `TeamDefinitionV1Alpha1` YAML/JSON document.
 Origin wins over id when both labels are present, and `dash0.com/origin` upserts via PUT (create-or-replace).
+When the origin is not found but the id is, the team is updated at the id.
 When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST (cross-org apply spawns a fresh team with a server-assigned id), and any other error surfaces.
 A document with neither label is created via POST and the server assigns id and origin.
 See the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section for the full rationale.

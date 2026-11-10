@@ -114,6 +114,7 @@ var topics = []topicSpec{
 		},
 		assetYAMLLabels: []string{"Dataset ("},
 	},
+	{name: "diff", sections: []string{"diff"}},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},
 	{name: "logs", sections: []string{"logs query", "logs send"}},
@@ -138,6 +139,13 @@ var topics = []topicSpec{
 			"rules is dispatched to both the check-rule and recording-rule endpoints in a single `apply` — see the " +
 			"\"Mixed PrometheusRule\" example above.\n\n" +
 			deletedAssetNote("recording-rules", "recording rule", "recording rules", "ID"),
+	},
+	{
+		name:            "evals",
+		includeQuickRef: true,
+		sections:        []string{"eval documents"},
+		assetYAMLLabels: []string{"Eval (generative AI evaluation"},
+		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
 	},
 	{
 		name:            "signal-to-metrics-rules",
@@ -442,6 +450,7 @@ var alwaysRewriteAnchors = map[string]string{
 // (e.g. metrics.md carries its own `#### Filter syntax`) keep the fast
 // in-file link.
 var intraDocAnchorRewrites = map[string]string{
+	"explorer-deep-links":              "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#explorer-deep-links",
 	"filter-syntax":                    "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#filter-syntax",
 	"precision-mode-adaptive-sampling": "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#precision-mode-adaptive-sampling",
 }

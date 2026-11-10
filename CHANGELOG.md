@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.20.0
+
+
+### New Components
+
+
+- `auth-tokens`: `dash0 -X auth-tokens list|get|create|update|delete` manages the auth tokens of your organization. (#329)
+  `create` prints the new token's secret once on an interactive terminal, or writes it to a new file with `--secret-file`.
+  In CI, in a pipe, or in agent mode, `create` fails before it creates anything unless `--secret-file` is set.
+  No other command or output format shows the secret.
+  Granting the `*` action needs `--allow-all-actions`.
+  `apply` does not support auth tokens yet.
+  
+
+- `aws-metric-scrape-configs`: `dash0 -X aws-metric-scrape-configs get|update|delete` manages which CloudWatch metrics Dash0 scrapes for an AWS integration, and `apply` accepts `Dash0AwsMetricScrapeConfig` documents. (#340)
+  Each AWS integration has one scrape config, addressed by the integration id.
+  `update` and `apply` replace the whole config, and `delete` clears it while keeping the integration.
+  A config exported with `get -o yaml` applies back without a diff.
+  A document without `spec.namespaces`, or with an unknown field under `spec`, fails before any API call.
+  
+
+- `agent0`: `dash0 -X agent0 skills list|get|create|update|delete` and `apply` manage the Agent0 custom skills of your organization. (#347)
+  `apply` accepts `kind: Dash0Skill` documents and upserts them by `dash0.com/origin`; without an origin, `dash0.com/id` updates an existing skill only.
+  `spec.permissions`, `defaultEnabled` included, round-trips through `agent0 skills get -o yaml` and `apply`.
+  `spec.source` and the per-user `dash0.com/enabled` annotation are never sent.
+  `apply --since` deletes a skill whose document was removed from git.
+  
+
+
+### Enhancements
+
+
+- `members`: Display organization roles in members list output. (#69)
+  The members list table displays full role values and leaves missing roles blank.
+
+
+### Bug Fixes
+
+
+- `homebrew`: The Homebrew cask uses `postflight_steps` instead of the deprecated `postflight`, so Homebrew no longer warns about it. (#330)
+
+- `github-actions`: The `setup`, `send-log-event` and `sync-assets` actions no longer trigger the Node.js 20 deprecation warning. (#336)
+  `actions/cache/restore` and `actions/cache/save` move from v4.3.0 (Node.js 20) to v6.1.0 (Node.js 24).
+  
+
 ## 1.19.0
 
 

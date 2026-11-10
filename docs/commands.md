@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -29,6 +29,7 @@ A profile can be in one of three auth states: **static** (holds a long-lived `au
 **Asset CRUD commands** create, list, get, update, and delete dataset-scoped assets (dashboards, views, check rules, synthetic checks, recording rules).
 They use file-based input (`-f`), support `--dry-run`, and offer five output formats (`table`, `wide`, `json`, `yaml`, `csv`).
 The `apply` command provides create-or-update semantics across all asset types, and (experimentally, via `--since`) delete semantics based on git history.
+The experimental `diff` command previews what `apply` would do, fetching each document's current state from Dash0 first so it can tell a create from an update, without creating, updating, or deleting anything.
 
 **Query commands** search and retrieve telemetry signals.
 They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
@@ -525,8 +526,8 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All twelve of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
-Nine of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
+All thirteen of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
+Ten of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
 The examples below use `dashboards`, but the same patterns apply to every command group.
 
 ### `list`
@@ -613,7 +614,7 @@ spec:
 ```
 
 `get` also returns a deleted asset, because the API keeps deleted assets instead of removing them.
-This applies to dashboards, check rules, synthetic checks, SLOs, views, recording rules, time series aggregations, and signal-to-metrics rules.
+This applies to dashboards, check rules, synthetic checks, SLOs, evals, views, recording rules, time series aggregations, and signal-to-metrics rules.
 The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`:
 
 ```bash
@@ -681,6 +682,9 @@ Update an existing asset from a YAML or JSON file.
 If the ID argument is omitted, the ID is extracted from the file content.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
+
+The diff is computed semantically, not as a raw text diff: cosmetic differences, such as key order, duration formatting (`2m` vs. `2m0s`), int-vs-float representation, and API-populated defaults absent from the local file, never produce a spurious "changed" result.
+See [`diff`](#diff-experimental) for what the comparison does and does not normalize.
 
 ```bash
 dash0 dashboards update [id] -f <file> [--dry-run]
@@ -794,6 +798,7 @@ Aliases: `remove`
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
+| Evals | `dash0 --experimental evals <subcommand>` | Experimental. Dataset-scoped generative AI evaluations; `kind: Dash0GenerativeAiEvaluation`; `metadata.labels["dash0.com/origin"]` is the upsert key. See [Eval documents](#eval-documents-experimental) |
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
@@ -813,6 +818,14 @@ When the identifier is absent, both commands perform a plain create (POST) and t
 
 Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent, which is what GitOps and CI/CD workflows need.
 
+If the CLI reports an invalid API response after a create or update, the server may already have applied the write.
+Check the asset in Dash0 before retrying: a document without an identifier can create a second asset even though the first invocation reported an error.
+The error identifies the asset type and endpoint, includes decoding details when available, and warns about this possibility for POST and PUT responses.
+
+For dashboards, check rules, views, synthetic checks, recording rules, spam filters, notification channels, and teams addressed by origin, a preliminary GET supplies the existing state for reporting; a failed GET still allows the PUT to proceed.
+This lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
+Existing stricter preflights remain in effect: SLO preflights stop on errors other than 404, and reads that determine whether to POST or PUT (such as teams addressed by ID and datasets) also stop on non-404 errors.
+
 The identifier field location varies by asset kind:
 
 | Kind | Identifier field | Notes |
@@ -825,6 +838,7 @@ The identifier field location varies by asset kind:
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
 | `SLO` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | OpenSLO v1 document (`apiVersion: openslo.com/v1`). SLO IDs are server-assigned (`slo_<ulid>`), so `dash0.com/origin` is the only client-settable upsert key and the recommended one. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/slos/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other errors surface. That POST fallback is not idempotent: the server assigns a new ID that the document does not carry, so each further apply POSTs again and creates another SLO — pin `dash0.com/origin` for any SLO applied more than once. A document with neither label creates a new SLO on every apply |
 | `View` | `metadata.labels["dash0.com/id"]` | |
+| `Dash0GenerativeAiEvaluation` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Eval (experimental). Eval IDs are server-assigned, so `dash0.com/origin` is the recommended key. `PUT /api/generative-ai-evaluations/{origin}` creates the eval when the origin is new, replaces it otherwise, and restores it when it was deleted. When only `dash0.com/id` is present the CLI preflights `GET /api/generative-ai-evaluations/{id}`: on hit it PUTs, on 404 it falls back to POST (a one-way create, like SLOs), and other errors surface. A document with neither label creates a new eval on every apply |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
 | `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Signal-to-metrics rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/signal-to-metrics/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/signal-to-metrics/{id}`: on hit it PUTs, on 404 it POSTs without the ID, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply. As for time series aggregations, origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document to two datasets |
@@ -832,12 +846,12 @@ The identifier field location varies by asset kind:
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level Agent0 custom skill. `dash0.com/origin` is the upsert key: `PUT /api/agent0/custom-skills/{origin}` creates the skill when the origin is new and replaces it otherwise. Use a `dash0-cli_` prefix so Dash0 shows the skill as managed by the CLI. When only `dash0.com/id` is present the CLI preflights `GET /api/agent0/custom-skills/{id}`: on hit it PUTs, on 404 it fails instead of creating, because the id is server-assigned. A document with neither label creates the skill with POST; the skill name, from the `SKILL.md` frontmatter, is unique per organization, so a second apply fails with a name collision instead of creating a duplicate |
-| `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
+| `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When the document carries both labels and the origin is not found but the id is, the CLI updates the team at the id, so an exported SSO/SCIM team (origin `saml://...`) does not become a second team. When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
 Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
 
-For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, signal-to-metrics rules, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/signal-to-metrics/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
+For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, evals, signal-to-metrics rules, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/generative-ai-evaluations/{origin}`, `PUT /api/signal-to-metrics/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
 Notification channels have no user-settable ID field at all, and for SLOs origin is not merely accepted but the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
@@ -1014,7 +1028,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1047,6 +1061,10 @@ The fallback is therefore a one-way create, not an idempotent one: the newly ass
 Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
 A document with neither label creates a new SLO on every apply.
 
+`Dash0GenerativeAiEvaluation` documents are evals, dispatched to the dataset-scoped generative AI evaluations endpoint.
+`dash0.com/origin` is the upsert key, with `dash0.com/id` as the fallback, the same as for `SLO` documents above.
+See [Eval documents](#eval-documents-experimental) for the fields the CLI removes before it writes and the fields that cannot change after create.
+
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
@@ -1067,7 +1085,9 @@ The `admin` grant the server adds to every skill is left out of the request and 
 A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
+Upsert key selection: `dash0.com/origin` wins when present and PUTs at that origin.
+When the document also carries `dash0.com/id` and the origin is not found, the CLI reads the team by its id, and on hit it PUTs at the id.
+This keeps an exported SSO/SCIM-provisioned team, whose `saml://...` origin the teams endpoint cannot resolve, from being created a second time.
 When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
 A document with neither label creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
@@ -1267,6 +1287,9 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
+A `Dash0GenerativeAiEvaluation` document removed since `<ref>` deletes the eval by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `evals delete`.
+As for SLOs, `--since` warns before it deletes an eval identified by `dash0.com/id` alone, because the live eval may sit at a different, server-assigned ID.
+
 A `Dash0Skill` document removed since `<ref>` deletes the skill by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `agent0 skills delete`.
 
 A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
@@ -1306,10 +1329,21 @@ Check rule "service-alerts - HighLatency" deleted
 
 Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with:
 
+The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
+
+```bash
+$ dash0 --experimental apply -f rules/ --since HEAD~1 --dry-run
+Dry run: 0 documents from 0 files validated; 2 deletions pending due to --since 'HEAD~1'
+  alerts.yaml
+    * Delete Check rule "service-alerts - HighErrorRate" (app-rules--service-alerts-higherrorrate)
+    * Delete Check rule "service-alerts - HighLatency" (app-rules--service-alerts-highlatency)
+```
+
+The run itself prints one line for the whole CRD:
+
 ```bash
 $ dash0 --experimental apply -f rules/ --since HEAD~1 --force
-Check rule "service-alerts - HighLatency" deleted
-Check rule "service-alerts - HighErrorRate" deleted
+PrometheusRule "service-alerts" (app-rules) deleted
 ```
 
 Recording rules get the symmetric treatment, but at CRD granularity rather than per-record: Dash0 models a CRD's recording rules as a single server-side resource, not one per `record:` entry, so there is no per-record id to delete by the way there is a per-alert composed name.
@@ -1350,6 +1384,122 @@ Quote the interpolated ref and gate the whole step on the event actually providi
 ```
 
 `fetch-depth: 0` (or a depth covering `github.event.before`) is required on the preceding `actions/checkout` step — a shallow clone makes `<ref>` unresolvable, which `--since` treats as a plain error, not a fallback.
+
+### `diff` (experimental)
+
+Preview what `apply` would do to a file, directory, or stdin, without creating, updating, or deleting anything.
+Requires `--experimental`/`-X`.
+
+```bash
+dash0 --experimental diff -f <file|directory> [--since <ref>]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Path to a YAML/JSON file, a directory, or `-` for stdin |
+| `--since` | | Also preview deletions: assets removed from `-f`'s contents since this git ref |
+
+Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash0 first (when the document carries an identifier), so it can tell a create from an update accurately — `--dry-run` is local-only and cannot make that distinction.
+For an update, `diff` prints a unified diff between the fetched state and the local definition, identical in format to `dashboards update`'s own diff output.
+A document with no identifier, or one whose identifier does not match any existing asset, is reported as a create.
+An asset that exists but is soft-deleted is also reported as a create, since `apply` restores it.
+
+A document in a dataset that a `Dash0Dataset` document in the same run creates is reported as a create too, because `apply` applies datasets first.
+The API denies the read of such a document, so `diff` shows it as a create without its stored state, and prints a warning for it on stderr.
+With a token that can only see some datasets, `diff` cannot tell a dataset that does not exist from one the token cannot see, so it can report both the dataset and its assets as creates.
+
+The comparison is semantic, not a raw text diff.
+Key order, duration formatting (`2m` and `2m0s` are the same value), int-vs-float differences between YAML and JSON, and API-populated defaults absent from the local document never count as a change.
+Slice order is ignored only for fields that are sets, such as `spec.permissions`, notification channels, and synthetic check locations; reordering any other list, such as `spec.filter`, is a change.
+For check rules, the default annotation values the Prometheus YAML conversion omits (`dash0-threshold-critical`/`dash0-threshold-degraded: "0"`, `dash0-enabled: "true"`) are treated as absent.
+For datasets, a `spec` field left out of the file keeps its stored value, so it does not show as removed.
+For teams, stored member ids are compared as email addresses, so a file that lists emails matches.
+Fields the API adds on write, such as the `dash0.com/source` label, the `dash0.com/enabled: "true"` annotation, and a check rule's default `enabled` and `interval`, do not count as a change when the local document leaves them out.
+A real change next to an ignored reorder may still show that reorder in the printed diff, but the comparison never reports a false "no differences".
+
+A notification channel's `spec.frequency` and a time series aggregation's `spec.priority` go back to their defaults, `10m0s` and `2`, when the local document leaves them out.
+`diff` therefore shows a stored value that differs from the default as a change to the default, and a stored default as no change.
+A grant in an Agent0 skill's `spec.permissions` that leaves out `defaultEnabled` keeps its stored value, so that is not a change either.
+
+All documents are fetched before anything is printed.
+If any single fetch fails for a reason other than the asset simply not existing yet — an auth failure, a 5xx, a network error — the entire preview is aborted and nothing is printed, so a partial, misleading report is never shown.
+
+`--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
+A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
+A deletion candidate with no `dash0.com/id` or `dash0.com/origin` label still fails the whole command before any plan is reported, matching `apply --since`'s posture.
+A check rule that `-f`'s current contents still declare is not listed as a deletion, because `apply --since` skips it.
+When every asset definition under `-f`'s target was deleted, whether the directory is now empty or was removed, `diff --since` lists every deletion, the same as `apply --since`.
+
+**Exit code** is a deliberate three-way exception to this CLI's uniform 0/1 convention, modeled on `kubectl diff`:
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No differences — the live state already matches `-f`'s contents |
+| `1` | Differences are pending (creates, updates, or deletions) |
+| `2` | A genuine error (bad `--since` ref, unreachable API, and so on) |
+
+A naive CI step that only checks for a non-zero exit code fails on the routine "changes pending" case — branch explicitly on the exit code, or treat `1` as a signal rather than a failure.
+
+Preview a directory with a pending create and update:
+
+```bash
+$ dash0 --experimental diff -f dashboards/
+existing.yaml
+--- Dashboard (before)
++++ Dashboard (after)
+@@ -2,7 +2,7 @@
+ spec:
+   display:
+-    name: Old Name
++    name: New Name
+new.yaml
+  Create Dashboard "New Dashboard"
+$ echo $?
+1
+```
+
+Each file header is the path relative to `-f`'s target, as in `apply`, and files are listed in sorted order.
+
+Preview with no pending differences.
+Each unchanged asset gets a `no changes` line, then the summary line:
+
+```bash
+$ dash0 --experimental diff -f dashboard.yaml
+Dashboard "Production Overview": no changes
+No differences
+$ echo $?
+0
+```
+
+Preview deletions alongside creates and updates:
+
+```bash
+$ dash0 --experimental diff -f dashboards/ --since HEAD~1
+keep.yaml
+  Create Dashboard "Production Overview"
+removed.yaml
+  Delete Dashboard "Old Dashboard" (b2c3d4e5-...)
+$ echo $?
+1
+```
+
+A genuine error aborts before any plan is printed:
+
+```bash
+$ dash0 --experimental diff -f dashboards/ --since totally-bogus-ref
+Error: --since 'totally-bogus-ref' could not be resolved
+Hint: check the ref for a typo; if this is a shallow clone (actions/checkout defaults to fetch-depth: 1), re-run the checkout with fetch-depth: 0 so the ref's history is available
+$ echo $?
+2
+```
+
+In agent mode, `diff` reports the same information as JSON: an array of `{path, changes: [{op, kind, name, originOrId, since}]}`, `op` being `"create"`, `"update"`, or `"delete"` — the same shape `apply --dry-run --agent-mode` uses, except `diff` distinguishes `"create"` from `"update"` since that is the entire point of a pre-flight preview.
+`since` is set only on `"delete"` changes and names the `--since` ref the deletion was derived from.
+An unchanged asset is left out of the JSON output, while the human-readable output lists it with a `no changes` line.
+A file whose assets are all unchanged is left out too, so a run with no differences prints `[]`.
+
+`diff` needs a real `git` binary on `PATH` for `--since`, same as `apply --since`.
+It is unavailable from the `ghcr.io/dash0hq/cli` Docker image, which is built `FROM scratch` and has no shell or other tools installed.
 
 ### Asset YAML formats
 
@@ -1634,6 +1784,37 @@ The server rejects a `custom_skill:write` grant on a skill whose origin marks it
 `dash0.com/enabled` is per user, so it is never sent; set `defaultEnabled: false` on a grant to ship the skill turned off for the users that grant matches.
 Only admins may set `defaultEnabled` on any grant; members only on their own user grant or on a grant to a team they belong to.
 
+Eval (generative AI evaluation; dataset-scoped, requires `--experimental` for the `evals` commands):
+
+```yaml
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+  labels:
+    dash0.com/origin: dash0-cli_answer-relevance
+  annotations:
+    dash0.com/folder-path: /checkout
+spec:
+  display:
+    name: Answer relevance
+    description: Judges whether the answer addresses the question.
+  enabled: true
+  judge:
+    model: standard
+    output:
+      kind: boolean
+    systemPrompt: You judge whether an answer is relevant to the question.
+    userPrompt: "Question: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}"
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: 0.25
+```
+
+See [Eval documents](#eval-documents-experimental) for the fields that cannot change after create.
+
 Team (organization-level, no `--dataset`, requires `--experimental`):
 
 ```yaml
@@ -1836,6 +2017,70 @@ The operator defines an `openslo.com/v1` `SLO` CRD (group `openslo.com`, kind `S
 So one document body can be applied through the CLI, the Terraform provider, or `kubectl apply`.
 That CRD is not released yet ([dash0hq/dash0-operator#1247](https://github.com/dash0hq/dash0-operator/pull/1247)), so treat the `kubectl apply` path as forthcoming rather than available today.
 
+### Eval documents (experimental)
+
+An eval (generative AI evaluation) uses a judge model to score a sample of the generative AI spans in a dataset.
+`dash0 --experimental evals` manages evals with the five standard subcommands, and `apply` accepts `kind: Dash0GenerativeAiEvaluation` (see the [YAML example](#asset-yaml-formats)).
+The command is also available under the alias `generative-ai-evaluations`.
+
+List the evals of the dataset:
+
+```bash
+dash0 --experimental evals list -o wide
+```
+
+Export an eval to a file:
+
+```bash
+dash0 --experimental evals get dash0-cli_answer-relevance -o yaml > eval.yaml
+```
+
+Create an eval from a file:
+
+```bash
+dash0 --experimental evals create -f eval.yaml
+```
+
+Preview an update without applying it:
+
+```bash
+dash0 --experimental evals update -f eval.yaml --dry-run
+```
+
+Delete an eval without a confirmation prompt:
+
+```bash
+dash0 --experimental evals delete dash0-cli_answer-relevance --force
+```
+
+`get`, `update`, and `delete` take an ID or a `dash0.com/origin`.
+`update` addresses the eval by the argument, else the file's origin, else its ID, and fails with "not found" for an eval that does not exist, instead of creating one.
+`list -o wide` and `-o csv` add the `DATASET` and `ORIGIN` columns; there is no `URL` column.
+
+> [!IMPORTANT]
+> Eval origins are unique per organization, while each eval belongs to exactly one dataset.
+> You therefore cannot apply one document to two datasets.
+> The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
+> Use a distinct origin per dataset, for example `answer-relevance-staging`.
+
+**`metadata.name` and `spec.judge.output.kind` cannot change after create.**
+`metadata.name` identifies the eval and its results within the dataset and must be unique there; rename the eval in Dash0 with `spec.display.name` instead.
+Results are stored per output kind (`boolean`, `numeric`, or `categorical`), so a different output kind needs a new eval with a new `metadata.name` and origin.
+A write that changes either field fails with an error that names the field and the fix.
+
+**The CLI never sends `dash0.com/version`.**
+Without it the server overwrites the stored eval unconditionally, so a document exported earlier still applies after somebody changed the eval in the UI.
+The CLI also removes `dash0.com/id`, `dash0.com/source`, `dash0.com/dataset`, and the created, updated, and deleted timestamps before it writes; it keeps `dash0.com/origin`, `dash0.com/folder-path`, `dash0.com/sharing`, and the whole `spec`.
+
+**`spec.match.filters` must contain a `gen_ai.operation.name` filter with operator `is_set` and no value.**
+The server rejects a create or update without it.
+`evals create`, `evals update`, and `apply` check this filter before any API call, also with `--dry-run`.
+They also check that `metadata.name`, `spec.judge.model`, `spec.judge.output.kind`, and `spec.judge.userPrompt` are set, and that `spec.sample.rate` is between 0 and 1.
+`spec.enabled` and `spec.sample.rate` must be present, because a document without them would create an eval that never samples a trace.
+If one document of an `apply` fails this check, `apply` writes no document.
+
+Version history and eval templates are not available from the CLI.
+
 ### Signal-to-metrics rules
 
 Signal-to-metrics rules are part of Signal Control.
@@ -1909,6 +2154,7 @@ They share a common set of characteristics:
 - Pagination: `--limit`.
 - Output formats: `table`, `json`, `csv` (no `wide` or `yaml`).
 - Sampling flag: `--precision` to disable [adaptive sampling](#precision-mode-adaptive-sampling) on `logs query` and `spans query` (`traces get` always disables it; `metrics instant` and `failed-checks query` do not honor it).
+- A deep link that reopens the same query in the Dash0 web app: on stderr in `table` and `csv` output, and as a `dash0ExplorerUrl` field in `json` output (see [explorer deep links](#explorer-deep-links)).
 
 ### `logs query`
 
@@ -1932,6 +2178,8 @@ dash0 logs query [flags]
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 Absolute timestamps are normalized to millisecond precision, so `2024-01-25T10:00:00Z` and `2024-01-25` are both accepted.
+
+A link that reopens the same query in the Dash0 logs explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Query recent logs (last 15 minutes, up to 50 records):
 
@@ -2025,6 +2273,8 @@ dash0 spans query [flags]
 
 Both `--from` and `--to` accept relative expressions like `now-1h` or absolute ISO 8601 timestamps.
 
+A link that reopens the same query in the Dash0 traces explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
+
 Query recent spans (last 15 minutes, up to 50 spans):
 
 ```bash
@@ -2102,6 +2352,7 @@ dash0 traces get <trace-id> [flags]
 The `<trace-id>` argument must be 32 hex characters.
 
 In table format, spans are displayed as a hierarchical tree with child spans indented under their parents.
+A link that opens the same trace in the Dash0 traces explorer is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Get all spans in a trace:
 
@@ -2278,6 +2529,8 @@ dash0 failed-checks query [flags]
 
 The `--status` and `--active` flags are convenience shortcuts that translate into the equivalent `--filter` expressions on the well-known issue attributes the alerting API exposes (`dash0.issue.status` and `dash0.issue.end_time`).
 Custom labels — for example a team-defined `priority` or `owner` label — must be filtered through `--filter`.
+
+A link that reopens the same query in the Dash0 failed checks view is emitted alongside the results — see [explorer deep links](#explorer-deep-links).
 
 Aliases: `list`, `ls`.
 
@@ -2506,6 +2759,75 @@ Aliases that contain spaces must be quoted: `--column "start time"`.
 
 The `--column` flag is not supported with JSON output.
 Using `--column` with `-o json` returns an error.
+
+### Explorer deep links
+
+`logs query`, `spans query`, `failed-checks query`, and `traces get` print a link that reopens the same query in the corresponding Dash0 explorer.
+The link carries the filters, the time range, and the dataset, so following it lands on the same result set in the web app, ready to narrow further or share with a colleague.
+
+Where the link appears depends on the output format:
+
+- In `table` and `csv` output it is written to **stderr**, after the results, separated by a blank line.
+  Keeping it off stdout means piping or redirecting the results never picks up a stray line — a CSV stream stays parseable.
+- In `json` output it is carried **in the document itself**, as a top-level `dash0ExplorerUrl` field.
+  This is what makes the link reachable in agent mode, where JSON is the default and stdout is usually all that is consumed.
+
+In `table` output:
+
+```bash
+$ dash0 logs query --filter "otel.log.severity.range is ERROR"
+TIMESTAMP                 SEVERITY  BODY
+2026-02-16T09:12:04.789Z  ERROR     Connection timeout
+...
+
+Open this query in Dash0:
+    https://app.dash0.com/goto/logs?filter=%5B%7B%22key%22%3A%22otel.log.severity.range%22...&from=now-15m&to=now
+```
+
+`traces get` prints `Open this trace in Dash0:` instead, with a link carrying the trace ID.
+
+In `json` output:
+
+```bash
+$ dash0 logs query --filter "otel.log.severity.range is ERROR" -o json
+{
+  "dash0ExplorerUrl": "https://app.dash0.com/goto/logs?filter=...&from=now-15m&to=now",
+  "resourceLogs": [
+    ...
+  ]
+}
+```
+
+The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`) is unaffected.
+It is omitted entirely when no link could be built.
+
+> [!NOTE]
+> `logs query`, `spans query`, and `traces get` emit OTLP/JSON, and `dash0ExplorerUrl` is a Dash0 extension to that document.
+> A strict OpenTelemetry protobuf-JSON parser rejects unknown fields by default, so a consumer feeding this output directly into one must either enable its discard-unknown-fields option or strip the field first, for example with `jq 'del(.dash0ExplorerUrl)'`.
+
+Which explorer each command opens:
+
+| Command | Explorer page | Carried in the link |
+|---------|---------------|---------------------|
+| `logs query` | `/goto/logs` | `--filter`, `--from`, `--to`, dataset |
+| `spans query` | `/goto/traces/explorer` | `--filter`, `--from`, `--to`, dataset |
+| `failed-checks query` | `/goto/alerting/failed-checks` | `--filter`, `--status`, `--active`, `--from`, `--to`, dataset |
+| `traces get` | `/goto/traces/explorer` | trace ID, dataset |
+
+On `failed-checks query`, `--status` and `--active` are expanded into their equivalent `dash0.issue.status` and `dash0.issue.end_time` filters before the link is built, so they are carried like any other filter.
+`metrics instant` prints no deep link.
+
+Two more details are worth knowing before scripting against this:
+
+- **Emitted even when nothing matched.**
+  A query with no results prints `No log records found.` and still offers the link, so the empty result can be inspected in the UI.
+- **Omitted when the web app host cannot be derived.**
+  The link is built from the API URL by replacing the host with `app.` plus the last two labels of the host, so `https://api.eu-west-1.aws.dash0.com` yields `https://app.dash0.com`.
+  If the host has a single label, such as `localhost`, or is an IP address, such as `http://127.0.0.1:8080`, the link is skipped.
+  A trailing dot in the host, such as `https://api.dash0.com.`, is ignored.
+
+The `dataset` parameter is omitted when the resolved dataset is `default`, since the web app opens that dataset anyway.
+`--skip-header` affects only the header row of `table` and `csv` output, not the link.
 
 ## Send commands
 
@@ -3646,6 +3968,7 @@ Create a team. Two modes are supported.
 
 **Declarative** — read a `TeamDefinitionV1Alpha1` YAML/JSON document.
 Origin wins over id when both labels are present, and `dash0.com/origin` upserts via PUT (create-or-replace).
+When the origin is not found but the id is, the team is updated at the id.
 When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST (cross-org apply spawns a fresh team with a server-assigned id), and any other error surfaces.
 A document with neither label is created via POST and the server assigns id and origin.
 See the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section for the full rationale.
@@ -4142,7 +4465,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, check-rules, config, dashboards, datasets, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, diff, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents
@@ -4241,6 +4564,15 @@ Use `--dry-run` to check for errors without making changes:
 dash0 apply -f assets/ --dry-run
 ```
 
+`--dry-run` is local-only, so it cannot tell a create from an update.
+`dash0 diff` (experimental) fetches each asset's current state from Dash0 first, so it can:
+
+```bash
+dash0 --experimental diff -f assets/
+```
+
+See [`diff`](#diff-experimental) for the full reference, including its three-way exit code (`0` clean, `1` differences pending, `2` error).
+
 ### Sync a directory to match its state as of a git ref (experimental)
 
 `apply --since <ref>` deletes assets removed from `-f`'s contents since `<ref>`, in addition to the usual create/update behavior.
@@ -4250,4 +4582,4 @@ Requires `--experimental`/`-X` and `-f`'s target to be inside a git repository:
 dash0 --experimental apply -f assets/ --since HEAD~1 --force
 ```
 
-Preview the plan (creates, updates, and deletions) first with `--dry-run`; see [`apply --since`](#apply---since-experimental) for the full reference, including the GitHub Actions invocation pattern and the ref-resolution edge cases.
+Preview the plan (creates, updates, and deletions) first with `dash0 --experimental diff -f assets/ --since HEAD~1`; see [`apply --since`](#apply---since-experimental) for the full reference, including the GitHub Actions invocation pattern and the ref-resolution edge cases.

@@ -79,6 +79,9 @@ type Snapshot struct {
 	// an id the document never learned.
 	SLOUsesOriginByIdentifier map[string]bool
 
+	// GenerativeAiEvaluationUsesOriginByIdentifier is the same signal for
+	// evals (per asset.GenerativeAiEvaluationUsesOrigin).
+	GenerativeAiEvaluationUsesOriginByIdentifier map[string]bool
 	// SignalToMetricsRuleUsesOriginByIdentifier is the same signal for
 	// signal-to-metrics rules (per asset.SignalToMetricsRuleUsesOrigin), whose
 	// ids are also server-assigned.
@@ -102,13 +105,14 @@ type Snapshot struct {
 
 func newSnapshot() Snapshot {
 	return Snapshot{
-		Identifiers:                               map[IdentifierKey]string{},
-		NoIdentifier:                              map[string]NoIdentifierDoc{},
-		PrometheusAlertsByIdentifier:              map[string][]asset.PrometheusAlertName{},
-		PrometheusRecordingRoleByIdentifier:       map[string]bool{},
-		SpamFilterUsesOriginByIdentifier:          map[string]bool{},
-		SLOUsesOriginByIdentifier:                 map[string]bool{},
-		SignalToMetricsRuleUsesOriginByIdentifier: map[string]bool{},
+		Identifiers:                                  map[IdentifierKey]string{},
+		NoIdentifier:                                 map[string]NoIdentifierDoc{},
+		PrometheusAlertsByIdentifier:                 map[string][]asset.PrometheusAlertName{},
+		PrometheusRecordingRoleByIdentifier:          map[string]bool{},
+		SpamFilterUsesOriginByIdentifier:             map[string]bool{},
+		SLOUsesOriginByIdentifier:                    map[string]bool{},
+		GenerativeAiEvaluationUsesOriginByIdentifier: map[string]bool{},
+		SignalToMetricsRuleUsesOriginByIdentifier:    map[string]bool{},
 		Paths:      map[string]bool{},
 		RawContent: map[string][]byte{},
 	}
@@ -322,6 +326,14 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to determine SLO identifier source: %w", err)
 			}
 			snap.SLOUsesOriginByIdentifier[identifier] = usesOrigin
+		}
+
+		if normalizedKind == "generativeaievaluation" {
+			usesOrigin, err := asset.GenerativeAiEvaluationUsesOrigin(docBytes)
+			if err != nil {
+				return fmt.Errorf("failed to determine eval identifier source: %w", err)
+			}
+			snap.GenerativeAiEvaluationUsesOriginByIdentifier[identifier] = usesOrigin
 		}
 
 		if normalizedKind == "signaltometrics" {

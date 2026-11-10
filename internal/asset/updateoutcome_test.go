@@ -20,14 +20,12 @@ func TestPrintUpdateOutcome(t *testing.T) {
 	failedRequests := testView("Failed requests")
 	diff := `--- View (before)
 +++ View (after)
-@@ -3,6 +3,6 @@
+@@ -2,4 +2,4 @@
    name: Error Logs
  spec:
    display:
 -    name: Error Logs
 +    name: Failed requests
-   type: ""
- 
 `
 
 	tests := []struct {

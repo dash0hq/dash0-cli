@@ -384,6 +384,12 @@ Validate without applying:
 dash0 apply -f assets.yaml --dry-run
 ```
 
+Preview what `apply` would change against the live state, telling creates from updates (experimental, requires `-X`):
+
+```bash
+dash0 -X diff -f assets.yaml
+```
+
 Sync a directory to match its state as of a git ref, deleting assets removed since then (experimental, requires `-X`):
 
 ```bash
@@ -693,6 +699,23 @@ dash0 -X datasets create -f dataset.yaml
 ```bash
 # Delete a dataset (its assets are kept for 30 days; telemetry follows its retention)
 dash0 -X datasets delete <id>
+```
+
+### Evals (experimental)
+
+```bash
+# List the generative AI evaluations (evals) of the dataset
+dash0 -X evals list
+```
+
+```bash
+# Create or update an eval from a definition file
+dash0 -X apply -f eval.yaml
+```
+
+```bash
+# Export an eval, ready to re-apply
+dash0 -X evals get <origin-or-id> -o yaml > eval.yaml
 ```
 
 ### Agent0 skills (experimental)

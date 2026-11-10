@@ -2,7 +2,6 @@ package asset
 
 import (
 	"fmt"
-	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
@@ -47,7 +46,8 @@ type identifierProbe struct {
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0SignalToMetrics:
+//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0GenerativeAiEvaluation,
+//     Dash0SignalToMetrics:
 //     dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
 //     Dash0AwsMetricScrapeConfig):
@@ -57,7 +57,7 @@ type identifierProbe struct {
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, and
+// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, evals, and
 // signal-to-metrics rules genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
@@ -67,7 +67,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 
 	origin := probe.Metadata.Labels["dash0.com/origin"]
 
-	switch normalizeKindForIdentifier(probe.Kind) {
+	switch NormalizeKind(probe.Kind) {
 	case "dashboard":
 		return probe.Metadata.Dash0Extensions.ID, nil
 	case "checkrule":
@@ -82,7 +82,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill", "signaltometrics":
+	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics":
 		if origin != "" {
 			return origin, nil
 		}
@@ -90,10 +90,4 @@ func ExtractIdentifier(data []byte) (string, error) {
 	default:
 		return probe.Metadata.Labels["dash0.com/id"], nil
 	}
-}
-
-func normalizeKindForIdentifier(kind string) string {
-	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
-	k = strings.ReplaceAll(k, "_", "")
-	return strings.TrimPrefix(k, "dash0")
 }

@@ -1,14 +1,10 @@
 package apply
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -18,9 +14,8 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
-	"github.com/google/uuid"
+	gitutil "github.com/dash0hq/dash0-cli/internal/git"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // Flags for the apply command
@@ -75,8 +70,9 @@ Supported asset types:
   - Dash0TimeSeriesAggregation
   - Dash0SignalToMetrics (signal-to-metrics rule)
   - Dash0Dataset
-  - Dash0AwsMetricScrapeConfig
   - Dash0Skill (Agent0 custom skill)
+  - Dash0AwsMetricScrapeConfig
+  - Dash0GenerativeAiEvaluation (eval)
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
 
@@ -140,28 +136,6 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	return cmd
 }
 
-// assetDocument represents a parsed YAML document with its kind
-type assetDocument struct {
-	kind     string
-	name     string // human-readable name extracted from the document
-	id       string // asset ID extracted from the document (location varies by kind)
-	raw      []byte
-	filePath string // relative path when loaded from a directory, empty for stdin/single-file
-	docIndex int    // 1-based index within the file
-	docCount int    // total number of documents in the file
-}
-
-// location returns a human-readable string describing where this document came from.
-func (d assetDocument) location() string {
-	if d.filePath == "" {
-		return fmt.Sprintf("document %d", d.docIndex)
-	}
-	if d.docCount == 1 {
-		return d.filePath
-	}
-	return fmt.Sprintf("%s: document %d", d.filePath, d.docIndex)
-}
-
 // applyAction indicates whether an asset was created or updated
 type applyAction string
 
@@ -181,73 +155,27 @@ type applyResult struct {
 }
 
 func runApply(ctx context.Context, flags *applyFlags) error {
-	var documents []assetDocument
-	var fromDirectory bool
-	// targetVanished records that fromDirectory was only a guess (always
-	// true) because the target no longer exists on disk at all, so os.Stat
-	// couldn't say whether it used to be a file or a directory. Once
-	// computeDeletionPlan runs, it can answer that from git history at the
-	// --since ref, and the guess is corrected below -- otherwise a vanished
-	// single-file target would render like a multi-file directory scan
-	// (grouped by its git-recorded path instead of the literal -f argument).
-	var targetVanished bool
-	var err error
-
-	if flags.File == "-" {
-		// Read from stdin
-		documents, err = readMultiDocumentYAML("-", os.Stdin)
-		if err != nil {
-			return validationError(err.Error())
-		}
-	} else {
-		info, statErr := os.Stat(flags.File)
-		switch {
-		case statErr != nil && flags.SinceFlagSet && os.IsNotExist(statErr):
-			// --since's target no longer exists on disk at all: every asset
-			// definition under it was deleted, and (for a directory target)
-			// the directory itself was removed along with them. This is a
-			// legitimate all-deletions run, the same as the existing-but-
-			// empty-directory case below -- continue with zero current
-			// documents and let computeDeletionPlan report every asset found
-			// at the --since ref as a deletion.
-			fromDirectory = true
-			targetVanished = true
-		case statErr != nil:
-			return fmt.Errorf("failed to read input: %w", statErr)
-		case info.IsDir():
-			fromDirectory = true
-			documents, err = readDirectory(flags.File)
-			if err != nil {
-				if flags.SinceFlagSet && errors.Is(err, errNoYAMLFilesFound) {
-					// Every asset definition that used to live in this
-					// directory was deleted, but the (now-empty) directory
-					// itself survives. Same all-deletions case as above.
-					documents = nil
-				} else {
-					return validationError(err.Error())
-				}
-			}
-		default:
-			documents, err = readMultiDocumentYAML(flags.File, nil)
-			if err != nil {
-				return validationError(err.Error())
-			}
-		}
+	// When the target vanished, fromDirectory is only a guess; computeDeletionPlan
+	// answers it from git history at the --since ref below, so a vanished
+	// single-file target does not render like a directory scan.
+	documents, fromDirectory, targetVanished, err := asset.ReadInput(flags.File, flags.SinceFlagSet)
+	if err != nil {
+		return err
 	}
 
 	if len(documents) == 0 && !flags.SinceFlagSet {
-		return validationError("no documents found in input")
+		return asset.FormatValidationError("no documents found in input")
 	}
 
-	validationErrors, validationWarnings := validateDocuments(documents)
+	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
 	if len(validationErrors) > 0 {
-		return validationError(validationErrors...)
+		return asset.FormatValidationError(validationErrors...)
 	}
 	for _, warning := range validationWarnings {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
-	var deletionPlan *deletionPlan
+	var deletionPlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
 		plan, err := computeDeletionPlan(ctx, flags)
 		if err != nil {
@@ -255,7 +183,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		}
 		deletionPlan = plan
 		if targetVanished {
-			fromDirectory = plan.targetWasDirectoryAtRef
+			fromDirectory = plan.TargetWasDirectoryAtRef
 		}
 	}
 
@@ -268,7 +196,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	// of getting the usual agent-mode auto-confirmation. Checked before any
 	// document is applied, so a refusal leaves the run untouched.
 	if deletionPlan != nil {
-		for _, d := range deletionPlan.plan.ByIdentifier {
+		for _, d := range deletionPlan.Plan.ByIdentifier {
 			if d.Kind != "dataset" {
 				continue
 			}
@@ -293,7 +221,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		results, applyErr := applyDocument(ctx, apiClient, doc, dataset)
 		for _, r := range results {
 			displayKind := asset.KindDisplayName(r.kind)
-			label := formatNameAndId(r.name, r.id)
+			label := asset.FormatNameAndID(r.name, r.id)
 			applied = append(applied, fmt.Sprintf("%s %s", displayKind, label))
 
 			if r.action == actionUpdated && r.before != nil {
@@ -303,7 +231,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 				continue
 			}
 			if fromDirectory {
-				fmt.Printf("%s: %s %s %s\n", doc.filePath, displayKind, label, r.action)
+				fmt.Printf("%s: %s %s %s\n", doc.FilePath, displayKind, label, r.action)
 			} else {
 				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
 			}
@@ -316,7 +244,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		if applyErr != nil {
 			var stillDeleted *asset.StillDeletedError
 			if errors.As(applyErr, &stillDeleted) {
-				applied = append(applied, fmt.Sprintf("%s %s", stillDeleted.DisplayKind, formatNameAndId(stillDeleted.Name, stillDeleted.ID)))
+				applied = append(applied, fmt.Sprintf("%s %s", stillDeleted.DisplayKind, asset.FormatNameAndID(stillDeleted.Name, stillDeleted.ID)))
 			}
 			if len(applied) > 0 {
 				fmt.Println("Applied before error:")
@@ -324,7 +252,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 					fmt.Printf("  - %s\n", a)
 				}
 			}
-			return fmt.Errorf("%s (%s): %w", doc.location(), doc.kind, applyErr)
+			return fmt.Errorf("%s (%s): %w", doc.Location(), doc.Kind, applyErr)
 		}
 	}
 
@@ -335,8 +263,8 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		// work) meant a declined or unconfirmable --since ref aborted the
 		// entire apply run, including ordinary creates/updates that have
 		// nothing to do with --since's ancestry check.
-		if deletionPlan.warning != "" {
-			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.warning)
+		if deletionPlan.Warning != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", deletionPlan.Warning)
 			// --force also accepts this (backward compatible: it always
 			// implied "proceed unattended"), but --accept-non-ancestor-ref
 			// lets a caller accept a doubtful ref on its own, without also
@@ -344,9 +272,9 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			acceptRef := flags.Force || flags.AcceptNonAncestorRef
 			confirmed, confirmErr := confirmation.ConfirmDestructiveOperation(ctx, "Continue with --since's deletions? [y/N]: ", acceptRef)
 			if confirmErr != nil || !confirmed {
-				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
+				skipped := len(deletionPlan.Plan.ByIdentifier) + len(deletionPlan.Plan.AlertsByName)
 				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")
-				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", pluralize(skipped, "asset"))
+				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", asset.Pluralize(skipped, "asset"))
 			}
 		}
 		declined, err := applyDeletions(ctx, apiClient, dataset, deletionPlan, flags.Force)
@@ -354,539 +282,17 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			return err
 		}
 		if declined > 0 {
-			return fmt.Errorf("%s declined; the rest of the --since run completed", pluralize(declined, "deletion"))
+			return fmt.Errorf("%s declined; the rest of the --since run completed", asset.Pluralize(declined, "deletion"))
 		}
 	}
 
 	return nil
 }
 
-// validateDocuments checks all documents up front, collecting all errors so a multi-doc apply is
-// never partially triggered by a problem detectable before the first API call. Non-fatal warnings
-// are collected separately — callers only print them when validation succeeds, since a warning
-// about a document that never gets applied would be noise next to a hard error.
-func validateDocuments(documents []assetDocument) (validationErrors, validationWarnings []string) {
-	for _, doc := range documents {
-		if doc.kind == "" {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.location()))
-		} else if normalizeKind(doc.kind) == "authtoken" {
-			// The API returns a token's secret only on create, and apply has no safe
-			// place to deliver it, so a created token's secret would be lost.
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: apply does not support kind %q, because it cannot deliver a new token's secret; use `dash0 --experimental auth-tokens create -f <file> --secret-file <path>` instead", doc.location(), doc.kind))
-		} else if !isValidKind(doc.kind) {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: unsupported kind %q (supported: Dashboard, PersesDashboard, CheckRule, PrometheusRule, SyntheticCheck, SLO, View, Dash0SpamFilter, Dash0NotificationChannel, Dash0Team, Dash0TimeSeriesAggregation, Dash0SignalToMetrics, Dash0Dataset, Dash0Skill, Dash0AwsMetricScrapeConfig)", doc.location(), doc.kind))
-		} else if normalizeKind(doc.kind) == "spamfilter" {
-			// Catch unknown spam filter apiVersions during validation rather
-			// than after the first PUT, so a partial apply of a multi-doc input
-			// is never triggered by a typo in apiVersion.
-			if _, err := asset.DetectSpamFilterAPIVersion(doc.raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-			}
-		} else if normalizeKind(doc.kind) == "prometheusrule" {
-			// Catch CRDs that contain no usable rules at all up front, before
-			// any API call. ParseAsPrometheusAlertRules already rejects
-			// alert-only-empty CRDs, but a CRD with zero rules of either kind
-			// would otherwise slip through to applyDocument.
-			if err := validatePrometheusRule(doc.raw); err != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-			}
-		} else if normalizeKind(doc.kind) == "notificationchannel" {
-			// A document carrying spec.routing.assets gets a non-fatal warning — the API treats
-			// the field as API-managed and silently ignores it on write; the apply proceeds as
-			// usual. Parse errors are already caught during metadata extraction in
-			// readMultiDocumentYAML.
-			var channel dash0api.NotificationChannelDefinition
-			if err := dash0yaml.Unmarshal(doc.raw, &channel); err == nil {
-				if warning := asset.RoutingAssetsWarning(&channel); warning != "" {
-					validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
-				}
-			}
-		} else if normalizeKind(doc.kind) == "dataset" {
-			// A missing slug (the server cannot assign one) or an unknown apiVersion
-			// fails here, before any document is applied, instead of as a server
-			// 400 mid-run.
-			var dataset dash0api.DatasetDefinition
-			if err := dash0yaml.Unmarshal(doc.raw, &dataset); err == nil {
-				if err := asset.ValidateDataset(&dataset); err != nil {
-					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-				}
-			}
-		} else if normalizeKind(doc.kind) == "skill" {
-			var skill dash0api.SkillDefinition
-			if err := dash0yaml.Unmarshal(doc.raw, &skill); err == nil {
-				if err := asset.ValidateCustomSkill(&skill); err != nil {
-					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-				}
-			}
-		} else if normalizeKind(doc.kind) == "timeseriesaggregation" && doc.id == "" {
-			// Origin is mandatory for this kind and there is no fallback create
-			// path, so a document missing it fails here rather than after the
-			// run has written its other documents. parseDocumentHeader already
-			// stored the origin in doc.id, so there is nothing to re-parse.
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrTimeSeriesAggregationMissingOrigin.Error()))
-		} else if normalizeKind(doc.kind) == "awsmetricscrapeconfig" {
-			// A missing spec.namespaces would be sent as [] and stop all
-			// scraping, so the document is validated before anything is applied.
-			_, warnings, err := asset.ParseAwsMetricScrapeConfig(doc.raw)
-			switch {
-			case err != nil:
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), err.Error()))
-			case doc.id == "":
-				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.location(), asset.ErrAwsMetricScrapeConfigMissingID.Error()))
-			default:
-				// The client rejects a non-UUID id only when it sends the request,
-				// which would be after the documents before this one were applied.
-				if _, err := uuid.Parse(doc.id); err != nil {
-					validationErrors = append(validationErrors, fmt.Sprintf("%s: dash0.com/id %q is not a valid AWS integration id: it must be a UUID", doc.location(), doc.id))
-				}
-			}
-			for _, warning := range warnings {
-				validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.location(), warning))
-			}
-		}
-	}
-	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
-	return validationErrors, validationWarnings
-}
-
-func checkRuleIDCollisions(documents []assetDocument) []string {
-	var ids []string
-	usesByID := make(map[string][]string)
-	for _, doc := range documents {
-		for _, rule := range checkRulesWithID(doc) {
-			id := *rule.Id
-			if _, seen := usesByID[id]; !seen {
-				ids = append(ids, id)
-			}
-			usesByID[id] = append(usesByID[id], fmt.Sprintf("%s: %q", doc.location(), rule.Name))
-		}
-	}
-
-	var collisions []string
-	for _, id := range ids {
-		if uses := usesByID[id]; len(uses) > 1 {
-			collisions = append(collisions, fmt.Sprintf("check rule id %q is used more than once, so only the last one would be kept:\n    %s", id, strings.Join(uses, "\n    ")))
-		}
-	}
-	return collisions
-}
-
-func checkRulesWithID(doc assetDocument) []*dash0api.PrometheusAlertRule {
-	kind := normalizeKind(doc.kind)
-	if kind != "checkrule" && kind != "prometheusrule" {
-		return nil
-	}
-	// Parse errors, and recording-only PrometheusRules, are reported by the
-	// other checks or when the document is applied.
-	rules, err := asset.ParseCheckRules(doc.raw)
-	if err != nil {
-		return nil
-	}
-	var withID []*dash0api.PrometheusAlertRule
-	for _, rule := range rules {
-		if rule.Id != nil && *rule.Id != "" {
-			withID = append(withID, rule)
-		}
-	}
-	return withID
-}
-
-// validationError formats one or more validation issues into a consistent
-// "validation failed with N error/errors:" message.
-func validationError(issues ...string) error {
-	return fmt.Errorf("validation failed with %s:\n  %s", pluralize(len(issues), "error"), strings.Join(issues, "\n  "))
-}
-
-// pluralize returns "1 thing" or "N things" depending on count.
-// This logic is currently naive and assumes all plurals are formed by adding "s".
-// This happens to work for all our asset kinds, errors, documents and other situations
-// we use this logic.
-func pluralize(count int, singular string) string {
-	if count == 1 {
-		return fmt.Sprintf("%d %s", count, singular)
-	}
-	return fmt.Sprintf("%d %ss", count, singular)
-}
-
-// formatNameAndId returns a display string with name and optional ID.
-func formatNameAndId(name, id string) string {
-	if name != "" && id != "" {
-		return fmt.Sprintf("%q (%s)", name, id)
-	}
-	if name != "" {
-		return fmt.Sprintf("%q", name)
-	}
-	if id != "" {
-		return fmt.Sprintf("(%s)", id)
-	}
-	return ""
-}
-
-// parseDocumentHeader extracts the kind, human-readable name, and ID from
-// raw YAML bytes. It unmarshals into typed structs and delegates to the
-// Extract* functions in internal/asset/ so that apply and the per-asset
-// CRUD commands use the same extraction logic.
-func parseDocumentHeader(data []byte) (kind, name, id string, err error) {
-	kind, err = dash0yaml.DetectKind(data)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	switch normalizeKind(kind) {
-	case "dashboard":
-		var dashboard dash0api.DashboardDefinition
-		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetDashboardName(&dashboard)
-		if name == "" {
-			name = dashboard.Metadata.Name
-		}
-		id = dash0api.GetDashboardID(&dashboard)
-
-	case "checkrule":
-		var rule dash0api.PrometheusAlertRule
-		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetCheckRuleName(&rule)
-		id = dash0api.GetCheckRuleID(&rule)
-
-	case "view":
-		var view dash0api.ViewDefinition
-		if err := dash0yaml.Unmarshal(data, &view); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetViewName(&view)
-		id = dash0api.GetViewID(&view)
-
-	case "syntheticcheck":
-		var check dash0api.SyntheticCheckDefinition
-		if err := dash0yaml.Unmarshal(data, &check); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSyntheticCheckName(&check)
-		id = dash0api.GetSyntheticCheckID(&check)
-
-	case "slo":
-		var slo dash0api.SloDefinition
-		if err := dash0yaml.Unmarshal(data, &slo); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSLOName(&slo)
-		id = dash0api.GetSLOID(&slo)
-		if id == "" {
-			id = dash0api.GetSLOOrigin(&slo)
-		}
-
-	case "prometheusrule":
-		// We only need metadata (name + ID) here; the Metadata struct has no
-		// time.Duration fields, so a partial unmarshal via sigsyaml is safe.
-		var partial struct {
-			Metadata dash0api.PrometheusRulesMetadata `json:"metadata"`
-		}
-		if err := dash0yaml.Unmarshal(data, &partial); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = partial.Metadata.Name
-		id = partial.Metadata.Labels[dash0api.LabelID]
-
-	case "persesdashboard":
-		var perses dash0api.PersesDashboard
-		if err := dash0yaml.Unmarshal(data, &perses); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetPersesDashboardName(&perses)
-		id = dash0api.GetPersesDashboardID(&perses)
-
-	case "spamfilter":
-		// Metadata fields (name + dash0.com/id label) are identical across
-		// v1alpha1 and v1alpha2, so we use the v1alpha1 type for the header
-		// peek regardless of the document's apiVersion. The apiVersion-aware
-		// dispatch happens in applyDocument.
-		var filter dash0api.SpamFilter
-		if err := dash0yaml.Unmarshal(data, &filter); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSpamFilterName(&filter)
-		id = dash0api.GetSpamFilterID(&filter)
-
-	case "notificationchannel":
-		var channel dash0api.NotificationChannelDefinition
-		if err := dash0yaml.Unmarshal(data, &channel); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetNotificationChannelName(&channel)
-		id = dash0api.GetNotificationChannelID(&channel)
-		if id == "" {
-			// Notification channels use origin as the upsert key. Surface it
-			// as the ID in dry-run/listing output so users can see which
-			// existing channel the document will replace.
-			id = dash0api.GetNotificationChannelOrigin(&channel)
-		}
-
-	case "timeseriesaggregation":
-		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := dash0yaml.Unmarshal(data, &aggregation); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetTimeSeriesAggregationName(&aggregation)
-		// This kind upserts by origin, not id. Showing the origin as the ID in
-		// dry-run output names the key being used, which an exported
-		// document's server-assigned id would not.
-		id = asset.GetTimeSeriesAggregationOrigin(&aggregation)
-
-	case "signaltometrics":
-		var rule dash0api.SignalToMetricsDefinition
-		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSignalToMetricsName(&rule)
-		// Rules upsert by origin, falling back to dash0.com/id.
-		id = asset.SignalToMetricsRuleKey(&rule)
-
-	case "team":
-		var team dash0api.TeamDefinitionV1Alpha1
-		if err := dash0yaml.Unmarshal(data, &team); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetTeamDisplayName(&team)
-		if name == "" {
-			name = dash0api.GetTeamName(&team)
-		}
-		id = dash0api.GetTeamID(&team)
-		if id == "" {
-			// Teams use origin as the upsert key.
-			id = dash0api.GetTeamOrigin(&team)
-		}
-
-	case "dataset":
-		var dataset dash0api.DatasetDefinition
-		if err := dash0yaml.Unmarshal(data, &dataset); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetDatasetName(&dataset)
-		id = dash0api.GetDatasetID(&dataset)
-
-	case "awsmetricscrapeconfig":
-		var cfg dash0api.AwsMetricScrapeConfigDefinition
-		if err := dash0yaml.Unmarshal(data, &cfg); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetAwsMetricScrapeConfigName(&cfg)
-		// The integration id is the only key: there is one config per integration.
-		id = dash0api.GetAwsMetricScrapeConfigID(&cfg)
-	case "skill":
-		var skill dash0api.SkillDefinition
-		if err := dash0yaml.Unmarshal(data, &skill); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = asset.CustomSkillName(&skill)
-		// Skills upsert by origin, falling back to dash0.com/id.
-		id = asset.CustomSkillKey(&skill)
-
-	default:
-		var raw map[string]any
-		if err := dash0yaml.Unmarshal(data, &raw); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = yamlStringFromMap(raw, "metadata", "name")
-	}
-
-	return kind, name, id, nil
-}
-
-// yamlString traverses a nested map[string]any by the given keys and returns
-// the leaf value as a string, or "" if any key is missing or the value is not
-// a string.
-func yamlStringFromMap(m map[string]any, keys ...string) string {
-	for i, key := range keys {
-		val, ok := m[key]
-		if !ok {
-			return ""
-		}
-		if i == len(keys)-1 {
-			s, _ := val.(string)
-			return s
-		}
-		m, ok = val.(map[string]any)
-		if !ok {
-			return ""
-		}
-	}
-	return ""
-}
-
-// readMultiDocumentYAML splits a YAML stream into individual documents.
-// This is the only place that requires gopkg.in/yaml.v3 directly —
-// sigs.k8s.io/yaml doesn't provide a streaming decoder for multi-document YAML.
-func readMultiDocumentYAML(filePath string, stdin io.Reader) ([]assetDocument, error) {
-	var data []byte
-	var err error
-
-	if filePath == "-" {
-		data, err = io.ReadAll(stdin)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read from stdin: %w", err)
-		}
-		if len(data) == 0 {
-			return nil, fmt.Errorf("no input provided on stdin")
-		}
-	} else {
-		data, err = os.ReadFile(filePath)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return parseMultiDocumentYAML(data)
-}
-
-// parseMultiDocumentYAML splits data on YAML document boundaries and parses
-// each into an assetDocument. Factored out of readMultiDocumentYAML so
-// callers that already have file content in memory (e.g. --since's
-// git-history name lookups, which read a blob via ReadFileAtRef rather than
-// a path on disk) can reuse the same parsing without a round trip through
-// the filesystem.
-func parseMultiDocumentYAML(data []byte) ([]assetDocument, error) {
-	var documents []assetDocument
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-
-	for {
-		var node yaml.Node
-		err := decoder.Decode(&node)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse YAML:\n    %w", err)
-		}
-
-		// Skip empty documents
-		if node.Kind == 0 {
-			continue
-		}
-
-		// Re-encode the node to get the raw bytes for this document
-		var buf bytes.Buffer
-		encoder := yaml.NewEncoder(&buf)
-		encoder.SetIndent(2)
-		if err := encoder.Encode(&node); err != nil {
-			return nil, fmt.Errorf("failed to re-encode document: %w", err)
-		}
-		encoder.Close()
-
-		kind, name, id, err := parseDocumentHeader(buf.Bytes())
-		if err != nil {
-			return nil, err
-		}
-
-		documents = append(documents, assetDocument{
-			kind:     kind,
-			name:     name,
-			id:       id,
-			raw:      buf.Bytes(),
-			docIndex: len(documents) + 1,
-		})
-	}
-
-	// Handle single-document files without YAML document markers
-	if len(documents) == 0 && len(data) > 0 {
-		kind, name, id, _ := parseDocumentHeader(data)
-		if kind != "" {
-			documents = append(documents, assetDocument{
-				kind:     kind,
-				name:     name,
-				id:       id,
-				raw:      data,
-				docIndex: 1,
-			})
-		}
-	}
-
-	// Set docCount on all documents
-	for i := range documents {
-		documents[i].docCount = len(documents)
-	}
-
-	return documents, nil
-}
-
-// errNoYAMLFilesFound is wrapped into discoverFiles' "no .yaml or .yml files
-// found" error so callers can distinguish "the directory is legitimately
-// empty" from any other failure via errors.Is, without matching on message
-// text. runApply uses this to tolerate an empty directory specifically when
-// --since is set: every asset that used to live there may simply have been
-// deleted, which is a valid all-deletions run, not a usage error.
-var errNoYAMLFilesFound = errors.New("no .yaml or .yml files found")
-
-// discoverFiles recursively finds all .yaml/.yml files under dirPath,
-// skipping hidden entries (names starting with '.').
-// Returns paths relative to dirPath, sorted lexicographically.
-func discoverFiles(dirPath string) ([]string, error) {
-	var paths []string
-	var hasNestedDirs bool
-	if err := filepath.WalkDir(dirPath, asset.FindNonHiddenYAMLFiles(dirPath, &paths, &hasNestedDirs)); err != nil {
-		return nil, fmt.Errorf("failed to scan directory: %w", err)
-	}
-
-	var files []string
-	for _, path := range paths {
-		rel, err := filepath.Rel(dirPath, path)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, rel)
-	}
-	if len(files) == 0 {
-		if hasNestedDirs {
-			return nil, fmt.Errorf("%w in %s and nested directories", errNoYAMLFilesFound, dirPath)
-		}
-		return nil, fmt.Errorf("%w in %s", errNoYAMLFilesFound, dirPath)
-	}
-	sort.Strings(files)
-	return files, nil
-}
-
-// readDirectory reads all YAML files from a directory recursively.
-func readDirectory(dirPath string) ([]assetDocument, error) {
-	files, err := discoverFiles(dirPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var allDocs []assetDocument
-	for _, relPath := range files {
-		fullPath := filepath.Join(dirPath, relPath)
-		docs, err := readMultiDocumentYAML(fullPath, nil)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", relPath, err)
-		}
-		for i := range docs {
-			docs[i].filePath = relPath
-		}
-		allDocs = append(allDocs, docs...)
-	}
-
-	return allDocs, nil
-}
-
-func isValidKind(kind string) bool {
-	return asset.IsValidKind(kind)
-}
-
-func normalizeKind(kind string) string {
-	// Normalize common variations
-	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
-	k = strings.ReplaceAll(k, "_", "")
-	k = strings.TrimPrefix(k, "dash0")
-	return k
-}
-
-func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
-	switch normalizeKind(doc.kind) {
+func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
+	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "persesdashboard":
-		dashboard, err := dash0yaml.ParseAsDashboard(doc.raw)
+		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
 		}
@@ -907,7 +313,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &check); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &check); err != nil {
 			return nil, fmt.Errorf("failed to parse SyntheticCheck: %w", err)
 		}
 		result, err := asset.ImportSyntheticCheck(ctx, apiClient, &check, dataset)
@@ -917,11 +323,11 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: check.Metadata.Name,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "slo":
 		var slo dash0api.SloDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &slo); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &slo); err != nil {
 			return nil, fmt.Errorf("failed to parse SLO: %w", err)
 		}
 		result, err := asset.ImportSLO(ctx, apiClient, &slo, dataset)
@@ -931,11 +337,11 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: dash0api.GetSLOName(&slo),
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "view":
 		var view dash0api.ViewDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &view); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &view); err != nil {
 			return nil, fmt.Errorf("failed to parse View: %w", err)
 		}
 		result, err := asset.ImportView(ctx, apiClient, &view, dataset)
@@ -945,14 +351,14 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 				AssetName: view.Metadata.Name,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "spamfilter":
 		return applySpamFilter(ctx, apiClient, doc, dataset)
 
 	case "notificationchannel":
 		var channel dash0api.NotificationChannelDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &channel); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &channel); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0NotificationChannel: %w", err)
 		}
 		result, err := asset.ImportNotificationChannel(ctx, apiClient, &channel)
@@ -966,7 +372,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "timeseriesaggregation":
 		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &aggregation); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &aggregation); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0TimeSeriesAggregation: %w", err)
 		}
 		result, err := asset.ImportTimeSeriesAggregation(ctx, apiClient, &aggregation, dataset)
@@ -985,7 +391,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "signaltometrics":
 		var rule dash0api.SignalToMetricsDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &rule); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &rule); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0SignalToMetrics: %w", err)
 		}
 		result, err := asset.ImportSignalToMetricsRule(ctx, apiClient, &rule, dataset)
@@ -1004,7 +410,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
-		if err := dash0yaml.Unmarshal(doc.raw, &team); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &team); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0Team: %w", err)
 		}
 		result, err := asset.ImportTeam(ctx, apiClient, &team)
@@ -1018,7 +424,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 
 	case "dataset":
 		var dataset dash0api.DatasetDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &dataset); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &dataset); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0Dataset: %w", err)
 		}
 		result, err := asset.ImportDataset(ctx, apiClient, &dataset)
@@ -1032,21 +438,9 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
-	case "awsmetricscrapeconfig":
-		// Organization-level: the integration id decides the dataset, so the
-		// CLI's --dataset is not passed.
-		cfg, _, err := asset.ParseAwsMetricScrapeConfig(doc.raw)
-		if err != nil {
-			return nil, err
-		}
-		result, err := asset.ImportAwsMetricScrapeConfig(ctx, apiClient, cfg, doc.id)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.id})
-		}
-		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 	case "skill":
 		var skill dash0api.SkillDefinition
-		if err := dash0yaml.Unmarshal(doc.raw, &skill); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &skill); err != nil {
 			return nil, fmt.Errorf("failed to parse Dash0Skill: %w", err)
 		}
 		name := asset.CustomSkillName(&skill)
@@ -1059,8 +453,35 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		return []applyResult{{kind: "Dash0Skill", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
+	case "awsmetricscrapeconfig":
+		// Organization-level: the integration id decides the dataset, so the
+		// CLI's --dataset is not passed.
+		cfg, _, err := asset.ParseAwsMetricScrapeConfig(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportAwsMetricScrapeConfig(ctx, apiClient, cfg, doc.ID)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
+		}
+		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+	case "generativeaievaluation":
+		var evaluation dash0api.GenerativeAiEvaluationDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &evaluation); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0GenerativeAiEvaluation: %w", err)
+		}
+		name := dash0api.GetGenerativeAiEvaluationName(&evaluation)
+		result, err := asset.ImportGenerativeAiEvaluation(ctx, apiClient, &evaluation, dataset)
+		if err != nil {
+			if explained := asset.ExplainGenerativeAiEvaluationError(err, name); explained != nil {
+				return nil, explained
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "eval", AssetName: name})
+		}
+		return []applyResult{{kind: "Dash0GenerativeAiEvaluation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
 	default:
-		return nil, fmt.Errorf("unsupported kind: %s", doc.kind)
+		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)
 	}
 }
 
@@ -1068,8 +489,8 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 // PrometheusRule CRD documents go through applyPrometheusRule, which inspects
 // the rule kinds and dispatches to the check-rule or recording-rule endpoint
 // (or both, when the CRD is mixed).
-func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
-	rules, err := asset.ParseCheckRules(doc.raw)
+func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
+	rules, err := asset.ParseCheckRules(doc.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -1099,8 +520,8 @@ func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc assetDoc
 // check-rule endpoint via the existing ParseAsPrometheusAlertRules path;
 // recording rules are dispatched to the recording-rule endpoint via a
 // recording-only copy of the CRD.
-func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
-	crd, err := parsePrometheusRuleCRD(doc.raw)
+func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
+	crd, err := asset.ParsePrometheusRuleCRD(doc.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -1137,43 +558,11 @@ func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc ass
 	return results, nil
 }
 
-// parsePrometheusRuleCRD parses raw bytes as a PrometheusRule CRD (the typed
-// dash0api.RecordingRule, an alias for the generated PrometheusRule type that
-// captures both Alert and Record per rule).
-func parsePrometheusRuleCRD(data []byte) (*dash0api.RecordingRule, error) {
-	var crd dash0api.RecordingRule
-	if err := dash0yaml.Unmarshal(data, &crd); err != nil {
-		return nil, fmt.Errorf("failed to parse PrometheusRule: %w", err)
-	}
-	return &crd, nil
-}
-
-// validatePrometheusRule rejects a PrometheusRule CRD that contains no
-// alerting and no recording rules, so the failure surfaces in the validation
-// phase rather than after the first request.
-func validatePrometheusRule(data []byte) error {
-	crd, err := parsePrometheusRuleCRD(data)
-	if err != nil {
-		return err
-	}
-	if !asset.PrometheusRuleHasAlerts(crd) && asset.RecordingOnlyPrometheusRule(crd) == nil {
-		return fmt.Errorf("PrometheusRule contains no alerting or recording rules")
-	}
-	names, err := asset.ExtractPrometheusAlertNames(data)
-	if err != nil {
-		return err
-	}
-	if err := asset.CheckAlertNameCollisions(names); err != nil {
-		return err
-	}
-	return nil
-}
-
 // applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.
 // The apiVersion field on the document selects the schema; an unknown value
 // is rejected with the list of supported versions before any API call.
-func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDocument, dataset *string) ([]applyResult, error) {
-	apiVersion, err := asset.DetectSpamFilterAPIVersion(doc.raw)
+func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
+	apiVersion, err := asset.DetectSpamFilterAPIVersion(doc.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,7 +570,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 	switch apiVersion {
 	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
 		var filter dash0api.SpamFilter
-		if err := dash0yaml.Unmarshal(doc.raw, &filter); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)
 		}
 		result, importErr := asset.ImportSpamFilter(ctx, apiClient, &filter, dataset)
@@ -1191,10 +580,10 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 				AssetName: dash0api.GetSpamFilterName(&filter),
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
 		var filter dash0api.SpamFilterV1Alpha2
-		if err := dash0yaml.Unmarshal(doc.raw, &filter); err != nil {
+		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
 			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)
 		}
 		result, importErr := asset.ImportSpamFilterV1Alpha2(ctx, apiClient, &filter, dataset)
@@ -1204,7 +593,7 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 				AssetName: filter.Metadata.Name,
 			})
 		}
-		return []applyResult{{kind: doc.kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 	default:
 		// Unreachable: DetectSpamFilterAPIVersion only returns supported values or an error.
 		return nil, fmt.Errorf("unsupported spam filter apiVersion %q", apiVersion)
@@ -1215,10 +604,10 @@ func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc assetDo
 // the relative order of everything else. Assets live inside a dataset, and the API answers 403
 // for an asset whose dataset does not exist yet, so a dataset file that sorts after its assets
 // would otherwise stop the run before the dataset is created.
-func datasetsFirst(documents []assetDocument) []assetDocument {
-	var datasets, rest []assetDocument
+func datasetsFirst(documents []asset.Document) []asset.Document {
+	var datasets, rest []asset.Document
 	for _, doc := range documents {
-		if normalizeKind(doc.kind) == "dataset" {
+		if asset.NormalizeKind(doc.Kind) == "dataset" {
 			datasets = append(datasets, doc)
 		} else {
 			rest = append(rest, doc)

@@ -4,6 +4,7 @@ package apply
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -3421,6 +3422,259 @@ func TestApply_AwsMetricScrapeConfig_DryRun(t *testing.T) {
 
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, `Apply AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`)`)
+}
+
+// apply resolves member ids to emails only for the stored and the returned
+// team, which the diff prints. It must not also resolve the document it sends.
+func TestApply_Team_ResolvesMembersOnlyForTheDiff(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+  labels:
+    dash0.com/origin: backend-team
+spec:
+  display:
+    name: Backend Team
+  members:
+    - alice@example.com
+`), 0644))
+	stored := dash0api.TeamDefinitionV1Alpha1{}
+	stored.Metadata.Name = "backend-team"
+	stored.Spec.Display.Name = "Backend Team"
+	stored.Spec.Members = []string{"user-1"}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, "/api/teams/backend-team", testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/members", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureMembersListSuccess, Validator: testutil.RequireHeaders})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr, output)
+
+	listMembersCalls := 0
+	for _, request := range server.Requests() {
+		if request.Method == http.MethodGet && request.Path == "/api/members" {
+			listMembersCalls++
+		}
+	}
+	assert.Equal(t, 2, listMembersCalls, "one lookup for the stored team and one for the returned team")
+}
+
+const (
+	unresolvableTeamOrigin = "saml://samlc_abc/scim_grp_def"
+	unresolvableTeamID     = "team_01m6dypvgbex58dp137ngtrhhp"
+)
+
+// applyTeamWithUnresolvableOrigin applies a team that carries both labels,
+// where the origin read is answered 404 and the id read with idGetStatus, and
+// returns the output and the requests sent.
+func applyTeamWithUnresolvableOrigin(t *testing.T, idGetStatus int) (string, []testutil.RecordedRequest) {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "team.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, fmt.Appendf(nil, `apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: Dash0PushGroup
+  labels:
+    dash0.com/id: %s
+    dash0.com/origin: %s
+spec:
+  display:
+    name: Dash0PushGroup
+  members: []
+`, unresolvableTeamID, unresolvableTeamOrigin), 0644))
+	stored := dash0api.TeamDefinitionV1Alpha1{}
+	stored.Metadata.Name = "Dash0PushGroup"
+	stored.Spec.Display.Name = "Dash0PushGroup"
+
+	notFound := testutil.MockResponse{StatusCode: http.StatusNotFound, Body: map[string]any{"error": map[string]any{"code": 404, "message": "not found"}}, Validator: testutil.RequireHeaders}
+	idGet := notFound
+	if idGetStatus == http.StatusOK {
+		idGet = testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{"team": &stored}, Validator: testutil.RequireHeaders}
+	}
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/teams/"+unresolvableTeamOrigin, notFound)
+	server.On(http.MethodGet, "/api/teams/"+unresolvableTeamID, idGet)
+	server.On(http.MethodPut, "/api/teams/"+unresolvableTeamOrigin, testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, "/api/teams/"+unresolvableTeamID, testutil.MockResponse{StatusCode: http.StatusOK, Body: &stored, Validator: testutil.RequireHeaders})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+	require.NoError(t, cmdErr, output)
+
+	var requests []testutil.RecordedRequest
+	for _, request := range server.Requests() {
+		if strings.HasPrefix(request.Path, "/api/teams/") {
+			requests = append(requests, request)
+		}
+	}
+	return output, requests
+}
+
+func methodsAndPaths(requests []testutil.RecordedRequest) []string {
+	out := make([]string, 0, len(requests))
+	for _, request := range requests {
+		out = append(out, request.Method+" "+request.Path)
+	}
+	return out
+}
+
+// An exported SSO/SCIM team carries an origin the teams endpoint cannot
+// resolve, and an id it can. Writing at the origin would create a second team.
+func TestApply_Team_OriginNotFoundUpdatesAtID(t *testing.T) {
+	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusOK)
+
+	assert.Equal(t, []string{
+		"GET /api/teams/" + unresolvableTeamOrigin,
+		"GET /api/teams/" + unresolvableTeamID,
+		"PUT /api/teams/" + unresolvableTeamID,
+	}, methodsAndPaths(requests))
+	assert.Contains(t, output, `Team "Dash0PushGroup"`)
+	assert.NotContains(t, output, "created")
+}
+
+// When neither label names a stored team, the origin stays the write key.
+func TestApply_Team_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
+	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusNotFound)
+
+	assert.Equal(t, []string{
+		"GET /api/teams/" + unresolvableTeamOrigin,
+		"GET /api/teams/" + unresolvableTeamID,
+		"PUT /api/teams/" + unresolvableTeamOrigin,
+	}, methodsAndPaths(requests))
+	assert.Contains(t, output, `Team "Dash0PushGroup" created`)
+}
+
+const (
+	apiPathEvals   = "/api/generative-ai-evaluations"
+	evalOriginPath = apiPathEvals + "/dash0-cli_answer-relevance"
+
+	// evalDoc is the hand-authored form of evals/get_success.json.
+	evalDoc = `kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: answer-relevance
+  labels:
+    dash0.com/origin: dash0-cli_answer-relevance
+  annotations:
+    dash0.com/folder-path: /checkout
+spec:
+  display:
+    name: Answer relevance
+    description: Judges whether the answer addresses the question.
+  enabled: true
+  judge:
+    model: standard
+    output:
+      kind: boolean
+    systemPrompt: You judge whether an answer is relevant to the question.
+    userPrompt: "Question: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}"
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: 0.25
+`
+)
+
+func TestApply_Eval_CreatedByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureEvalsNotFound})
+	server.On(http.MethodPut, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsCreateSuccess, Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, evalDoc, "--dataset", "staging")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Eval "Answer relevance" (eval_01k9z3d4q5r6s7t8u9v0w1x2y3) created`)
+	put := findRequest(server.Requests(), http.MethodPut, evalOriginPath)
+	require.NotNil(t, put)
+	assert.Contains(t, put.Query, "dataset=staging")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathEvals), "PUT by origin is an upsert, so no POST")
+	var body dash0api.GenerativeAiEvaluationDefinition
+	require.NoError(t, json.Unmarshal(put.Body, &body))
+	require.NotNil(t, body.Metadata.Labels)
+	assert.Nil(t, body.Metadata.Labels.Dash0Comversion, "dash0.com/version must never be sent")
+	assert.Equal(t, "answer-relevance", body.Metadata.Name)
+}
+
+// The fixture differs from get_success.json only in the server-bumped version and updated-at,
+// so a re-apply of unchanged content must report no changes.
+func TestApply_Eval_UnchangedReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsGetSuccess, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsUpdateUnchanged, Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, evalDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "no changes")
+	assert.NotContains(t, output, "dash0.com/version")
+}
+
+func TestApply_Eval_UpdatedShowsDiff(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsGetSuccess, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsUpdateSuccess, Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, evalDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "--- Eval (before)")
+	assert.Contains(t, output, "+    rate: 0.5")
+}
+
+func TestApply_Eval_OutputKindChangeIsExplained(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsGetSuccess, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, evalOriginPath, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: testutil.FixtureEvalsOutputKindImmutable, Validator: testutil.RequireHeaders})
+
+	_, err := runApplyDoc(t, server.URL, evalDoc)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `eval "Answer relevance": spec.judge.output.kind cannot change after the eval is created`)
+	assert.Contains(t, err.Error(), "\nHint: ")
+}
+
+// An eval without the required gen_ai.operation.name filter fails validation, so the valid
+// document before it is not written either.
+func TestApply_Eval_MissingRequiredFilterWritesNothing(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	invalid := strings.Replace(evalDoc, "      - key: gen_ai.operation.name\n        operator: is_set\n", "      - key: service.name\n        operator: is_set\n", 1)
+	require.NotEqual(t, evalDoc, invalid)
+
+	_, err := runApplyDoc(t, server.URL, evalDoc+"---\n"+invalid)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "validation failed with 1 error")
+	assert.Contains(t, err.Error(), "requires the filter {key: gen_ai.operation.name, operator: is_set}")
+	assert.Empty(t, server.Requests())
+}
+
+func TestApply_Eval_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, err := runApplyDoc(t, server.URL, evalDoc, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Apply Eval "Answer relevance" (dash0-cli_answer-relevance)`)
+	assert.Empty(t, server.Requests())
 }
 
 const (

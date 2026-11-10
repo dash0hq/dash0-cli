@@ -137,7 +137,7 @@ func TestUnifiedDiff_CustomSkillIgnoresServerFields(t *testing.T) {
 	}
 	returned.Spec.PermittedActions = &[]dash0api.CustomSkillAction{"custom_skill:read"}
 
-	text, err := unifiedDiff("Agent0 skill", sent, returned)
+	text, err := UnifiedDiff("Agent0 skill", sent, returned)
 
 	require.NoError(t, err)
 	assert.Empty(t, text)

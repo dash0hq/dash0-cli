@@ -2491,6 +2491,59 @@ func TestApply_Since_RemovedAwsMetricScrapeConfigIsCleared(t *testing.T) {
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathAwsScrapeConfig))
 }
 
+func TestApply_Since_DeletesRemovedEval(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "eval.yaml", "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  name: relevance\n  labels:\n    dash0.com/origin: dash0-cli_relevance\nspec:\n  display:\n    name: Answer relevance\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add eval")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "eval.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove eval")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.On(http.MethodDelete, "/api/generative-ai-evaluations/dash0-cli_relevance", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken, "--dataset", "staging",
+	})
+
+	var cmdErr error
+	var output string
+	stderr := testutil.CaptureStderr(t, func() {
+		output = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `Eval "Answer relevance" (dash0-cli_relevance) deleted`)
+	assert.NotContains(t, stderr, "identified by dash0.com/id alone", "an origin-keyed eval needs no warning")
+	del := findRequest(server.Requests(), http.MethodDelete, "/api/generative-ai-evaluations/dash0-cli_relevance")
+	require.NotNil(t, del)
+	assert.Contains(t, del.Query, "dataset=staging", "evals are dataset-scoped")
+}
+
 func TestApply_Since_DeletesRemovedSignalToMetricsRule(t *testing.T) {
 	for _, tc := range []struct {
 		name        string

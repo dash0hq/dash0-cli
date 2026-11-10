@@ -72,6 +72,8 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_apply_time_series_aggregation_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_agent0_skill_idempotency.sh"
   "${SCRIPT_DIR}/test_agent0_skill_roundtrip.sh"
+  "${SCRIPT_DIR}/test_apply_eval_idempotency.sh"
+  "${SCRIPT_DIR}/test_eval_roundtrip.sh"
   "${SCRIPT_DIR}/test_apply_dataset_idempotency.sh"
   "${SCRIPT_DIR}/test_dashboard_annotations.sh"
   "${SCRIPT_DIR}/test_view_annotations.sh"

@@ -90,43 +90,15 @@ func CustomSkillKey(skill *dash0api.SkillDefinition) string {
 // The origin and id are read before StripCustomSkillServerFields, which removes spec.source and
 // the per-user dash0.com/enabled annotation that a write must never send.
 func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *dash0api.SkillDefinition) (ImportResult, error) {
-	if err := ValidateCustomSkill(skill); err != nil {
+	plan, err := PlanCustomSkill(ctx, apiClient, skill)
+	if err != nil {
 		return ImportResult{}, err
 	}
-	origin := dash0api.GetCustomSkillOrigin(skill)
-	id := dash0api.GetCustomSkillID(skill)
-	dash0api.StripCustomSkillServerFields(skill)
-	skill.Kind = dash0api.Dash0Skill
-
-	var before *dash0api.SkillDefinition
-	action := ActionCreated
 	var result *dash0api.SkillDefinition
-	var err error
-	switch {
-	case origin != "":
-		before, err = apiClient.GetCustomSkill(ctx, origin)
-		switch {
-		case err == nil:
-			action = actionForExisting(CustomSkillDeletedAt(before))
-		case dash0api.IsNotFound(err):
-			before = nil
-		default:
-			return ImportResult{}, err
-		}
-		result, err = apiClient.UpdateCustomSkill(ctx, origin, skill)
-	case id != "":
-		before, err = apiClient.GetCustomSkill(ctx, id)
-		if err != nil {
-			if dash0api.IsNotFound(err) {
-				return ImportResult{}, fmt.Errorf("Agent0 skill with id %q not found"+
-					"\nHint: dash0.com/id only addresses an existing skill; set %s to create the skill and manage it as code", id, OriginLabel)
-			}
-			return ImportResult{}, err
-		}
-		action = actionForExisting(CustomSkillDeletedAt(before))
-		result, err = apiClient.UpdateCustomSkill(ctx, id, skill)
-	default:
+	if plan.Key == "" {
 		result, err = apiClient.CreateCustomSkill(ctx, skill)
+	} else {
+		result, err = apiClient.UpdateCustomSkill(ctx, plan.Key, skill)
 	}
 	if err != nil {
 		return ImportResult{}, err
@@ -134,14 +106,45 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 	if err := RequireNotDeleted("Agent0 skill", CustomSkillName(result), dash0api.GetCustomSkillID(result), CustomSkillDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-
-	var beforeAny any
-	if before != nil {
-		SortCustomSkillPermissions(before)
-		beforeAny = before
-	}
 	SortCustomSkillPermissions(result)
-	return ImportResult{Name: CustomSkillName(result), ID: CustomSkillKey(result), Action: action, Before: beforeAny, After: result}, nil
+	return ImportResult{Name: CustomSkillName(result), ID: CustomSkillKey(result), Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanCustomSkill reads the stored skill that ImportCustomSkill would write.
+// dash0.com/origin upserts, while dash0.com/id only addresses an existing
+// skill, so an unknown id is an error instead of a create.
+func PlanCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *dash0api.SkillDefinition) (ImportPlan, error) {
+	if err := ValidateCustomSkill(skill); err != nil {
+		return ImportPlan{}, err
+	}
+	origin := dash0api.GetCustomSkillOrigin(skill)
+	id := dash0api.GetCustomSkillID(skill)
+	dash0api.StripCustomSkillServerFields(skill)
+	skill.Kind = dash0api.Dash0Skill
+
+	plan := ImportPlan{Action: ActionCreated, Proposed: skill}
+	switch {
+	case origin != "":
+		plan.Key = origin
+	case id != "":
+		plan.Key = id
+	default:
+		return plan, nil
+	}
+	before, err := apiClient.GetCustomSkill(ctx, plan.Key)
+	switch {
+	case err == nil:
+	case dash0api.IsNotFound(err) && origin != "":
+		return plan, nil
+	case dash0api.IsNotFound(err):
+		return ImportPlan{}, fmt.Errorf("Agent0 skill with id %q not found"+
+			"\nHint: dash0.com/id only addresses an existing skill; set %s to create the skill and manage it as code", id, OriginLabel)
+	default:
+		return ImportPlan{}, err
+	}
+	SortCustomSkillPermissions(before)
+	plan.Action, plan.Before = actionForExisting(CustomSkillDeletedAt(before)), before
+	return plan, nil
 }
 
 // CustomSkillDeletedAt returns when the skill was soft-deleted, or nil if it was not.

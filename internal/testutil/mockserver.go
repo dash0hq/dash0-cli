@@ -3,11 +3,14 @@ package testutil
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,6 +95,18 @@ const (
 	FixtureAgent0SkillsUnauthorized         = "agent0skills/error_unauthorized.json"
 	FixtureAgent0SkillsDuplicateName        = "agent0skills/error_duplicate_name.json"
 	FixtureAgent0SkillsDefaultEnabledDenied = "agent0skills/error_default_enabled_forbidden.json"
+
+	// Generative AI evaluation (eval) fixtures. The error messages are the server's own.
+	FixtureEvalsListSuccess         = "evals/list_success.json"
+	FixtureEvalsListEmpty           = "evals/list_empty.json"
+	FixtureEvalsGetSuccess          = "evals/get_success.json"
+	FixtureEvalsGetDeleted          = "evals/get_deleted.json"
+	FixtureEvalsCreateSuccess       = "evals/create_success.json"
+	FixtureEvalsUpdateSuccess       = "evals/update_success.json"
+	FixtureEvalsUpdateUnchanged     = "evals/update_unchanged.json"
+	FixtureEvalsNotFound            = "evals/error_not_found.json"
+	FixtureEvalsNameImmutable       = "evals/error_name_immutable.json"
+	FixtureEvalsOutputKindImmutable = "evals/error_output_kind_immutable.json"
 
 	// Datasets fixtures
 	FixtureDatasetsListSuccess   = "datasets/list_success.json"
@@ -226,7 +241,45 @@ func NewMockServer(t *testing.T, fixturesDir string) *MockServer {
 		m.Server.Close()
 	})
 
+	// Address the server by a domain name instead of 127.0.0.1. The CLI derives
+	// Dash0 deep links from the API host and omits them for an IP address, so
+	// with the raw listener address no test could check a deep link.
+	routeMockHostToLoopback()
+	m.Server.URL = strings.Replace(m.Server.URL, "127.0.0.1", MockServerHost, 1)
+
 	return m
+}
+
+// MockServerHost is the host name in MockServer.URL. It uses the reserved
+// ".test" top-level domain, so it never resolves to a real host, and deep
+// links derived from it point to "https://app.dash0.test".
+const MockServerHost = "api.dash0.test"
+
+var routeMockHostOnce sync.Once
+
+// routeMockHostToLoopback makes http.DefaultTransport, which the CLI's API
+// clients use, connect to 127.0.0.1 for MockServerHost, never through a proxy
+// from HTTP_PROXY, as for the 127.0.0.1 address itself. Other hosts connect as
+// before.
+func routeMockHostToLoopback() {
+	routeMockHostOnce.Do(func() {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		proxy := transport.Proxy
+		transport.Proxy = func(req *http.Request) (*url.URL, error) {
+			if req.URL.Hostname() == MockServerHost || proxy == nil {
+				return nil, nil
+			}
+			return proxy(req)
+		}
+		dial := transport.DialContext
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if host, port, err := net.SplitHostPort(addr); err == nil && host == MockServerHost {
+				addr = net.JoinHostPort("127.0.0.1", port)
+			}
+			return dial(ctx, network, addr)
+		}
+		http.DefaultTransport = transport
+	})
 }
 
 // On registers a mock response for a specific method and path.

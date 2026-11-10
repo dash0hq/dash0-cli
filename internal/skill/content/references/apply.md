@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -56,6 +56,10 @@ The fallback is therefore a one-way create, not an idempotent one: the newly ass
 Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
 A document with neither label creates a new SLO on every apply.
 
+`Dash0GenerativeAiEvaluation` documents are evals, dispatched to the dataset-scoped generative AI evaluations endpoint.
+`dash0.com/origin` is the upsert key, with `dash0.com/id` as the fallback, the same as for `SLO` documents above.
+See [Eval documents](#eval-documents-experimental) for the fields the CLI removes before it writes and the fields that cannot change after create.
+
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
@@ -76,7 +80,9 @@ The `admin` grant the server adds to every skill is left out of the request and 
 A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-Upsert key selection: `dash0.com/origin` wins when present and PUTs unconditionally.
+Upsert key selection: `dash0.com/origin` wins when present and PUTs at that origin.
+When the document also carries `dash0.com/id` and the origin is not found, the CLI reads the team by its id, and on hit it PUTs at the id.
+This keeps an exported SSO/SCIM-provisioned team, whose `saml://...` origin the teams endpoint cannot resolve, from being created a second time.
 When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
 A document with neither label creates a new team on every apply.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
@@ -95,16 +101,6 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > You therefore cannot apply one document to two datasets, as you can for every other asset kind.
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
-
-`Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
-`dash0.com/origin` wins when present: the CLI PUTs to that origin, which creates the rule or replaces it.
-When only `dash0.com/id` is present the CLI preflights the rule with a GET: on hit it PUTs to that ID, on 404 it POSTs without the ID, and other preflight errors surface.
-The POST fallback lets a definition exported from another organization apply, but it is not idempotent, because the new ID is never written back into the document.
-A document with neither label creates a new rule on every apply.
-Pin `dash0.com/origin` on any rule that will be applied more than once.
-Origins are unique per organization while each rule belongs to one dataset, as for time series aggregations.
-Applying a document to a second dataset fails with `400 ... associated with a different dataset`, and the CLI adds a hint.
-Use a distinct origin per dataset.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
@@ -276,6 +272,9 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
+A `Dash0GenerativeAiEvaluation` document removed since `<ref>` deletes the eval by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `evals delete`.
+As for SLOs, `--since` warns before it deletes an eval identified by `dash0.com/id` alone, because the live eval may sit at a different, server-assigned ID.
+
 A `Dash0Skill` document removed since `<ref>` deletes the skill by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `agent0 skills delete`.
 
 A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
@@ -292,9 +291,6 @@ A dataset that is already gone counts as deleted, and a removed dataset document
 
 A `Dash0AwsMetricScrapeConfig` document removed since `<ref>` clears the integration's scrape config, with the same API call as `aws-metric-scrape-configs delete`.
 Dash0 stops scraping CloudWatch metrics for that integration, and the integration itself is kept.
-
-A `Dash0SignalToMetrics` document removed since `<ref>` deletes the rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `signal-to-metrics-rules delete`.
-Deleting by `dash0.com/id` alone prints a warning: if the document was first applied to an organization without that ID, the live rule has a different, server-assigned ID, and the delete can miss it.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
@@ -315,10 +311,21 @@ Check rule "service-alerts - HighLatency" deleted
 
 Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with:
 
+The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
+
+```bash
+$ dash0 --experimental apply -f rules/ --since HEAD~1 --dry-run
+Dry run: 0 documents from 0 files validated; 2 deletions pending due to --since 'HEAD~1'
+  alerts.yaml
+    * Delete Check rule "service-alerts - HighErrorRate" (app-rules--service-alerts-higherrorrate)
+    * Delete Check rule "service-alerts - HighLatency" (app-rules--service-alerts-highlatency)
+```
+
+The run itself prints one line for the whole CRD:
+
 ```bash
 $ dash0 --experimental apply -f rules/ --since HEAD~1 --force
-Check rule "service-alerts - HighLatency" deleted
-Check rule "service-alerts - HighErrorRate" deleted
+PrometheusRule "service-alerts" (app-rules) deleted
 ```
 
 Recording rules get the symmetric treatment, but at CRD granularity rather than per-record: Dash0 models a CRD's recording rules as a single server-side resource, not one per `record:` entry, so there is no per-record id to delete by the way there is a per-alert composed name.

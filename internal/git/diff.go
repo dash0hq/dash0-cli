@@ -29,6 +29,10 @@ type Deletion struct {
 	// which for a server-assigned id may name no live SLO at all — see
 	// asset.SLOUsesOrigin.
 	SLOUsesOrigin bool
+	// GenerativeAiEvaluationUsesOrigin is the same signal for Kind
+	// "generativeaievaluation", whose ids are server-assigned too — see
+	// asset.GenerativeAiEvaluationUsesOrigin.
+	GenerativeAiEvaluationUsesOrigin bool
 	// SignalToMetricsRuleUsesOrigin is the same signal for Kind
 	// "signaltometrics" (meaningless for every other kind); see
 	// asset.SignalToMetricsRuleUsesOrigin.
@@ -42,6 +46,10 @@ type Deletion struct {
 	// those derived ids individually, since Identifier alone only ever
 	// named a check rule for a single-alert CRD.
 	PrometheusAlerts []asset.PrometheusAlertName
+	// PrometheusHadRecordingRule reports that the CRD had a recording rule at
+	// the "before" snapshot, when Kind is "prometheusrule". The preview needs
+	// it to list that deletion once it lists a multi-alert CRD per alert.
+	PrometheusHadRecordingRule bool
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -84,15 +92,17 @@ func Diff(before, after Snapshot) DeletionPlan {
 			continue
 		}
 		deletion := Deletion{
-			Kind:                          key.Kind,
-			Identifier:                    key.Identifier,
-			Path:                          path,
-			SpamFilterUsesOrigin:          before.SpamFilterUsesOriginByIdentifier[key.Identifier],
-			SLOUsesOrigin:                 before.SLOUsesOriginByIdentifier[key.Identifier],
-			SignalToMetricsRuleUsesOrigin: before.SignalToMetricsRuleUsesOriginByIdentifier[key.Identifier],
+			Kind:                             key.Kind,
+			Identifier:                       key.Identifier,
+			Path:                             path,
+			SpamFilterUsesOrigin:             before.SpamFilterUsesOriginByIdentifier[key.Identifier],
+			SLOUsesOrigin:                    before.SLOUsesOriginByIdentifier[key.Identifier],
+			GenerativeAiEvaluationUsesOrigin: before.GenerativeAiEvaluationUsesOriginByIdentifier[key.Identifier],
+			SignalToMetricsRuleUsesOrigin:    before.SignalToMetricsRuleUsesOriginByIdentifier[key.Identifier],
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
+			deletion.PrometheusHadRecordingRule = before.PrometheusRecordingRoleByIdentifier[key.Identifier]
 		}
 		plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 	}
