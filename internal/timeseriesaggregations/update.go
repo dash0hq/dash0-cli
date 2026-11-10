@@ -22,7 +22,8 @@ func newUpdateCmd() *cobra.Command {
 file. Use '-f -' to read from stdin.
 
 When the positional argument is omitted, the target is taken from the
-document's 'dash0.com/origin' label. When it is given, it must match that
+document's 'dash0.com/origin' label, and a document without it fails, as it
+does in 'apply'. When it is given, it must match that
 label. An id is accepted only when the document also carries that id, which
 is the case for a definition exported with 'tsa get -o yaml'; a hand-written
 document normally carries only the origin, because ids are server-assigned.
@@ -58,6 +59,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	aggregation, err := decode(raw)
 	if err != nil {
 		return err
+	}
+
+	// Without an argument the file must name the aggregation the way apply
+	// requires: by its origin. The API ignores a dash0.com/id in the body.
+	if len(args) == 0 && origin(aggregation) == "" {
+		return asset.ErrTimeSeriesAggregationMissingOrigin
 	}
 
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{

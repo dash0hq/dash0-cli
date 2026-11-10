@@ -176,6 +176,7 @@ func runUpdateAgainstNotFound(t *testing.T, command updateCommand, v updateIdent
 // one rule cannot change it. Change this table only together with a
 // user-facing change.
 func TestUpdateKey_Characterization(t *testing.T) {
+	const tsaMissingOrigin = "Dash0TimeSeriesAggregation requires metadata.labels[\"dash0.com/origin\"]: the Dash0 API rejects a time series aggregation without an origin, and the origin is the key `apply` upserts by"
 	want := map[string]map[updateIdentifiers]string{
 		"dashboards": {
 			updateWithNeither: "error: no dashboard id given: pass one as an argument, or set the id in the file",
@@ -239,9 +240,9 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/teams/o",
 		},
 		"time-series-aggregations": {
-			updateWithNeither: "error: no time series aggregation origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithNeither: "error: " + tsaMissingOrigin,
 			updateWithOrigin:  "GET /api/time-series-aggregations/o",
-			updateWithID:      "GET /api/time-series-aggregations/" + characterizationID,
+			updateWithID:      "error: " + tsaMissingOrigin,
 			updateWithBoth:    "GET /api/time-series-aggregations/o",
 		},
 		"datasets": {
