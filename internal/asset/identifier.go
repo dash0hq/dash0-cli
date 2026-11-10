@@ -65,15 +65,16 @@ func ExtractIdentifier(data []byte) (string, error) {
 		return "", fmt.Errorf("failed to extract identifier: %w", err)
 	}
 
-	origin := probe.Metadata.Labels["dash0.com/origin"]
-
-	switch NormalizeKind(probe.Kind) {
+	candidate := UpsertKey{
+		Origin: probe.Metadata.Labels["dash0.com/origin"],
+		ID:     probe.Metadata.Labels["dash0.com/id"],
+	}
+	kind := NormalizeKind(probe.Kind)
+	switch kind {
 	case "dashboard":
-		return probe.Metadata.Dash0Extensions.ID, nil
+		candidate.ID = probe.Metadata.Dash0Extensions.ID
 	case "checkrule":
-		return probe.ID, nil
-	case "notificationchannel", "timeseriesaggregation":
-		return origin, nil
+		candidate.ID = probe.ID
 	case "dataset":
 		// The client's own helper, so spec.slug wins over the label exactly as it
 		// does on create, update, and apply.
@@ -81,13 +82,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 		if err := dash0yaml.Unmarshal(data, &dataset); err != nil {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
-		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics":
-		if origin != "" {
-			return origin, nil
-		}
-		return probe.Metadata.Labels["dash0.com/id"], nil
-	default:
-		return probe.Metadata.Labels["dash0.com/id"], nil
+		candidate.ID = dash0api.GetDatasetID(&dataset)
 	}
+	return UpsertKeyFor(kind, candidate).Preferred(), nil
 }

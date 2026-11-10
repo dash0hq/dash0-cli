@@ -103,15 +103,12 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 		return fmt.Errorf("failed to read team definition: %w", err)
 	}
 
-	fileOrigin := dash0api.GetTeamOrigin(&team)
-	fileID := dash0api.GetTeamID(&team)
-
-	// Origin wins over id, mirroring asset.ImportTeam's routing.
+	fileKey := asset.UpsertKeyFor("team", asset.UpsertKey{Origin: dash0api.GetTeamOrigin(&team), ID: dash0api.GetTeamID(&team)})
 	addressor, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "team",
 		UsesOrigin: true,
-		Origin:     fileOrigin,
-		ID:         fileID,
+		Origin:     fileKey.Origin,
+		ID:         fileKey.ID,
 	})
 	if err != nil {
 		return err

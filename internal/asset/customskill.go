@@ -117,18 +117,13 @@ func PlanCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *dash
 	if err := ValidateCustomSkill(skill); err != nil {
 		return ImportPlan{}, err
 	}
-	origin := dash0api.GetCustomSkillOrigin(skill)
-	id := dash0api.GetCustomSkillID(skill)
+	key := UpsertKeyFor("skill", UpsertKey{Origin: dash0api.GetCustomSkillOrigin(skill), ID: dash0api.GetCustomSkillID(skill)})
+	origin, id := key.Origin, key.ID
 	dash0api.StripCustomSkillServerFields(skill)
 	skill.Kind = dash0api.Dash0Skill
 
-	plan := ImportPlan{Action: ActionCreated, Proposed: skill}
-	switch {
-	case origin != "":
-		plan.Key = origin
-	case id != "":
-		plan.Key = id
-	default:
+	plan := ImportPlan{Key: key.Preferred(), Action: ActionCreated, Proposed: skill}
+	if plan.Key == "" {
 		return plan, nil
 	}
 	before, err := apiClient.GetCustomSkill(ctx, plan.Key)
