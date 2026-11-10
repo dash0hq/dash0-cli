@@ -1,0 +1,8 @@
+change_type: enhancement
+component: dashboards
+note: "`apply`, `diff`, and `dashboards create|update` accept `kind: EphemeralDashboard`, and the experimental `dashboards preview` prints a preview URL for each dashboard in a file or directory."
+issues: [375]
+subtext: |
+  Dash0 deletes an ephemeral dashboard once `spec.ttl` has passed since its latest write.
+  `preview` upserts each preview under the dashboard's own id with `--ttl` (default `1d`), so running it again updates the same previews and starts their ttl again.
+change_logs: [user]

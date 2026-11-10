@@ -371,6 +371,86 @@ spec:
 	assert.Nil(t, dashboard.Metadata.Dash0Extensions.Id, "ID should be cleared from the body; it is passed as the URL path parameter")
 }
 
+func TestApply_EphemeralDashboard_KeepsKindAndTTL(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "preview.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: EphemeralDashboard
+metadata:
+  dash0extensions:
+    id: orders-preview
+  name: orders
+spec:
+  ttl: 12h
+  display:
+    name: Orders
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/orders-preview", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+	})
+	server.On(http.MethodPut, "/api/dashboards/orders-preview", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: map[string]any{
+			"kind":     "EphemeralDashboard",
+			"metadata": map[string]any{"name": "orders"},
+			"spec":     map[string]any{"ttl": "12h", "display": map[string]any{"name": "Orders"}},
+		},
+		Validator: testutil.RequireHeaders,
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `Ephemeral dashboard "Orders" (orders-preview) created`)
+	bodies := server.RequestBodies(t, http.MethodPut, "/api/dashboards/orders-preview")
+	require.Len(t, bodies, 1)
+	assert.Equal(t, "EphemeralDashboard", bodies[0]["kind"])
+	assert.Equal(t, "12h", bodies[0]["spec"].(map[string]any)["ttl"])
+}
+
+func TestApply_EphemeralDashboard_WithoutTTLFailsBeforeAnyRequest(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "assets.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: orders
+spec:
+  display:
+    name: Orders
+---
+kind: EphemeralDashboard
+metadata:
+  name: orders-preview
+spec:
+  display:
+    name: Orders preview
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), "an EphemeralDashboard requires spec.ttl")
+	assert.Empty(t, server.Requests())
+}
+
 func TestApply_Dashboard_PreservesAnnotations(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

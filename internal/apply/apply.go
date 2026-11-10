@@ -59,6 +59,7 @@ When a directory is specified, all .yaml and .yml files are discovered recursive
 
 Supported asset types:
   - Dashboard (or PersesDashboard CRD)
+  - EphemeralDashboard
   - CheckRule (or PrometheusRule CRD with alerting rules)
   - PrometheusRule CRD with recording rules
   - SyntheticCheck
@@ -291,7 +292,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
 	switch asset.NormalizeKind(doc.Kind) {
-	case "dashboard", "persesdashboard":
+	case "dashboard", "ephemeraldashboard", "persesdashboard":
 		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
@@ -303,7 +304,7 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 				AssetName: dash0api.GetDashboardName(dashboard),
 			})
 		}
-		return []applyResult{{kind: "Dashboard", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+		return []applyResult{{kind: asset.DashboardDisplayKind(dashboard), name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "checkrule":
 		return applyCheckRule(ctx, apiClient, doc, dataset)

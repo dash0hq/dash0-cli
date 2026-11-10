@@ -21,7 +21,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "Update a dashboard from a file",
 		Long: `Update an existing dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-Accepts both plain Dashboard definitions and PersesDashboard CRD files. When a PersesDashboard CRD is provided, it is converted to a Dash0 dashboard.
+Accepts Dashboard and EphemeralDashboard definitions and PersesDashboard CRD files. When a PersesDashboard CRD is provided, it is converted to a Dash0 dashboard.
 
 If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
 		Example: `  # Update a dashboard from a file
@@ -55,6 +55,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	dashboard, err := dash0yaml.ParseAsDashboard(data)
 	if err != nil {
+		return err
+	}
+	if err := asset.ValidateEphemeralDashboard(dashboard); err != nil {
 		return err
 	}
 
@@ -93,7 +96,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 
 	if flags.DryRun {
 		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
-			DisplayKind:     "Dashboard",
+			DisplayKind:     asset.DashboardDisplayKind(dashboard),
 			Name:            displayName,
 			ID:              id,
 			Before:          before,

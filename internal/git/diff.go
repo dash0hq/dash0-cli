@@ -220,29 +220,25 @@ func Diff(before, after Snapshot) DeletionPlan {
 }
 
 // survives reports whether the asset behind key is still declared in after.
-// apply upserts PersesDashboard and Dashboard documents through the same
-// dashboard import (see applyDocument in internal/apply), so a file
-// re-authored from one kind spelling to the other under the same identifier
-// is still the same live dashboard, not a deletion. The key keeps its own
-// kind, so a real deletion is still reported under the spelling it had.
+// apply upserts Dashboard, EphemeralDashboard, and PersesDashboard documents
+// through the same dashboard import (see applyDocument in internal/apply), and
+// the API keeps all three under one identifier, so a file re-authored from one
+// of these kinds to another under the same identifier is still the same live
+// dashboard, not a deletion. The key keeps its own kind, so a real deletion is
+// still reported under the spelling it had.
 func survives(after Snapshot, key IdentifierKey) bool {
 	if _, ok := after.Identifiers[key]; ok {
 		return true
 	}
-	if alias := equivalentDashboardKind(key.Kind); alias != "" {
-		_, ok := after.Identifiers[IdentifierKey{Kind: alias, Identifier: key.Identifier}]
-		return ok
+	if !slices.Contains(dashboardKinds, key.Kind) {
+		return false
+	}
+	for _, kind := range dashboardKinds {
+		if _, ok := after.Identifiers[IdentifierKey{Kind: kind, Identifier: key.Identifier}]; ok {
+			return true
+		}
 	}
 	return false
 }
 
-func equivalentDashboardKind(kind string) string {
-	switch kind {
-	case "dashboard":
-		return "persesdashboard"
-	case "persesdashboard":
-		return "dashboard"
-	default:
-		return ""
-	}
-}
+var dashboardKinds = []string{"dashboard", "ephemeraldashboard", "persesdashboard"}

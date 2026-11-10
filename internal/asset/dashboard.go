@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -63,6 +64,42 @@ func PlanDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 	}
 	plan.Action, plan.Before = actionForExisting(DashboardDeletedAt(existing)), existing
 	return plan, nil
+}
+
+// IsEphemeralDashboard reports whether dashboard is an EphemeralDashboard.
+func IsEphemeralDashboard(dashboard *dash0api.DashboardDefinition) bool {
+	return NormalizeKind(string(dashboard.Kind)) == "ephemeraldashboard"
+}
+
+// DashboardDisplayKind returns "Ephemeral dashboard" for an
+// EphemeralDashboard and "Dashboard" for any other dashboard.
+func DashboardDisplayKind(dashboard *dash0api.DashboardDefinition) string {
+	if IsEphemeralDashboard(dashboard) {
+		return KindDisplayName("ephemeraldashboard")
+	}
+	return KindDisplayName("dashboard")
+}
+
+// ValidateEphemeralDashboard rejects an EphemeralDashboard without spec.ttl
+// before any write. The API owns the duration format and its limits.
+func ValidateEphemeralDashboard(dashboard *dash0api.DashboardDefinition) error {
+	if !IsEphemeralDashboard(dashboard) {
+		return nil
+	}
+	if ttl, _ := dashboard.Spec["ttl"].(string); ttl == "" {
+		return fmt.Errorf("an EphemeralDashboard requires spec.ttl, a duration such as 1d or 12h")
+	}
+	return nil
+}
+
+// ToEphemeralDashboard turns dashboard into an EphemeralDashboard that the API
+// deletes once ttl has passed since its latest write.
+func ToEphemeralDashboard(dashboard *dash0api.DashboardDefinition, ttl string) {
+	dashboard.Kind = dash0api.DashboardKindEphemeralDashboard
+	if dashboard.Spec == nil {
+		dashboard.Spec = map[string]interface{}{}
+	}
+	dashboard.Spec["ttl"] = ttl
 }
 
 // DashboardDeletedAt returns when the dashboard was deleted, or nil when it is
