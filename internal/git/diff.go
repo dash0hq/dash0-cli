@@ -211,10 +211,11 @@ func Diff(before, after Snapshot) DeletionPlan {
 // that gains an origin keeps its server id as the alias, and apply updates the
 // same dashboard, so the old id is not a deletion.
 //
-// apply upserts PersesDashboard and Dashboard documents through the same
-// dashboard import (see applyDocument in internal/apply), so a file
-// re-authored from one kind spelling to the other under the same identifier
-// is still the same live dashboard, not a deletion. The key keeps its own
+// apply upserts Dashboard, EphemeralDashboard, and PersesDashboard documents
+// through the same dashboard import (see applyDocument in internal/apply), and
+// the API keeps all three under one identifier, so a file re-authored from one
+// of these kinds to another under the same identifier is still the same live
+// dashboard, not a deletion. The key keeps its own
 // kind, so a real deletion is still reported under the spelling it had.
 func survives(before, after Snapshot, key IdentifierKey) bool {
 	names := []string{key.Identifier}
@@ -222,8 +223,8 @@ func survives(before, after Snapshot, key IdentifierKey) bool {
 		names = append(names, alias)
 	}
 	kinds := []string{key.Kind}
-	if equivalent := equivalentDashboardKind(key.Kind); equivalent != "" {
-		kinds = append(kinds, equivalent)
+	if slices.Contains(dashboardKinds, key.Kind) {
+		kinds = dashboardKinds
 	}
 	for _, kind := range kinds {
 		for _, name := range names {
@@ -249,13 +250,4 @@ func declares(snapshot Snapshot, key IdentifierKey) bool {
 	return false
 }
 
-func equivalentDashboardKind(kind string) string {
-	switch kind {
-	case "dashboard":
-		return "persesdashboard"
-	case "persesdashboard":
-		return "dashboard"
-	default:
-		return ""
-	}
-}
+var dashboardKinds = []string{"dashboard", "ephemeraldashboard", "persesdashboard"}

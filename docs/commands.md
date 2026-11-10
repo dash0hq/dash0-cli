@@ -797,7 +797,7 @@ Aliases: `remove`
 
 | Asset type | Command | Notes |
 |------------|---------|-------|
-| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
+| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files and EphemeralDashboard documents. Also has the experimental `preview`; see [Ephemeral dashboards](#ephemeral-dashboards-experimental) |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
@@ -835,6 +835,7 @@ The identifier field location varies by asset kind:
 | Kind | Identifier field | Notes |
 |------|------------------|-------|
 | `Dashboard` | `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` | `dash0.com/origin` is the recommended key, and a Kubernetes custom resource keeps it, while Kubernetes drops the unknown `dash0Extensions` field. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from. When the document carries both `dash0.com/origin` and `dash0.com/id` and the origin is not found, the CLI updates the dashboard at the id. The API does not set the origin on an update, so keep `dash0.com/id` in the file: without it, the next apply creates a new dashboard at the origin. `apply --since` deletes such a dashboard at the id |
+| `EphemeralDashboard` | Same as `Dashboard` | Shares its identifiers with `Dashboard` and `PersesDashboard`, and the API does not change the kind of an existing dashboard |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
 | `CheckRule` | top-level `id` | |
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
@@ -1034,7 +1035,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `EphemeralDashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1561,6 +1562,23 @@ spec:
 ```
 
 For PersesDashboards the user-defined identifier is the `dash0.com/id` metadata label (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
+
+EphemeralDashboard (a Dashboard that Dash0 deletes once `spec.ttl` has passed since its latest write):
+
+```yaml
+kind: EphemeralDashboard
+metadata:
+  name: production-overview-preview
+  dash0Extensions:
+    id: production-overview-preview
+spec:
+  ttl: 1d
+  display:
+    name: Production Overview
+```
+
+`spec.ttl` is required, and `apply` rejects an EphemeralDashboard without it before any write.
+See [Ephemeral dashboards](#ephemeral-dashboards-experimental).
 
 Check rule:
 
@@ -2306,6 +2324,44 @@ A delete is permanent: applying the same document again creates a new rule with 
 Deleting a rule drops the traces that only that rule kept.
 Deleting the last enabled rule of a dataset turns sampling off, and Dash0 keeps every trace again.
 In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), `sampling-rules delete` therefore requires an explicit `--force` and otherwise refuses with an error, as `datasets delete` does.
+
+### Ephemeral dashboards (experimental)
+
+An ephemeral dashboard is a dashboard with a `spec.ttl`, such as `12h` or `7d`.
+Dash0 deletes it once the ttl has passed since its latest write, so every write starts the ttl again.
+It follows the [Perses ephemeral dashboard](https://perses.dev/perses/docs/api/ephemeral-dashboard/) model, and the API enables it per organization.
+
+`apply`, `diff`, `dashboards create`, and `dashboards update` accept `kind: EphemeralDashboard` (see [Asset YAML formats](#asset-yaml-formats)).
+An ephemeral dashboard shares its identifiers with permanent dashboards, and the API does not change the kind of an existing dashboard.
+So an EphemeralDashboard with the id of a permanent dashboard fails with a 400, and so does the reverse.
+For `apply --since`, a file that changes between `Dashboard`, `PersesDashboard`, and `EphemeralDashboard` under the same identifier is not a deletion.
+
+#### `dashboards preview`
+
+`preview` creates or updates an EphemeralDashboard for each `Dashboard` and `PersesDashboard` in a file or directory, and prints the URL of each preview.
+It is the Dash0 counterpart of `percli dac preview`, for example to review dashboard changes from a pull request.
+Documents of other kinds are skipped.
+
+```bash
+dash0 --experimental dashboards preview -f <file|directory> [--ttl <duration>] [-o table|wide|json|yaml|csv]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f`, `--file` | A YAML file, a directory of YAML files (read recursively, like `apply`), or `-` for stdin |
+| `--ttl` | How long each preview lives after its latest write. Default `1d`. The API checks the format and its limits |
+
+Each preview is upserted under the dashboard's own identifier, so a second run updates the same previews and starts their ttl again.
+A dashboard without an identifier gets a new preview on every run.
+Previewing a dashboard that already exists as a permanent dashboard fails, because the API does not change its kind.
+
+```bash
+$ dash0 -X dashboards preview -f dashboards/ --ttl 12h
+NAME                                      ID                                    ACTION    URL
+Orders                                    orders-overview                       created   https://app.dash0.com/goto/dashboards?dashboard_id=orders-overview
+```
+
+`-o json` prints a list of objects with `name`, `id`, `action`, and `url`, which is the default in agent mode.
 
 ## Query commands
 

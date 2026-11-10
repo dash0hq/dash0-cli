@@ -93,9 +93,10 @@ var topics = []topicSpec{
 	{
 		name:            "dashboards",
 		includeQuickRef: true,
-		assetYAMLLabels: []string{"Dashboard:", "PersesDashboard"},
+		sections:        []string{"ephemeral dashboards"},
+		assetYAMLLabels: []string{"Dashboard:", "PersesDashboard", "EphemeralDashboard"},
 		extraNote: "`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and " +
-			"`perses.dev/v1alpha2`).\n\n" +
+			"`perses.dev/v1alpha2`) and EphemeralDashboard documents.\n\n" +
 			deletedAssetNote("dashboards", "dashboard", "dashboards", "ID"),
 	},
 	{

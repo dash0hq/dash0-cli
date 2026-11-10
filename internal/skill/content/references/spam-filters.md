@@ -6,7 +6,7 @@
 
 | Asset type | Command | Notes |
 |------------|---------|-------|
-| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
+| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files and EphemeralDashboard documents. Also has the experimental `preview`; see [Ephemeral dashboards](#ephemeral-dashboards-experimental) |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
