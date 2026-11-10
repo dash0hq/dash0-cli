@@ -74,6 +74,14 @@ func (c *keyRecordingClient) GetNotificationChannel(_ context.Context, key strin
 	return nil, c.notFound("GetNotificationChannel", key)
 }
 
+func (c *keyRecordingClient) GetSignalToMetrics(_ context.Context, key string, _ *string) (*dash0api.SignalToMetricsDefinition, error) {
+	return nil, c.notFound("GetSignalToMetrics", key)
+}
+
+func (c *keyRecordingClient) GetGenerativeAiEvaluation(_ context.Context, key string, _ *string) (*dash0api.GenerativeAiEvaluationDefinition, error) {
+	return nil, c.notFound("GetGenerativeAiEvaluation", key)
+}
+
 func (c *keyRecordingClient) GetSpamFilter(_ context.Context, key string, _ *string) (dash0api.SpamFilterObject, error) {
 	return nil, c.notFound("GetSpamFilter", key)
 }
@@ -146,6 +154,12 @@ func characterizationDocument(kind string, variant identifierVariant) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: n\n" + labelBlock + "spec: {}\n"
 	case "skill":
 		return "kind: Dash0Skill\nmetadata:\n" + labelBlock + "spec:\n  files:\n    - relativePath: SKILL.md\n      content: |\n        ---\n        name: n\n        description: d\n        ---\n"
+	case "generativeaievaluation":
+		return "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  name: n\n" + labelBlock +
+			"spec:\n  display:\n    name: n\n  enabled: true\n  judge:\n    model: standard\n    output:\n      kind: boolean\n    systemPrompt: s\n    userPrompt: u\n  match:\n    filters:\n      - key: gen_ai.operation.name\n        operator: is_set\n  sample:\n    rate: 0.25\n"
+	case "signaltometrics":
+		return "kind: Dash0SignalToMetrics\nmetadata:\n  name: n\n" + labelBlock +
+			"spec:\n  display:\n    name: n\n  enabled: true\n  match:\n    signal: logs\n    filters: []\n  output:\n    name: m\n    interval: 1m\n"
 	case "awsmetricscrapeconfig":
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + labelBlock + "spec:\n  namespaces: []\n"
 	}
@@ -272,6 +286,18 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withOrigin:  {"", "", "GetAwsMetricScrapeConfig() error: AWS integration not found (status: 404)"},
 			withID:      {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
 			withBoth:    {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
+		},
+		"generativeaievaluation": {
+			withNeither: {"", "", ""},
+			withOrigin:  {"o", "o", "GetGenerativeAiEvaluation(o)"},
+			withID:      {"i", "i", "GetGenerativeAiEvaluation(i)"},
+			withBoth:    {"o", "i", "GetGenerativeAiEvaluation(o)"},
+		},
+		"signaltometrics": {
+			withNeither: {"", "", ""},
+			withOrigin:  {"o", "o", "GetSignalToMetrics(o)"},
+			withID:      {"i", "i", "GetSignalToMetrics(i)"},
+			withBoth:    {"o", "o", "GetSignalToMetrics(o)"},
 		},
 	}
 

@@ -19,8 +19,10 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/datasets"
+	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/signaltometricsrules"
 	"github.com/dash0hq/dash0-cli/internal/slos"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
@@ -123,6 +125,14 @@ var updateCommands = []updateCommand{
 	}},
 	{"aws-metric-scrape-configs", awsmetricscrapeconfigs.NewAwsMetricScrapeConfigsCmd, []string{"-X", "aws-metric-scrape-configs", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + v.labelBlock(true) + "spec:\n  namespaces: []\n"
+	}},
+	{"evals", evals.NewEvalsCmd, []string{"-X", "evals", "update"}, func(v updateIdentifiers) string {
+		return "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  name: n\n" + v.labelBlock(true) +
+			"spec:\n  display:\n    name: n\n  enabled: true\n  judge:\n    model: standard\n    output:\n      kind: boolean\n    systemPrompt: s\n    userPrompt: u\n  match:\n    filters:\n      - key: gen_ai.operation.name\n        operator: is_set\n  sample:\n    rate: 0.25\n"
+	}},
+	{"signal-to-metrics-rules", signaltometricsrules.NewSignalToMetricsRulesCmd, []string{"signal-to-metrics-rules", "update"}, func(v updateIdentifiers) string {
+		return "kind: Dash0SignalToMetrics\nmetadata:\n  name: n\n" + v.labelBlock(true) +
+			"spec:\n  display:\n    name: n\n  enabled: true\n  match:\n    signal: logs\n    filters: []\n  output:\n    name: m\n    interval: 1m\n"
 	}},
 	{"auth-tokens", authtokens.NewAuthTokensCmd, []string{"-X", "auth-tokens", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AuthToken\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  actions:\n    - ingest:*\n"
@@ -251,6 +261,18 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithOrigin:  "error: no AWS integration id given: pass one as an argument, or set the id in the file",
 			updateWithID:      "GET /api/aws-metric-scrape-configs/" + characterizationID,
 			updateWithBoth:    "GET /api/aws-metric-scrape-configs/" + characterizationID,
+		},
+		"evals": {
+			updateWithNeither: "error: no eval origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithOrigin:  "GET /api/generative-ai-evaluations/o",
+			updateWithID:      "GET /api/generative-ai-evaluations/" + characterizationID,
+			updateWithBoth:    "GET /api/generative-ai-evaluations/o",
+		},
+		"signal-to-metrics-rules": {
+			updateWithNeither: "error: no signal-to-metrics rule origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithOrigin:  "GET /api/signal-to-metrics/o",
+			updateWithID:      "GET /api/signal-to-metrics/" + characterizationID,
+			updateWithBoth:    "GET /api/signal-to-metrics/o",
 		},
 		"auth-tokens": {
 			updateWithNeither: "error: no auth token origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
