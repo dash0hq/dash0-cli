@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -48,8 +49,52 @@ func SignalToMetricsRuleDeletedAt(rule *dash0api.SignalToMetricsDefinition) *tim
 // as for time series aggregations. Writing or deleting by an origin from
 // another dataset therefore fails with this 400. It is not a 404: the rule
 // exists, so delete --force must not report it as already gone.
+//
+// It also reports a SignalToMetricsRuleDatasetMismatchError, the same collision
+// found by the CLI before the write.
 func IsSignalToMetricsRuleWrongDataset(err error) bool {
-	return isOriginInAnotherDataset(err)
+	var mismatch *SignalToMetricsRuleDatasetMismatchError
+	return errors.As(err, &mismatch) || isOriginInAnotherDataset(err)
+}
+
+// SignalToMetricsRuleDatasetMismatchError reports a stored rule that belongs to
+// another dataset than the one a write targets.
+type SignalToMetricsRuleDatasetMismatchError struct {
+	OriginOrID string
+	Stored     string
+	Target     string
+}
+
+func (e *SignalToMetricsRuleDatasetMismatchError) Error() string {
+	return fmt.Sprintf(
+		"signal-to-metrics rule %q belongs to dataset %q, not %q"+
+			"\nHint: each rule belongs to one dataset, and its origin and ID are unique per organization. "+
+			"Pass --dataset %s to change this rule, or use a different %s for a rule in %q",
+		e.OriginOrID, e.Stored, e.Target, e.Stored, OriginLabel, e.Target,
+	)
+}
+
+// CheckSignalToMetricsRuleDataset returns a
+// SignalToMetricsRuleDatasetMismatchError when the stored rule belongs to
+// another dataset than dataset, where nil means "default".
+//
+// The API's GET by origin or ID ignores the dataset parameter, so it returns a
+// rule from any dataset. A write through another dataset then fails with a 400,
+// and a preview that compared against that rule would report no changes for a
+// write that cannot succeed. A rule without a dataset label is not checked.
+func CheckSignalToMetricsRuleDataset(existing *dash0api.SignalToMetricsDefinition, dataset *string, originOrID string) error {
+	stored := dash0api.GetSignalToMetricsDataset(existing)
+	if stored == "" {
+		return nil
+	}
+	target := "default"
+	if dataset != nil && *dataset != "" {
+		target = *dataset
+	}
+	if stored == target {
+		return nil
+	}
+	return &SignalToMetricsRuleDatasetMismatchError{OriginOrID: originOrID, Stored: stored, Target: target}
 }
 
 // WrapSignalToMetricsRuleWrongDataset turns the cross-dataset 400 into an
@@ -116,8 +161,8 @@ func ImportSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, r
 		result, err = apiClient.CreateSignalToMetrics(ctx, rule, dataset)
 	}
 	if IsSignalToMetricsRuleWrongDataset(err) {
-		// The preflight GET ignores the dataset and finds the rule, so the
-		// collision only surfaces here, on the write.
+		// The plan catches a stored rule from another dataset by its dataset
+		// label. A rule without one still collides here, on the write.
 		return ImportResult{}, WrapSignalToMetricsRuleWrongDataset(err, plan.Key)
 	}
 	if err != nil {
@@ -159,6 +204,9 @@ func PlanSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, rul
 		existing, err := apiClient.GetSignalToMetrics(ctx, origin, dataset)
 		switch {
 		case err == nil:
+			if err := CheckSignalToMetricsRuleDataset(existing, dataset, origin); err != nil {
+				return plan, err
+			}
 			plan.Action, plan.Before = actionForExisting(SignalToMetricsRuleDeletedAt(existing)), existing
 		case dash0api.IsNotFound(err):
 		default:
@@ -170,6 +218,9 @@ func PlanSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, rul
 		existing, err := apiClient.GetSignalToMetrics(ctx, id, dataset)
 		switch {
 		case err == nil:
+			if err := CheckSignalToMetricsRuleDataset(existing, dataset, id); err != nil {
+				return plan, err
+			}
 			plan.Key = id
 			plan.Action, plan.Before = actionForExisting(SignalToMetricsRuleDeletedAt(existing)), existing
 		case dash0api.IsNotFound(err):

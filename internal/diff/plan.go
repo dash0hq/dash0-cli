@@ -104,6 +104,10 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		plan, err := asset.PlanSignalToMetricsRule(ctx, apiClient, &rule, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
+			// The rule in another dataset carries its own explanation.
+			if asset.IsSignalToMetricsRuleWrongDataset(err) {
+				return nil, err
+			}
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "signal-to-metrics rule", AssetName: name})
 		}
 		return []docPlan{{displayKind: "Dash0SignalToMetrics", name: name, plan: plan, readDenied: denied}}, nil

@@ -397,12 +397,41 @@ func TestCreateSignalToMetricsRule_ByOrigin_DoesNotSendID(t *testing.T) {
 }
 
 // The API's GET ignores the dataset, so the preflight finds a rule that lives
-// in another dataset, and the collision only surfaces on the PUT. This is what
-// dev returned on 2026-11-10.
-func TestCreateSignalToMetricsRule_OriginInAnotherDatasetExplainsTheFix(t *testing.T) {
+// in another dataset. Its dataset label shows that, so the CLI stops before a
+// PUT that the API would reject.
+func TestCreateSignalToMetricsRule_OriginInAnotherDatasetFailsBeforeTheWrite(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithOrigin), "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `signal-to-metrics rule "`+testOrigin+`" belongs to dataset "default", not "staging"`)
+	assert.Contains(t, err.Error(), "Hint: each rule belongs to one dataset")
+	assert.Contains(t, err.Error(), "Pass --dataset default to change this rule")
+	assert.Equal(t, []string{"GET " + apiPath + "/" + testOrigin}, describe(server.Requests()), "nothing is written")
+}
+
+// A stored rule without a dataset label cannot be checked, so the collision
+// surfaces on the PUT, as dev returned it on 2026-11-10.
+func TestCreateSignalToMetricsRule_OriginInAnotherDatasetExplainsTheAPIError(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: map[string]any{
+			"kind":     "Dash0SignalToMetrics",
+			"metadata": map[string]any{"name": "checkout-errors", "labels": map[string]any{"dash0.com/origin": testOrigin}},
+			"spec": map[string]any{
+				"display": map[string]any{"name": testName},
+				"enabled": true,
+				"match":   map[string]any{"signal": "logs"},
+				"output":  map[string]any{"name": "checkout.error_logs"},
+			},
+		},
+		Validator: testutil.RequireHeaders,
+	})
 	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: fixtureWrongDataset, Validator: testutil.RequireHeaders})
 
 	_, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithOrigin), "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
@@ -410,6 +439,46 @@ func TestCreateSignalToMetricsRule_OriginInAnotherDatasetExplainsTheFix(t *testi
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `signal-to-metrics rule "`+testOrigin+`" already exists in another dataset`)
 	assert.Contains(t, err.Error(), "Hint: origins are unique per organization")
+}
+
+// The stored rule's own dataset passes the check, so an omitted --dataset,
+// which means "default", writes as before.
+func TestCreateSignalToMetricsRule_DefaultDatasetMatchesTheStoredRule(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
+
+	out, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithOrigin), "--dataset", "default", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "updated")
+}
+
+func TestCreateSignalToMetricsRule_IDInAnotherDatasetFailsBeforeTheWrite(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithIDOnly), "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `signal-to-metrics rule "`+testID+`" belongs to dataset "default", not "staging"`)
+	assert.Equal(t, []string{"GET " + apiPath + "/" + testID}, describe(server.Requests()), "nothing is written")
+}
+
+// update --dry-run must not print a diff against a rule in another dataset.
+func TestUpdateSignalToMetricsRule_DryRunInAnotherDatasetFails(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+
+	out, err := execute(t, "s2m", "update", "-f", writeDoc(t, docWithOrigin), "--dry-run", "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `belongs to dataset "default", not "staging"`)
+	assert.NotContains(t, out, "---", "no diff is printed")
+	assert.Equal(t, []string{"GET " + apiPath + "/" + testOrigin}, describe(server.Requests()), "nothing is written")
 }
 
 func TestCreateSignalToMetricsRule_ByOrigin_Updates(t *testing.T) {

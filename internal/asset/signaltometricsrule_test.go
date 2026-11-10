@@ -5,6 +5,7 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,6 +59,42 @@ func TestSignalToMetricsRuleKey(t *testing.T) {
 	assert.Equal(t, "my-id", SignalToMetricsRuleKey(signalToMetricsRuleWithLabels("", "my-id")))
 	assert.Empty(t, SignalToMetricsRuleKey(signalToMetricsRuleWithLabels("", "")))
 	assert.Empty(t, SignalToMetricsRuleKey(nil))
+}
+
+func TestCheckSignalToMetricsRuleDataset(t *testing.T) {
+	stored := func(t *testing.T, labels string) *dash0api.SignalToMetricsDefinition {
+		t.Helper()
+		var rule dash0api.SignalToMetricsDefinition
+		require.NoError(t, dash0yaml.Unmarshal([]byte("kind: Dash0SignalToMetrics\nmetadata:\n  name: checkout-errors\n  labels:\n"+labels), &rule))
+		return &rule
+	}
+	inDefault := "    dash0.com/dataset: default\n"
+	inStaging := "    dash0.com/dataset: staging\n"
+
+	cases := map[string]struct {
+		labels  string
+		dataset *string
+		wantErr string
+	}{
+		"same dataset":                      {inStaging, dash0api.DatasetPtr("staging"), ""},
+		"no dataset means default":          {inDefault, nil, ""},
+		"another dataset":                   {inDefault, dash0api.DatasetPtr("staging"), `signal-to-metrics rule "my-origin" belongs to dataset "default", not "staging"`},
+		"default target, staging rule":      {inStaging, nil, `belongs to dataset "staging", not "default"`},
+		"stored rule without dataset label": {"    team: checkout\n", dash0api.DatasetPtr("staging"), ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := CheckSignalToMetricsRuleDataset(stored(t, c.labels), c.dataset, "my-origin")
+
+			if c.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), c.wantErr)
+			assert.True(t, IsSignalToMetricsRuleWrongDataset(err), "callers pass the explained error through")
+		})
+	}
 }
 
 func TestSignalToMetricsRuleDeletedAt(t *testing.T) {

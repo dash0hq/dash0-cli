@@ -1114,7 +1114,8 @@ The POST fallback lets a definition exported from another organization apply, bu
 A document with neither label creates a new rule on every apply.
 Pin `dash0.com/origin` on any rule that will be applied more than once.
 Origins are unique per organization while each rule belongs to one dataset, as for time series aggregations.
-Applying a document to a second dataset fails with `400 ... associated with a different dataset`, and the CLI adds a hint.
+The GET finds a rule whatever `--dataset` says, so the CLI compares the stored rule's dataset with `--dataset` before it writes.
+Applying a document to a second dataset therefore fails with an error that names the rule's dataset, before anything is written, and `diff` reports the same error instead of "No differences".
 Use a distinct origin per dataset.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
@@ -2088,7 +2089,7 @@ Each rule matches logs or spans with a filter and turns the matching signals int
 `signal-to-metrics-rules` (alias `s2m`) has the five standard subcommands plus `test`, and `apply` accepts the `Dash0SignalToMetrics` kind.
 Rules are dataset-scoped, and `get`, `update`, and `delete` accept either the rule's `dash0.com/origin` label or its ID.
 An origin is unique across the organization, so `get` finds a rule whatever `--dataset` says, and its `Dataset:` line shows the dataset it belongs to.
-`update` and `delete` with another dataset fail with a hint that names the cause.
+`update` (also with `--dry-run`) and `delete` with another dataset fail with a hint that names the cause.
 
 #### Filtering `list`
 

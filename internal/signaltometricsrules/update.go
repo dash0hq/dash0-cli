@@ -85,6 +85,11 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 			AssetID:   key,
 		})
 	}
+	// The GET returns a rule from any dataset, so check it before the dry-run
+	// diff, which would otherwise compare against a rule the PUT cannot change.
+	if err := asset.CheckSignalToMetricsRuleDataset(before, dataset, key); err != nil {
+		return err
+	}
 
 	if flags.DryRun {
 		return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{

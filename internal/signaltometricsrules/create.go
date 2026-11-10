@@ -33,8 +33,8 @@ every further run creates another one. With neither label, every run creates
 a new rule.
 
 Origins are unique per organization, and each rule belongs to one dataset.
-Applying a document whose origin already exists in another dataset fails, so
-use a distinct origin per dataset.` + internal.CONFIG_HINT,
+Applying a document whose origin already exists in another dataset fails
+before anything is written, so use a distinct origin per dataset.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 s2m create -f rule.yaml
 

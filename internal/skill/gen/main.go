@@ -159,8 +159,8 @@ var topics = []topicSpec{
 			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
 			"apply; pin `dash0.com/origin` instead.\n\n" +
 			"Origins are unique per organization while each rule belongs to one dataset, so applying the same " +
-			"document to a second dataset fails with `400 ... associated with a different dataset`. Use a distinct " +
-			"origin per dataset.\n\n" +
+			"document to a second dataset fails, and so does `diff`: the error names the dataset the rule belongs " +
+			"to. Use a distinct origin per dataset.\n\n" +
 			"Run `dash0 s2m test -f <file>` before `create` or `apply` to validate a definition and see how many " +
 			"logs or spans it matches; it creates nothing.\n\n" +
 			deletedAssetNote("signal-to-metrics-rules", "signal-to-metrics rule", "signal-to-metrics rules", "origin"),

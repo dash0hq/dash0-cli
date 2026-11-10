@@ -29,7 +29,7 @@ Each rule matches logs or spans with a filter and turns the matching signals int
 `signal-to-metrics-rules` (alias `s2m`) has the five standard subcommands plus `test`, and `apply` accepts the `Dash0SignalToMetrics` kind.
 Rules are dataset-scoped, and `get`, `update`, and `delete` accept either the rule's `dash0.com/origin` label or its ID.
 An origin is unique across the organization, so `get` finds a rule whatever `--dataset` says, and its `Dataset:` line shows the dataset it belongs to.
-`update` and `delete` with another dataset fail with a hint that names the cause.
+`update` (also with `--dry-run`) and `delete` with another dataset fail with a hint that names the cause.
 
 #### Filtering `list`
 
@@ -114,7 +114,7 @@ The command is also available under the shorter alias `s2m`, so `dash0 s2m list`
 
 `metadata.labels["dash0.com/origin"]` is the upsert key: `create` and `apply` PUT to that origin, which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only `dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every apply; pin `dash0.com/origin` instead.
 
-Origins are unique per organization while each rule belongs to one dataset, so applying the same document to a second dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.
+Origins are unique per organization while each rule belongs to one dataset, so applying the same document to a second dataset fails, and so does `diff`: the error names the dataset the rule belongs to. Use a distinct origin per dataset.
 
 Run `dash0 s2m test -f <file>` before `create` or `apply` to validate a definition and see how many logs or spans it matches; it creates nothing.
 
