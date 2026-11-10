@@ -9,11 +9,11 @@ type UpsertKey struct {
 
 // Preferred returns the identifier to address first: the origin, or the id
 // when there is no origin. It is "" when the document carries neither.
-func (k UpsertKey) Preferred() string {
-	if k.Origin != "" {
-		return k.Origin
+func (key UpsertKey) Preferred() string {
+	if key.Origin != "" {
+		return key.Origin
 	}
-	return k.ID
+	return key.ID
 }
 
 // originKinds upsert by dash0.com/origin. Notification channels and time series

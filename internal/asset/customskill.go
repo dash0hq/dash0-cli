@@ -74,10 +74,7 @@ func frontmatterName(content string) string {
 // CustomSkillKey returns the identifier a custom skill is addressed by: its origin, or its id when
 // it has no origin.
 func CustomSkillKey(skill *dash0api.SkillDefinition) string {
-	if origin := dash0api.GetCustomSkillOrigin(skill); origin != "" {
-		return origin
-	}
-	return dash0api.GetCustomSkillID(skill)
+	return UpsertKeyFor("skill", UpsertKey{Origin: dash0api.GetCustomSkillOrigin(skill), ID: dash0api.GetCustomSkillID(skill)}).Preferred()
 }
 
 // ImportCustomSkill creates or updates an Agent0 custom skill.

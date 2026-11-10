@@ -21,6 +21,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/datasets"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/slos"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
@@ -87,6 +88,9 @@ var updateCommands = []updateCommand{
 	}},
 	{"synthetic-checks", syntheticchecks.NewSyntheticChecksCmd, []string{"synthetic-checks", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: SyntheticCheck\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec: {}\n"
+	}},
+	{"slos", slos.NewSlosCmd, []string{"slos", "update"}, func(v updateIdentifiers) string {
+		return "apiVersion: openslo.com/v1\nkind: SLO\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec: {}\n"
 	}},
 	{"views", views.NewViewsCmd, []string{"views", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec: {}\n"
@@ -180,6 +184,13 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithOrigin:  "error: no synthetic check id given: pass one as an argument, or set the id in the file",
 			updateWithID:      "GET /api/synthetic-checks/" + characterizationID,
 			updateWithBoth:    "GET /api/synthetic-checks/" + characterizationID,
+		},
+		// update addresses the id first, while apply addresses the origin first: #370.
+		"slos": {
+			updateWithNeither: "error: no SLO ID provided as argument, and the file contains neither an ID nor a dash0.com/origin label",
+			updateWithOrigin:  "GET /api/slos/o",
+			updateWithID:      "GET /api/slos/" + characterizationID,
+			updateWithBoth:    "GET /api/slos/" + characterizationID,
 		},
 		"views": {
 			updateWithNeither: "error: no view id given: pass one as an argument, or set the id in the file",
