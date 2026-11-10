@@ -248,7 +248,7 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithNeither: "error: no dataset id given: pass one as an argument, or set the id in the file",
 			updateWithOrigin:  "GET /api/datasets/o",
 			updateWithID:      "GET /api/datasets/" + characterizationID,
-			updateWithBoth:    "GET /api/datasets/o",
+			updateWithBoth:    "GET /api/datasets/" + characterizationID,
 		},
 		"agent0 skills": {
 			updateWithNeither: "error: no Agent0 skill origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
