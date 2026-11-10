@@ -168,8 +168,8 @@ func ImportGenerativeAiEvaluation(ctx context.Context, apiClient dash0api.Client
 // PlanGenerativeAiEvaluation reads the stored eval that ImportGenerativeAiEvaluation would write.
 // An empty Key means a POST: the document has no origin, and its id is unknown or missing.
 func PlanGenerativeAiEvaluation(ctx context.Context, apiClient dash0api.Client, evaluation *dash0api.GenerativeAiEvaluationDefinition, dataset *string) (ImportPlan, error) {
-	origin := dash0api.GetGenerativeAiEvaluationOrigin(evaluation)
-	id := dash0api.GetGenerativeAiEvaluationID(evaluation)
+	key := UpsertKeyFor("generativeaievaluation", UpsertKey{Origin: dash0api.GetGenerativeAiEvaluationOrigin(evaluation), ID: dash0api.GetGenerativeAiEvaluationID(evaluation)})
+	origin, id := key.Origin, key.ID
 	dash0api.StripGenerativeAiEvaluationServerFields(evaluation)
 
 	plan := ImportPlan{Action: ActionCreated, Proposed: evaluation}

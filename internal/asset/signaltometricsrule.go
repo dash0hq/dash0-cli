@@ -191,8 +191,8 @@ func ImportSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, r
 // the id of the same rule in another organization. A POST must not carry one,
 // because the server assigns ids.
 func PlanSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.SignalToMetricsDefinition, dataset *string) (ImportPlan, error) {
-	origin := GetSignalToMetricsRuleOrigin(rule)
-	id := dash0api.GetSignalToMetricsID(rule)
+	key := UpsertKeyFor("signaltometrics", UpsertKey{Origin: GetSignalToMetricsRuleOrigin(rule), ID: dash0api.GetSignalToMetricsID(rule)})
+	origin, id := key.Origin, key.ID
 	dash0api.StripSignalToMetricsServerFields(rule)
 
 	plan := ImportPlan{Action: ActionCreated, Proposed: rule}
