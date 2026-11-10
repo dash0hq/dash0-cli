@@ -215,10 +215,10 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/recording-rules/" + characterizationID,
 		},
 		"notification-channels": {
-			updateWithNeither: "error: no notification channel id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no notification channel id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: "error: no notification channel origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithOrigin:  "GET /api/notification-channels/o",
 			updateWithID:      "GET /api/notification-channels/" + characterizationID,
-			updateWithBoth:    "GET /api/notification-channels/" + characterizationID,
+			updateWithBoth:    "GET /api/notification-channels/o",
 		},
 		"spam-filters v1alpha1": {
 			updateWithNeither: "error: no spam filter origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
