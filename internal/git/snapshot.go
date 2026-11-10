@@ -82,6 +82,10 @@ type Snapshot struct {
 	// GenerativeAiEvaluationUsesOriginByIdentifier is the same signal for
 	// evals (per asset.GenerativeAiEvaluationUsesOrigin).
 	GenerativeAiEvaluationUsesOriginByIdentifier map[string]bool
+	// SignalToMetricsRuleUsesOriginByIdentifier is the same signal for
+	// signal-to-metrics rules (per asset.SignalToMetricsRuleUsesOrigin), whose
+	// ids are also server-assigned.
+	SignalToMetricsRuleUsesOriginByIdentifier map[string]bool
 
 	// Paths is the set of every file path scanned, regardless of whether it
 	// parsed into a recognized kind. Used to check whether a NoIdentifier
@@ -108,6 +112,7 @@ func newSnapshot() Snapshot {
 		SpamFilterUsesOriginByIdentifier:             map[string]bool{},
 		SLOUsesOriginByIdentifier:                    map[string]bool{},
 		GenerativeAiEvaluationUsesOriginByIdentifier: map[string]bool{},
+		SignalToMetricsRuleUsesOriginByIdentifier:    map[string]bool{},
 		Paths:      map[string]bool{},
 		RawContent: map[string][]byte{},
 	}
@@ -329,6 +334,14 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to determine eval identifier source: %w", err)
 			}
 			snap.GenerativeAiEvaluationUsesOriginByIdentifier[identifier] = usesOrigin
+		}
+
+		if normalizedKind == "signaltometrics" {
+			usesOrigin, err := asset.SignalToMetricsRuleUsesOrigin(docBytes)
+			if err != nil {
+				return fmt.Errorf("failed to determine signal-to-metrics rule identifier source: %w", err)
+			}
+			snap.SignalToMetricsRuleUsesOriginByIdentifier[identifier] = usesOrigin
 		}
 	}
 	return nil

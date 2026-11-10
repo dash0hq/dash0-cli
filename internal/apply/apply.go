@@ -68,6 +68,7 @@ Supported asset types:
   - Dash0NotificationChannel
   - Dash0Team
   - Dash0TimeSeriesAggregation
+  - Dash0SignalToMetrics (signal-to-metrics rule)
   - Dash0Dataset
   - Dash0Skill (Agent0 custom skill)
   - Dash0AwsMetricScrapeConfig
@@ -387,6 +388,25 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			})
 		}
 		return []applyResult{{kind: "Dash0TimeSeriesAggregation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "signaltometrics":
+		var rule dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &rule); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0SignalToMetrics: %w", err)
+		}
+		result, err := asset.ImportSignalToMetricsRule(ctx, apiClient, &rule, dataset)
+		if err != nil {
+			// The cross-dataset collision already carries its own explanation
+			// and would only be flattened into "invalid request" here.
+			if asset.IsSignalToMetricsRuleWrongDataset(err) {
+				return nil, err
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "signal-to-metrics rule",
+				AssetName: dash0api.GetSignalToMetricsName(&rule),
+			})
+		}
+		return []applyResult{{kind: "Dash0SignalToMetrics", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1

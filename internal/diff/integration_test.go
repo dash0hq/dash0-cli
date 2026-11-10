@@ -1080,3 +1080,132 @@ spec:
 	assert.Contains(t, output, `"originOrId": "eval-origin"`)
 	assert.Contains(t, stderr, `Eval "answer-relevance" (eval-origin): read denied`)
 }
+
+const signalToMetricsRuleDoc = `kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+spec:
+  display:
+    name: Checkout error logs
+  enabled: true
+  match:
+    signal: logs
+    filters:
+      - key: service.name
+        operator: is
+        value: checkout
+      - key: otel.log.severity.range
+        operator: is
+        value: ERROR
+  output:
+    name: checkout.error_logs
+    description: Error log records emitted by the checkout service
+    interval: 1m
+    keepResourceAttributes:
+      - operator: is
+        value: service.name
+`
+
+func TestDiff_SignalToMetricsRule(t *testing.T) {
+	const originPath = "/api/signal-to-metrics/dash0-cli_checkout-errors"
+	cases := map[string]struct {
+		doc        string
+		stored     testutil.MockResponse
+		wantOutput string
+		wantErr    bool
+	}{
+		"stored rule matches": {
+			doc:        signalToMetricsRuleDoc,
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_success.json", Validator: testutil.RequireHeaders},
+			wantOutput: "No differences",
+		},
+		"changed spec is an update": {
+			doc:        strings.Replace(signalToMetricsRuleDoc, "enabled: true", "enabled: false", 1),
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_success.json", Validator: testutil.RequireHeaders},
+			wantOutput: "+  enabled: false",
+			wantErr:    true,
+		},
+		"deleted rule is a create, because apply restores it": {
+			doc:        signalToMetricsRuleDoc,
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_deleted.json", Validator: testutil.RequireHeaders},
+			wantOutput: `Create Signal-to-metrics rule "Checkout error logs" (dash0-cli_checkout-errors)`,
+			wantErr:    true,
+		},
+		"new origin is a create": {
+			doc:        signalToMetricsRuleDoc,
+			stored:     testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "signaltometricsrules/error_not_found.json", Validator: testutil.RequireHeaders},
+			wantOutput: `Create Signal-to-metrics rule "Checkout error logs" (dash0-cli_checkout-errors)`,
+			wantErr:    true,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(c.doc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, originPath, c.stored)
+
+			output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+			assert.Equal(t, c.wantErr, err != nil, "differences pending is reported as an error so the exit code is 1")
+			assert.Contains(t, output, c.wantOutput)
+			for _, request := range server.Requests() {
+				assert.Equal(t, http.MethodGet, request.Method, "diff must never write")
+			}
+		})
+	}
+}
+
+// The API's GET ignores --dataset and returns the rule stored in "default".
+// apply would fail on the PUT, so diff must fail too, not report no changes.
+func TestDiff_SignalToMetricsRuleInAnotherDatasetIsAnError(t *testing.T) {
+	cases := map[string]struct {
+		label string
+		path  string
+		key   string
+	}{
+		"by origin": {"dash0.com/origin: dash0-cli_checkout-errors", "/api/signal-to-metrics/dash0-cli_checkout-errors", "dash0-cli_checkout-errors"},
+		"by id":     {"dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t", "/api/signal-to-metrics/signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t", "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			doc := strings.Replace(signalToMetricsRuleDoc, "dash0.com/origin: dash0-cli_checkout-errors", c.label, 1)
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, c.path, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_success.json", Validator: testutil.RequireHeaders})
+
+			output, err := runDiffCmd(t, "-f", yamlFile, "--dataset", "staging", "--api-url", server.URL)
+
+			require.Error(t, err)
+			var pending *PendingDifferencesError
+			assert.False(t, errors.As(err, &pending), "a rule apply cannot write is an error, not a pending difference")
+			assert.Contains(t, err.Error(), `signal-to-metrics rule "`+c.key+`" belongs to dataset "default", not "staging"`)
+			assert.NotContains(t, output, "No differences")
+		})
+	}
+}
+
+// An id-only rule whose id is unknown here is a create, because apply POSTs it.
+func TestDiff_SignalToMetricsRuleWithUnknownIDIsACreate(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	doc := strings.Replace(signalToMetricsRuleDoc, "dash0.com/origin: dash0-cli_checkout-errors", "dash0.com/id: signal_to_metrics_01kq3mcz9y8x7w6v5t4s3r2q1p", 1)
+	yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/signal-to-metrics/signal_to_metrics_01kq3mcz9y8x7w6v5t4s3r2q1p", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   "signaltometricsrules/error_not_found.json",
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, output, `Create Signal-to-metrics rule "Checkout error logs"`)
+}

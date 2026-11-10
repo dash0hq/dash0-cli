@@ -42,22 +42,22 @@ api-url. Absolute URLs (http:// or https://) are passed through verbatim.
 Query parameters are baked into the path. Headers are set with -H.
 Request bodies are read from a file or stdin with -f.`,
 		Example: `  # GET — dataset auto-injected from the active profile
-  dash0 -X api /api/signal-to-metrics/configs
+  dash0 -X api /api/sampling-rules
 
   # GET against an organization-level endpoint that does not take a dataset
   dash0 -X api /api/organization/settings --dataset ""
 
   # GET with query parameters baked into the path
-  dash0 -X api "/api/signal-to-metrics/configs?limit=50&enabled=true"
+  dash0 -X api "/api/agentic-workflows?folderPath=oncall"
 
   # POST with a payload from a file
-  dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+  dash0 -X api POST /api/sampling-rules -f sampling-rule.json
 
   # POST with a payload from stdin and a custom header
-  echo '{"name":"my-config"}' | dash0 -X api POST /api/signal-to-metrics/configs -f - -H 'X-Request-Id: abc123'
+  cat sampling-rule.json | dash0 -X api POST /api/sampling-rules -f - -H 'X-Request-Id: abc123'
 
   # Debug a failing request
-  dash0 -X api POST /api/signal-to-metrics/configs -f config.json -v`,
+  dash0 -X api POST /api/sampling-rules -f sampling-rule.json -v`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {

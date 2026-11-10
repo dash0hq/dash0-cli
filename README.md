@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, and `Dash0NotificationChannel`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, and `Dash0SignalToMetrics`.
 
 From a single file:
 
@@ -403,7 +403,7 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 
 ### Asset CRUD commands
 
-Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`) supports the same five subcommands.
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `signal-to-metrics-rules`) supports the same five subcommands.
 Substitute the asset noun in the examples below.
 
 List all assets of a type:
@@ -444,6 +444,23 @@ dash0 dashboards delete <id>
 
 `dashboards create` and `apply` also accept PersesDashboard CRD files; `check-rules create` and `apply` also accept PrometheusRule CRD files.
 See [docs/commands.md](docs/commands.md) for the full per-asset reference and the YAML formats.
+
+### Signal-to-metrics rules
+
+Signal-to-metrics rules turn matching logs or spans into a metric.
+`signal-to-metrics-rules` (alias `s2m`) has the five subcommands above, and `apply` accepts the `Dash0SignalToMetrics` kind.
+
+List the rules for spans:
+
+```bash
+dash0 s2m list --signal spans
+```
+
+Count the signals a rule would match over the last hour, without creating it:
+
+```bash
+dash0 s2m test -f rule.yaml --from now-1h
+```
 
 ### Logging
 
@@ -798,12 +815,12 @@ It is useful for endpoints that do not yet have a dedicated subcommand.
 
 ```bash
 # GET — dataset auto-injected from the active profile
-dash0 -X api /api/signal-to-metrics/configs
+dash0 -X api /api/sampling-rules
 ```
 
 ```bash
 # POST with a payload from a file
-dash0 -X api POST /api/signal-to-metrics/configs -f config.json
+dash0 -X api POST /api/sampling-rules -f sampling-rule.json
 ```
 
 ```bash

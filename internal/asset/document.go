@@ -178,6 +178,15 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// document's server-assigned id would not.
 		id = GetTimeSeriesAggregationOrigin(&aggregation)
 
+	case "signaltometrics":
+		var rule dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetSignalToMetricsName(&rule)
+		// Rules upsert by origin, falling back to dash0.com/id.
+		id = SignalToMetricsRuleKey(&rule)
+
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
 		if err := dash0yaml.Unmarshal(data, &team); err != nil {

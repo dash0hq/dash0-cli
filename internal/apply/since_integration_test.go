@@ -2543,3 +2543,73 @@ func TestApply_Since_DeletesRemovedEval(t *testing.T) {
 	require.NotNil(t, del)
 	assert.Contains(t, del.Query, "dataset=staging", "evals are dataset-scoped")
 }
+
+func TestApply_Since_DeletesRemovedSignalToMetricsRule(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		label       string
+		identifier  string
+		wantWarning bool
+	}{
+		{name: "by origin", label: "dash0.com/origin: dash0-cli_checkout-errors", identifier: "dash0-cli_checkout-errors"},
+		{name: "by id alone warns", label: "dash0.com/id: 7c1e2a4b", identifier: "7c1e2a4b", wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "rule.yaml", "kind: Dash0SignalToMetrics\nmetadata:\n  name: checkout-errors\n  labels:\n    "+tc.label+"\nspec:\n  display:\n    name: Checkout error logs\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add rule")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "rule.yaml")))
+			writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "remove rule")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureViewsNotFound,
+			})
+			server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+			deletePath := "/api/signal-to-metrics/" + tc.identifier
+			server.On(http.MethodDelete, deletePath, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				Body:       map[string]any{},
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental", "--dataset", "staging",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			var output string
+			stderr := testutil.CaptureStderr(t, func() {
+				output = testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+			})
+
+			require.NoError(t, cmdErr)
+			assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (`+tc.identifier+`) deleted`)
+			del := findRequest(server.Requests(), http.MethodDelete, deletePath)
+			require.NotNil(t, del)
+			assert.Contains(t, del.Query, "dataset=staging", "signal-to-metrics rules are dataset-scoped")
+			if tc.wantWarning {
+				assert.Contains(t, stderr, "identified by dash0.com/id alone")
+			} else {
+				assert.NotContains(t, stderr, "identified by dash0.com/id alone")
+			}
+		})
+	}
+}

@@ -110,6 +110,9 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 	if d.Kind == "generativeaievaluation" && !d.GenerativeAiEvaluationUsesOrigin {
 		fmt.Fprintf(os.Stderr, "warning: eval %s was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
 	}
+	if d.Kind == "signaltometrics" && !d.SignalToMetricsRuleUsesOrigin {
+		fmt.Fprintf(os.Stderr, "warning: signal-to-metrics rule %s was identified by dash0.com/id alone; rule ids are server-assigned, so if this document was first applied to an organization without that id the live rule now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
+	}
 	if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
 		fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
 	}
@@ -220,6 +223,12 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// Clears the integration's scrape config and keeps the integration,
 		// the same call as `aws-metric-scrape-configs delete`.
 		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
+	case "signaltometrics":
+		err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
+		// Not "already gone": the rule exists in another dataset.
+		if asset.IsSignalToMetricsRuleWrongDataset(err) {
+			return false, asset.WrapSignalToMetricsRuleWrongDataset(err, identifier)
+		}
 	case "timeseriesaggregation":
 		// The API returns 204 for an absent aggregation, so the tolerance
 		// below never fires for this kind. It does fire for the cross-dataset

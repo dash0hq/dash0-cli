@@ -156,6 +156,18 @@ func marshalForDiff(asset any) (string, error) {
 		// keeping it would show up as a phantom removal in `update --dry-run`.
 		dash0api.ClearTimeSeriesAggregationID(&a)
 		stripped = &a
+	case *dash0api.SignalToMetricsDefinition:
+		var r dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &r); err != nil {
+			return "", fmt.Errorf("failed to unmarshal signal-to-metrics rule: %w", err)
+		}
+		// The strip drops the version, timestamps, dataset, and origin, which
+		// the server sets on every write. It keeps the id on purpose, so clear
+		// it too: a hand-written document upserted by origin carries no id, and
+		// keeping it would show up as a phantom removal in the diff.
+		dash0api.StripSignalToMetricsServerFields(&r)
+		dash0api.ClearSignalToMetricsID(&r)
+		stripped = &r
 	case *dash0api.AwsMetricScrapeConfigDefinition:
 		var c dash0api.AwsMetricScrapeConfigDefinition
 		if err := dash0yaml.Unmarshal(jsonBytes, &c); err != nil {
