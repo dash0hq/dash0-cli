@@ -4465,7 +4465,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, diff, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, diff, evals, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

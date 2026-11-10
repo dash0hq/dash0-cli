@@ -679,3 +679,26 @@ func TestParseDocumentHeader_GenerativeAiEvaluation(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDocumentHeader_SignalToMetricsRule(t *testing.T) {
+	cases := map[string]struct {
+		labels string
+		wantID string
+	}{
+		"origin wins":    {"    dash0.com/origin: dash0-cli_checkout-errors\n    dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t\n", "dash0-cli_checkout-errors"},
+		"id fallback":    {"    dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t\n", "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t"},
+		"no identifiers": {"    team: checkout\n", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			doc := "kind: Dash0SignalToMetrics\nmetadata:\n  name: checkout-errors\n  labels:\n" + c.labels + "spec:\n  display:\n    name: Checkout error logs\n"
+
+			kind, docName, id, err := ParseDocumentHeader([]byte(doc))
+
+			require.NoError(t, err)
+			assert.Equal(t, "Dash0SignalToMetrics", kind)
+			assert.Equal(t, "Checkout error logs", docName, "the name comes from spec.display.name")
+			assert.Equal(t, c.wantID, id, "rules upsert by origin, falling back to dash0.com/id")
+		})
+	}
+}

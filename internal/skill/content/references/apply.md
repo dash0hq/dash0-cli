@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -101,6 +101,16 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > You therefore cannot apply one document to two datasets, as you can for every other asset kind.
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+
+`Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
+`dash0.com/origin` wins when present: the CLI PUTs to that origin, which creates the rule or replaces it.
+When only `dash0.com/id` is present the CLI preflights the rule with a GET: on hit it PUTs to that ID, on 404 it POSTs without the ID, and other preflight errors surface.
+The POST fallback lets a definition exported from another organization apply, but it is not idempotent, because the new ID is never written back into the document.
+A document with neither label creates a new rule on every apply.
+Pin `dash0.com/origin` on any rule that will be applied more than once.
+Origins are unique per organization while each rule belongs to one dataset, as for time series aggregations.
+Applying a document to a second dataset fails with `400 ... associated with a different dataset`, and the CLI adds a hint.
+Use a distinct origin per dataset.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
@@ -291,6 +301,9 @@ A dataset that is already gone counts as deleted, and a removed dataset document
 
 A `Dash0AwsMetricScrapeConfig` document removed since `<ref>` clears the integration's scrape config, with the same API call as `aws-metric-scrape-configs delete`.
 Dash0 stops scraping CloudWatch metrics for that integration, and the integration itself is kept.
+
+A `Dash0SignalToMetrics` document removed since `<ref>` deletes the rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `signal-to-metrics-rules delete`.
+Deleting by `dash0.com/id` alone prints a warning: if the document was first applied to an organization without that ID, the live rule has a different, server-assigned ID, and the delete can miss it.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 

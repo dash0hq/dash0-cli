@@ -103,54 +103,22 @@ func SignalToMetricsRuleUsesOrigin(data []byte) (bool, error) {
 // the origin. A PUT to a deleted rule brings it back, which is reported as
 // ActionRestored.
 func ImportSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.SignalToMetricsDefinition, dataset *string) (ImportResult, error) {
-	origin := GetSignalToMetricsRuleOrigin(rule)
 	id := dash0api.GetSignalToMetricsID(rule)
-	dash0api.StripSignalToMetricsServerFields(rule)
-
-	action := ActionCreated
-	var before any
-	var upsertKey string
-	switch {
-	case origin != "":
-		upsertKey = origin
-		// The origin in the path selects the rule, so an id in the body can
-		// only disagree with it, for example the id of the same rule in
-		// another organization.
-		dash0api.ClearSignalToMetricsID(rule)
-		existing, err := apiClient.GetSignalToMetrics(ctx, origin, dataset)
-		switch {
-		case err == nil:
-			action, before = actionForExisting(SignalToMetricsRuleDeletedAt(existing)), existing
-		case dash0api.IsNotFound(err):
-			// Nothing at this origin yet; the PUT below creates it.
-		default:
-			return ImportResult{}, err
-		}
-	case id != "":
-		existing, err := apiClient.GetSignalToMetrics(ctx, id, dataset)
-		switch {
-		case err == nil:
-			upsertKey = id
-			action, before = actionForExisting(SignalToMetricsRuleDeletedAt(existing)), existing
-		case dash0api.IsNotFound(err):
-			// Fall through to POST.
-		default:
-			return ImportResult{}, err
-		}
+	plan, err := PlanSignalToMetricsRule(ctx, apiClient, rule, dataset)
+	if err != nil {
+		return ImportResult{}, err
 	}
 
 	var result *dash0api.SignalToMetricsDefinition
-	var err error
-	if upsertKey != "" {
-		result, err = apiClient.UpdateSignalToMetrics(ctx, upsertKey, rule, dataset)
+	if plan.Key != "" {
+		result, err = apiClient.UpdateSignalToMetrics(ctx, plan.Key, rule, dataset)
 	} else {
-		dash0api.ClearSignalToMetricsID(rule)
 		result, err = apiClient.CreateSignalToMetrics(ctx, rule, dataset)
 	}
 	if IsSignalToMetricsRuleWrongDataset(err) {
 		// The preflight GET ignores the dataset and finds the rule, so the
 		// collision only surfaces here, on the write.
-		return ImportResult{}, WrapSignalToMetricsRuleWrongDataset(err, upsertKey)
+		return ImportResult{}, WrapSignalToMetricsRuleWrongDataset(err, plan.Key)
 	}
 	if err != nil {
 		return ImportResult{}, err
@@ -166,5 +134,52 @@ func ImportSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, r
 	if err := RequireNotDeleted(SignalToMetricsRuleDisplayKind, name, id, SignalToMetricsRuleDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: name, ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: name, ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanSignalToMetricsRule reads the stored rule that ImportSignalToMetricsRule
+// would write, and prepares rule as the request body. An empty Key means a
+// POST: the document has no origin, and its id is unknown or missing.
+//
+// Only a PUT to an id keeps the id in the body. A PUT to an origin selects the
+// rule by the path, so an id in the body can only disagree with it, for example
+// the id of the same rule in another organization. A POST must not carry one,
+// because the server assigns ids.
+func PlanSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.SignalToMetricsDefinition, dataset *string) (ImportPlan, error) {
+	origin := GetSignalToMetricsRuleOrigin(rule)
+	id := dash0api.GetSignalToMetricsID(rule)
+	dash0api.StripSignalToMetricsServerFields(rule)
+
+	plan := ImportPlan{Action: ActionCreated, Proposed: rule}
+	switch {
+	case origin != "":
+		// PUT to an unknown origin creates the rule, so a 404 keeps the origin
+		// as the key.
+		plan.Key = origin
+		existing, err := apiClient.GetSignalToMetrics(ctx, origin, dataset)
+		switch {
+		case err == nil:
+			plan.Action, plan.Before = actionForExisting(SignalToMetricsRuleDeletedAt(existing)), existing
+		case dash0api.IsNotFound(err):
+		default:
+			// Keep the plan, so a caller that drops a denied read still names
+			// the rule by its origin.
+			return plan, err
+		}
+	case id != "":
+		existing, err := apiClient.GetSignalToMetrics(ctx, id, dataset)
+		switch {
+		case err == nil:
+			plan.Key = id
+			plan.Action, plan.Before = actionForExisting(SignalToMetricsRuleDeletedAt(existing)), existing
+		case dash0api.IsNotFound(err):
+			// The id belongs to another organization: POST creates the rule.
+		default:
+			return plan, err
+		}
+	}
+	if plan.Key != id {
+		dash0api.ClearSignalToMetricsID(rule)
+	}
+	return plan, nil
 }

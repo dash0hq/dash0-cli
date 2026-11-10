@@ -95,6 +95,19 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		return []docPlan{{displayKind: "Dash0TimeSeriesAggregation", name: dash0api.GetTimeSeriesAggregationName(&aggregation), plan: plan, readDenied: denied}}, nil
 
+	case "signaltometrics":
+		var rule dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &rule); err != nil {
+			return nil, fmt.Errorf("failed to parse Dash0SignalToMetrics: %w", err)
+		}
+		name := dash0api.GetSignalToMetricsName(&rule)
+		plan, err := asset.PlanSignalToMetricsRule(ctx, apiClient, &rule, dataset)
+		denied, err := readError(err, inNewDataset)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "signal-to-metrics rule", AssetName: name})
+		}
+		return []docPlan{{displayKind: "Dash0SignalToMetrics", name: name, plan: plan, readDenied: denied}}, nil
+
 	case "dataset":
 		var ds dash0api.DatasetDefinition
 		if err := dash0yaml.Unmarshal(doc.Raw, &ds); err != nil {
