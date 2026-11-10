@@ -1,0 +1,6 @@
+change_type: bug_fix
+component: slos
+note: "`slos update -f` without an argument now addresses the SLO by its `dash0.com/origin` label, like `apply`, when the file also carries `dash0.com/id`."
+issues: [370]
+subtext:
+change_logs: []

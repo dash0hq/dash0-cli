@@ -20,7 +20,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "Update an SLO from a file",
 		Long: `Update an existing SLO from a YAML or JSON definition file in OpenSLO v1 format. Use '-f -' to read from stdin.
 
-If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
+If the ID argument is omitted, the dash0.com/origin label, or else the dash0.com/id label, is read from the file.` + internal.CONFIG_HINT,
 		Example: `  # Update an SLO from a file
   dash0 slos update <id> -f slo.yaml
 
@@ -64,15 +64,10 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 			return fmt.Errorf("the ID argument %q does not match the dash0.com/id or dash0.com/origin label in the file (id=%q, origin=%q)", id, fileID, fileOrigin)
 		}
 	} else {
-		// Fall back to dash0.com/origin when the document carries no id. SLO ids are
-		// server-assigned (`slo_<ulid>`), so a hand-authored document can only ever
-		// pin an origin — without this fallback the `update -f <file>` form this
-		// command advertises is impossible for any SLO that was not first exported.
-		// GET/PUT accept an origin-or-id path segment, so routing on origin works.
-		id = fileID
-		if id == "" {
-			id = fileOrigin
-		}
+		// Address the same SLO apply writes: the origin, or the id when the
+		// document has no origin. SLO ids are server-assigned, so a
+		// hand-authored document can only pin an origin.
+		id = asset.PreferredKey(&slo)
 		if id == "" {
 			return fmt.Errorf("no SLO ID provided as argument, and the file contains neither an ID nor a dash0.com/origin label")
 		}

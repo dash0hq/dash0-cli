@@ -195,12 +195,11 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithID:      "GET /api/synthetic-checks/" + characterizationID,
 			updateWithBoth:    "GET /api/synthetic-checks/" + characterizationID,
 		},
-		// update addresses the id first, while apply addresses the origin first: #370.
 		"slos": {
 			updateWithNeither: "error: no SLO ID provided as argument, and the file contains neither an ID nor a dash0.com/origin label",
 			updateWithOrigin:  "GET /api/slos/o",
 			updateWithID:      "GET /api/slos/" + characterizationID,
-			updateWithBoth:    "GET /api/slos/" + characterizationID,
+			updateWithBoth:    "GET /api/slos/o",
 		},
 		"views": {
 			updateWithNeither: "error: no view id given: pass one as an argument, or set the id in the file",
