@@ -1,7 +1,0 @@
-change_type: bug_fix
-component: apply
-note: "`apply --since` no longer deletes a dashboard whose file was re-authored between the `PersesDashboard` and `Dashboard` kinds under the same identifier."
-issues: [270]
-subtext: |
-  `--since` now treats both kinds as one identity, matching how `apply` upserts them.
-change_logs: [user]

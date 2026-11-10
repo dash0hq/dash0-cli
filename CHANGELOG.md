@@ -6,6 +6,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.21.0
+
+
+### New Components
+
+
+- `signal-to-metrics-rules`: Manage signal-to-metrics rules with `signal-to-metrics-rules` (alias `s2m`) and `apply`. (#354)
+  `apply` accepts the `Dash0SignalToMetrics` kind and upserts by `dash0.com/origin`, and `apply --since` deletes a rule removed from git.
+  `s2m test -f <file>` validates a rule and counts the logs or spans it matches over a time window, without creating it.
+  
+
+- `evals`: `dash0 -X evals list|get|create|update|delete` and `apply` manage the generative AI evaluations (evals) of a dataset. (#360)
+  `apply` accepts `kind: Dash0GenerativeAiEvaluation` documents and upserts them by `dash0.com/origin`, with `dash0.com/id` as the fallback.
+  The CLI never sends `dash0.com/version`, so a write overwrites the stored eval unconditionally.
+  A change to `metadata.name` or to the judge output kind fails with an error that names the field and the fix.
+  `apply --since` deletes an eval whose document was removed from git.
+  
+
+- `diff`: Add the experimental `dash0 diff` command, which previews what `apply` would do (creates, updates, and, with `--since`, deletions) without ever mutating anything. (#232)
+  `diff` fetches each document's current state from Dash0 first, so it can accurately distinguish a create from
+  an update, unlike `apply --dry-run`, which is local-only and cannot tell the two apart. It uses a three-way
+  exit code (0 clean, 1 differences pending, 2 error), modeled on `kubectl diff`.
+  The comparison (also used by every `<kind> update` diff) is semantic, not textual: key order, duration-string
+  formatting, int-vs-float representation, and API-populated defaults never produce a spurious "changed" result.
+  `apply --since --dry-run` no longer lists the deletion of a check rule that `-f` still declares, because the real
+  run skips that deletion.
+  `apply --since --dry-run` lists a removed PrometheusRule with two or more alerts as one check rule deletion per
+  alert, at the id the run deletes, instead of one PrometheusRule row.
+  `apply` and `teams create -f` update a team at its `dash0.com/id` when its `dash0.com/origin` is not found, so a
+  re-applied export of an SSO/SCIM-provisioned team no longer creates a second team.
+  
+
+
+### Enhancements
+
+
+- `logs, spans, traces, failed-checks`: The Dash0 explorer deep link of a query is now available in every output format, not just `table`. (#348)
+  `logs query`, `spans query`, `failed-checks query`, and `traces get` carry the link in `json` output as a top-level `dash0ExplorerUrl` field, next to the payload, so it is available in agent mode, where `json` is the default.
+  In `table` and `csv` output the link now goes to stderr instead of stdout, so redirecting or piping the results no longer picks up a stray line.
+  The field is omitted when no link can be built, for example when the `api-url` host is `localhost`.
+  Consumers that parse the OTLP/JSON of `logs query`, `spans query`, or `traces get` with a strict OpenTelemetry protobuf-JSON parser need to discard unknown fields, or strip the field with `jq 'del(.dash0ExplorerUrl)'`.
+  
+
+
+### Bug Fixes
+
+
+- `client`: Report malformed asset API responses with the asset type, endpoint, and decoding details, and warn when a write may already have been applied. (#220)
+
+- `apply`: `apply --since` no longer deletes a dashboard whose file was re-authored between the `PersesDashboard` and `Dashboard` kinds under the same identifier. (#270)
+  `--since` now treats both kinds as one identity, matching how `apply` upserts them.
+  
+
+- `github-actions`: The `setup` action resolves the latest **published** CLI release instead of the newest git tag, so it no longer fails with a 404 while a release is still building. (#352)
+  The release tag is pushed before GoReleaser uploads the assets, leaving a window
+  (about 7 minutes for v1.20.0) in which the newest tag names a version whose download
+  URL 404s. Resolving `/releases/latest` only ever yields a release whose assets exist.
+  
+
+- `deeplinks`: The CLI no longer prints a deep link to a nonexistent host when the API URL is an IP address. (#359)
+  With an API URL such as `http://127.0.0.1:8080`, the `URL` column, the `URL:` line, and the explorer link of query commands showed a host such as `app.0.1`. They are now omitted.
+  An API URL with a trailing dot, such as `https://api.dash0.com.`, now links to `app.dash0.com` instead of `app.com`.
+  
+
+- `views`: `views create`, `update`, `get`, and `apply` keep the `spec.frameFilters`, `spec.profileType`, `spec.stackFilters`, and `spec.sumBy` fields of profile views. (#359)
+  Before, the CLI dropped these fields without a warning, so a profile view did not round-trip through `get -o yaml` and `apply`.
+  
+
 ## 1.20.0
 
 
