@@ -140,8 +140,17 @@ func runTest(ctx context.Context, flags *testFlags) error {
 		return output.NewFormatter(output.FormatJSON, os.Stdout).PrintJSON(result)
 	}
 
-	fmt.Printf("%s %q matched %d %s\n", displayKind, dash0api.GetSignalToMetricsName(rule), result.MatchedCount, signal(rule))
+	fmt.Printf("%s %q matched %d %s\n", displayKind, dash0api.GetSignalToMetricsName(rule), result.MatchedCount, signalNoun(signal(rule), result.MatchedCount))
 	fmt.Printf("From: %s\n", result.TimeRange.From.UTC().Format(time.RFC3339))
 	fmt.Printf("To: %s\n", result.TimeRange.To.UTC().Format(time.RFC3339))
 	return nil
+}
+
+// signalNoun renders the signal type ("logs" or "spans") for a count, so a
+// single match reads "1 log" rather than "1 logs".
+func signalNoun(signal string, count int64) string {
+	if count == 1 {
+		return strings.TrimSuffix(signal, "s")
+	}
+	return signal
 }

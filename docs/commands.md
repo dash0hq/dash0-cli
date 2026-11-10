@@ -613,7 +613,7 @@ spec:
 ```
 
 `get` also returns a deleted asset, because the API keeps deleted assets instead of removing them.
-This applies to dashboards, check rules, synthetic checks, SLOs, views, recording rules, and time series aggregations.
+This applies to dashboards, check rules, synthetic checks, SLOs, views, recording rules, time series aggregations, and signal-to-metrics rules.
 The table output then shows a `Deleted:` line with the deletion time, and `-o yaml` and `-o json` carry it as the `dash0.com/deleted-at` annotation under `metadata.annotations`:
 
 ```bash
@@ -827,7 +827,7 @@ The identifier field location varies by asset kind:
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
-| `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Signal-to-metrics rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/signal-to-metrics/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/signal-to-metrics/{id}`: on hit it PUTs, on 404 it POSTs without the ID, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply |
+| `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Signal-to-metrics rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/signal-to-metrics/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/signal-to-metrics/{id}`: on hit it PUTs, on 404 it POSTs without the ID, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply. As for time series aggregations, origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document to two datasets |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
@@ -1093,6 +1093,9 @@ When only `dash0.com/id` is present the CLI preflights the rule with a GET: on h
 The POST fallback lets a definition exported from another organization apply, but it is not idempotent, because the new ID is never written back into the document.
 A document with neither label creates a new rule on every apply.
 Pin `dash0.com/origin` on any rule that will be applied more than once.
+Origins are unique per organization while each rule belongs to one dataset, as for time series aggregations.
+Applying a document to a second dataset fails with `400 ... associated with a different dataset`, and the CLI adds a hint.
+Use a distinct origin per dataset.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
@@ -1839,6 +1842,8 @@ Signal-to-metrics rules are part of Signal Control.
 Each rule matches logs or spans with a filter and turns the matching signals into a metric, so you can keep the metric and drop the raw signals.
 `signal-to-metrics-rules` (alias `s2m`) has the five standard subcommands plus `test`, and `apply` accepts the `Dash0SignalToMetrics` kind.
 Rules are dataset-scoped, and `get`, `update`, and `delete` accept either the rule's `dash0.com/origin` label or its ID.
+An origin is unique across the organization, so `get` finds a rule whatever `--dataset` says, and its `Dataset:` line shows the dataset it belongs to.
+`update` and `delete` with another dataset fail with a hint that names the cause.
 
 #### Filtering `list`
 
@@ -1851,6 +1856,9 @@ Rules are dataset-scoped, and `get`, `update`, and `delete` accept either the ru
 | `--name` | Only list rules whose display name or metric name contains this text, or whose ID equals it |
 | `--origin-prefix` | Only list rules whose origin starts with this prefix |
 
+Write the value of `--enabled` with `=`, as in `--enabled=false`.
+`--enabled false` fails with an error, because a boolean flag does not take the next argument as its value.
+
 The `table` format shows `NAME`, `ID`, `SIGNAL`, `METRIC`, and `ENABLED`.
 The `wide` and `csv` formats add `DATASET` and `ORIGIN`.
 
@@ -1858,8 +1866,8 @@ List the disabled rules for spans:
 
 ```bash
 $ dash0 s2m list --signal spans --enabled=false
-NAME                                      ID                                    SIGNAL  METRIC                                    ENABLED
-Frontend request duration                 5a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d  spans   frontend.request.duration                 false
+NAME                                      ID                                            SIGNAL  METRIC                                    ENABLED
+Frontend request duration                 signal_to_metrics_01kq3mb7w5x3y1z9a7b5c3d1e9  spans   frontend.request.duration                 false
 ```
 
 #### `signal-to-metrics-rules test`

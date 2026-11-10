@@ -491,6 +491,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
 	case "signaltometrics":
 		err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
+		// Not "already gone": the rule exists in another dataset.
+		if asset.IsSignalToMetricsRuleWrongDataset(err) {
+			return false, asset.WrapSignalToMetricsRuleWrongDataset(err, identifier)
+		}
 	case "timeseriesaggregation":
 		// The API returns 204 for an absent aggregation, so the tolerance
 		// below never fires for this kind. It does fire for the cross-dataset

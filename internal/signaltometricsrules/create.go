@@ -24,11 +24,17 @@ func newCreateCmd() *cobra.Command {
 
 When the document carries a 'dash0.com/origin' label under metadata.labels,
 the rule is upserted by that origin: repeated runs of the same file update the
-same rule instead of creating duplicates. Without an origin, every run creates
-a new rule, because rule IDs are assigned by the server.
+same rule instead of creating duplicates.
 
-Origins are unique per organization. Applying a document whose origin already
-exists in another dataset targets that existing rule.` + internal.CONFIG_HINT,
+With only a 'dash0.com/id' label, the rule with that ID is updated. When no
+rule has that ID, for example in a definition exported from another
+organization, a new rule is created with an ID assigned by the server, so
+every further run creates another one. With neither label, every run creates
+a new rule.
+
+Origins are unique per organization, and each rule belongs to one dataset.
+Applying a document whose origin already exists in another dataset fails, so
+use a distinct origin per dataset.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 s2m create -f rule.yaml
 
@@ -72,6 +78,9 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 
 	result, err := asset.ImportSignalToMetricsRule(ctx, apiClient, rule, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
+		if asset.IsSignalToMetricsRuleWrongDataset(err) {
+			return err
+		}
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: assetType,
 			AssetName: dash0api.GetSignalToMetricsName(rule),

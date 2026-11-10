@@ -27,12 +27,17 @@ Signal-to-metrics rules are part of Signal Control.
 Each rule matches logs or spans with a filter and turns the matching signals into a metric, so you can keep the metric and drop the raw signals.
 `signal-to-metrics-rules` (alias `s2m`) has the five standard subcommands plus `test`, and `apply` accepts the `Dash0SignalToMetrics` kind.
 Rules are dataset-scoped, and `get`, `update`, and `delete` accept either the rule's `dash0.com/origin` label or its ID.
+An origin is unique across the organization, so `get` finds a rule whatever `--dataset` says, and its `Dataset:` line shows the dataset it belongs to.
+`update` and `delete` with another dataset fail with a hint that names the cause.
 
 #### Filtering `list`
 
 `list` passes these filters to the API, which applies them before the limit:
 
 _For the exact, always-current flag list, run `dash0 --agent-mode <command> --help`._
+
+Write the value of `--enabled` with `=`, as in `--enabled=false`.
+`--enabled false` fails with an error, because a boolean flag does not take the next argument as its value.
 
 The `table` format shows `NAME`, `ID`, `SIGNAL`, `METRIC`, and `ENABLED`.
 The `wide` and `csv` formats add `DATASET` and `ORIGIN`.
@@ -41,8 +46,8 @@ List the disabled rules for spans:
 
 ```bash
 $ dash0 s2m list --signal spans --enabled=false
-NAME                                      ID                                    SIGNAL  METRIC                                    ENABLED
-Frontend request duration                 5a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d  spans   frontend.request.duration                 false
+NAME                                      ID                                            SIGNAL  METRIC                                    ENABLED
+Frontend request duration                 signal_to_metrics_01kq3mb7w5x3y1z9a7b5c3d1e9  spans   frontend.request.duration                 false
 ```
 
 #### `signal-to-metrics-rules test`
@@ -107,6 +112,8 @@ spec:
 The command is also available under the shorter alias `s2m`, so `dash0 s2m list` and `dash0 signal-to-metrics-rules list` are the same command.
 
 `metadata.labels["dash0.com/origin"]` is the upsert key: `create` and `apply` PUT to that origin, which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only `dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every apply; pin `dash0.com/origin` instead.
+
+Origins are unique per organization while each rule belongs to one dataset, so applying the same document to a second dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.
 
 Run `dash0 s2m test -f <file>` before `create` or `apply` to validate a definition and see how many logs or spans it matches; it creates nothing.
 

@@ -86,7 +86,7 @@ metadata:
 metadata:
   name: checkout-errors
   labels:
-    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+    dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t
 `))
 	require.NoError(t, err)
 	assert.False(t, usesOrigin)
@@ -113,15 +113,15 @@ func TestExtractIdentifier_SignalToMetricsRule(t *testing.T) {
 		{
 			name: "origin wins over id",
 			labels: `    dash0.com/origin: dash0-cli_checkout-errors
-    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+    dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t
 `,
 			want: "dash0-cli_checkout-errors",
 		},
 		{
 			name: "id when origin is absent",
-			labels: `    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+			labels: `    dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t
 `,
-			want: "7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d",
+			want: "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t",
 		},
 		{name: "neither label", labels: "    team: checkout\n", want: ""},
 	}

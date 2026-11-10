@@ -59,6 +59,9 @@ func runDelete(ctx context.Context, originOrID string, flags *asset.DeleteFlags)
 		if client.IsAlreadyDeleted(err, flags.Force, ectx) {
 			return nil
 		}
+		if asset.IsSignalToMetricsRuleWrongDataset(err) {
+			return asset.WrapSignalToMetricsRuleWrongDataset(err, originOrID)
+		}
 		return client.HandleAPIError(err, ectx)
 	}
 

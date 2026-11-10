@@ -3465,7 +3465,7 @@ func TestApply_SignalToMetricsRule_CreatedByOrigin(t *testing.T) {
 	output, err := runApplyDoc(t, server.URL, signalToMetricsRuleDoc, "--dataset", "staging")
 
 	require.NoError(t, err)
-	assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d) created`)
+	assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t) created`)
 	put := findRequest(server.Requests(), http.MethodPut, apiPathSignalToMetrics+"/dash0-cli_checkout-errors")
 	require.NotNil(t, put, "an origin document upserts by PUT to its origin")
 	assert.Contains(t, put.Query, "dataset=staging", "signal-to-metrics rules are dataset-scoped")

@@ -102,6 +102,9 @@ When only `dash0.com/id` is present the CLI preflights the rule with a GET: on h
 The POST fallback lets a definition exported from another organization apply, but it is not idempotent, because the new ID is never written back into the document.
 A document with neither label creates a new rule on every apply.
 Pin `dash0.com/origin` on any rule that will be applied more than once.
+Origins are unique per organization while each rule belongs to one dataset, as for time series aggregations.
+Applying a document to a second dataset fails with `400 ... associated with a different dataset`, and the CLI adds a hint.
+Use a distinct origin per dataset.
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.

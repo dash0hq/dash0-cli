@@ -34,10 +34,11 @@ const (
 	fixtureNotFound       = "signaltometricsrules/error_not_found.json"
 	fixtureBadRequest     = "signaltometricsrules/error_bad_request.json"
 	fixtureTestSuccess    = "signaltometricsrules/test_success.json"
+	fixtureWrongDataset   = "signaltometricsrules/error_wrong_dataset.json"
 	fixtureUnauthorized   = "dashboards/error_unauthorized.json"
 
 	testOrigin = "dash0-cli_checkout-errors"
-	testID     = "7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d"
+	testID     = "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t"
 	testName   = "Checkout error logs"
 )
 
@@ -92,7 +93,15 @@ const docWithIDOnly = `kind: Dash0SignalToMetrics
 metadata:
   name: checkout-errors
   labels:
-    dash0.com/id: 7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d
+    dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t
+` + docSpec
+
+const docWithOriginAndForeignID = `kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+    dash0.com/id: signal_to_metrics_01kq3mcz9y8x7w6v5t4s3r2q1p
 ` + docSpec
 
 const docWithoutIdentifier = `kind: Dash0SignalToMetrics
@@ -269,6 +278,20 @@ func TestListSignalToMetricsRules_InvalidSignalFailsBeforeAnyRequest(t *testing.
 	assert.Empty(t, server.Requests())
 }
 
+// "--enabled false" sets --enabled to true and leaves "false" as a positional
+// argument, so without the argument check it would list the enabled rules,
+// the opposite of what was asked.
+func TestListSignalToMetricsRules_EnabledWithSpaceSeparatedValueFails(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, err := execute(t, "s2m", "list", "--enabled", "false", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown command "false"`)
+	assert.Empty(t, server.Requests())
+}
+
 func TestListSignalToMetricsRules_Unauthorized(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -355,6 +378,40 @@ func TestCreateSignalToMetricsRule_ByOrigin_Creates(t *testing.T) {
 	assert.Equal(t, testName, body.Spec.Display.Name)
 }
 
+// A document exported from another organization carries that organization's
+// id next to the origin. The origin in the path selects the rule, so the id
+// must not be sent.
+func TestCreateSignalToMetricsRule_ByOrigin_DoesNotSendID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithOriginAndForeignID), "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin).Body)
+	if body.Metadata.Labels != nil {
+		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
+	}
+}
+
+// The API's GET ignores the dataset, so the preflight finds a rule that lives
+// in another dataset, and the collision only surfaces on the PUT. This is what
+// dev returned on 2026-11-10.
+func TestCreateSignalToMetricsRule_OriginInAnotherDatasetExplainsTheFix(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: fixtureWrongDataset, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithOrigin), "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `signal-to-metrics rule "`+testOrigin+`" already exists in another dataset`)
+	assert.Contains(t, err.Error(), "Hint: origins are unique per organization")
+}
+
 func TestCreateSignalToMetricsRule_ByOrigin_Updates(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -406,7 +463,7 @@ func TestCreateSignalToMetricsRule_ByIDOnly_UnknownIDFallsBackToPOSTWithoutID(t 
 	out, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithIDOnly), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
-	assert.Contains(t, out, "created (id: 9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a)")
+	assert.Contains(t, out, "created (id: signal_to_metrics_01kq3m9a4b6c8d0e2f4g6h8j0k)")
 	assert.Zero(t, countMethod(server.Requests(), http.MethodPut), "an unknown id must never be PUT")
 	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPost, apiPath).Body)
 	if body.Metadata.Labels != nil {
@@ -463,6 +520,38 @@ func TestUpdateSignalToMetricsRule_UnchangedDocumentReportsNoChanges(t *testing.
 	require.NoError(t, err)
 	assert.Contains(t, out, `Signal-to-metrics rule "Checkout error logs": no changes`)
 	findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin)
+}
+
+func TestUpdateSignalToMetricsRule_ByOrigin_DoesNotSendID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "update", "-f", writeDoc(t, docWithOriginAndForeignID), "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin).Body)
+	if body.Metadata.Labels != nil {
+		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
+	}
+}
+
+// An id-only update PUTs to the id, so the id in the body names the same rule
+// and stays.
+func TestUpdateSignalToMetricsRule_ByID_KeepsID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "update", "-f", writeDoc(t, docWithIDOnly), "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testID).Body)
+	require.NotNil(t, body.Metadata.Labels)
+	require.NotNil(t, body.Metadata.Labels.Dash0Comid)
+	assert.Equal(t, testID, *body.Metadata.Labels.Dash0Comid)
 }
 
 func TestUpdateSignalToMetricsRule_ChangedFieldShowsDiff(t *testing.T) {
@@ -536,6 +625,19 @@ func TestDeleteSignalToMetricsRule_AlreadyDeletedWithForce(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// The rule exists in another dataset, so --force must not report it as
+// already deleted.
+func TestDeleteSignalToMetricsRule_OriginInAnotherDatasetFailsEvenWithForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodDelete, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: fixtureWrongDataset, Validator: testutil.RequireHeaders})
+
+	_, err := execute(t, "s2m", "delete", testOrigin, "--force", "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists in another dataset")
+}
+
 func TestDeleteSignalToMetricsRule_NotFoundWithoutForce(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -576,6 +678,21 @@ func TestTestSignalToMetricsRule_TableFormat(t *testing.T) {
 	if request.Definition.Metadata.Labels != nil {
 		assert.Nil(t, request.Definition.Metadata.Labels.Dash0Comdataset, "a dataset label would conflict with --dataset")
 	}
+}
+
+func TestTestSignalToMetricsRule_SingleMatchIsSingular(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiTestPath, testutil.MockResponse{StatusCode: http.StatusOK, Validator: testutil.RequireHeaders, Body: map[string]any{
+		"executionTime": "2026-10-21T08:15:00Z",
+		"matchedCount":  1,
+		"timeRange":     map[string]any{"from": "2026-10-21T07:15:00Z", "to": "2026-10-21T08:15:00Z"},
+	}})
+
+	out, err := execute(t, "s2m", "test", "-f", writeDoc(t, docWithOrigin), "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "table")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, `Signal-to-metrics rule "Checkout error logs" matched 1 log`+"\n")
 }
 
 func TestTestSignalToMetricsRule_JSONFormat(t *testing.T) {

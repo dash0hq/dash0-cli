@@ -54,6 +54,9 @@ case-insensitive substring, and the rule ID exactly.` + internal.CONFIG_HINT,
 
   # Output as CSV (pipe-friendly)
   dash0 s2m list -o csv`,
+		// A boolean flag takes its value only after "=", so "--enabled false"
+		// would otherwise filter for enabled rules and silently drop "false".
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags.EnabledSet = cmd.Flags().Changed("enabled")
 			return runList(cmd.Context(), &flags)
@@ -150,7 +153,7 @@ func printTable(f *output.Formatter, items []*dash0api.SignalToMetricsDefinition
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string {
 			return dash0api.GetSignalToMetricsName(item.(*dash0api.SignalToMetricsDefinition))
 		}},
-		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string {
+		{Header: internal.HEADER_ID, Width: 44, Value: func(item interface{}) string {
 			return dash0api.GetSignalToMetricsID(item.(*dash0api.SignalToMetricsDefinition))
 		}},
 		{Header: internal.HEADER_SIGNAL, Width: 6, Value: func(item interface{}) string {

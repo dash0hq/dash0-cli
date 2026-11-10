@@ -99,11 +99,19 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	// The server takes the target from the URL, and the dataset from the
-	// --dataset query parameter, matching the import path.
+	// --dataset query parameter, matching the import path. When the key is the
+	// origin, an id in the body can only disagree with the rule the path
+	// selects, so it is not sent either.
+	if key != dash0api.GetSignalToMetricsID(rule) {
+		dash0api.ClearSignalToMetricsID(rule)
+	}
 	dash0api.StripSignalToMetricsServerFields(rule)
 
 	result, err := apiClient.UpdateSignalToMetrics(ctx, key, rule, dataset)
 	if err != nil {
+		if asset.IsSignalToMetricsRuleWrongDataset(err) {
+			return asset.WrapSignalToMetricsRuleWrongDataset(err, key)
+		}
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: assetType,
 			AssetID:   key,

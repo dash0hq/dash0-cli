@@ -9,7 +9,7 @@
         },
         "labels": {
           "dash0.com/dataset": "default",
-          "dash0.com/id": "7c1e2a4b-3d5f-4a6b-9c8d-0e1f2a3b4c5d",
+          "dash0.com/id": "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t",
           "dash0.com/origin": "dash0-cli_checkout-errors",
           "dash0.com/source": "dash0-cli",
           "dash0.com/version": "1"
@@ -58,7 +58,7 @@
         },
         "labels": {
           "dash0.com/dataset": "default",
-          "dash0.com/id": "5a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d",
+          "dash0.com/id": "signal_to_metrics_01kq3mb7w5x3y1z9a7b5c3d1e9",
           "dash0.com/origin": "api-0d4f2c9e",
           "dash0.com/source": "api",
           "dash0.com/version": "1"

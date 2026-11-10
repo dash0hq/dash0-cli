@@ -38,7 +38,7 @@ trap cleanup EXIT
 echo "--- Step 1: Test the definition (creates nothing) ---"
 TEST_OUT=$("$DASH0" s2m test -f "$YAML_FILE" --from now-1h)
 echo "$TEST_OUT"
-if ! echo "$TEST_OUT" | grep -qE "matched [0-9]+ logs"; then
+if ! echo "$TEST_OUT" | grep -qE "matched [0-9]+ logs?$"; then
   echo "FAIL: expected a matched count in test output"
   exit 1
 fi

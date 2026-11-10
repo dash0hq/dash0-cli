@@ -40,6 +40,30 @@ func SignalToMetricsRuleDeletedAt(rule *dash0api.SignalToMetricsDefinition) *tim
 	return rule.Metadata.Annotations.Dash0ComdeletedAt
 }
 
+// IsSignalToMetricsRuleWrongDataset reports whether err is the API's
+// cross-dataset origin collision: HTTP 400 saying a rule with this origin
+// exists but belongs to a different dataset.
+//
+// Origins are unique per organization while each rule belongs to one dataset,
+// as for time series aggregations. Writing or deleting by an origin from
+// another dataset therefore fails with this 400. It is not a 404: the rule
+// exists, so delete --force must not report it as already gone.
+func IsSignalToMetricsRuleWrongDataset(err error) bool {
+	return isOriginInAnotherDataset(err)
+}
+
+// WrapSignalToMetricsRuleWrongDataset turns the cross-dataset 400 into an
+// error that names the cause and the fix, with the advice behind "\nHint:" so
+// agent mode lifts it into the JSON error's hint field.
+func WrapSignalToMetricsRuleWrongDataset(err error, originOrID string) error {
+	return fmt.Errorf(
+		"signal-to-metrics rule %q already exists in another dataset:\n  %w"+
+			"\nHint: origins are unique per organization while each rule belongs to one dataset. "+
+			"Use a distinct origin per dataset, or pass the --dataset that owns the rule (shown by 'dash0 s2m get %s')",
+		originOrID, err, originOrID,
+	)
+}
+
 // SignalToMetricsRuleUsesOrigin reports whether a signal-to-metrics rule
 // document carries a non-empty dash0.com/origin label.
 //
@@ -63,8 +87,9 @@ func SignalToMetricsRuleUsesOrigin(data []byte) (bool, error) {
 // Upsert key selection follows from that, and mirrors ImportSLO:
 //
 //   - With a dash0.com/origin label, the rule is PUT to that origin, which
-//     creates or replaces it. A preflight GET only decides whether the result
-//     is reported as created, updated, or restored.
+//     creates or replaces it, with any dash0.com/id cleared from the body. A
+//     preflight GET only decides whether the result is reported as created,
+//     updated, or restored.
 //   - With only a dash0.com/id label, a preflight GET gates the route. On a hit
 //     the rule is PUT to that id. On a 404 it is POSTed with the id cleared,
 //     because the server assigns ids and rejects one in a POST body. A PUT here
@@ -88,6 +113,10 @@ func ImportSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, r
 	switch {
 	case origin != "":
 		upsertKey = origin
+		// The origin in the path selects the rule, so an id in the body can
+		// only disagree with it, for example the id of the same rule in
+		// another organization.
+		dash0api.ClearSignalToMetricsID(rule)
 		existing, err := apiClient.GetSignalToMetrics(ctx, origin, dataset)
 		switch {
 		case err == nil:
@@ -117,6 +146,11 @@ func ImportSignalToMetricsRule(ctx context.Context, apiClient dash0api.Client, r
 	} else {
 		dash0api.ClearSignalToMetricsID(rule)
 		result, err = apiClient.CreateSignalToMetrics(ctx, rule, dataset)
+	}
+	if IsSignalToMetricsRuleWrongDataset(err) {
+		// The preflight GET ignores the dataset and finds the rule, so the
+		// collision only surfaces here, on the write.
+		return ImportResult{}, WrapSignalToMetricsRuleWrongDataset(err, upsertKey)
 	}
 	if err != nil {
 		return ImportResult{}, err

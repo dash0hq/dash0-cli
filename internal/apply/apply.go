@@ -990,6 +990,11 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc assetDocu
 		}
 		result, err := asset.ImportSignalToMetricsRule(ctx, apiClient, &rule, dataset)
 		if err != nil {
+			// The cross-dataset collision already carries its own explanation
+			// and would only be flattened into "invalid request" here.
+			if asset.IsSignalToMetricsRuleWrongDataset(err) {
+				return nil, err
+			}
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "signal-to-metrics rule",
 				AssetName: dash0api.GetSignalToMetricsName(&rule),

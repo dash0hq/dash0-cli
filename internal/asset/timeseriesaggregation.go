@@ -108,11 +108,18 @@ func TimeSeriesAggregationDeletedAt(aggregation *dash0api.TimeSeriesAggregationD
 // exists but belongs to a different dataset.
 //
 // Origins are unique per organization, while each aggregation belongs to one
-// dataset. No other asset kind combines the two, so the resulting 400 is easy
-// to mistake for a malformed document. It must not be treated as a 404 either:
-// the aggregation exists, so swallowing it under --force would report success
-// while it is still live.
+// dataset. Only aggregations and signal-to-metrics rules combine the two, so
+// the resulting 400 is easy to mistake for a malformed document. It must not be
+// treated as a 404 either: the aggregation exists, so swallowing it under
+// --force would report success while it is still live.
 func IsTimeSeriesAggregationWrongDataset(err error) bool {
+	return isOriginInAnotherDataset(err)
+}
+
+// isOriginInAnotherDataset detects the cross-dataset origin collision that the
+// time series aggregation and signal-to-metrics endpoints return with the same
+// message.
+func isOriginInAnotherDataset(err error) bool {
 	if err == nil {
 		return false
 	}
