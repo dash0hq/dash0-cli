@@ -60,12 +60,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 
-	fileKey := asset.UpsertKeyFor("generativeaievaluation", asset.UpsertKey{Origin: dash0api.GetGenerativeAiEvaluationOrigin(evaluation), ID: dash0api.GetGenerativeAiEvaluationID(evaluation)})
+	origin := dash0api.GetGenerativeAiEvaluationOrigin(evaluation)
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "eval",
 		UsesOrigin: true,
-		Origin:     fileKey.Origin,
-		ID:         fileKey.ID,
+		Origin:     origin,
+		ID:         dash0api.GetGenerativeAiEvaluationID(evaluation),
 	})
 	if err != nil {
 		return err
@@ -84,8 +84,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: assetType, AssetID: key})
 	}
 
-	if stored := dash0api.GetGenerativeAiEvaluationOrigin(before); fileKey.Origin != "" && fileKey.Origin != stored {
-		return fmt.Errorf("argument %q is eval %q with origin %q, but the file's origin is %q", key, dash0api.GetGenerativeAiEvaluationID(before), stored, fileKey.Origin)
+	if stored := dash0api.GetGenerativeAiEvaluationOrigin(before); origin != "" && origin != stored {
+		return fmt.Errorf("argument %q is eval %q with origin %q, but the file's origin is %q", key, dash0api.GetGenerativeAiEvaluationID(before), stored, origin)
 	}
 
 	// The strip removes dash0.com/version, so the PUT overwrites unconditionally,

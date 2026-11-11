@@ -101,12 +101,11 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 	if filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil {
 		fileOrigin = *filter.Metadata.Labels.Dash0Comorigin
 	}
-	fileKey := asset.UpsertKeyFor("spamfilter", asset.UpsertKey{Origin: fileOrigin, ID: dash0api.GetSpamFilterID(filter)})
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "spam filter",
 		UsesOrigin: true,
-		Origin:     fileKey.Origin,
-		ID:         fileKey.ID,
+		Origin:     fileOrigin,
+		ID:         dash0api.GetSpamFilterID(filter),
 	})
 	if err != nil {
 		return err
@@ -153,12 +152,11 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 		}
 	}
 
-	fileKey := asset.UpsertKeyFor("spamfilter", asset.UpsertKey{Origin: fileOrigin, ID: fileID})
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "spam filter",
 		UsesOrigin: true,
-		Origin:     fileKey.Origin,
-		ID:         fileKey.ID,
+		Origin:     fileOrigin,
+		ID:         fileID,
 	})
 	if err != nil {
 		return err

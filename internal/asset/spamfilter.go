@@ -125,13 +125,9 @@ func ImportSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *da
 // "not found".
 func PlanSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilter, dataset *string) (ImportPlan, error) {
 	// StripSpamFilterServerFields clears the dash0.com/id label, so read it first.
-	var origin string
-	if filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil {
-		origin = *filter.Metadata.Labels.Dash0Comorigin
-	}
-	key := UpsertKeyFor("spamfilter", UpsertKey{Origin: origin, ID: dash0api.GetSpamFilterID(filter)})
+	key := PreferredKey(filter)
 	dash0api.StripSpamFilterServerFields(filter)
-	return planSpamFilterByKey(ctx, apiClient, key.Preferred(), filter, dataset)
+	return planSpamFilterByKey(ctx, apiClient, key, filter, dataset)
 }
 
 // ImportSpamFilterV1Alpha2 mirrors ImportSpamFilter for the v1alpha2 schema.
@@ -163,12 +159,7 @@ func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, fi
 // ImportSpamFilterV1Alpha2 would write. Origin wins over id. It returns any
 // preflight error other than "not found".
 func PlanSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilterV1Alpha2, dataset *string) (ImportPlan, error) {
-	var origin string
-	if filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil {
-		origin = *filter.Metadata.Labels.Dash0Comorigin
-	}
-	key := UpsertKeyFor("spamfilter", UpsertKey{Origin: origin, ID: SpamFilterV1Alpha2ID(filter)})
-	return planSpamFilterByKey(ctx, apiClient, key.Preferred(), filter, dataset)
+	return planSpamFilterByKey(ctx, apiClient, PreferredKey(filter), filter, dataset)
 }
 
 func planSpamFilterByKey(ctx context.Context, apiClient dash0api.Client, key string, proposed any, dataset *string) (ImportPlan, error) {

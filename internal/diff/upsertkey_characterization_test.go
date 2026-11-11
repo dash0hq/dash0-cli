@@ -225,7 +225,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withNeither: {"", "", ""},
 			withOrigin:  {"o", "o", "GetSLO(o)"},
 			withID:      {"i", "i", "GetSLO(i)"},
-			withBoth:    {"o", "i", "GetSLO(o)"},
+			withBoth:    {"o", "o", "GetSLO(o)"},
 		},
 		"view": {
 			withNeither: {"", "", ""},
@@ -261,7 +261,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withNeither: {"", "", ""},
 			withOrigin:  {"o", "o", "GetTeam(o)"},
 			withID:      {"i", "i", "GetTeam(i)"},
-			withBoth:    {"o", "i", "GetTeam(o) GetTeam(i)"},
+			withBoth:    {"o", "o", "GetTeam(o) GetTeam(i)"},
 		},
 		"timeseriesaggregation": {
 			withNeither: {"", "", "error: Dash0TimeSeriesAggregation requires metadata.labels[\"dash0.com/origin\"]: the Dash0 API rejects a time series aggregation without an origin, and the origin is the key `apply` upserts by"},
@@ -291,7 +291,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withNeither: {"", "", ""},
 			withOrigin:  {"o", "o", "GetGenerativeAiEvaluation(o)"},
 			withID:      {"i", "i", "GetGenerativeAiEvaluation(i)"},
-			withBoth:    {"o", "i", "GetGenerativeAiEvaluation(o)"},
+			withBoth:    {"o", "o", "GetGenerativeAiEvaluation(o)"},
 		},
 		"signaltometrics": {
 			withNeither: {"", "", ""},

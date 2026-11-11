@@ -59,12 +59,11 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 
-	fileKey := asset.UpsertKeyFor("signaltometrics", asset.UpsertKey{Origin: origin(rule), ID: dash0api.GetSignalToMetricsID(rule)})
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       assetType,
 		UsesOrigin: true,
-		Origin:     fileKey.Origin,
-		ID:         fileKey.ID,
+		Origin:     origin(rule),
+		ID:         dash0api.GetSignalToMetricsID(rule),
 	})
 	if err != nil {
 		return err

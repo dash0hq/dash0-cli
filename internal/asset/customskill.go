@@ -74,7 +74,7 @@ func frontmatterName(content string) string {
 // CustomSkillKey returns the identifier a custom skill is addressed by: its origin, or its id when
 // it has no origin.
 func CustomSkillKey(skill *dash0api.SkillDefinition) string {
-	return UpsertKeyFor("skill", UpsertKey{Origin: dash0api.GetCustomSkillOrigin(skill), ID: dash0api.GetCustomSkillID(skill)}).Preferred()
+	return PreferredKey(skill)
 }
 
 // ImportCustomSkill creates or updates an Agent0 custom skill.
@@ -114,12 +114,12 @@ func PlanCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *dash
 	if err := ValidateCustomSkill(skill); err != nil {
 		return ImportPlan{}, err
 	}
-	key := UpsertKeyFor("skill", UpsertKey{Origin: dash0api.GetCustomSkillOrigin(skill), ID: dash0api.GetCustomSkillID(skill)})
-	origin, id := key.Origin, key.ID
+	origin := dash0api.GetCustomSkillOrigin(skill)
+	id := dash0api.GetCustomSkillID(skill)
+	plan := ImportPlan{Key: PreferredKey(skill), Action: ActionCreated, Proposed: skill}
 	dash0api.StripCustomSkillServerFields(skill)
 	skill.Kind = dash0api.Dash0Skill
 
-	plan := ImportPlan{Key: key.Preferred(), Action: ActionCreated, Proposed: skill}
 	if plan.Key == "" {
 		return plan, nil
 	}

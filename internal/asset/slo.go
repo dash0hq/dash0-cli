@@ -92,15 +92,17 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 // report a replace as a create.
 func PlanSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportPlan, error) {
 	// StripSLOServerFields clears both labels, so read them first.
-	key := UpsertKeyFor("slo", UpsertKey{Origin: dash0api.GetSLOOrigin(slo), ID: dash0api.GetSLOID(slo)})
+	origin := dash0api.GetSLOOrigin(slo)
+	lookupKey := PreferredKey(slo)
 	dash0api.StripSLOServerFields(slo)
 
 	plan := ImportPlan{Action: ActionCreated, Proposed: slo}
-	lookupKey := key.Preferred()
 	if lookupKey == "" {
 		return plan, nil
 	}
-	plan.Key = key.Origin
+	if origin != "" {
+		plan.Key = origin
+	}
 	existing, err := apiClient.GetSLO(ctx, lookupKey, dataset)
 	if err != nil {
 		return plan, ignoreNotFound(err)

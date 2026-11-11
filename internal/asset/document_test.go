@@ -662,8 +662,8 @@ func TestParseDocumentHeader_GenerativeAiEvaluation(t *testing.T) {
 		labels string
 		wantID string
 	}{
-		"id wins for display": {"    dash0.com/origin: dash0-cli_relevance\n    dash0.com/id: eval_1\n", "eval_1"},
-		"origin fallback":     {"    dash0.com/origin: dash0-cli_relevance\n", "dash0-cli_relevance"},
+		"origin wins over id": {"    dash0.com/origin: dash0-cli_relevance\n    dash0.com/id: eval_1\n", "dash0-cli_relevance"},
+		"id fallback":         {"    dash0.com/id: eval_1\n", "eval_1"},
 		"no identifiers":      {"    team: sre\n", ""},
 	}
 	for name, c := range cases {

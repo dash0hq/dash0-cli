@@ -72,12 +72,11 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return err
 	}
 
-	fileKey := asset.UpsertKeyFor("skill", asset.UpsertKey{Origin: dash0api.GetCustomSkillOrigin(&skill), ID: dash0api.GetCustomSkillID(&skill)})
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       assetType,
 		UsesOrigin: true,
-		Origin:     fileKey.Origin,
-		ID:         fileKey.ID,
+		Origin:     dash0api.GetCustomSkillOrigin(&skill),
+		ID:         dash0api.GetCustomSkillID(&skill),
 	})
 	if err != nil {
 		return err

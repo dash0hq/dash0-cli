@@ -73,12 +73,12 @@ func ImportTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.T
 // resolve them to emails and decide whether a failed lookup matters.
 func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.TeamDefinitionV1Alpha1) (ImportPlan, error) {
 	// StripTeamServerFields clears the dash0.com/id label, so read it first.
-	key := UpsertKeyFor("team", UpsertKey{Origin: dash0api.GetTeamOrigin(team), ID: dash0api.GetTeamID(team)})
-	origin, id := key.Origin, key.ID
+	origin := dash0api.GetTeamOrigin(team)
+	id := dash0api.GetTeamID(team)
+	lookupKey := PreferredKey(team)
 	dash0api.StripTeamServerFields(team)
 
 	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: team}
-	lookupKey := key.Preferred()
 	if lookupKey == "" {
 		return plan, nil
 	}
