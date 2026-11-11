@@ -152,9 +152,12 @@ fi
 # Step 6: update with hand-added assets — expect the warning, and the update still succeeds.
 # Addressed by UUID, not origin: step 5's update-by-UUID currently rewrites the stored origin
 # to the UUID (server bug, SIG-228), so an origin lookup here would 404. The UUID always works.
+# The argument must match the file's origin or id, so the file gets the UUID as its id.
 echo "--- Step 6: update with hand-added assets (expect: warning) ---"
 UPDATE2_STDERR="${TMPDIR}/update2.stderr"
-if ! "$DASH0" -X notification-channels update "$CHANNEL_ID" -f "$YAML_FILE" > /dev/null 2> "$UPDATE2_STDERR"; then
+UPDATE2_FILE="${TMPDIR}/notification-channel-with-id.yaml"
+awk -v id="$CHANNEL_ID" '{ print } /dash0\.com\/origin:/ { print "    dash0.com/id: " id }' "$YAML_FILE" > "$UPDATE2_FILE"
+if ! "$DASH0" -X notification-channels update "$CHANNEL_ID" -f "$UPDATE2_FILE" > /dev/null 2> "$UPDATE2_STDERR"; then
   cat "$UPDATE2_STDERR"
   echo "FAIL: the update with hand-added assets must succeed"
   exit 1
