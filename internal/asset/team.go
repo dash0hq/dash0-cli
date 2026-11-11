@@ -75,13 +75,10 @@ func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.Tea
 	// StripTeamServerFields clears the dash0.com/id label, so read it first.
 	origin := dash0api.GetTeamOrigin(team)
 	id := dash0api.GetTeamID(team)
+	lookupKey := PreferredKey(team)
 	dash0api.StripTeamServerFields(team)
 
 	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: team}
-	lookupKey := origin
-	if lookupKey == "" {
-		lookupKey = id
-	}
 	if lookupKey == "" {
 		return plan, nil
 	}
