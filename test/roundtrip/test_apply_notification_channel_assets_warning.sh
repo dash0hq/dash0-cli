@@ -150,7 +150,7 @@ if grep -q "$WARNING_PATTERN" "$UPDATE1_STDERR"; then
 fi
 
 # Step 6: update with hand-added assets — expect the warning, and the update still succeeds.
-# Addressed by UUID, not origin: step 5's update-by-UUID currently rewrites the stored origin
+# Addressed by UUID, not origin: an update by UUID currently rewrites the stored origin
 # to the UUID (server bug, SIG-228), so an origin lookup here would 404. The UUID always works.
 echo "--- Step 6: update with hand-added assets (expect: warning) ---"
 UPDATE2_STDERR="${TMPDIR}/update2.stderr"
