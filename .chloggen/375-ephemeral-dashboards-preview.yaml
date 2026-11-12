@@ -5,4 +5,5 @@ issues: [375]
 subtext: |
   Dash0 deletes an ephemeral dashboard once `spec.ttl` has passed since its latest write.
   `preview` upserts each preview with `--ttl` (default `1d`) under an id derived from the dashboard's id, so it never replaces the dashboard itself, and running it again updates the same previews and starts their ttl again.
+  Like `percli dac preview`, `--prefix` prefixes each preview's name and keeps the previews of different prefixes apart, and the output links to the dashboard a preview comes from when it exists.
 change_logs: [user]

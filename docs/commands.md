@@ -2182,18 +2182,20 @@ It is the Dash0 counterpart of `percli dac preview`, for example to review dashb
 Documents of other kinds are skipped.
 
 ```bash
-dash0 --experimental dashboards preview -f <file|directory> [--ttl <duration>] [-o table|wide|json|yaml|csv]
+dash0 --experimental dashboards preview -f <file|directory> [--ttl <duration>] [--prefix <prefix>] [-o table|wide|json|yaml|csv]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `-f`, `--file` | A YAML file, a directory of YAML files (read recursively, like `apply`), or `-` for stdin |
 | `--ttl` | How long each preview lives after its latest write. Default `1d`. The API checks the format and its limits |
+| `--prefix` | Puts `<prefix>-` in front of each preview's display name, and the prefix in lowercase with spaces as hyphens in front of its `metadata.name`, like `percli dac preview --prefix` |
 
 Each preview gets its own identifier, a UUIDv5 derived from the dashboard's identifier.
 So a preview never replaces the dashboard it comes from, and `apply` of that dashboard still works while the preview exists.
 A second run updates the same previews and starts their ttl again.
 A dashboard without an identifier gets a new preview on every run.
+With `--prefix`, the prefix is part of the derived identifier, so previews with different prefixes, such as one per pull request, do not replace each other.
 
 ```bash
 $ dash0 -X dashboards preview -f dashboards/ --ttl 12h
@@ -2201,7 +2203,16 @@ NAME                                      ID                                    
 Orders                                    dd67c185-957d-5d5b-afa5-f1be006171e3  created   https://app.dash0.com/goto/dashboards?dashboard_id=dd67c185-957d-5d5b-afa5-f1be006171e3
 ```
 
-`-o json` prints a list of objects with `name`, `id`, `action`, and `url`, which is the default in agent mode.
+Preview the dashboards of a pull request apart from the previews of other pull requests:
+
+```bash
+dash0 -X dashboards preview -f dashboards/ --prefix pr-376
+```
+
+When the dashboard a preview comes from exists in Dash0, `-o wide` and `-o csv` add a `CURRENT` column with a link to it.
+`-o json` prints a list of objects with `name`, `id`, `action`, `url`, and, when the dashboard exists, `current`, which is the default in agent mode.
+Both links use the identifier Dash0 assigned, because a link with an identifier that is not a UUID does not open.
+If the CLI cannot list the dashboards to find those identifiers, it prints a warning, keeps the links from the write responses, and leaves out `current`.
 
 ## Query commands
 
