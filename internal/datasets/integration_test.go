@@ -666,6 +666,23 @@ func TestUpdateDataset_FileWithSlugAndOriginUpdatesTheSlug(t *testing.T) {
 	assert.Len(t, requestsFor(server, http.MethodPut, "/api/datasets/production"), 1)
 }
 
+func TestUpdateDataset_OriginMismatchWithoutArgumentNamesTheFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDatasetsGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	withOrigin := strings.Replace(datasetYAML, "dash0.com/id: production", "dash0.com/id: production\n    dash0.com/origin: other", 1)
+
+	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", writeYAML(t, withOrigin))
+
+	require.Error(t, err)
+	assert.Equal(t, `"production" from the file is dataset "production" with origin "dash0-cli", but the file's origin is "other"`, err.Error())
+	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
 func TestUpdateDataset_DryRun(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())

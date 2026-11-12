@@ -102,11 +102,15 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: "dataset", AssetID: id})
 	}
 
+	keySource := fmt.Sprintf("argument %q", id)
+	if len(args) == 0 {
+		keySource = fmt.Sprintf("%q from the file", id)
+	}
 	if slug := dash0api.GetDatasetID(&dataset); slug != "" && slug != dash0api.GetDatasetID(before) {
-		return fmt.Errorf("argument %q is dataset %q, but the file names dataset %q", id, dash0api.GetDatasetID(before), slug)
+		return fmt.Errorf("%s is dataset %q, but the file names dataset %q", keySource, dash0api.GetDatasetID(before), slug)
 	}
 	if origin, stored := asset.DatasetOrigin(&dataset), asset.DatasetOrigin(before); origin != "" && stored != "" && origin != stored {
-		return fmt.Errorf("argument %q is dataset %q with origin %q, but the file's origin is %q", id, dash0api.GetDatasetID(before), stored, origin)
+		return fmt.Errorf("%s is dataset %q with origin %q, but the file's origin is %q", keySource, dash0api.GetDatasetID(before), stored, origin)
 	}
 
 	// A file without the slug label still sends it. The slug comes from the stored dataset,
