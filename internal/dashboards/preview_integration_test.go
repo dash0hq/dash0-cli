@@ -42,9 +42,14 @@ spec:
 
 // UUIDv5 of each dashboard id in previewIDNamespace, computed outside the CLI.
 const (
-	ordersPreviewID   = "dd67c185-957d-5d5b-afa5-f1be006171e3"
-	checkoutPreviewID = "a2b44bf1-36e5-5b71-a673-3296084b8222"
+	ordersPreviewID         = "dd67c185-957d-5d5b-afa5-f1be006171e3"
+	checkoutPreviewID       = "a2b44bf1-36e5-5b71-a673-3296084b8222"
+	ordersPrefixedPreviewID = "711a89a5-0d38-52bd-9707-31779be82673" // "pr-376-orders-overview"
 )
+
+// The id the API assigned to the permanent dashboard whose own id,
+// "orders-overview", is not a UUID and is therefore kept as its origin.
+const ordersServerID = "5f0c8a52-1b9e-4c3d-8f7a-2e6d9b4c1a03"
 
 const previewViewYAML = `kind: View
 metadata:
@@ -129,6 +134,76 @@ func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderADerivedID(t *te
 	assert.Contains(t, output, "https://app.dash0.test/goto/dashboards?dashboard_id="+checkoutPreviewID)
 	assert.Regexp(t, `Orders\s+`+ordersPreviewID+`\s+updated`, output)
 	assert.Regexp(t, `Checkout\s+`+checkoutPreviewID+`\s+created`, output)
+}
+
+func TestPreviewDashboards_LinksEachPreviewToItsDashboardByServerID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writePreviewFiles(t, map[string]string{
+		"orders.yaml":   previewDashboardYAML,
+		"checkout.yaml": previewPersesDashboardYAML,
+	})
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, id := range []string{ordersPreviewID, checkoutPreviewID} {
+		server.On(http.MethodGet, apiPathDashboards+"/"+id, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound})
+		server.On(http.MethodPut, apiPathDashboards+"/"+id, testutil.MockResponse{StatusCode: http.StatusOK, Body: ephemeralDashboardResponse(id)})
+	}
+	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: []map[string]any{
+			{"id": ordersServerID, "origin": "orders-overview", "kind": "Dashboard", "dataset": "default", "tags": []string{}},
+			{"id": ordersPreviewID, "kind": "EphemeralDashboard", "dataset": "default", "tags": []string{}},
+			{"id": checkoutPreviewID, "kind": "EphemeralDashboard", "dataset": "default", "tags": []string{}},
+		},
+		Validator: testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "-o", "json", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	var results []map[string]string
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	currentByID := map[string]string{}
+	for _, result := range results {
+		currentByID[result["id"]] = result["current"]
+	}
+	assert.Equal(t, map[string]string{
+		ordersPreviewID:   "https://app.dash0.test/goto/dashboards?dashboard_id=" + ordersServerID,
+		checkoutPreviewID: "",
+	}, currentByID, "only Orders exists as a permanent dashboard, and its link uses the server id, not its origin")
+}
+
+func TestPreviewDashboards_PrefixSeparatesPreviewsAndPrefixesTheirNames(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writePreviewFiles(t, map[string]string{"orders.yaml": previewDashboardYAML})
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDashboards+"/"+ordersPrefixedPreviewID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound})
+	server.On(http.MethodPut, apiPathDashboards+"/"+ordersPrefixedPreviewID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       ephemeralDashboardResponse("PR 376-Orders"),
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "--prefix", "PR 376", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	bodies := server.RequestBodies(t, http.MethodPut, apiPathDashboards+"/"+ordersPrefixedPreviewID)
+	require.Len(t, bodies, 1, "the prefix is part of the preview id, so it does not replace the unprefixed preview "+ordersPreviewID)
+	assert.Equal(t, "pr-376-orders", bodies[0]["metadata"].(map[string]any)["name"])
+	assert.Equal(t, "PR 376-Orders", bodies[0]["spec"].(map[string]any)["display"].(map[string]any)["name"])
 }
 
 func TestPreviewDashboards_WithoutIDCreatesWithDefaultTTL(t *testing.T) {
