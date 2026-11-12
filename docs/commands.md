@@ -2168,7 +2168,7 @@ dash0 s2m get <origin-or-id> -o yaml | dash0 s2m test -f -
 
 An ephemeral dashboard is a dashboard with a `spec.ttl`, such as `12h` or `7d`.
 Dash0 deletes it once the ttl has passed since its latest write, so every write starts the ttl again.
-It follows the [Perses ephemeral dashboard](https://perses.dev/perses/docs/api/ephemeral-dashboard/) model, and the API enables it per organization.
+It follows the [Perses ephemeral dashboard](https://perses.dev/perses/docs/api/ephemeral-dashboard/) model.
 
 `apply`, `diff`, `dashboards create`, and `dashboards update` accept `kind: EphemeralDashboard` (see [Asset YAML formats](#asset-yaml-formats)).
 An ephemeral dashboard shares its identifiers with permanent dashboards, and the API does not change the kind of an existing dashboard.
@@ -2190,14 +2190,15 @@ dash0 --experimental dashboards preview -f <file|directory> [--ttl <duration>] [
 | `-f`, `--file` | A YAML file, a directory of YAML files (read recursively, like `apply`), or `-` for stdin |
 | `--ttl` | How long each preview lives after its latest write. Default `1d`. The API checks the format and its limits |
 
-Each preview is upserted under the dashboard's own identifier, so a second run updates the same previews and starts their ttl again.
+Each preview gets its own identifier, a UUIDv5 derived from the dashboard's identifier.
+So a preview never replaces the dashboard it comes from, and `apply` of that dashboard still works while the preview exists.
+A second run updates the same previews and starts their ttl again.
 A dashboard without an identifier gets a new preview on every run.
-Previewing a dashboard that already exists as a permanent dashboard fails, because the API does not change its kind.
 
 ```bash
 $ dash0 -X dashboards preview -f dashboards/ --ttl 12h
 NAME                                      ID                                    ACTION    URL
-Orders                                    orders-overview                       created   https://app.dash0.com/goto/dashboards?dashboard_id=orders-overview
+Orders                                    dd67c185-957d-5d5b-afa5-f1be006171e3  created   https://app.dash0.com/goto/dashboards?dashboard_id=dd67c185-957d-5d5b-afa5-f1be006171e3
 ```
 
 `-o json` prints a list of objects with `name`, `id`, `action`, and `url`, which is the default in agent mode.

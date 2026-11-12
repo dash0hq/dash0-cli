@@ -40,6 +40,12 @@ spec:
   layouts: []
 `
 
+// UUIDv5 of each dashboard id in previewIDNamespace, computed outside the CLI.
+const (
+	ordersPreviewID   = "dd67c185-957d-5d5b-afa5-f1be006171e3"
+	checkoutPreviewID = "a2b44bf1-36e5-5b71-a673-3296084b8222"
+)
+
 const previewViewYAML = `kind: View
 metadata:
   name: errors
@@ -73,7 +79,7 @@ func ephemeralDashboardResponse(name string) map[string]any {
 	}
 }
 
-func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderItsOwnID(t *testing.T) {
+func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderADerivedID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writePreviewFiles(t, map[string]string{
 		"orders.yaml":   previewDashboardYAML,
@@ -82,20 +88,20 @@ func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderItsOwnID(t *test
 	})
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, apiPathDashboards+"/orders-overview", testutil.MockResponse{
+	server.On(http.MethodGet, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		Body:       ephemeralDashboardResponse("Orders"),
 	})
-	server.On(http.MethodGet, apiPathDashboards+"/checkout-overview", testutil.MockResponse{
+	server.On(http.MethodGet, apiPathDashboards+"/"+checkoutPreviewID, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   fixtureNotFound,
 	})
-	server.On(http.MethodPut, apiPathDashboards+"/orders-overview", testutil.MockResponse{
+	server.On(http.MethodPut, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		Body:       ephemeralDashboardResponse("Orders"),
 		Validator:  testutil.RequireHeaders,
 	})
-	server.On(http.MethodPut, apiPathDashboards+"/checkout-overview", testutil.MockResponse{
+	server.On(http.MethodPut, apiPathDashboards+"/"+checkoutPreviewID, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		Body:       ephemeralDashboardResponse("Checkout"),
 		Validator:  testutil.RequireHeaders,
@@ -110,7 +116,7 @@ func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderItsOwnID(t *test
 	})
 
 	require.NoError(t, err)
-	for _, path := range []string{apiPathDashboards + "/orders-overview", apiPathDashboards + "/checkout-overview"} {
+	for _, path := range []string{apiPathDashboards + "/" + ordersPreviewID, apiPathDashboards + "/" + checkoutPreviewID} {
 		bodies := server.RequestBodies(t, http.MethodPut, path)
 		require.Len(t, bodies, 1, path)
 		assert.Equal(t, "EphemeralDashboard", bodies[0]["kind"], path)
@@ -119,10 +125,10 @@ func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderItsOwnID(t *test
 	for _, req := range server.Requests() {
 		assert.NotContains(t, req.Path, "/api/views", "a View is not previewed")
 	}
-	assert.Contains(t, output, "https://app.dash0.test/goto/dashboards?dashboard_id=orders-overview")
-	assert.Contains(t, output, "https://app.dash0.test/goto/dashboards?dashboard_id=checkout-overview")
-	assert.Regexp(t, `Orders\s+orders-overview\s+updated`, output)
-	assert.Regexp(t, `Checkout\s+checkout-overview\s+created`, output)
+	assert.Contains(t, output, "https://app.dash0.test/goto/dashboards?dashboard_id="+ordersPreviewID)
+	assert.Contains(t, output, "https://app.dash0.test/goto/dashboards?dashboard_id="+checkoutPreviewID)
+	assert.Regexp(t, `Orders\s+`+ordersPreviewID+`\s+updated`, output)
+	assert.Regexp(t, `Checkout\s+`+checkoutPreviewID+`\s+created`, output)
 }
 
 func TestPreviewDashboards_WithoutIDCreatesWithDefaultTTL(t *testing.T) {
@@ -168,7 +174,7 @@ spec:
 	}}, results)
 }
 
-func TestPreviewDashboards_StopsOnAPermanentDashboardWithTheSameID(t *testing.T) {
+func TestPreviewDashboards_LeavesThePermanentDashboardWithTheSameIDAlone(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writePreviewFiles(t, map[string]string{"orders.yaml": previewDashboardYAML})
 
@@ -177,25 +183,28 @@ func TestPreviewDashboards_StopsOnAPermanentDashboardWithTheSameID(t *testing.T)
 		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
 	})
-	server.On(http.MethodPut, apiPathDashboards+"/orders-overview", testutil.MockResponse{
-		StatusCode: http.StatusBadRequest,
-		Body: map[string]any{"error": map[string]any{
-			"code":    400,
-			"message": "Bad Request: The dashboard is a Dashboard and cannot change to a EphemeralDashboard. Create a new dashboard instead.",
-		}},
+	server.On(http.MethodGet, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+	})
+	server.On(http.MethodPut, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       ephemeralDashboardResponse("Orders"),
 	})
 
 	cmd := newExperimentalDashboardsCmd()
 	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
 
 	var err error
-	output := testutil.CaptureStdout(t, func() {
+	testutil.CaptureStdout(t, func() {
 		err = cmd.Execute()
 	})
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot change to a EphemeralDashboard")
-	assert.NotContains(t, output, "https://app.dash0.test")
+	require.NoError(t, err)
+	require.Len(t, server.RequestBodies(t, http.MethodPut, apiPathDashboards+"/"+ordersPreviewID), 1)
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, apiPathDashboards+"/orders-overview", req.Path, "the permanent dashboard is not read or written")
+	}
 }
 
 func TestPreviewDashboards_FailsWithoutDashboardsBeforeAnyRequest(t *testing.T) {
