@@ -48,8 +48,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun: "recording rule",
-		ID:   dash0api.GetRecordingRuleID(&rule),
+		Noun:   "recording rule",
+		Upsert: &rule,
 	})
 	if err != nil {
 		return err

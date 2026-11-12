@@ -679,7 +679,8 @@ Aliases: `add`
 ### `update`
 
 Update an existing asset from a YAML or JSON file.
-If the ID argument is omitted, the ID is extracted from the file content.
+If the ID argument is omitted, `update` takes the identifier from the file that `apply` upserts the asset by (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
+A file without that identifier fails, even when it carries the other one.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
 
@@ -3349,7 +3350,7 @@ Aliases: `add`
 ### `notification-channels update` (experimental)
 
 Update an existing notification channel from a YAML or JSON definition file.
-If the ID argument is omitted, the ID is extracted from the file content.
+If the ID argument is omitted, the `dash0.com/origin` label is read from the file, as `apply` does; a file without it fails.
 
 ```bash
 dash0 -X notification-channels update [id] -f <file> [--dry-run]
@@ -3361,7 +3362,7 @@ Update a notification channel from a file:
 dash0 -X notification-channels update <id> -f channel.yaml
 ```
 
-Update using the ID embedded in the file content:
+Update using the origin from the file:
 
 ```bash
 dash0 -X notification-channels update -f channel.yaml
@@ -3470,7 +3471,7 @@ Aliases: `add`
 ### `datasets update` (experimental)
 
 Update an existing dataset from a YAML or JSON definition file.
-If the ID argument is omitted, the slug is extracted from the file content.
+If the ID argument is omitted, the slug is extracted from the file content; a file without a slug fails, as in `apply`.
 The argument can be the slug or the origin; an origin must match the origin in the file when the file has one.
 The dataset must already exist: the command fails with a "not found" error instead of creating it.
 A `spec` field left out of the file keeps its stored value, so a file with only `spec.retention.logs` changes only that field.
