@@ -4,5 +4,5 @@ note: "`apply`, `diff`, and `dashboards create|update` accept `kind: EphemeralDa
 issues: [375]
 subtext: |
   Dash0 deletes an ephemeral dashboard once `spec.ttl` has passed since its latest write.
-  `preview` upserts each preview under the dashboard's own id with `--ttl` (default `1d`), so running it again updates the same previews and starts their ttl again.
+  `preview` upserts each preview with `--ttl` (default `1d`) under an id derived from the dashboard's id, so it never replaces the dashboard itself, and running it again updates the same previews and starts their ttl again.
 change_logs: [user]

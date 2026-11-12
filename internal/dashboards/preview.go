@@ -12,10 +12,15 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/output"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
 const defaultPreviewTTL = "1d"
+
+// previewIDNamespace must never change: every preview id derives from it, so a
+// new value would orphan existing previews until their ttl passes.
+var previewIDNamespace = uuid.MustParse("3b74d5ed-0dbc-4f89-b86e-d520992cca3a")
 
 type previewFlags struct {
 	asset.CommonFlags
@@ -38,9 +43,7 @@ func newPreviewCmd() *cobra.Command {
 		Short: "[experimental] Preview dashboards as ephemeral dashboards",
 		Long: `Create or update an EphemeralDashboard for each Dashboard and PersesDashboard in a file or directory, and print the URL of each preview. Documents of other kinds are skipped. Use '-f -' to read from stdin.
 
-Dash0 deletes an ephemeral dashboard once --ttl has passed since its latest write. Running the command again updates the same previews and starts their --ttl again. A dashboard without an id gets a new preview on every run.
-
-A preview is upserted under the dashboard's own id, so previewing a dashboard that already exists as a permanent dashboard fails: the API does not change the kind of an existing dashboard.` + internal.CONFIG_HINT,
+Dash0 deletes an ephemeral dashboard once --ttl has passed since its latest write. Each preview gets an id derived from the dashboard's id, so the preview never replaces the dashboard itself, and 'apply' of the dashboard still works while the preview exists. Running the command again updates the same previews and starts their --ttl again. A dashboard without an id gets a new preview on every run.` + internal.CONFIG_HINT,
 		Example: `  # Preview every dashboard in a directory for one day
   dash0 --experimental dashboards preview -f dashboards/
 
@@ -89,6 +92,7 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 	results := make([]previewResult, 0, len(dashboards))
 	for _, dashboard := range dashboards {
 		asset.ToEphemeralDashboard(dashboard, flags.TTL)
+		usePreviewID(dashboard)
 		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
 		if err != nil {
 			return client.HandleAPIError(err, client.ErrorContext{
@@ -105,6 +109,18 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 	}
 
 	return printPreviewResults(output.NewFormatter(format, os.Stdout), results)
+}
+
+// usePreviewID replaces the dashboard's id with a UUIDv5 of it, because the API
+// rejects an EphemeralDashboard under the id of a permanent dashboard and the
+// reverse.
+func usePreviewID(dashboard *dash0api.DashboardDefinition) {
+	extensions := dashboard.Metadata.Dash0Extensions
+	if extensions == nil || extensions.Id == nil || *extensions.Id == "" {
+		return
+	}
+	id := uuid.NewSHA1(previewIDNamespace, []byte(*extensions.Id)).String()
+	extensions.Id = &id
 }
 
 // readPreviewDashboards parses every Dashboard and PersesDashboard in file
