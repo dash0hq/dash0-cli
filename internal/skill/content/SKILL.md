@@ -21,6 +21,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
+| Interactive | `pods watch` | Full-screen terminal page, refreshes on a timer, experimental |
 | Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
@@ -196,6 +197,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `metrics` | Instant PromQL queries |
 | `notification-channels` | Notification channel CRUD (organization-level, no dataset) |
 | `otlp` | Local OTLP forwarding proxy (`otlp proxy`) |
+| `pods` | A pod's CPU, memory, requests, and logs as a terminal page or JSON (`pods watch`, experimental; also a k9s plugin) |
 | `recording-rules` | Recording rule CRUD (PrometheusRule CRD format) |
 | `signal-to-metrics-rules` | Signal-to-metrics rule CRUD and `test` (alias `s2m`; turns logs or spans into metrics) |
 | `slos` | SLO CRUD (`apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1, not upstream-identical; `dash0.com/origin` is the upsert key) |

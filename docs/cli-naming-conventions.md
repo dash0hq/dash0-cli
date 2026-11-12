@@ -88,6 +88,15 @@ The `teams` command manages organizational teams (not assets — no dataset, no 
 | `add-members`    | -        | Add members to a team                           |
 | `remove-members` | -        | Remove members from a team                      |
 
+## Pods Subcommands (experimental)
+The `pods` command shows Dash0 telemetry for one Kubernetes pod (not an asset: no YAML input, no `apply`):
+
+| Subcommand | Alias | Description                                                               |
+|------------|-------|---------------------------------------------------------------------------|
+| `watch`    | -     | Full-screen page of a pod's CPU, memory, requests, and logs; refreshes on a timer |
+
+Use `watch` for a subcommand that keeps a page open and refreshes it until the user quits.
+
 ## Members Subcommands (experimental)
 The `members` command manages organization membership:
 

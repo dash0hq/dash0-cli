@@ -854,6 +854,42 @@ The proxy exits on `Ctrl-C` (or `SIGTERM`) after draining in-flight work within 
 On startup, if either default port is already in use, the proxy exits non-zero with an actionable error that names the holding process.
 See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the decoration flags (`--scope-attribute`, `--log-attribute`, `--span-attribute`, `--metric-attribute`, `--scope-name`, `--scope-version`), the agent-mode event schema, and the failure-mode classification.
 
+### Pod page and k9s plugin (experimental)
+
+The `pods watch` command draws a Kubernetes pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration, and log counts when the pod has spans and logs.
+The page refreshes every 30 seconds; `1` to `4` pick the range, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0, and `q` quits.
+
+```bash
+dash0 -X pods watch <pod> -n <namespace>
+```
+
+The same page runs as a [k9s plugin](https://k9scli.io/topics/plugins/) on `Shift-D`.
+Add this to k9s' `plugins.yaml` (`k9s info` prints where it is):
+
+```yaml
+plugins:
+  dash0-pod-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - pods
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+  dash0-container-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - containers
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+```
+
+See [docs/commands.md](docs/commands.md#pods-watch-experimental) for the full reference.
+
 ### Common settings
 
 | Flag | Short | Env Variable | Description |
@@ -870,6 +906,7 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
 | `--config-dir` | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`). The flag takes precedence over the environment variable. |
+| `--cluster` | | `DASH0_CLUSTER` | Default for `dash0 pods watch --cluster` |
 | | | `DASH0_OTLP_PROXY_GRPC_PORT` | Override `dash0 otlp proxy --grpc-port` |
 | | | `DASH0_OTLP_PROXY_HTTP_PORT` | Override `dash0 otlp proxy --http-port` |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |

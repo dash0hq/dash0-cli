@@ -6,7 +6,7 @@ For every command, this reference lists the exact syntax, all flags, expected ou
 
 ## Command taxonomy
 
-Every command falls into one of eight categories.
+Every command falls into one of nine categories.
 Each category has distinct patterns for flags, output, and behavior.
 
 | Category | Commands | Characteristics |
@@ -17,6 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
+| [Interactive](#interactive-commands) | `pods watch` | Full-screen terminal page, refreshes on a timer, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
@@ -3229,6 +3230,104 @@ $ telemetrygen metrics --otlp-insecure                  --otlp-endpoint 127.0.0.
 ```
 
 The proxy's stats block updates in place as the data flows through, then the records appear in the Dash0 UI under the active profile's dataset.
+
+## Interactive commands
+
+Interactive commands draw a full-screen page on the alternate screen, refresh it on a timer, and exit on `q`, `Esc`, or `Ctrl-C`.
+When stdin is not a terminal, or with `--once`, they draw one frame to stdout and exit.
+
+### `pods watch` (experimental)
+
+Draw a Kubernetes pod's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when the pod has spans and logs.
+Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+The cluster must be monitored by the [Dash0 operator](https://github.com/dash0hq/dash0-operator), which collects the pod metrics.
+
+```bash
+dash0 -X pods watch <pod> -n <namespace> [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--namespace`, `-n` | | The pod's namespace (required) |
+| `--cluster` | `DASH0_CLUSTER` | Dash0's `k8s.cluster.name`; empty matches the pod in any cluster |
+| `--context` | | The kube context, shown in the header |
+| `--range` | `1h` | The range the page opens on: `15m`, `1h`, `6h`, or `24h` |
+| `--light` | `DITT0_THEME=light` | Draw in Dash0's light colours |
+| `--once` | `false` | Draw one frame to stdout and exit, at `COLUMNS` × `LINES` when stdout is not a terminal |
+| `--pause-on-error` | `false` | Wait for a key before exiting on an error, so k9s does not clear it |
+| `-o` | `page` | `page` or `json` (default: `json` in agent mode) |
+| `--dataset` | | Dataset to query |
+
+In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0 over the same range, and `q` or `Esc` quits.
+`↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
+The credentials are resolved again before every refresh, so an OAuth access token is renewed while the page stays open.
+
+The page queries `POST /api/prometheus/api/v1/query_range` with `sum()` over the pod's `k8s_namespace_name` and `k8s_pod_name` (and `k8s_cluster_name` with `--cluster`):
+
+| Section | Metrics |
+|---------|---------|
+| CPU | `k8s.pod.cpu.usage`, `k8s.container.cpu_request`, `k8s.container.cpu_limit` |
+| Memory | `k8s.pod.memory.working_set`, `k8s.container.memory_request`, `k8s.container.memory_limit` |
+| Requests | Rate, errors, and duration p50, p95, and p99 of the pod's `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
+| Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
+
+The requests and logs sections show only when the pod has spans or logs in the range.
+
+Watch a pod:
+
+```bash
+dash0 -X pods watch <pod> -n <namespace>
+```
+
+Match the pod in one cluster only, with a named profile:
+
+```bash
+dash0 -X --profile <profile> pods watch <pod> -n <namespace> --cluster <cluster>
+```
+
+Print the pod's series and Dash0 links as JSON (the default in agent mode):
+
+```bash
+$ dash0 -X pods watch <pod> -n <namespace> -o json --range 15m
+{
+  "namespace": "<namespace>",
+  "pod": "<pod>",
+  "step": "1m0s",
+  "timestamps": ["2026-11-12T19:00:00Z", ...],
+  "series": {"cpu": [0.12, ...], "mem": [...], "requests": [...], "logs:ERROR": [...], ...},
+  "links": {"metrics": "https://app.dash0.com/goto/metrics/query-builder?...", "traces": "...", "logs": "..."}
+}
+```
+
+#### k9s plugin
+
+Add the page to k9s' `plugins.yaml` (`k9s info` prints where it is) to open it on the selected pod or container with `Shift-D`:
+
+```yaml
+plugins:
+  dash0-pod-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - pods
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+  dash0-container-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - containers
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+```
+
+`-o page` keeps the page when k9s runs inside an AI agent's environment, where agent mode would default to JSON.
+To query a cluster with its own profile or match it by cluster name, put a copy of the plugin in k9s' per-context `clusters/<cluster>/<context>/plugins.yaml` with `--profile <profile>` before `pods`, or `--cluster <name>` after `watch`.
+k9s' `$CONTEXT` is a kubeconfig name, not Dash0's cluster name, so it is shown in the header but not used as a filter.
 
 ## Organizational commands
 
