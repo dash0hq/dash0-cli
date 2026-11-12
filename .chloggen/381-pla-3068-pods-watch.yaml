@@ -1,0 +1,14 @@
+change_type: new_component
+
+component: pods
+
+note: "Add the experimental `dash0 -X pods watch` command, a terminal page with a pod's CPU, memory, requests and logs from Dash0"
+
+issues: [381]
+
+subtext: |
+  Ports the dash0-k9s-plugin into the CLI. The page runs as a k9s plugin on `Shift-D`; see the README for the `plugins.yaml` snippet.
+  Unlike the plugin, it works with OAuth profiles and renews the access token while the page stays open.
+  `-o json` (the default in agent mode) prints the pod's series and Dash0 links.
+
+change_logs: []

@@ -32,6 +32,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/metrics"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
 	"github.com/dash0hq/dash0-cli/internal/otlp"
+	"github.com/dash0hq/dash0-cli/internal/pods"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
 	"github.com/dash0hq/dash0-cli/internal/signaltometricsrules"
@@ -100,6 +101,7 @@ func init() {
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
 	rootCmd.AddCommand(otlp.NewOtlpCmd())
+	rootCmd.AddCommand(pods.NewPodsCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
 	rootCmd.AddCommand(signaltometricsrules.NewSignalToMetricsRulesCmd())
 	rootCmd.AddCommand(skill.NewSkillCmd())

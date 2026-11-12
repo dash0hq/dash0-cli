@@ -48,6 +48,7 @@ var Manifest = []ManifestEntry{
 	{"metrics", "references/metrics.md"},
 	{"notification-channels", "references/notification-channels.md"},
 	{"otlp", "references/otlp.md"},
+	{"pods", "references/pods.md"},
 	{"recording-rules", "references/recording-rules.md"},
 	{"signal-to-metrics-rules", "references/signal-to-metrics-rules.md"},
 	{"slos", "references/slos.md"},
