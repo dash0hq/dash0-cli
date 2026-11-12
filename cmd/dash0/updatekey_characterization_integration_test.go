@@ -195,12 +195,11 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithID:      "GET /api/synthetic-checks/" + characterizationID,
 			updateWithBoth:    "GET /api/synthetic-checks/" + characterizationID,
 		},
-		// update addresses the id first, while apply addresses the origin first: #370.
 		"slos": {
-			updateWithNeither: "error: no SLO ID provided as argument, and the file contains neither an ID nor a dash0.com/origin label",
+			updateWithNeither: "error: no SLO origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/slos/o",
 			updateWithID:      "GET /api/slos/" + characterizationID,
-			updateWithBoth:    "GET /api/slos/" + characterizationID,
+			updateWithBoth:    "GET /api/slos/o",
 		},
 		"views": {
 			updateWithNeither: "error: no view id given: pass one as an argument, or set the id in the file",
@@ -215,10 +214,10 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/recording-rules/" + characterizationID,
 		},
 		"notification-channels": {
-			updateWithNeither: "error: no notification channel id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no notification channel id given: pass one as an argument, or set the id in the file",
-			updateWithID:      "GET /api/notification-channels/" + characterizationID,
-			updateWithBoth:    "GET /api/notification-channels/" + characterizationID,
+			updateWithNeither: "error: no notification channel origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithOrigin:  "GET /api/notification-channels/o",
+			updateWithID:      "error: no notification channel origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithBoth:    "GET /api/notification-channels/o",
 		},
 		"spam-filters v1alpha1": {
 			updateWithNeither: "error: no spam filter origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
@@ -241,12 +240,12 @@ func TestUpdateKey_Characterization(t *testing.T) {
 		"time-series-aggregations": {
 			updateWithNeither: "error: no time series aggregation origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/time-series-aggregations/o",
-			updateWithID:      "GET /api/time-series-aggregations/" + characterizationID,
+			updateWithID:      "error: no time series aggregation origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithBoth:    "GET /api/time-series-aggregations/o",
 		},
 		"datasets": {
 			updateWithNeither: "error: no dataset id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "GET /api/datasets/o",
+			updateWithOrigin:  "error: no dataset id given: pass one as an argument, or set the id in the file",
 			updateWithID:      "GET /api/datasets/" + characterizationID,
 			updateWithBoth:    "GET /api/datasets/" + characterizationID,
 		},

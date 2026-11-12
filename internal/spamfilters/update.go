@@ -103,6 +103,7 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 	}
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "spam filter",
+		Upsert:     filter,
 		UsesOrigin: true,
 		Origin:     fileOrigin,
 		ID:         dash0api.GetSpamFilterID(filter),
@@ -154,6 +155,7 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "spam filter",
+		Upsert:     filter,
 		UsesOrigin: true,
 		Origin:     fileOrigin,
 		ID:         fileID,

@@ -77,14 +77,8 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	if len(args) > 0 {
 		id = args[0]
 	} else {
-		// apply addresses the slug, so the slug wins over the origin. A file with only an
-		// origin still names a dataset, because the API path accepts an origin.
-		key := asset.UpdateKey{Noun: "dataset", ID: dash0api.GetDatasetID(&dataset)}
-		if key.ID == "" {
-			key.Origin = asset.DatasetOrigin(&dataset)
-		}
 		var err error
-		id, err = asset.ResolveUpdateKey(nil, key)
+		id, err = asset.ResolveUpdateKey(nil, asset.UpdateKey{Noun: "dataset", Upsert: &dataset})
 		if err != nil {
 			return err
 		}

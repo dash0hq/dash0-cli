@@ -48,8 +48,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun: "view",
-		ID:   dash0api.GetViewID(&view),
+		Noun:   "view",
+		Upsert: &view,
+		ID:     dash0api.GetViewID(&view),
 	})
 	if err != nil {
 		return err

@@ -63,6 +63,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	origin := dash0api.GetGenerativeAiEvaluationOrigin(evaluation)
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "eval",
+		Upsert:     evaluation,
 		UsesOrigin: true,
 		Origin:     origin,
 		ID:         dash0api.GetGenerativeAiEvaluationID(evaluation),

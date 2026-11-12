@@ -61,6 +61,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       assetType,
+		Upsert:     rule,
 		UsesOrigin: true,
 		Origin:     origin(rule),
 		ID:         dash0api.GetSignalToMetricsID(rule),

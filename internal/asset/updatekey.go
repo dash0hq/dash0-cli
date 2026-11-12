@@ -1,6 +1,10 @@
 package asset
 
-import "fmt"
+import (
+	"fmt"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
+)
 
 // OriginLabel is where the dash0.com/origin label lives in a document, for
 // error messages that tell the user where to set it.
@@ -30,14 +34,19 @@ type UpdateKey struct {
 	// ID is the document's identifier, empty when absent. Where it lives
 	// varies by kind. See the identifier table in docs/commands.md.
 	ID string
+
+	// Upsert is the document itself. Without an argument, update then picks the
+	// key apply upserts by (PreferredKey), and never falls back to the other
+	// identifier, so update and apply cannot address different assets.
+	// Nil only for kinds the client gives no UpsertKeys, such as auth tokens.
+	Upsert dash0api.AssetMetadata
 }
 
 // ResolveUpdateKey returns the value to send as the update's originOrId path
 // parameter.
 //
-// Precedence is the positional argument, then the document's origin, then its
-// ID. Origin comes first because that is the order the Import helpers upsert
-// by, so `update` addresses whatever `apply` would have written.
+// Precedence is the positional argument, then the key apply upserts by (see
+// Upsert), so `update` addresses whatever `apply` would have written.
 //
 // An argument matching neither identifier is a user error, not an override.
 // Honoring it would PUT the document onto an asset the document does not name,
@@ -67,14 +76,22 @@ func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
 		return arg, nil
 	}
 
-	if k.Origin != "" {
-		return k.Origin, nil
-	}
-	if k.ID != "" {
-		return k.ID, nil
+	usesOrigin := k.UsesOrigin
+	if k.Upsert != nil {
+		if key := PreferredKey(k.Upsert); key != "" {
+			return key, nil
+		}
+		usesOrigin, _ = k.Upsert.UpsertKeys()
+	} else {
+		if k.Origin != "" {
+			return k.Origin, nil
+		}
+		if k.ID != "" {
+			return k.ID, nil
+		}
 	}
 
-	if k.UsesOrigin {
+	if usesOrigin {
 		return "", fmt.Errorf(
 			"no %s origin or id given: pass one as an argument, or set %s in the file",
 			k.Noun, OriginLabel,

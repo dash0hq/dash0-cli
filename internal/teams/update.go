@@ -109,6 +109,7 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 	// Origin wins over id, mirroring asset.ImportTeam's routing.
 	addressor, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       "team",
+		Upsert:     &team,
 		UsesOrigin: true,
 		Origin:     fileOrigin,
 		ID:         fileID,

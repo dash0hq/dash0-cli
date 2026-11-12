@@ -74,6 +74,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:       assetType,
+		Upsert:     &skill,
 		UsesOrigin: true,
 		Origin:     dash0api.GetCustomSkillOrigin(&skill),
 		ID:         dash0api.GetCustomSkillID(&skill),

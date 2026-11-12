@@ -28,11 +28,11 @@ func newUpdateCmd() *cobra.Command {
 		Short: "[experimental] Update a notification channel from a file",
 		Long: `Update an existing notification channel from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
+If the ID argument is omitted, the dash0.com/origin label is read from the file, as apply does.` + internal.CONFIG_HINT,
 		Example: `  # Update a notification channel from a file
   dash0 --experimental notification-channels update <id> -f channel.yaml
 
-  # Update using the ID from the file
+  # Update using the origin from the file
   dash0 --experimental notification-channels update -f channel.yaml
 
   # Export, edit, and update
@@ -70,8 +70,9 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun: "notification channel",
-		ID:   dash0api.GetNotificationChannelID(&channel),
+		Noun:   "notification channel",
+		Upsert: &channel,
+		ID:     dash0api.GetNotificationChannelID(&channel),
 	})
 	if err != nil {
 		return err
