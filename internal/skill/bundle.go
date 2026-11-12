@@ -42,6 +42,7 @@ var Manifest = []ManifestEntry{
 	{"diff", "references/diff.md"},
 	{"evals", "references/evals.md"},
 	{"failed-checks", "references/failed-checks.md"},
+	{"k8s", "references/k8s.md"},
 	{"login", "references/login.md"},
 	{"logs", "references/logs.md"},
 	{"members", "references/members.md"},

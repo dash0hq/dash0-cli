@@ -28,6 +28,7 @@
 - `/internal/otlp`: Shared OTLP utilities (key-value pairs, trace/span ID parsing, scope defaults, log severity range constants and number-to-range mapping) used by send and query commands across signal types
 - `/internal/output`: Output format parsing and formatting (table, wide, JSON, YAML)
 - `/internal/preview`: The change list and agent-mode JSON shared by `apply --dry-run` and `diff`
+- `/internal/k8s`: The `k8s` command group. `/internal/k8s/pods` holds the experimental `k8s pods watch` command — a full-screen terminal page of a pod's CPU, memory, requests, and logs from Dash0's Prometheus API, drawn in the Ditt0 terminal style; also runs as a k9s plugin
 - `/internal/query`: Shared query utilities (filter parsing, timestamp normalization, timestamp formatting) used by query commands across signal types (e.g., `logs query`, `spans query`)
 - `/internal/rawapi`: The experimental `api` command — a raw HTTP passthrough that reuses the active profile's connection settings to call any Dash0 API endpoint
 - `/internal/samplingrules`: The `sampling-rules` command group, holding the five standard CRUD subcommands. Dataset-scoped, admin-role-only for writes, and upserted by `dash0.com/origin`, with `dash0.com/id` as a fallback. The shared import helper, local validation, and the warning for a write that turns sampling on live in `internal/asset/samplingrule.go`

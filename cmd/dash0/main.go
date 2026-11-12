@@ -26,6 +26,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/failedchecks"
 	"github.com/dash0hq/dash0-cli/internal/help"
+	"github.com/dash0hq/dash0-cli/internal/k8s"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
 	"github.com/dash0hq/dash0-cli/internal/members"
@@ -101,6 +102,7 @@ func init() {
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
 	rootCmd.AddCommand(otlp.NewOtlpCmd())
+	rootCmd.AddCommand(k8s.NewK8sCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
 	rootCmd.AddCommand(samplingrules.NewSamplingRulesCmd())
 	rootCmd.AddCommand(signaltometricsrules.NewSignalToMetricsRulesCmd())

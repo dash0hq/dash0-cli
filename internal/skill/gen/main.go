@@ -131,6 +131,7 @@ var topics = []topicSpec{
 		},
 	},
 	{name: "otlp", sections: []string{"otlp proxy"}},
+	{name: "k8s", sections: []string{"k8s pods watch"}},
 	{
 		name:            "recording-rules",
 		includeQuickRef: true,
