@@ -10,65 +10,49 @@ import (
 // error messages that tell the user where to set it.
 const OriginLabel = `metadata.labels["dash0.com/origin"]`
 
-// UpdateKey holds the identifiers an `update -f <file>` invocation chooses
-// between: the optional positional argument, and whatever the document carries.
-//
-// Every asset kind faces the same decision, and each used to answer it inline.
-// That gave the same mistake a different message per kind.
+// UpdateKey is what every `update -f <file>` chooses its key from. One shared
+// rule keeps update and apply addressing the same asset for every kind.
 type UpdateKey struct {
 	// Noun names the asset in error messages, lowercase and unabbreviated:
 	// "dashboard", "spam filter", "time series aggregation".
 	Noun string
 
-	// UsesOrigin marks kinds whose dash0.com/origin label is an upsert key
-	// (spam filters, teams, time series aggregations). It is separate from
-	// Origin being set on purpose: such a kind still needs errors that mention
-	// origin when the document omits the label, and a kind without an origin
-	// key must never mention one.
-	UsesOrigin bool
-
-	// Origin is the document's dash0.com/origin label, empty when absent or
-	// when UsesOrigin is false.
-	Origin string
-
-	// ID is the document's identifier, empty when absent. Where it lives
-	// varies by kind. See the identifier table in docs/commands.md.
-	ID string
-
-	// Upsert is the document itself. Without an argument, update then picks the
-	// key apply upserts by (PreferredKey), and never falls back to the other
-	// identifier, so update and apply cannot address different assets.
-	// Nil only for kinds the client gives no UpsertKeys, such as auth tokens.
+	// Upsert is the document. Read it before a Strip*ServerFields call, which
+	// can clear both labels.
 	Upsert dash0api.AssetMetadata
 }
 
-// ResolveUpdateKey returns the value to send as the update's originOrId path
-// parameter.
-//
-// Precedence is the positional argument, then the key apply upserts by (see
-// Upsert), so `update` addresses whatever `apply` would have written.
-//
-// An argument matching neither identifier is a user error, not an override.
-// Honoring it would PUT the document onto an asset the document does not name,
-// which cannot be undone. Failing costs one retry.
+// ResolveUpdateKey returns the originOrId to update. Without an argument it is
+// the key apply upserts by, with no fallback. An argument must match the file,
+// because a PUT onto an asset the file does not name cannot be undone.
 func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
+	byOrigin, _ := k.Upsert.UpsertKeys()
+	origin := ""
+	if byOrigin {
+		origin = k.Upsert.GetOrigin()
+	}
+	// An exported document carries the server-assigned id even for kinds that
+	// upsert by origin only, and the API path accepts it, so it stays a valid
+	// argument.
+	id := k.Upsert.GetID()
+
 	if len(args) > 0 {
 		arg := args[0]
 		switch {
-		case k.Origin != "" && k.ID != "":
-			if arg != k.Origin && arg != k.ID {
+		case origin != "" && id != "":
+			if arg != origin && arg != id {
 				return "", fmt.Errorf(
 					"argument %q matches neither the file's origin (%q) nor its id (%q)",
-					arg, k.Origin, k.ID,
+					arg, origin, id,
 				)
 			}
-		case k.Origin != "":
-			if arg != k.Origin {
-				return "", fmt.Errorf("argument %q does not match the file's origin (%q)", arg, k.Origin)
+		case origin != "":
+			if arg != origin {
+				return "", fmt.Errorf("argument %q does not match the file's origin (%q)", arg, origin)
 			}
-		case k.ID != "":
-			if arg != k.ID {
-				return "", fmt.Errorf("argument %q does not match the file's id (%q)", arg, k.ID)
+		case id != "":
+			if arg != id {
+				return "", fmt.Errorf("argument %q does not match the file's id (%q)", arg, id)
 			}
 		}
 		// The document names no identifier at all, so there is nothing for the
@@ -76,22 +60,10 @@ func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
 		return arg, nil
 	}
 
-	usesOrigin := k.UsesOrigin
-	if k.Upsert != nil {
-		if key := PreferredKey(k.Upsert); key != "" {
-			return key, nil
-		}
-		usesOrigin, _ = k.Upsert.UpsertKeys()
-	} else {
-		if k.Origin != "" {
-			return k.Origin, nil
-		}
-		if k.ID != "" {
-			return k.ID, nil
-		}
+	if key := PreferredKey(k.Upsert); key != "" {
+		return key, nil
 	}
-
-	if usesOrigin {
+	if byOrigin {
 		return "", fmt.Errorf(
 			"no %s origin or id given: pass one as an argument, or set %s in the file",
 			k.Noun, OriginLabel,

@@ -72,7 +72,6 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:   "notification channel",
 		Upsert: &channel,
-		ID:     dash0api.GetNotificationChannelID(&channel),
 	})
 	if err != nil {
 		return err

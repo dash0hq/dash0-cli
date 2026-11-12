@@ -75,7 +75,6 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	integrationID, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:   "AWS integration",
 		Upsert: cfg,
-		ID:     dash0api.GetAwsMetricScrapeConfigID(cfg),
 	})
 	if err != nil {
 		return err
