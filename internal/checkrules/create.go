@@ -42,7 +42,7 @@ Accepts both plain CheckRule definitions and PrometheusRule CRD files. When a Pr
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	data, err := asset.ReadRawInput(flags.File, os.Stdin)
+	data, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "checkrule")
 	if err != nil {
 		return fmt.Errorf("failed to read check rule definition: %w", err)
 	}

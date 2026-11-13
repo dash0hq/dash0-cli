@@ -64,7 +64,7 @@ The files in the definition replace the stored files. When spec.permissions is a
 
 func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	var skill dash0api.SkillDefinition
-	if err := asset.ReadDefinition(flags.File, &skill, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &skill, os.Stdin, "skill"); err != nil {
 		return fmt.Errorf("failed to read Agent0 skill definition: %w", err)
 	}
 

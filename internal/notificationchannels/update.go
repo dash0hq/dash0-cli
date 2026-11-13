@@ -59,7 +59,7 @@ If the ID argument is omitted, the ID is extracted from the file content.` + int
 
 func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	var channel dash0api.NotificationChannelDefinition
-	if err := asset.ReadDefinition(flags.File, &channel, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &channel, os.Stdin, "notificationchannel"); err != nil {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 

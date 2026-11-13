@@ -43,7 +43,7 @@ read from stdin.` + internal.CONFIG_HINT,
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "spamfilter")
 	if err != nil {
 		return fmt.Errorf("failed to read spam filter definition: %w", err)
 	}

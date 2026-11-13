@@ -62,7 +62,7 @@ The output is a unified diff of the before and after states.` + internal.CONFIG_
 }
 
 func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "awsmetricscrapeconfig")
 	if err != nil {
 		return fmt.Errorf("failed to read AWS metric scrape config definition: %w", err)
 	}

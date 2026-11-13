@@ -39,7 +39,7 @@ func newCreateCmd() *cobra.Command {
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	var check dash0api.SyntheticCheckDefinition
-	if err := asset.ReadDefinition(flags.File, &check, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &check, os.Stdin, "syntheticcheck"); err != nil {
 		return fmt.Errorf("failed to read synthetic check definition: %w", err)
 	}
 

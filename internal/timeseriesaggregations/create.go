@@ -48,7 +48,7 @@ use a distinct origin per dataset.` + internal.CONFIG_HINT,
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "timeseriesaggregation")
 	if err != nil {
 		return fmt.Errorf("failed to read time series aggregation definition: %w", err)
 	}

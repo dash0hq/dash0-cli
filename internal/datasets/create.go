@@ -60,7 +60,7 @@ If it was deleted in the last 30 days, it is restored.` + internal.CONFIG_HINT,
 
 func runCreate(ctx context.Context, flags *createFlags) error {
 	var dataset dash0api.DatasetDefinition
-	if err := asset.ReadDefinition(flags.File, &dataset, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &dataset, os.Stdin, "dataset"); err != nil {
 		return fmt.Errorf("failed to read dataset definition: %w", err)
 	}
 

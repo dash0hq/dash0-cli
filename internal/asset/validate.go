@@ -15,6 +15,9 @@ import (
 // about a document that never gets applied would be noise next to a hard error.
 func ValidateDocuments(documents []Document) (validationErrors, validationWarnings []string) {
 	for _, doc := range documents {
+		for _, warning := range LossyMetadataWarnings(doc.Raw, doc.Kind) {
+			validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.Location(), warning))
+		}
 		if doc.Kind == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("%s: missing 'kind' field", doc.Location()))
 		} else if NormalizeKind(doc.Kind) == "authtoken" {

@@ -44,7 +44,7 @@ Accepts both plain Dashboard definitions and PersesDashboard CRD files. When a P
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	data, err := asset.ReadRawInput(flags.File, os.Stdin)
+	data, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "dashboard")
 	if err != nil {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
