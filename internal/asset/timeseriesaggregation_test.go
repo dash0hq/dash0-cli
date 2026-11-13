@@ -194,8 +194,7 @@ func TestIsValidKind_TimeSeriesAggregation(t *testing.T) {
 func TestExtractIdentifier_TimeSeriesAggregation(t *testing.T) {
 	// The API upserts by origin, so an id-only document has no key that
 	// matches a live aggregation.
-	identifier, err := ExtractIdentifier([]byte(`apiVersion: dash0.com/v1alpha1
-kind: Dash0TimeSeriesAggregation
+	identifier, err := ExtractIdentifier([]byte(`kind: Dash0TimeSeriesAggregation
 metadata:
   name: my-aggregation
   labels:
@@ -209,8 +208,7 @@ metadata:
 func TestExtractIdentifier_TimeSeriesAggregationWithoutOrigin(t *testing.T) {
 	// Returning "" routes the document to --since's no-identifier hard-fail
 	// instead of a delete call against an id the server never keys on.
-	identifier, err := ExtractIdentifier([]byte(`apiVersion: dash0.com/v1alpha1
-kind: Dash0TimeSeriesAggregation
+	identifier, err := ExtractIdentifier([]byte(`kind: Dash0TimeSeriesAggregation
 metadata:
   name: my-aggregation
   labels:
