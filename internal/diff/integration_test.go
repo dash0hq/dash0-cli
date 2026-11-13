@@ -1209,3 +1209,143 @@ func TestDiff_SignalToMetricsRuleWithUnknownIDIsACreate(t *testing.T) {
 	require.ErrorAs(t, err, &pending, output)
 	assert.Contains(t, output, `Create Signal-to-metrics rule "Checkout error logs"`)
 }
+
+const samplingRuleDoc = `kind: Dash0Sampling
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+spec:
+  display:
+    name: Keep checkout errors
+  enabled: true
+  conditions:
+    kind: and
+    spec:
+      conditions:
+        - kind: ottl
+          spec:
+            ottl: resource.attributes["service.name"] == "checkout"
+        - kind: error
+          spec: {}
+  rateLimit:
+    rate: 100
+`
+
+func TestDiff_SamplingRule(t *testing.T) {
+	const originPath = "/api/sampling-rules/dash0-cli_checkout-errors"
+	cases := map[string]struct {
+		doc        string
+		stored     testutil.MockResponse
+		wantOutput string
+		wantErr    bool
+	}{
+		"stored rule matches": {
+			doc:        samplingRuleDoc,
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/get_success.json", Validator: testutil.RequireHeaders},
+			wantOutput: "No differences",
+		},
+		"changed spec is an update": {
+			doc:        strings.Replace(samplingRuleDoc, "rate: 100", "rate: 250", 1),
+			stored:     testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/get_success.json", Validator: testutil.RequireHeaders},
+			wantOutput: "+    rate: 250",
+			wantErr:    true,
+		},
+		"new origin is a create": {
+			doc:        samplingRuleDoc,
+			stored:     testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "samplingrules/error_not_found.json", Validator: testutil.RequireHeaders},
+			wantOutput: `Create Sampling rule "Keep checkout errors" (dash0-cli_checkout-errors)`,
+			wantErr:    true,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(c.doc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, originPath, c.stored)
+			server.On(http.MethodGet, "/api/sampling-rules", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/list_success.json", Validator: testutil.RequireHeaders})
+
+			output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+			assert.Equal(t, c.wantErr, err != nil, "differences pending is reported as an error so the exit code is 1")
+			assert.Contains(t, output, c.wantOutput)
+			for _, request := range server.Requests() {
+				assert.Equal(t, http.MethodGet, request.Method, "diff must never write")
+			}
+		})
+	}
+}
+
+// diff warns as apply does when the rule would turn sampling on.
+func TestDiff_SamplingRuleThatTurnsSamplingOnWarns(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(samplingRuleDoc), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/sampling-rules/dash0-cli_checkout-errors", testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "samplingrules/error_not_found.json", Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, "/api/sampling-rules", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/list_empty.json", Validator: testutil.RequireHeaders})
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+	})
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, stderr, "is the first enabled sampling rule in dataset \"default\", so it turns sampling on")
+}
+
+// The GET honors --dataset, so a rule stored in another dataset fails it. apply
+// would fail the same way, so diff must fail too, not report a create.
+func TestDiff_SamplingRuleInAnotherDatasetIsAnError(t *testing.T) {
+	cases := map[string]struct {
+		label string
+		path  string
+		key   string
+	}{
+		"by origin": {"dash0.com/origin: dash0-cli_checkout-errors", "/api/sampling-rules/dash0-cli_checkout-errors", "dash0-cli_checkout-errors"},
+		"by id":     {"dash0.com/id: 4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35", "/api/sampling-rules/4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35", "4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			doc := strings.Replace(samplingRuleDoc, "dash0.com/origin: dash0-cli_checkout-errors", c.label, 1)
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, c.path, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: "samplingrules/error_wrong_dataset.json", Validator: testutil.RequireHeaders})
+
+			output, err := runDiffCmd(t, "-f", yamlFile, "--dataset", "staging", "--api-url", server.URL)
+
+			require.Error(t, err)
+			var pending *PendingDifferencesError
+			assert.False(t, errors.As(err, &pending), "a rule apply cannot write is an error, not a pending difference")
+			assert.Contains(t, err.Error(), `sampling rule "`+c.key+`" already exists in another dataset`)
+			assert.NotContains(t, output, "No differences")
+		})
+	}
+}
+
+// An id-only rule whose id is unknown here is a create, because apply POSTs it.
+func TestDiff_SamplingRuleWithUnknownIDIsACreate(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	doc := strings.Replace(samplingRuleDoc, "dash0.com/origin: dash0-cli_checkout-errors", "dash0.com/id: 0e5d3b71-8a2c-4f9e-b6d4-1c7a9e3f5b08", 1)
+	yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(doc), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/sampling-rules/0e5d3b71-8a2c-4f9e-b6d4-1c7a9e3f5b08", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   "samplingrules/error_not_found.json",
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodGet, "/api/sampling-rules", testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/list_success.json", Validator: testutil.RequireHeaders})
+
+	output, err := runDiffCmd(t, "-f", yamlFile, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, output, `Create Sampling rule "Keep checkout errors"`)
+}

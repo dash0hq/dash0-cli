@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -112,6 +112,13 @@ Origins are unique per organization while each rule belongs to one dataset, as f
 The GET finds a rule whatever `--dataset` says, so the CLI compares the stored rule's dataset with `--dataset` before it writes.
 Applying a document to a second dataset therefore fails with an error that names the rule's dataset, before anything is written, and `diff` reports the same error instead of "No differences".
 Use a distinct origin per dataset.
+
+`Dash0Sampling` documents are sampling rules, dispatched to the dataset-scoped sampling rules endpoint.
+The upsert keys are the same as for `Dash0SignalToMetrics` documents above: `dash0.com/origin` first, then `dash0.com/id` with a POST fallback that is not idempotent.
+A document without `spec.enabled`, or with more than 32 `ottl` and `error` conditions, fails during the validation phase, before any document in the run is applied.
+Origins and IDs are unique per organization while each rule belongs to one dataset.
+The GET honors `--dataset`, so a rule stored in another dataset fails it with an error that names the cause, before anything is written, and `diff` reports the same error.
+Every write requires the organization admin role, and a write that turns sampling on for the dataset prints a warning; see [Sampling rules](#sampling-rules).
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
@@ -305,6 +312,9 @@ Dash0 stops scraping CloudWatch metrics for that integration, and the integratio
 
 A `Dash0SignalToMetrics` document removed since `<ref>` deletes the rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `signal-to-metrics-rules delete`.
 Deleting by `dash0.com/id` alone prints a warning: if the document was first applied to an organization without that ID, the live rule has a different, server-assigned ID, and the delete can miss it.
+
+A `Dash0Sampling` document removed since `<ref>` deletes the sampling rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `sampling-rules delete`, and with the same warning for a delete by `dash0.com/id` alone.
+The delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 

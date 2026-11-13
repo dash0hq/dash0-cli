@@ -3762,3 +3762,142 @@ func TestApply_SignalToMetricsRule_DryRun(t *testing.T) {
 	assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (dash0-cli_checkout-errors)`)
 	assert.Empty(t, server.Requests())
 }
+
+const (
+	apiPathSampling = "/api/sampling-rules"
+
+	samplingRuleDoc = `kind: Dash0Sampling
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+spec:
+  display:
+    name: Keep checkout errors
+  enabled: true
+  conditions:
+    kind: and
+    spec:
+      conditions:
+        - kind: ottl
+          spec:
+            ottl: resource.attributes["service.name"] == "checkout"
+        - kind: error
+          spec: {}
+  rateLimit:
+    rate: 100
+`
+)
+
+var samplingOriginOrIDPattern = regexp.MustCompile(`^/api/sampling-rules/[^/]+$`)
+
+func TestApply_SamplingRule_CreatedByOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathSampling, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/list_success.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodGet, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "samplingrules/error_not_found.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/get_success.json", Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, samplingRuleDoc, "--dataset", "staging")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Sampling rule "Keep checkout errors" (4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35) created`)
+	put := findRequest(server.Requests(), http.MethodPut, apiPathSampling+"/dash0-cli_checkout-errors")
+	require.NotNil(t, put, "an origin document upserts by PUT to its origin")
+	assert.Contains(t, put.Query, "dataset=staging", "sampling rules are dataset-scoped")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSampling), "PUT by origin is an upsert, so no POST")
+
+	var body dash0api.SamplingDefinition
+	require.NoError(t, json.Unmarshal(put.Body, &body))
+	require.NotNil(t, body.Metadata.Labels)
+	assert.Nil(t, body.Metadata.Labels.Dash0Comorigin, "the origin is in the path")
+	assert.Nil(t, body.Metadata.Labels.Dash0Comdataset, "a dataset label would win over --dataset")
+}
+
+// The fixture is what the server returns for samplingRuleDoc, so a re-apply
+// must report no changes despite the server-managed fields.
+func TestApply_SamplingRule_UnchangedReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/get_success.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/update_response.json", Validator: testutil.RequireHeaders})
+
+	output, err := runApplyDoc(t, server.URL, samplingRuleDoc)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "no changes")
+}
+
+func TestApply_SamplingRule_FirstEnabledRuleWarns(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathSampling, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/list_empty.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodGet, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "samplingrules/error_not_found.json", Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/get_success.json", Validator: testutil.RequireHeaders})
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runApplyDoc(t, server.URL, samplingRuleDoc, "--dataset", "staging")
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "created")
+	assert.Contains(t, stderr, `warning: sampling rule "Keep checkout errors" is the first enabled sampling rule in dataset "staging", so it turns sampling on`)
+}
+
+// The GET honors --dataset, so a rule stored in another dataset fails the
+// preflight, and the write is never sent.
+func TestApply_SamplingRule_InAnotherDatasetFailsBeforeTheWrite(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, samplingOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusBadRequest, BodyFile: "samplingrules/error_wrong_dataset.json", Validator: testutil.RequireHeaders})
+
+	_, err := runApplyDoc(t, server.URL, samplingRuleDoc, "--dataset", "staging")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `sampling rule "dash0-cli_checkout-errors" already exists in another dataset`)
+	assert.Contains(t, err.Error(), "Hint: origins and IDs are unique per organization")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPut, apiPathSampling))
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSampling))
+}
+
+func TestApply_SamplingRule_DryRun(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	output, err := runApplyDoc(t, server.URL, samplingRuleDoc, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Sampling rule "Keep checkout errors" (dash0-cli_checkout-errors)`)
+	assert.Empty(t, server.Requests())
+}
+
+// A sampling rule that the CLI can tell is broken fails validation, so apply
+// writes nothing, not even the valid document before it.
+func TestApply_SamplingRule_InvalidDocumentFailsValidationBeforeAnyWrite(t *testing.T) {
+	cases := map[string]struct {
+		doc     string
+		wantErr string
+	}{
+		"missing spec.enabled": {strings.Replace(samplingRuleDoc, "  enabled: true\n", "", 1), "requires spec.enabled"},
+		"too many conditions": {
+			"kind: Dash0Sampling\nmetadata:\n  name: noisy\nspec:\n  enabled: false\n  conditions:\n    kind: and\n    spec:\n      conditions:\n" +
+				strings.Repeat("        - kind: error\n          spec: {}\n", 33),
+			"more than the limit of 32",
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			valid := "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n"
+
+			_, err := runApplyDoc(t, server.URL, valid+"---\n"+c.doc)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), c.wantErr)
+			assert.Empty(t, server.Requests(), "validation runs before the first write")
+		})
+	}
+}

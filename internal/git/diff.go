@@ -37,6 +37,9 @@ type Deletion struct {
 	// "signaltometrics" (meaningless for every other kind); see
 	// asset.SignalToMetricsRuleUsesOrigin.
 	SignalToMetricsRuleUsesOrigin bool
+	// SamplingRuleUsesOrigin is the same signal for Kind "sampling"
+	// (meaningless for every other kind); see asset.SamplingRuleUsesOrigin.
+	SamplingRuleUsesOrigin bool
 	// PrometheusAlerts carries every alerting rule the CRD had at the
 	// "before" snapshot, when Kind is "prometheusrule" (nil for every other
 	// kind, and for a CRD with zero or one alert). A CRD with two or more
@@ -99,6 +102,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			SLOUsesOrigin:                    before.SLOUsesOriginByIdentifier[key.Identifier],
 			GenerativeAiEvaluationUsesOrigin: before.GenerativeAiEvaluationUsesOriginByIdentifier[key.Identifier],
 			SignalToMetricsRuleUsesOrigin:    before.SignalToMetricsRuleUsesOriginByIdentifier[key.Identifier],
+			SamplingRuleUsesOrigin:           before.SamplingRuleUsesOriginByIdentifier[key.Identifier],
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]

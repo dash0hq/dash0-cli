@@ -1,0 +1,8 @@
+change_type: new_component
+component: sampling-rules
+note: "Manage sampling rules with `sampling-rules` and `apply`."
+issues: [364]
+subtext: |
+  `apply` accepts the `Dash0Sampling` kind and upserts by `dash0.com/origin`, and `apply --since` deletes a rule removed from git.
+  `create`, `update`, `apply`, and `diff` warn when a write enables the first rule of a dataset, which turns sampling on.
+change_logs: []

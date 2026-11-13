@@ -148,6 +148,16 @@ var topics = []topicSpec{
 		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
 	},
 	{
+		name:            "sampling-rules",
+		includeQuickRef: true,
+		sections:        []string{"sampling rules"},
+		assetYAMLLabels: []string{"Sampling rule ("},
+		extraNote: "`metadata.labels[\"dash0.com/origin\"]` is the upsert key: `create` and `apply` PUT to that origin, " +
+			"which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only " +
+			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
+			"apply; pin `dash0.com/origin` instead.",
+	},
+	{
 		name:            "signal-to-metrics-rules",
 		includeQuickRef: true,
 		sections:        []string{"signal-to-metrics rules"},

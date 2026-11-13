@@ -1,0 +1,68 @@
+{
+  "samplingRules": [
+    {
+      "kind": "Dash0Sampling",
+      "metadata": {
+        "name": "checkout-errors",
+        "labels": {
+          "dash0.com/dataset": "default",
+          "dash0.com/id": "4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35",
+          "dash0.com/origin": "dash0-cli_checkout-errors",
+          "dash0.com/source": "dash0-cli",
+          "dash0.com/version": "1"
+        }
+      },
+      "spec": {
+        "display": {
+          "name": "Keep checkout errors"
+        },
+        "enabled": true,
+        "conditions": {
+          "kind": "and",
+          "spec": {
+            "conditions": [
+              {
+                "kind": "ottl",
+                "spec": {
+                  "ottl": "resource.attributes[\"service.name\"] == \"checkout\""
+                }
+              },
+              {
+                "kind": "error",
+                "spec": {}
+              }
+            ]
+          }
+        },
+        "rateLimit": {
+          "rate": 100
+        }
+      }
+    },
+    {
+      "kind": "Dash0Sampling",
+      "metadata": {
+        "name": "baseline",
+        "labels": {
+          "dash0.com/dataset": "default",
+          "dash0.com/id": "9a3c5e7f-1b2d-4c6e-8f0a-3b5d7f9e1c24",
+          "dash0.com/origin": "api-9a3c5e7f-1b2d-4c6e-8f0a-3b5d7f9e1c24",
+          "dash0.com/source": "api",
+          "dash0.com/version": "3"
+        }
+      },
+      "spec": {
+        "display": {
+          "name": "Baseline"
+        },
+        "enabled": false,
+        "conditions": {
+          "kind": "probabilistic",
+          "spec": {
+            "rate": 0.05
+          }
+        }
+      }
+    }
+  ]
+}

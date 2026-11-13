@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, and `Dash0SignalToMetrics`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0SignalToMetrics`, and `Dash0Sampling`.
 
 From a single file:
 
@@ -403,7 +403,7 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 
 ### Asset CRUD commands
 
-Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `signal-to-metrics-rules`) supports the same five subcommands.
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `signal-to-metrics-rules`, `sampling-rules`) supports the same five subcommands.
 Substitute the asset noun in the examples below.
 
 List all assets of a type:
@@ -460,6 +460,27 @@ Count the signals a rule would match over the last hour, without creating it:
 
 ```bash
 dash0 s2m test -f rule.yaml --from now-1h
+```
+
+### Sampling rules
+
+Sampling rules decide which traces Dash0 keeps for a dataset.
+`sampling-rules` has the five subcommands above, and `apply` accepts the `Dash0Sampling` kind.
+
+> [!WARNING]
+> The first enabled rule of a dataset turns sampling on: Dash0 then drops every trace that no enabled rule keeps.
+> The CLI prints a warning when a write would do that.
+
+List the rules and their conditions:
+
+```bash
+dash0 sampling-rules list -o wide
+```
+
+Create a rule from a file:
+
+```bash
+dash0 sampling-rules create -f sampling-rule.yaml
 ```
 
 ### Logging
@@ -815,12 +836,12 @@ It is useful for endpoints that do not yet have a dedicated subcommand.
 
 ```bash
 # GET — dataset auto-injected from the active profile
-dash0 -X api /api/sampling-rules
+dash0 -X api /api/agentic-workflows
 ```
 
 ```bash
 # POST with a payload from a file
-dash0 -X api POST /api/sampling-rules -f sampling-rule.json
+dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json
 ```
 
 ```bash

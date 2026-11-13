@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `auth-tokens`, `aws-metric-scrape-configs`
 - Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -152,6 +152,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
 | `Dash0SignalToMetrics`      | Signal-to-metrics rule |
+| `Dash0Sampling`             | Sampling rule        |
 | `Dash0AwsMetricScrapeConfig`| AWS metric scrape config |
 | `Dash0GenerativeAiEvaluation`| Eval |
 

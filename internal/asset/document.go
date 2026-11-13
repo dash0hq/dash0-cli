@@ -187,6 +187,15 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// Rules upsert by origin, falling back to dash0.com/id.
 		id = SignalToMetricsRuleKey(&rule)
 
+	case "sampling":
+		var rule dash0api.SamplingDefinition
+		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetSamplingRuleName(&rule)
+		// Rules upsert by origin, falling back to dash0.com/id.
+		id = SamplingRuleKey(&rule)
+
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
 		if err := dash0yaml.Unmarshal(data, &team); err != nil {
