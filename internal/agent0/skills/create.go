@@ -60,7 +60,7 @@ spec.source and the per-user metadata.annotations["dash0.com/enabled"] are never
 
 func runCreate(ctx context.Context, flags *createFlags) error {
 	var skill dash0api.SkillDefinition
-	if err := asset.ReadDefinition(flags.File, &skill, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &skill, os.Stdin, "skill"); err != nil {
 		return fmt.Errorf("failed to read Agent0 skill definition: %w", err)
 	}
 

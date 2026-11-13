@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,6 +33,36 @@ func ReadRawInput(path string, stdin io.Reader) ([]byte, error) {
 	return data, nil
 }
 
+// ReadRawInputForWrite reads a definition and warns about metadata lost on write.
+// The original bytes are returned unchanged for the command's specialized parser.
+func ReadRawInputForWrite(path string, stdin io.Reader, kind string) ([]byte, error) {
+	data, err := ReadRawInput(path, stdin)
+	if err != nil {
+		return nil, err
+	}
+	PrintLossyMetadataWarnings(os.Stderr, data, kind, path)
+	return data, nil
+}
+
+// ReadDefinitionForWrite checks the original bytes for metadata that typed
+// decoding can discard. Generic ReadDefinition remains free of diagnostics.
+func ReadDefinitionForWrite(path string, target interface{}, stdin io.Reader, kind string) error {
+	data, err := ReadRawInput(path, stdin)
+	if err != nil {
+		return err
+	}
+	if path == "-" || path == "" {
+		err = readFromStdin(bytes.NewReader(data), target)
+	} else {
+		err = decodeDefinition(data, path, target)
+	}
+	if err != nil {
+		return err
+	}
+	PrintLossyMetadataWarnings(os.Stderr, data, kind, path)
+	return nil
+}
+
 // ReadDefinition reads a YAML or JSON definition from a file or stdin.
 // If path is "-" or empty, it reads from stdin (assumes YAML format).
 // Otherwise, it reads from the file at the given path.
@@ -50,6 +81,10 @@ func ReadDefinitionFile(path string, target interface{}) error {
 		return fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 
+	return decodeDefinition(data, path, target)
+}
+
+func decodeDefinition(data []byte, path string, target interface{}) error {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".yaml", ".yml":

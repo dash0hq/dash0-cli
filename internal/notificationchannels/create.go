@@ -58,7 +58,7 @@ Otherwise, a new channel is created (POST) and the server assigns an ID.` + inte
 
 func runCreate(ctx context.Context, flags *createFlags) error {
 	var channel dash0api.NotificationChannelDefinition
-	if err := asset.ReadDefinition(flags.File, &channel, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &channel, os.Stdin, "notificationchannel"); err != nil {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 

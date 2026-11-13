@@ -811,6 +811,16 @@ Aliases: `remove`
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
+### Warnings for ignored metadata
+
+`apply`, `create -f`, and `update -f` warn on stderr when a document contains metadata labels or annotations that will not be stored by Dash0.
+For example, a team label named `team-lead` produces `warning: team.yaml: metadata.labels["team-lead"] will not be stored by Dash0`.
+Warnings also appear with `--dry-run`; they do not prevent the write or change its exit code, and stdout keeps its normal output format.
+
+The checks account for each asset type, including supported `custom` label maps and annotations inherited by Prometheus alert rules.
+Ordinary exported server metadata, such as timestamps, and identifiers used by the CLI remain quiet so an export → edit → apply workflow does not produce unnecessary warnings.
+The warnings identify field names without printing their values.
+
 ### Asset identifiers and idempotent upsert
 
 Every asset type accepts a user-defined identifier in its YAML/JSON document.

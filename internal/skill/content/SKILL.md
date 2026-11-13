@@ -43,6 +43,9 @@ All eleven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`,
 
 `dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic. `dash0 --experimental diff -f <file|directory>` previews what `apply` would do, fetching each document's current state from Dash0 first so it can tell a create from an update, without mutating anything; see the `diff` topic.
 
+File-based writes (`apply`, `create -f`, and `update -f`) warn on stderr about unsupported metadata labels and annotations before writing, including during `--dry-run`.
+Warnings identify fields without printing their values, preserve normal stdout and exit codes, and leave ordinary exported server metadata quiet.
+
 ### Asset identifiers and idempotent upsert
 
 Every asset type accepts a user-defined identifier in its YAML/JSON document. When present, both `create` and `apply` perform an **upsert** (PUT) against that identifier — the asset is created on the first call and replaced on every subsequent call, which is what makes GitOps/CI workflows idempotent. When absent, both perform a plain create (POST) and the server assigns a fresh ID on each invocation, so repeated runs produce duplicates. The identifier field location varies by kind:

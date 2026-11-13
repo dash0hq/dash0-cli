@@ -99,7 +99,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 
 func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) error {
 	var team dash0api.TeamDefinitionV1Alpha1
-	if err := asset.ReadDefinition(flags.File, &team, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &team, os.Stdin, "team"); err != nil {
 		return fmt.Errorf("failed to read team definition: %w", err)
 	}
 

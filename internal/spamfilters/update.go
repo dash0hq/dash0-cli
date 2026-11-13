@@ -63,7 +63,7 @@ spec.contexts (array); v1alpha2 uses spec.context (scalar).` + internal.CONFIG_H
 }
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "spamfilter")
 	if err != nil {
 		return fmt.Errorf("failed to read spam filter definition: %w", err)
 	}
