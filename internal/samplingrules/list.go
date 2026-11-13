@@ -62,7 +62,7 @@ func runList(ctx context.Context, flags *asset.ListFlags) error {
 		return err
 	}
 
-	items, err := apiClient.ListSamplingRules(ctx, asset.SamplingRuleListDataset(client.ResolveDataset(ctx, flags.Dataset)))
+	items, err := apiClient.ListSamplingRules(ctx, client.ResolveDataset(ctx, flags.Dataset))
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: assetType})
 	}

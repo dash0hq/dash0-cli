@@ -274,23 +274,6 @@ func TestListSamplingRules_DatasetIsSentAsQueryParameter(t *testing.T) {
 	assert.Equal(t, "staging", query.Get("dataset"))
 }
 
-// Without a dataset parameter the list endpoint returns the rules of every
-// dataset, so the default dataset must be named explicitly.
-func TestListSamplingRules_DefaultDatasetIsSentExplicitly(t *testing.T) {
-	for _, args := range [][]string{nil, {"--dataset", "default"}} {
-		testutil.SetupTestEnv(t)
-		server := testutil.NewMockServer(t, testutil.FixturesDir())
-		server.On(http.MethodGet, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureListEmpty, Validator: testutil.RequireHeaders})
-
-		_, err := execute(t, append([]string{"sampling-rules", "list", "--api-url", server.URL, "--auth-token", testAuthToken, "-o", "json"}, args...)...)
-
-		require.NoError(t, err)
-		query, err := url.ParseQuery(findRequest(t, server.Requests(), http.MethodGet, apiPath).Query)
-		require.NoError(t, err)
-		assert.Equal(t, "default", query.Get("dataset"), "args: %v", args)
-	}
-}
-
 func TestListSamplingRules_Empty(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -553,10 +536,9 @@ func TestCreateSamplingRule_FirstEnabledRuleWarns(t *testing.T) {
 	assert.NotContains(t, out, "warning", "warnings go to stderr")
 }
 
-// The turn-on check must list only the default dataset. A list without the
-// dataset parameter would return the enabled rules of other datasets and
-// silence the warning.
-func TestCreateSamplingRule_FirstEnabledRuleInDefaultDatasetListsOnlyThatDataset(t *testing.T) {
+// The CLI sends no dataset parameter for the default dataset, so the warning
+// must still name it.
+func TestCreateSamplingRule_FirstEnabledRuleInDefaultDatasetWarns(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.On(http.MethodGet, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureListEmpty, Validator: testutil.RequireHeaders})
@@ -565,9 +547,6 @@ func TestCreateSamplingRule_FirstEnabledRuleInDefaultDatasetListsOnlyThatDataset
 	_, stderr, err := executeWithStderr(t, "sampling-rules", "create", "-f", writeDoc(t, docWithoutIdentifier), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
-	query, err := url.ParseQuery(findRequest(t, server.Requests(), http.MethodGet, apiPath).Query)
-	require.NoError(t, err)
-	assert.Equal(t, "default", query.Get("dataset"))
 	assert.Contains(t, stderr, `is the first enabled sampling rule in dataset "default"`)
 }
 

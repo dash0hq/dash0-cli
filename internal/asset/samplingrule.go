@@ -343,17 +343,13 @@ func PlanSamplingRule(ctx context.Context, apiClient dash0api.Client, rule *dash
 	return plan, nil
 }
 
-// SamplingRuleListDataset returns the dataset to send when listing sampling
-// rules. The CLI represents the default dataset as nil, and the other sampling
-// rule endpoints treat a missing dataset as "default", but the list endpoint
-// then returns the rules of every dataset. So the list always names the
-// dataset.
-func SamplingRuleListDataset(dataset *string) *string {
+// samplingRuleDatasetName returns the dataset name for messages. The CLI
+// represents the default dataset as nil.
+func samplingRuleDatasetName(dataset *string) string {
 	if dataset == nil || *dataset == "" {
-		defaultDataset := "default"
-		return &defaultDataset
+		return "default"
 	}
-	return dataset
+	return *dataset
 }
 
 // SamplingTurnOnWarning returns a warning when writing rule would turn
@@ -365,10 +361,10 @@ func SamplingTurnOnWarning(ctx context.Context, apiClient dash0api.Client, rule,
 	if !rule.Spec.Enabled || (existing != nil && existing.Spec.Enabled) {
 		return ""
 	}
-	target := *SamplingRuleListDataset(dataset)
+	target := samplingRuleDatasetName(dataset)
 	name := dash0api.GetSamplingRuleName(rule)
 
-	rules, err := apiClient.ListSamplingRules(ctx, SamplingRuleListDataset(dataset))
+	rules, err := apiClient.ListSamplingRules(ctx, dataset)
 	if err != nil {
 		// The check only feeds a warning, so a failed list must not block the
 		// write. Say what could not be checked instead.
@@ -393,7 +389,7 @@ func SamplingTurnOnWarningInNewDataset(rule *dash0api.SamplingDefinition, datase
 	if !rule.Spec.Enabled {
 		return ""
 	}
-	return samplingTurnsOnMessage(dash0api.GetSamplingRuleName(rule), *SamplingRuleListDataset(dataset))
+	return samplingTurnsOnMessage(dash0api.GetSamplingRuleName(rule), samplingRuleDatasetName(dataset))
 }
 
 func samplingTurnsOnMessage(name, dataset string) string {

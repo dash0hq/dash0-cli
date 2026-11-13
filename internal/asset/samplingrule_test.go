@@ -411,16 +411,6 @@ func TestSamplingTurnOnWarning(t *testing.T) {
 	})
 }
 
-func TestSamplingRuleListDataset(t *testing.T) {
-	empty := ""
-	for _, dataset := range []*string{nil, &empty} {
-		got := SamplingRuleListDataset(dataset)
-		require.NotNil(t, got, "the list endpoint returns every dataset without the parameter")
-		assert.Equal(t, "default", *got)
-	}
-	assert.Equal(t, "staging", *SamplingRuleListDataset(dash0api.DatasetPtr("staging")))
-}
-
 func TestIsSamplingRuleWrongDataset(t *testing.T) {
 	assert.True(t, IsSamplingRuleWrongDataset(errSamplingWrongDataset))
 	assert.True(t, IsSamplingRuleWrongDataset(fmt.Errorf("wrapped: %w", errSamplingWrongDataset)))
