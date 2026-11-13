@@ -50,7 +50,7 @@ done
 echo "--- Step 1: Launching ${FILTER_COUNT} concurrent 'spam-filters create' processes ---"
 declare -a PIDS
 for i in $(seq 1 "$FILTER_COUNT"); do
-  "$DASH0" -X spam-filters create -f "${TMPDIR}/filter-${i}.yaml" \
+  "$DASH0" spam-filters create -f "${TMPDIR}/filter-${i}.yaml" \
     > "${TMPDIR}/out-${i}.log" 2>&1 &
   PIDS+=($!)
 done
@@ -72,7 +72,7 @@ if [ "$FAILED" -gt 0 ]; then
   echo "FAIL: ${FAILED}/${FILTER_COUNT} concurrent creates failed — likely the unretried 409 dataset version conflict from issue #261."
   # Best-effort cleanup of whichever ones did succeed.
   for origin in "${ORIGINS[@]}"; do
-    "$DASH0" -X spam-filters delete "$origin" --force > /dev/null 2>&1 || true
+    "$DASH0" spam-filters delete "$origin" --force > /dev/null 2>&1 || true
   done
   exit 1
 fi
@@ -80,7 +80,7 @@ fi
 echo "All ${FILTER_COUNT} concurrent creates converged in a single run."
 
 echo "--- Step 3: Verifying all ${FILTER_COUNT} filters exist via the CLI ---"
-LIST_JSON=$("$DASH0" -X spam-filters list --all -o json)
+LIST_JSON=$("$DASH0" spam-filters list --all -o json)
 for origin in "${ORIGINS[@]}"; do
   count=$(echo "$LIST_JSON" | jq --arg o "$origin" '[.[] | select(.metadata.labels["dash0.com/origin"] == $o)] | length')
   if [ "$count" != "1" ]; then
@@ -93,7 +93,7 @@ echo "All ${FILTER_COUNT} filters verified."
 echo "--- Step 4: Cleaning up ---"
 CLEANUP_FAILED=0
 for origin in "${ORIGINS[@]}"; do
-  if ! "$DASH0" -X spam-filters delete "$origin" --force > /dev/null; then
+  if ! "$DASH0" spam-filters delete "$origin" --force > /dev/null; then
     echo "FAIL: cleanup delete failed for origin '$origin'"
     CLEANUP_FAILED=1
   fi

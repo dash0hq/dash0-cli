@@ -8,19 +8,9 @@ import (
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/testutil"
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// newExperimentalSpamFiltersCmdForUpdate creates a root command with the --experimental persistent
-// flag and the spam-filters subcommand attached, mirroring the real command tree.
-func newExperimentalSpamFiltersCmdForUpdate() *cobra.Command {
-	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
-	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
-	root.AddCommand(NewSpamFiltersCmd())
-	return root
-}
 
 func TestUpdateSpamFilter_IDMismatch(t *testing.T) {
 	testutil.SetupTestEnv(t)
@@ -42,8 +32,8 @@ spec:
 `), 0644)
 	require.NoError(t, err)
 
-	cmd := newExperimentalSpamFiltersCmdForUpdate()
-	cmd.SetArgs([]string{"-X", "spam-filters", "update", "arg-id-aaaa-bbbb-cccc-dddddddddddd", "-f", yamlFile, "--api-url", "http://unused", "--auth-token", testAuthToken})
+	cmd := newSpamFiltersCmd()
+	cmd.SetArgs([]string{"spam-filters", "update", "arg-id-aaaa-bbbb-cccc-dddddddddddd", "-f", yamlFile, "--api-url", "http://unused", "--auth-token", testAuthToken})
 
 	cmdErr := cmd.Execute()
 
@@ -71,8 +61,8 @@ spec:
 `), 0644)
 	require.NoError(t, err)
 
-	cmd := newExperimentalSpamFiltersCmdForUpdate()
-	cmd.SetArgs([]string{"-X", "spam-filters", "update", "-f", yamlFile, "--api-url", "http://unused", "--auth-token", testAuthToken})
+	cmd := newSpamFiltersCmd()
+	cmd.SetArgs([]string{"spam-filters", "update", "-f", yamlFile, "--api-url", "http://unused", "--auth-token", testAuthToken})
 
 	cmdErr := cmd.Execute()
 

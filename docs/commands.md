@@ -803,7 +803,7 @@ Aliases: `remove`
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
-| Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
+| Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`). The `dash0.com/enabled` annotation turns a filter off; see [Spam filters](#spam-filters) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `metadata.labels["dash0.com/origin"]` is the upsert key. Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
@@ -1683,7 +1683,7 @@ spec:
 ```
 
 The CLI detects the apiVersion from the document and routes to the corresponding endpoint.
-The `list` endpoint returns v1alpha1 definitions only; use `spam-filters get <id>` to retrieve a filter in its native apiVersion.
+`list` and `get` return each filter in the apiVersion it is stored in.
 The `delete` endpoint is version-agnostic.
 
 Notification channel (organization-level, no `--dataset`):
@@ -2144,6 +2144,64 @@ Test the definition of an existing rule (the `get | test` pipeline is a single c
 
 ```bash
 dash0 s2m get <origin-or-id> -o yaml | dash0 s2m test -f -
+```
+
+### Spam filters
+
+A spam filter drops the telemetry that matches its filter, so Dash0 does not store it.
+`spam-filters` has the five standard subcommands, and `apply` accepts the `Dash0SpamFilter` kind.
+Spam filters are dataset-scoped, and `get`, `update`, and `delete` accept either the filter's `dash0.com/origin` label or its ID.
+The `apiVersion` of a document selects the schema: `v1alpha1` has a list of signal types in `spec.contexts`, and `v1alpha2` has one signal type in `spec.context`.
+
+`list` and `get` return each filter in the apiVersion it is stored in, so a `v1alpha2` filter keeps its `spec.context`.
+The `table` format shows `NAME`, `ID`, `CONTEXT`, and `ENABLED`.
+The `wide` and `csv` formats add `APIVERSION`, `FILTERS`, `DATASET`, and `ORIGIN`.
+
+```bash
+$ dash0 spam-filters list
+NAME                                      ID                                    CONTEXT           ENABLED
+Drop noisy health checks                  a6b7c8d9-0123-45a6-7890-cdef01234567  log, span         true
+Drop debug logs                           b7c8d9e0-1234-56b7-8901-def012345678  log               false
+```
+
+#### Turn a spam filter off
+
+The `dash0.com/enabled` annotation turns a filter on or off without deleting it.
+Set it to `"false"` to keep the filter but stop it from dropping telemetry:
+
+```yaml
+apiVersion: v1alpha2
+kind: Dash0SpamFilter
+metadata:
+  name: Drop debug logs
+  labels:
+    dash0.com/origin: dash0-cli_drop-debug-logs
+  annotations:
+    dash0.com/enabled: "false"
+spec:
+  context: log
+  filter:
+    - key: otel.log.severity.range
+      operator: is
+      value: DEBUG
+```
+
+`create`, `update`, and `apply` send the annotation as written, and `get -o yaml` exports it, so a disabled filter stays disabled when you reapply its export.
+Dash0 reads a filter without the annotation as enabled.
+A document that leaves the annotation out therefore turns the filter on again when you apply it, even if the filter was off before.
+
+`get` shows the state on its `Enabled:` line:
+
+```bash
+$ dash0 spam-filters get dash0-cli_drop-debug-logs
+Kind: Dash0SpamFilter
+API Version: v1alpha2
+Name: Drop debug logs
+Dataset: default
+Origin: dash0-cli_drop-debug-logs
+Context: log
+Enabled: false
+Filters: otel.log.severity.range is DEBUG
 ```
 
 ## Query commands

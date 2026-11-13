@@ -3762,3 +3762,64 @@ func TestApply_SignalToMetricsRule_DryRun(t *testing.T) {
 	assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (dash0-cli_checkout-errors)`)
 	assert.Empty(t, server.Requests())
 }
+
+var spamFilterOriginOrIDPattern = regexp.MustCompile(`^/api/spam-filters/[^/]+$`)
+
+// A disabled spam filter must stay disabled after apply: the API reads a write
+// without the dash0.com/enabled annotation as enabled.
+func TestApply_SpamFilter_KeepsDisabledAnnotation(t *testing.T) {
+	for _, tc := range []struct {
+		name, doc, response string
+	}{
+		{"v1alpha1", `apiVersion: v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: Drop noisy health checks
+  labels:
+    dash0.com/origin: dash0-cli_drop-noisy-health-checks
+  annotations:
+    dash0.com/enabled: "false"
+spec:
+  contexts:
+    - log
+  filter:
+    - key: k8s.namespace.name
+      operator: is
+      value: kube-system
+`, "spamfilters/get_disabled.json"},
+		{"v1alpha2", `apiVersion: v1alpha2
+kind: Dash0SpamFilter
+metadata:
+  name: Drop debug logs
+  labels:
+    dash0.com/origin: dash0-cli_drop-noisy-health-checks
+  annotations:
+    dash0.com/enabled: "false"
+spec:
+  context: log
+  filter:
+    - key: otel.log.severity.range
+      operator: is
+      value: DEBUG
+`, "spamfilters/get_success_v1alpha2.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, spamFilterOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "spamfilters/error_not_found.json", Validator: testutil.RequireHeaders})
+			server.OnPattern(http.MethodPut, spamFilterOriginOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: tc.response, Validator: testutil.RequireHeaders})
+
+			_, err := runApplyDoc(t, server.URL, tc.doc)
+
+			require.NoError(t, err)
+			put := findRequest(server.Requests(), http.MethodPut, "/api/spam-filters/dash0-cli_drop-noisy-health-checks")
+			require.NotNil(t, put, "an origin document upserts by PUT to its origin")
+			// Both apiVersions share the metadata shape, so v1alpha1 decodes either body.
+			var sent dash0api.SpamFilter
+			require.NoError(t, json.Unmarshal(put.Body, &sent))
+			require.NotNil(t, sent.Metadata.Annotations)
+			require.NotNil(t, sent.Metadata.Annotations.Dash0Comenabled, "the request must carry dash0.com/enabled")
+			assert.Equal(t, dash0api.False, *sent.Metadata.Annotations.Dash0Comenabled)
+		})
+	}
+}

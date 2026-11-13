@@ -114,6 +114,17 @@ func objectDataset(obj dash0api.SpamFilterObject) string {
 	return *labels.Dash0Comdataset
 }
 
+// objectEnabled reports whether a spam filter is active, from its
+// dash0.com/enabled annotation. The API reads a missing annotation as enabled
+// and any value other than "true" as disabled, and so does this function.
+func objectEnabled(obj dash0api.SpamFilterObject) bool {
+	annotations := objectMetadata(obj).Annotations
+	if annotations == nil || annotations.Dash0Comenabled == nil {
+		return true
+	}
+	return *annotations.Dash0Comenabled == dash0api.True
+}
+
 // objectFilterCount returns the number of filter criteria attached to a
 // spam filter object, regardless of apiVersion.
 func objectFilterCount(obj dash0api.SpamFilterObject) int {

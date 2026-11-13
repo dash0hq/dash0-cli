@@ -9,7 +9,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +17,7 @@ func newUpdateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update [origin-or-id] -f <file>",
-		Short: "[experimental] Update a spam filter from a file",
+		Short: "Update a spam filter from a file",
 		Long: `Update an existing spam filter from a YAML or JSON definition file. Use '-f -'
 to read from stdin.
 
@@ -37,23 +36,20 @@ the file in this order:
 The apiVersion field on the document selects the schema: v1alpha1 uses
 spec.contexts (array); v1alpha2 uses spec.context (scalar).` + internal.CONFIG_HINT,
 		Example: `  # Update by origin
-  dash0 --experimental spam-filters update <origin> -f filter.yaml
+  dash0 spam-filters update <origin> -f filter.yaml
 
   # Update by ID
-  dash0 --experimental spam-filters update <id> -f filter.yaml
+  dash0 spam-filters update <id> -f filter.yaml
 
   # Update using the origin (or id) from the file
-  dash0 --experimental spam-filters update -f filter.yaml
+  dash0 spam-filters update -f filter.yaml
 
   # Export, edit, and update
-  dash0 --experimental spam-filters get <origin-or-id> -o yaml > filter.yaml
+  dash0 spam-filters get <origin-or-id> -o yaml > filter.yaml
   # edit filter.yaml
-  dash0 --experimental spam-filters update -f filter.yaml`,
+  dash0 spam-filters update -f filter.yaml`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runUpdate(cmd.Context(), args, &flags)
 		},
 	}
