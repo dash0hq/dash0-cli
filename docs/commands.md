@@ -1842,7 +1842,6 @@ spec:
 Time series aggregation (dataset-scoped, requires the organization admin role):
 
 ```yaml
-apiVersion: dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:
   name: http-server-request-duration
@@ -1863,7 +1862,13 @@ spec:
 `dash0.com/origin` is mandatory and is the only upsert key.
 The three names are independent: setting `metadata.name`, `spec.display.name`, or the origin does not change either of the others.
 
-Optional `spec` fields: `priority` (the lower the value, the earlier Dash0 evaluates the aggregation), `sample.delay`, `sample.staleAfter`, `match.otherFilters`, and `attributeModifications`.
+The document has no `apiVersion`, because the time series aggregation schema does not define one.
+The CLI ignores an `apiVersion` in the file, so a file that sets one still applies.
+
+Optional `spec` fields: `priority`, `sample.delay`, `sample.staleAfter`, `match.otherFilters`, and `attributeModifications`.
+`priority` is an integer from 0 to 4, and is 2 when the document leaves it out.
+When more than one aggregation matches a metric, only the one with the lowest `priority` applies; of two with the same `priority`, the one created first applies.
+The API rejects a `priority` outside that range with a 400.
 
 Signal-to-metrics rule (dataset-scoped):
 

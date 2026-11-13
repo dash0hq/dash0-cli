@@ -25,7 +25,6 @@
 Time series aggregation (dataset-scoped, requires the organization admin role):
 
 ```yaml
-apiVersion: dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:
   name: http-server-request-duration
@@ -50,5 +49,7 @@ Every time series aggregation endpoint requires the organization admin role, whi
 `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key. `create` and `apply` both PUT to that origin, so they are create-or-replace; a document without the label fails before any API call. A `dash0.com/id` in a document body is ignored, which is what makes an exported definition reapply cleanly.
 
 Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document therefore cannot be applied to two datasets the way it can for every other asset kind — the second dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.
+
+The document has no `apiVersion`; the CLI ignores one if a file sets it. `spec.priority` is an integer from 0 to 4 and defaults to 2, and the API rejects any other value. When more than one aggregation matches a metric, only the one with the lowest priority applies.
 
 `time-series-aggregations get` also returns a deleted time series aggregation: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `time-series-aggregations list` does not show deleted time series aggregations. `apply`, `time-series-aggregations create`, and `time-series-aggregations update` with the origin of a deleted time series aggregation bring it back and print `restored`; `apply` and `time-series-aggregations update` then show a diff of any other fields that changed. `time-series-aggregations update --dry-run` prints `would be restored` instead, and the time series aggregation stays deleted.

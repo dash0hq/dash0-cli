@@ -1,0 +1,10 @@
+change_type: bug_fix
+component: time-series-aggregations
+note: "The time series aggregation documentation no longer shows an `apiVersion`, which the API does not define, and now documents the `priority` range."
+issues: [0]
+subtext: |
+  `spec.priority` is an integer from 0 to 4 and defaults to 2; the API rejects any other value.
+  When more than one aggregation matches a metric, only the one with the lowest priority applies.
+  A file that sets `apiVersion` still applies, because the CLI ignores the field.
+  The README and the "About" page now list time series aggregations, evals, and every kind that `apply` accepts.
+change_logs: []
