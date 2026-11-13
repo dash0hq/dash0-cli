@@ -116,10 +116,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSLOName(&slo)
-		id = dash0api.GetSLOID(&slo)
-		if id == "" {
-			id = dash0api.GetSLOOrigin(&slo)
-		}
+		id = PreferredKey(&slo)
 
 	case "prometheusrule":
 		// We only need metadata (name + ID) here; the Metadata struct has no
@@ -205,11 +202,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		if name == "" {
 			name = dash0api.GetTeamName(&team)
 		}
-		id = dash0api.GetTeamID(&team)
-		if id == "" {
-			// Teams use origin as the upsert key.
-			id = dash0api.GetTeamOrigin(&team)
-		}
+		id = PreferredKey(&team)
 
 	case "dataset":
 		var dataset dash0api.DatasetDefinition
@@ -242,10 +235,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetGenerativeAiEvaluationName(&evaluation)
-		id = dash0api.GetGenerativeAiEvaluationID(&evaluation)
-		if id == "" {
-			id = dash0api.GetGenerativeAiEvaluationOrigin(&evaluation)
-		}
+		id = PreferredKey(&evaluation)
 
 	default:
 		var raw map[string]any

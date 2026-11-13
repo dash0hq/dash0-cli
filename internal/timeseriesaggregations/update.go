@@ -61,10 +61,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:       assetType,
-		UsesOrigin: true,
-		Origin:     origin(aggregation),
-		ID:         dash0api.GetTimeSeriesAggregationID(aggregation),
+		Noun:   assetType,
+		Upsert: aggregation,
 	})
 	if err != nil {
 		return err

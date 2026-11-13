@@ -93,14 +93,10 @@ func ImportSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.Slo
 func PlanSLO(ctx context.Context, apiClient dash0api.Client, slo *dash0api.SloDefinition, dataset *string) (ImportPlan, error) {
 	// StripSLOServerFields clears both labels, so read them first.
 	origin := dash0api.GetSLOOrigin(slo)
-	id := dash0api.GetSLOID(slo)
+	lookupKey := PreferredKey(slo)
 	dash0api.StripSLOServerFields(slo)
 
 	plan := ImportPlan{Action: ActionCreated, Proposed: slo}
-	lookupKey := origin
-	if lookupKey == "" {
-		lookupKey = id
-	}
 	if lookupKey == "" {
 		return plan, nil
 	}

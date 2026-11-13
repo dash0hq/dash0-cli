@@ -104,7 +104,7 @@ Aliases: `add`
 ### `notification-channels update` (experimental)
 
 Update an existing notification channel from a YAML or JSON definition file.
-If the ID argument is omitted, the ID is extracted from the file content.
+If the ID argument is omitted, the `dash0.com/origin` label is read from the file, as `apply` does; a file without it fails.
 
 ```bash
 dash0 -X notification-channels update [id] -f <file> [--dry-run]
@@ -116,7 +116,7 @@ Update a notification channel from a file:
 dash0 -X notification-channels update <id> -f channel.yaml
 ```
 
-Update using the ID embedded in the file content:
+Update using the origin from the file:
 
 ```bash
 dash0 -X notification-channels update -f channel.yaml

@@ -101,7 +101,7 @@ Aliases: `add`
 ### `datasets update` (experimental)
 
 Update an existing dataset from a YAML or JSON definition file.
-If the ID argument is omitted, the slug is extracted from the file content.
+If the ID argument is omitted, the slug is extracted from the file content; a file without a slug fails, as in `apply`.
 The argument can be the slug or the origin; an origin must match the origin in the file when the file has one.
 The dataset must already exist: the command fails with a "not found" error instead of creating it.
 A `spec` field left out of the file keeps its stored value, so a file with only `spec.retention.logs` changes only that field.

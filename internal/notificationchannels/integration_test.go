@@ -415,5 +415,30 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no notification channel id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no notification channel origin or id given: pass one as an argument")
+}
+
+// The origin is the upsert key, so an argument naming another channel must fail before any request.
+func TestUpdateNotificationChannel_ArgumentNamesAnotherChannel(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "channel.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dash0NotificationChannel
+metadata:
+  name: Slack Alerts
+  labels:
+    dash0.com/origin: my-channel
+spec:
+  type: slack
+  config:
+    url: https://hooks.slack.com/services/T00/B00/XXX
+`), 0644))
+
+	cmd := newExperimentalNotificationChannelsCmd()
+	cmd.SetArgs([]string{"-X", "notification-channels", "update", "some-other-channel", "-f", yamlFile, "--api-url", "http://unused", "--auth-token", testAuthToken})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `argument "some-other-channel" does not match the file's origin ("my-channel")`)
 }

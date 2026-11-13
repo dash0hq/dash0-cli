@@ -71,10 +71,8 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return err
 	}
 	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:       assetType,
-		UsesOrigin: true,
-		Origin:     originOf(&token.Metadata),
-		ID:         idOf(&token.Metadata),
+		Noun:   assetType,
+		Upsert: tokenKeys{origin: originOf(&token.Metadata), id: idOf(&token.Metadata)},
 	})
 	if err != nil {
 		return err
