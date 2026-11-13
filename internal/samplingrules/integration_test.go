@@ -14,6 +14,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -782,6 +783,38 @@ func TestDeleteSamplingRule_Success(t *testing.T) {
 	assert.Equal(t, "staging", query.Get("dataset"))
 }
 
+// A delete is permanent and changes which traces Dash0 keeps, so agent mode
+// must not auto-confirm it.
+func TestDeleteSamplingRule_AgentModeRequiresForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, err := execute(t, "sampling-rules", "delete", testOrigin, "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dash0 sampling-rules delete requires --force when run in agent mode")
+	assert.Contains(t, err.Error(), "sampling-rules delete "+testOrigin+" --force")
+	assert.Empty(t, server.Requests())
+}
+
+func TestDeleteSamplingRule_AgentModeWithForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodDelete, apiPath+"/"+testOrigin, testutil.MockResponse{StatusCode: http.StatusOK, Validator: testutil.RequireHeaders})
+
+	out, err := execute(t, "sampling-rules", "delete", testOrigin, "--force", "--api-url", server.URL, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "deleted")
+	assert.Equal(t, []string{"DELETE " + apiPath + "/" + testOrigin}, describe(server.Requests()))
+}
+
 func TestDeleteSamplingRule_AlreadyDeletedWithForce(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -811,10 +844,9 @@ func TestDeleteSamplingRule_NotFoundWithoutForce(t *testing.T) {
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodDelete, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
 
-	// Agent mode skips the confirmation prompt without implying --force.
-	prev := agentmode.Enabled
-	agentmode.Enabled = true
-	t.Cleanup(func() { agentmode.Enabled = prev })
+	// Confirm the prompt, so the delete runs without --force.
+	restore := confirmation.SetReaderForTest(strings.NewReader("y\n"))
+	t.Cleanup(restore)
 
 	_, err := execute(t, "sampling-rules", "delete", "gone", "--api-url", server.URL, "--auth-token", testAuthToken)
 

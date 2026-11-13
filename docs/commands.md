@@ -1324,6 +1324,7 @@ Deleting by `dash0.com/id` alone prints a warning: if the document was first app
 
 A `Dash0Sampling` document removed since `<ref>` deletes the sampling rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `sampling-rules delete`, and with the same warning for a delete by `dash0.com/id` alone.
 The delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
+In agent mode, a `--since` run that would delete a sampling rule requires an explicit `--force`, as `sampling-rules delete` does, and otherwise refuses before it applies anything.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
@@ -2233,7 +2234,9 @@ Origins and IDs are unique per organization, while each rule belongs to one data
 `get`, `update`, and `delete` through another dataset fail with an error that names the cause; `delete --force` does not count that as already deleted, because the rule still exists.
 
 A delete is permanent: applying the same document again creates a new rule with a new ID.
+Deleting a rule drops the traces that only that rule kept.
 Deleting the last enabled rule of a dataset turns sampling off, and Dash0 keeps every trace again.
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), `sampling-rules delete` therefore requires an explicit `--force` and otherwise refuses with an error, as `datasets delete` does.
 
 ## Query commands
 

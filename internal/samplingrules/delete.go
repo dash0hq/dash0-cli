@@ -22,8 +22,9 @@ func newDeleteCmd() *cobra.Command {
 to skip the confirmation prompt.
 
 The rule is deleted for good: applying the same document again creates a new
-rule with a new ID. Deleting the last enabled rule in a dataset turns sampling
-off, so Dash0 keeps every trace again.` + internal.CONFIG_HINT,
+rule with a new ID. Dash0 drops the traces that only this rule kept. Deleting
+the last enabled rule in a dataset turns sampling off, so Dash0 keeps every
+trace again. In agent mode, --force is required.` + internal.CONFIG_HINT,
 		Example: `  # Delete with confirmation prompt
   dash0 sampling-rules delete <origin-or-id>
 
@@ -40,9 +41,19 @@ off, so Dash0 keeps every trace again.` + internal.CONFIG_HINT,
 }
 
 func runDelete(ctx context.Context, originOrID string, flags *asset.DeleteFlags) error {
+	// Agent mode normally auto-confirms deletes. A sampling rule delete
+	// cannot be undone and changes which traces Dash0 keeps, so an agent must
+	// pass --force deliberately, as for `datasets delete`.
+	if err := confirmation.RequireForceInAgentMode(flags.Force, "dash0 sampling-rules delete", fmt.Sprintf(
+		"re-run with `dash0 sampling-rules delete %s --force` to confirm. %s",
+		originOrID, asset.SamplingRuleDeleteNote,
+	)); err != nil {
+		return err
+	}
+
 	confirmed, err := confirmation.ConfirmDestructiveOperation(
 		ctx,
-		fmt.Sprintf("Are you sure you want to delete sampling rule %q? [y/N]: ", originOrID),
+		fmt.Sprintf("Are you sure you want to delete sampling rule %q? %s [y/N]: ", originOrID, asset.SamplingRuleDeleteNote),
 		flags.Force,
 	)
 	if err != nil {

@@ -192,17 +192,25 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
-	// A dataset delete starts the 30-day countdown to removing its assets.
-	// Like `datasets delete`, agent mode must pass --force deliberately instead
-	// of getting the usual agent-mode auto-confirmation. Checked before any
-	// document is applied, so a refusal leaves the run untouched.
+	// A dataset delete starts the 30-day countdown to removing its assets, and
+	// a sampling rule delete is permanent and changes which traces Dash0
+	// keeps. Like `datasets delete` and `sampling-rules delete`, agent mode
+	// must pass --force deliberately instead of getting the usual agent-mode
+	// auto-confirmation. Checked before any document is applied, so a refusal
+	// leaves the run untouched.
 	if deletionPlan != nil {
 		for _, d := range deletionPlan.Plan.ByIdentifier {
-			if d.Kind != "dataset" {
+			var note string
+			switch d.Kind {
+			case "dataset":
+				note = asset.DatasetSoftDeleteNote
+			case "sampling":
+				note = asset.SamplingRuleDeleteNote
+			default:
 				continue
 			}
-			if err := confirmation.RequireForceInAgentMode(flags.Force, fmt.Sprintf("deleting Dataset %q with --since", d.Identifier),
-				"re-run with --force to confirm. "+asset.DatasetSoftDeleteNote); err != nil {
+			if err := confirmation.RequireForceInAgentMode(flags.Force, fmt.Sprintf("deleting %s %q with --since", asset.KindDisplayName(d.Kind), d.Identifier),
+				"re-run with --force to confirm. "+note); err != nil {
 				return err
 			}
 		}

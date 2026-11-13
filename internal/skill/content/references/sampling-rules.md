@@ -67,7 +67,9 @@ Origins and IDs are unique per organization, while each rule belongs to one data
 `get`, `update`, and `delete` through another dataset fail with an error that names the cause; `delete --force` does not count that as already deleted, because the rule still exists.
 
 A delete is permanent: applying the same document again creates a new rule with a new ID.
+Deleting a rule drops the traces that only that rule kept.
 Deleting the last enabled rule of a dataset turns sampling off, and Dash0 keeps every trace again.
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), `sampling-rules delete` therefore requires an explicit `--force` and otherwise refuses with an error, as `datasets delete` does.
 
 Sampling rule (dataset-scoped, requires the organization admin role):
 

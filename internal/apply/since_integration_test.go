@@ -2776,6 +2776,31 @@ func TestApply_Since_DeletesRemovedSamplingRule(t *testing.T) {
 	}
 }
 
+// In agent mode a sampling rule deletion needs an explicit --force, as in
+// `sampling-rules delete`, and the refusal leaves the whole run untouched.
+func TestApply_Since_AgentModeSamplingRuleDeletionRequiresForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	dir, before := samplingSinceRepo(t, "dash0.com/origin: dash0-cli_checkout-errors")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--experimental", "--dataset", "staging",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+	var cmdErr error
+	testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `deleting Sampling rule "dash0-cli_checkout-errors" with --since requires --force when run in agent mode`)
+	assert.Empty(t, server.Requests())
+}
+
 // The rule exists in another dataset, so the delete must fail instead of
 // counting as already gone.
 func TestApply_Since_SamplingRuleInAnotherDatasetFails(t *testing.T) {

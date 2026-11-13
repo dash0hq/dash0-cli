@@ -37,6 +37,11 @@ func SamplingRuleKey(rule *dash0api.SamplingDefinition) string {
 	return PreferredKey(SamplingRuleKeys(rule))
 }
 
+// SamplingRuleDeleteNote says what deleting a sampling rule does, for the
+// confirmation prompt and the agent-mode refusal.
+const SamplingRuleDeleteNote = "The delete is permanent: Dash0 drops the traces that only this rule kept, " +
+	"and deleting the last enabled rule of a dataset turns sampling off."
+
 // SamplingRuleKeys lets the shared key rules resolve a sampling rule's
 // identifiers: the client gives SamplingDefinition no UpsertKeys. Sampling
 // rules upsert by origin, with the id as the fallback. Read it before
