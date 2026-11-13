@@ -44,7 +44,7 @@ When the file sets metadata.labels["dash0.com/origin"], the eval is created or r
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	data, err := asset.ReadRawInput(flags.File, os.Stdin)
+	data, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "generativeaievaluation")
 	if err != nil {
 		return fmt.Errorf("failed to read eval definition: %w", err)
 	}

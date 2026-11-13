@@ -50,7 +50,7 @@ The output is a unified diff of the before and after states.` + internal.CONFIG_
 }
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "timeseriesaggregation")
 	if err != nil {
 		return fmt.Errorf("failed to read time series aggregation definition: %w", err)
 	}

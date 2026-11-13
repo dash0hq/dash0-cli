@@ -48,7 +48,7 @@ If the ID argument is omitted, the ID is extracted from the file content.` + int
 }
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
-	data, err := asset.ReadRawInput(flags.File, os.Stdin)
+	data, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "dashboard")
 	if err != nil {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
