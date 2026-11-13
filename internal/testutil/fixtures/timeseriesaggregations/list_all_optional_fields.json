@@ -39,7 +39,7 @@
           "delay": "30s",
           "staleAfter": "10m"
         },
-        "priority": 10,
+        "priority": 4,
         "attributeModifications": [
           {
             "kind": "drop_attributes",

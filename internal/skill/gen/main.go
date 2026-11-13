@@ -212,6 +212,9 @@ var topics = []topicSpec{
 			"Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document " +
 			"therefore cannot be applied to two datasets the way it can for every other asset kind — the second " +
 			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.\n\n" +
+			"The document has no `apiVersion`; the CLI ignores one if a file sets it. `spec.priority` is an integer " +
+			"from 0 to 4 and defaults to 2, and the API rejects any other value. When more than one aggregation " +
+			"matches a metric, only the one with the lowest priority applies.\n\n" +
 			deletedAssetNote("time-series-aggregations", "time series aggregation", "time series aggregations", "origin"),
 	},
 	{name: "traces", sections: []string{"traces get"}},
