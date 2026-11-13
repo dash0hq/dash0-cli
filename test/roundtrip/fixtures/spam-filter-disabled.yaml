@@ -1,0 +1,13 @@
+apiVersion: v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: Drop noisy health checks (disabled roundtrip)
+  annotations:
+    dash0.com/enabled: "false"
+spec:
+  contexts:
+    - log
+  filter:
+    - key: "k8s.namespace.name"
+      operator: "is"
+      value: "kube-system"

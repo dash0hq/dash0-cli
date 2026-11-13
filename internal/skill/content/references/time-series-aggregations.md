@@ -14,7 +14,7 @@
 | Views | `dash0 views <subcommand>` | |
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
-| Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
+| Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`). The `dash0.com/enabled` annotation turns a filter off; see [Spam filters](#spam-filters) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `metadata.labels["dash0.com/origin"]` is the upsert key. Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |

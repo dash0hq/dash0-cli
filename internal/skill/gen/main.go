@@ -178,10 +178,10 @@ var topics = []topicSpec{
 	{
 		name:            "spam-filters",
 		includeQuickRef: true,
+		sections:        []string{"spam filters"},
 		assetYAMLLabels: []string{"Spam filter (v1alpha1", "Spam filter (v1alpha2"},
 		extraNote: "The `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a " +
-			"missing value defaults to `v1alpha1`. The `list` endpoint returns v1alpha1 definitions only; use " +
-			"`spam-filters get <id>` to retrieve a filter in its native apiVersion.",
+			"missing value defaults to `v1alpha1`.",
 	},
 	{name: "spans", sections: []string{"spans query", "spans send"}},
 	{

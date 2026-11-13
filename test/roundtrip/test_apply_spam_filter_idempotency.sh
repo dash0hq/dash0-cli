@@ -56,7 +56,7 @@ run_apply_idempotency_stage() {
 
   # Resolve the server-assigned ID for cleanup and subsequent assertions.
   local id
-  id=$("$DASH0" --experimental spam-filters list --all -o json | jq -r --arg o "$origin" '.[] | select(.metadata.labels["dash0.com/origin"] == $o) | .metadata.labels["dash0.com/id"]' | head -1)
+  id=$("$DASH0" spam-filters list --all -o json | jq -r --arg o "$origin" '.[] | select(.metadata.labels["dash0.com/origin"] == $o) | .metadata.labels["dash0.com/id"]' | head -1)
   if [ -z "$id" ]; then
     echo "FAIL: could not find spam filter with origin '$origin' in list after first apply"
     return 1
@@ -70,7 +70,7 @@ run_apply_idempotency_stage() {
   if ! apply2=$("$DASH0" apply -f "$yaml_file" 2>&1); then
     echo "FAIL: second apply errored out (expected idempotent upsert):"
     echo "$apply2"
-    "$DASH0" --experimental spam-filters delete "$origin" --force > /dev/null 2>&1 || true
+    "$DASH0" spam-filters delete "$origin" --force > /dev/null 2>&1 || true
     return 1
   fi
   echo "$apply2"
@@ -82,7 +82,7 @@ run_apply_idempotency_stage() {
   # Step 3: Exactly one record exists with this origin.
   echo "--- Step 3: Verify exactly one record with this origin ---"
   local count
-  count=$("$DASH0" --experimental spam-filters list --all -o json | jq --arg o "$origin" '[.[] | select(.metadata.labels["dash0.com/origin"] == $o)] | length')
+  count=$("$DASH0" spam-filters list --all -o json | jq --arg o "$origin" '[.[] | select(.metadata.labels["dash0.com/origin"] == $o)] | length')
   if [ "$count" != "1" ]; then
     echo "FAIL: expected exactly 1 record with origin '$origin', got $count"
     return 1
@@ -92,7 +92,7 @@ run_apply_idempotency_stage() {
   # apply path routed through the correct dispatch branch.
   echo "--- Step 4: Verify stored apiVersion is ${expected_api_version} ---"
   local get_yaml
-  get_yaml=$("$DASH0" --experimental spam-filters get "$id" -o yaml)
+  get_yaml=$("$DASH0" spam-filters get "$id" -o yaml)
   if ! echo "$get_yaml" | grep -q "^apiVersion: ${expected_api_version}$"; then
     echo "FAIL: expected apiVersion '${expected_api_version}' in get -o yaml output, got:"
     echo "$get_yaml" | grep -i apiversion || echo "  (no apiVersion line)"
@@ -101,7 +101,7 @@ run_apply_idempotency_stage() {
 
   # Step 5: Cleanup — delete by origin (the api path accepts either form).
   echo "--- Step 5: Delete ---"
-  if ! "$DASH0" --experimental spam-filters delete "$origin" --force > /dev/null; then
+  if ! "$DASH0" spam-filters delete "$origin" --force > /dev/null; then
     echo "FAIL: cleanup delete failed"
     return 1
   fi

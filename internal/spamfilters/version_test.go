@@ -132,3 +132,29 @@ func TestObjectAPIVersion_V1Alpha1_DefaultsWhenAbsent(t *testing.T) {
 	obj := &dash0api.SpamFilter{}
 	assert.Equal(t, string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1), objectAPIVersion(obj))
 }
+
+func TestObjectEnabled(t *testing.T) {
+	annotated := func(value dash0api.SpamFilterAnnotationsDash0Comenabled) dash0api.SpamFilterMetadata {
+		return dash0api.SpamFilterMetadata{Annotations: &dash0api.SpamFilterAnnotations{Dash0Comenabled: &value}}
+	}
+
+	tests := []struct {
+		name string
+		obj  dash0api.SpamFilterObject
+		want bool
+	}{
+		{"v1alpha1 without annotations is enabled", &dash0api.SpamFilter{}, true},
+		{"v1alpha1 without the enabled annotation is enabled", &dash0api.SpamFilter{Metadata: dash0api.SpamFilterMetadata{Annotations: &dash0api.SpamFilterAnnotations{}}}, true},
+		{"v1alpha1 enabled true", &dash0api.SpamFilter{Metadata: annotated(dash0api.True)}, true},
+		{"v1alpha1 enabled false", &dash0api.SpamFilter{Metadata: annotated(dash0api.False)}, false},
+		{"v1alpha2 without annotations is enabled", &dash0api.SpamFilterV1Alpha2{}, true},
+		{"v1alpha2 enabled true", &dash0api.SpamFilterV1Alpha2{Metadata: annotated(dash0api.True)}, true},
+		{"v1alpha2 enabled false", &dash0api.SpamFilterV1Alpha2{Metadata: annotated(dash0api.False)}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, objectEnabled(tt.obj))
+		})
+	}
+}

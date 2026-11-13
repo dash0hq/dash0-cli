@@ -10,7 +10,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -20,22 +19,21 @@ func newGetCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "get <id>",
-		Short: "[experimental] Get a spam filter by ID",
-		Long: `Retrieve a spam filter definition by its ID. The returned definition is in
-whichever apiVersion (v1alpha1 or v1alpha2) the server has stored.` + internal.CONFIG_HINT,
+		Short: "Get a spam filter by ID or origin",
+		Long: `Retrieve a spam filter definition by its ID or its dash0.com/origin label. The
+returned definition is in whichever apiVersion (v1alpha1 or v1alpha2) the server
+has stored. The summary shows whether the filter is enabled, from its
+dash0.com/enabled annotation; a filter without the annotation is enabled.` + internal.CONFIG_HINT,
 		Example: `  # Show spam filter summary
-  dash0 --experimental spam-filters get <id>
+  dash0 spam-filters get <id>
 
   # Export as YAML (suitable for re-applying)
-  dash0 --experimental spam-filters get <id> -o yaml > filter.yaml
+  dash0 spam-filters get <id> -o yaml > filter.yaml
 
   # Export as JSON
-  dash0 --experimental spam-filters get <id> -o json`,
+  dash0 spam-filters get <id> -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runGet(cmd.Context(), args[0], &flags)
 		},
 	}
@@ -82,6 +80,7 @@ func runGet(ctx context.Context, id string, flags *asset.GetFlags) error {
 		case *dash0api.SpamFilterV1Alpha2:
 			fmt.Printf("Context: %s\n", string(v.Spec.Context))
 		}
+		fmt.Printf("Enabled: %t\n", objectEnabled(filter))
 		const filtersLabel = "Filters: "
 		fmt.Printf("%s%s\n", filtersLabel, renderFiltersBlock(filter, len(filtersLabel)))
 		return nil

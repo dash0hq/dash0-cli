@@ -104,10 +104,10 @@ var updateCommands = []updateCommand{
 	{"notification-channels", notificationchannels.NewNotificationChannelsCmd, []string{"-X", "notification-channels", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0NotificationChannel\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  type: slack\n"
 	}},
-	{"spam-filters v1alpha1", spamfilters.NewSpamFiltersCmd, []string{"-X", "spam-filters", "update"}, func(v updateIdentifiers) string {
+	{"spam-filters v1alpha1", spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: v1alpha1\nkind: Dash0SpamFilter\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  contexts: [log]\n  filter: []\n"
 	}},
-	{"spam-filters v1alpha2", spamfilters.NewSpamFiltersCmd, []string{"-X", "spam-filters", "update"}, func(v updateIdentifiers) string {
+	{"spam-filters v1alpha2", spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: v1alpha2\nkind: Dash0SpamFilter\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  context: log\n  filter: []\n"
 	}},
 	{"teams", teams.NewTeamsCmd, []string{"-X", "teams", "update"}, func(v updateIdentifiers) string {
