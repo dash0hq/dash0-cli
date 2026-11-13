@@ -23,6 +23,9 @@ type ImportResult struct {
 	Action ImportAction
 	Before any // asset state before update or restore (nil for creates)
 	After  any // asset state after update/create
+	// Warnings are non-fatal notes about the write, such as a sampling rule
+	// that turns sampling on for its dataset. Callers print them to stderr.
+	Warnings []string
 }
 
 // ImportPlan is what an import would do, decided from the stored asset before
@@ -36,6 +39,9 @@ type ImportPlan struct {
 	Before any
 	// Proposed is the asset as it would be stored after the write.
 	Proposed any
+	// Warnings are non-fatal notes about the planned write. Callers print
+	// them to stderr; see ImportResult.Warnings.
+	Warnings []string
 }
 
 // actionForExisting returns the action for a write to an asset that already

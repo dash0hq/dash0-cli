@@ -1,0 +1,5 @@
+{
+  "code": 404,
+  "message": "Not Found: The requested sampling rule does not exist or is inaccessible to you.",
+  "traceId": "5c8e1f3a7b2d4e6f9a0b1c2d3e4f5a6b"
+}

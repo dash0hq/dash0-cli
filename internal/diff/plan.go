@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"fmt"
+	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
@@ -111,6 +112,32 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "signal-to-metrics rule", AssetName: name})
 		}
 		return []docPlan{{displayKind: "Dash0SignalToMetrics", name: name, plan: plan, readDenied: denied}}, nil
+
+	case "sampling":
+		rule, err := asset.ParseSamplingRule(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		name := dash0api.GetSamplingRuleName(rule)
+		plan, err := asset.PlanSamplingRule(ctx, apiClient, rule, dataset)
+		denied, err := readError(err, inNewDataset)
+		if err != nil {
+			// The rule in another dataset carries its own explanation.
+			if asset.IsSamplingRuleWrongDataset(err) {
+				return nil, err
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "sampling rule", AssetName: name})
+		}
+		// A denied read returns before the plan checks for the turn-on warning.
+		if denied {
+			if warning := asset.SamplingTurnOnWarningInNewDataset(rule, dataset); warning != "" {
+				plan.Warnings = append(plan.Warnings, warning)
+			}
+		}
+		for _, warning := range plan.Warnings {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+		}
+		return []docPlan{{displayKind: "Dash0Sampling", name: name, plan: plan, readDenied: denied}}, nil
 
 	case "dataset":
 		var ds dash0api.DatasetDefinition

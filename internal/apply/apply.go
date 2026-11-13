@@ -69,6 +69,7 @@ Supported asset types:
   - Dash0Team
   - Dash0TimeSeriesAggregation
   - Dash0SignalToMetrics (signal-to-metrics rule)
+  - Dash0Sampling (sampling rule)
   - Dash0Dataset
   - Dash0Skill (Agent0 custom skill)
   - Dash0AwsMetricScrapeConfig
@@ -191,17 +192,25 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return runDryRun(documents, fromDirectory, flags.File, flags.Since, deletionPlan)
 	}
 
-	// A dataset delete starts the 30-day countdown to removing its assets.
-	// Like `datasets delete`, agent mode must pass --force deliberately instead
-	// of getting the usual agent-mode auto-confirmation. Checked before any
-	// document is applied, so a refusal leaves the run untouched.
+	// A dataset delete starts the 30-day countdown to removing its assets, and
+	// a sampling rule delete is permanent and changes which traces Dash0
+	// keeps. Like `datasets delete` and `sampling-rules delete`, agent mode
+	// must pass --force deliberately instead of getting the usual agent-mode
+	// auto-confirmation. Checked before any document is applied, so a refusal
+	// leaves the run untouched.
 	if deletionPlan != nil {
 		for _, d := range deletionPlan.Plan.ByIdentifier {
-			if d.Kind != "dataset" {
+			var note string
+			switch d.Kind {
+			case "dataset":
+				note = asset.DatasetSoftDeleteNote
+			case "sampling":
+				note = asset.SamplingRuleDeleteNote
+			default:
 				continue
 			}
-			if err := confirmation.RequireForceInAgentMode(flags.Force, fmt.Sprintf("deleting Dataset %q with --since", d.Identifier),
-				"re-run with --force to confirm. "+asset.DatasetSoftDeleteNote); err != nil {
+			if err := confirmation.RequireForceInAgentMode(flags.Force, fmt.Sprintf("deleting %s %q with --since", asset.KindDisplayName(d.Kind), d.Identifier),
+				"re-run with --force to confirm. "+note); err != nil {
 				return err
 			}
 		}
@@ -407,6 +416,28 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			})
 		}
 		return []applyResult{{kind: "Dash0SignalToMetrics", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+
+	case "sampling":
+		rule, err := asset.ParseSamplingRule(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportSamplingRule(ctx, apiClient, rule, dataset)
+		if err != nil {
+			// The cross-dataset collision already carries its own explanation
+			// and would only be flattened into "invalid request" here.
+			if asset.IsSamplingRuleWrongDataset(err) {
+				return nil, err
+			}
+			return nil, client.HandleAPIError(err, client.ErrorContext{
+				AssetType: "sampling rule",
+				AssetName: dash0api.GetSamplingRuleName(rule),
+			})
+		}
+		for _, warning := range result.Warnings {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+		}
+		return []applyResult{{kind: "Dash0Sampling", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1

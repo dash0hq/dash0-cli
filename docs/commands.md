@@ -13,7 +13,7 @@ Each category has distinct patterns for flags, output, and behavior.
 |----------|----------|-----------------|
 | [Authentication](#authentication) | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
-| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
+| [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -526,8 +526,8 @@ Profile:    prod    (from DASH0_PROFILE environment variable)
 Asset CRUD commands create, list, get, update, and delete Dash0 assets.
 Dash0 calls dashboards, views, synthetic checks, and check rules "assets" (not "resources", which is an overloaded term in OpenTelemetry).
 
-All thirteen of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
-Ten of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
+All fourteen of these command groups (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, and the organization-level `teams` and `datasets`) share the same CRUD subcommands.
+Eleven of them are dataset-scoped assets; `notification-channels`, `teams`, and `datasets` are organization-level (no `--dataset`) but share the same subcommand shape.
 The examples below use `dashboards`, but the same patterns apply to every command group.
 
 ### `list`
@@ -630,6 +630,7 @@ Updated: 2026-01-20 14:45:00
 ```
 
 `list` does not show deleted assets.
+The API does not keep a deleted sampling rule: the delete is permanent, so `get` fails with "not found".
 
 ### `create`
 
@@ -781,11 +782,11 @@ $ echo $?
 
 Without `--force`, an asset that is genuinely missing surfaces as a non-zero exit with a "not found" error.
 Most Dash0 delete endpoints rarely reach that branch, though, because they answer a missing asset with 2xx rather than 404.
-For `dashboards`, `check-rules`, `views`, `spam-filters`, `time-series-aggregations`, and `datasets`, `delete <typo>` therefore exits 0 whether or not you pass `--force`.
+For `dashboards`, `check-rules`, `views`, `spam-filters`, `time-series-aggregations`, `sampling-rules`, and `datasets`, `delete <typo>` therefore exits 0 whether or not you pass `--force`.
 For `datasets`, a mistyped slug prints `Dataset "<typo>" deleted`, and no dataset is deleted.
 The CLI does not preflight with a GET to close that gap, because one command that did would be the only one to error on a missing asset.
 
-The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `teams`, `datasets`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
+The idempotent behavior applies uniformly to every `delete` subcommand (`dashboards`, `check-rules`, `synthetic-checks`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`) as well as the `remove`-shaped variants (`members remove`, `teams remove-members`).
 In the multi-target `remove` variants the check runs per member, so one concurrently-removed member does not fail the whole `--force` call — the loop keeps going.
 See also the [Non-interactive deletion (for automation)](#non-interactive-deletion-for-automation) workflow.
 
@@ -806,6 +807,7 @@ Aliases: `remove`
 | Spam filters | `dash0 --experimental spam-filters <subcommand>` | Experimental. Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`) |
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `metadata.labels["dash0.com/origin"]` is the upsert key. Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
+| Sampling rules | `dash0 sampling-rules <subcommand>` | Dataset-scoped. `kind: Dash0Sampling`; `metadata.labels["dash0.com/origin"]` is the upsert key. Writes require the organization admin role. The first enabled rule in a dataset turns sampling on; see [Sampling rules](#sampling-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
@@ -825,7 +827,7 @@ The error identifies the asset type and endpoint, includes decoding details when
 
 For dashboards, check rules, views, synthetic checks, recording rules, spam filters, notification channels, and teams addressed by origin, a preliminary GET supplies the existing state for reporting; a failed GET still allows the PUT to proceed.
 This lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
-Existing stricter preflights remain in effect: SLO preflights stop on errors other than 404, and reads that determine whether to POST or PUT (such as teams addressed by ID and datasets) also stop on non-404 errors.
+Existing stricter preflights remain in effect: SLO and sampling rule preflights stop on errors other than 404, and reads that determine whether to POST or PUT (such as teams addressed by ID and datasets) also stop on non-404 errors.
 
 The identifier field location varies by asset kind:
 
@@ -843,6 +845,7 @@ The identifier field location varies by asset kind:
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
 | `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Signal-to-metrics rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/signal-to-metrics/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/signal-to-metrics/{id}`: on hit it PUTs, on 404 it POSTs without the ID, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply. As for time series aggregations, origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document to two datasets |
+| `Dash0Sampling` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Sampling rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/sampling-rules/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/sampling-rules/{id}`: on hit it PUTs, on 404 it POSTs without the ID, because IDs are unique across organizations, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply. Origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document to two datasets |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
@@ -852,7 +855,7 @@ The identifier field location varies by asset kind:
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
 Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
 
-For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, evals, signal-to-metrics rules, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/generative-ai-evaluations/{origin}`, `PUT /api/signal-to-metrics/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
+For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/generative-ai-evaluations/{origin}`, `PUT /api/signal-to-metrics/{origin}`, `PUT /api/sampling-rules/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
 Notification channels have no user-settable ID field at all, and for SLOs origin is not merely accepted but the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
@@ -1029,7 +1032,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1118,6 +1121,13 @@ Origins are unique per organization while each rule belongs to one dataset, as f
 The GET finds a rule whatever `--dataset` says, so the CLI compares the stored rule's dataset with `--dataset` before it writes.
 Applying a document to a second dataset therefore fails with an error that names the rule's dataset, before anything is written, and `diff` reports the same error instead of "No differences".
 Use a distinct origin per dataset.
+
+`Dash0Sampling` documents are sampling rules, dispatched to the dataset-scoped sampling rules endpoint.
+The upsert keys are the same as for `Dash0SignalToMetrics` documents above: `dash0.com/origin` first, then `dash0.com/id` with a POST fallback that is not idempotent.
+A document without `spec.enabled` or `spec.conditions`, or with more than 32 `ottl` and `error` conditions, fails during the validation phase, before any document in the run is applied.
+Origins and IDs are unique per organization while each rule belongs to one dataset.
+The GET honors `--dataset`, so a rule stored in another dataset fails it with an error that names the cause, before anything is written, and `diff` reports the same error.
+Every write requires the organization admin role, and a write that turns sampling on for the dataset prints a warning; see [Sampling rules](#sampling-rules).
 
 `Dash0AwsMetricScrapeConfig` documents replace the CloudWatch metric scrape config of the AWS integration named by `metadata.labels["dash0.com/id"]`.
 They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
@@ -1311,6 +1321,10 @@ Dash0 stops scraping CloudWatch metrics for that integration, and the integratio
 
 A `Dash0SignalToMetrics` document removed since `<ref>` deletes the rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `signal-to-metrics-rules delete`.
 Deleting by `dash0.com/id` alone prints a warning: if the document was first applied to an organization without that ID, the live rule has a different, server-assigned ID, and the delete can miss it.
+
+A `Dash0Sampling` document removed since `<ref>` deletes the sampling rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `sampling-rules delete`, and with the same warning for a delete by `dash0.com/id` alone.
+The delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
+In agent mode, a `--since` run that would delete a sampling rule requires an explicit `--force`, as `sampling-rules delete` does, and otherwise refuses before it applies anything.
 
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
@@ -1901,6 +1915,36 @@ Set `spec.output.type` to `sum`, `gauge`, or `exponential-histogram` together wi
 `spec.output.keepResourceAttributes` and `spec.output.keepSignalAttributes` select the attributes that the metric keeps.
 `spec.targetDatasetMode` writes the metric to the rule's own dataset (`original`, the default), to `spec.alternativeDatasetId` (`alternative`), or to both (`both`).
 
+Sampling rule (dataset-scoped, requires the organization admin role):
+
+```yaml
+kind: Dash0Sampling
+metadata:
+  name: checkout-errors
+  labels:
+    dash0.com/origin: dash0-cli_checkout-errors
+spec:
+  display:
+    name: Keep checkout errors
+  enabled: true
+  conditions:
+    kind: and
+    spec:
+      conditions:
+        - kind: ottl
+          spec:
+            ottl: resource.attributes["service.name"] == "checkout"
+        - kind: error
+          spec: {}
+  rateLimit:
+    rate: 100
+```
+
+`spec.enabled` is required.
+`spec.conditions` is a tree of `probabilistic` (`spec.rate` between 0 and 1), `error`, `ottl` (`spec.ottl`, a boolean OTTL expression over `span.` fields and `resource.attributes[...]`), and `and` (`spec.conditions`) conditions.
+`spec.rateLimit.rate` caps the traces per minute that the rule keeps; a rule with only `probabilistic` conditions cannot set one.
+See [Sampling rules](#sampling-rules) before you enable the first rule of a dataset.
+
 AWS metric scrape config (organization-level, no `--dataset`, requires `--experimental` for the `aws-metric-scrape-configs` commands):
 
 ```yaml
@@ -2145,6 +2189,54 @@ Test the definition of an existing rule (the `get | test` pipeline is a single c
 ```bash
 dash0 s2m get <origin-or-id> -o yaml | dash0 s2m test -f -
 ```
+
+### Sampling rules
+
+Sampling rules are part of Signal Control.
+Each rule decides which traces Dash0 keeps for a dataset: a share of all traces, traces with an error, traces that match an OTTL condition, or a combination of these, with an optional rate limit.
+`sampling-rules` has the five standard subcommands, and `apply` accepts the `Dash0Sampling` kind (see the [YAML example](#asset-yaml-formats)).
+Rules are dataset-scoped, `get`, `update`, and `delete` accept either the rule's `dash0.com/origin` label or its ID, and every write and delete requires the organization admin role.
+See [Sample traces](https://www.dash0.com/docs/dash0/telemetry/signal-control/sample-traces) in the Dash0 documentation for how Dash0 evaluates the rules.
+
+> [!WARNING]
+> Sampling is off for a dataset until it has an enabled rule, and Dash0 keeps every trace.
+> The first enabled rule turns sampling on for the whole dataset: from then on, Dash0 drops every trace that no enabled rule keeps, and dropped traces cannot be recovered.
+> `create`, `update`, `apply`, and `diff` print a warning on stderr when a write would enable the first rule of a dataset.
+
+Create the first enabled rule of a dataset:
+
+```bash
+$ dash0 sampling-rules create -f checkout-errors.yaml --dataset staging
+warning: sampling rule "Keep checkout errors" is the first enabled sampling rule in dataset "staging", so it turns sampling on: Dash0 then drops every trace that no enabled sampling rule keeps, and dropped traces cannot be recovered
+Sampling rule "Keep checkout errors" created (id: 4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35)
+```
+
+To try a rule without turning sampling on, create it with `enabled: false`.
+
+`list` summarizes each rule's conditions in the `CONDITIONS` column and shows OTTL expressions as `ottl`; use `-o yaml` for the full definitions.
+The `wide` and `csv` formats add `RATE LIMIT`, `DATASET`, and `ORIGIN`:
+
+```bash
+$ dash0 sampling-rules list -o wide
+NAME                                      ID                                    ENABLED   CONDITIONS                                RATE LIMIT  DATASET          ORIGIN
+Keep checkout errors                      4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35  true      and(ottl, error)                          100         default          dash0-cli_checkout-errors
+Baseline                                  9a3c5e7f-1b2d-4c6e-8f0a-3b5d7f9e1c24  false     probabilistic 0.05                                    default          api-9a3c5e7f-1b2d-4c6e-8f0a-3b5d7f9e1c24
+```
+
+The CLI checks each rule before any API call, also with `--dry-run`:
+
+- `spec.enabled` must be present, so that a rule is never created disabled by accident.
+- `spec.conditions` must be present, because the API rejects a rule without it.
+- The condition tree may hold at most 32 `ottl` and `error` conditions, and `probabilistic` conditions do not count.
+  The API accepts a rule above the limit, but Dash0 does not load it, so the rule would never keep a trace.
+
+Origins and IDs are unique per organization, while each rule belongs to one dataset.
+`get`, `update`, and `delete` through another dataset fail with an error that names the cause; `delete --force` does not count that as already deleted, because the rule still exists.
+
+A delete is permanent: applying the same document again creates a new rule with a new ID.
+Deleting a rule drops the traces that only that rule kept.
+Deleting the last enabled rule of a dataset turns sampling off, and Dash0 keeps every trace again.
+In agent mode (`--agent-mode` or `DASH0_AGENT_MODE=1`), `sampling-rules delete` therefore requires an explicit `--force` and otherwise refuses with an error, as `datasets delete` does.
 
 ## Query commands
 
@@ -4286,7 +4378,7 @@ Query parameters are baked into the path.
 
 Relative paths must start with `/api/` and are resolved against the profile's `api-url`:
 
-- `dash0 -X api /api/sampling-rules` → `<api-url>/api/sampling-rules`
+- `dash0 -X api /api/agentic-workflows` → `<api-url>/api/agentic-workflows`
 
 Absolute URLs (`http://` or `https://`) are passed through verbatim.
 Query parameters are part of the path:
@@ -4343,7 +4435,7 @@ Use `-v` to see the full request line, outbound headers, request body, response 
 GET — dataset auto-injected from the active profile:
 
 ```bash
-dash0 -X api /api/sampling-rules
+dash0 -X api /api/agentic-workflows
 ```
 
 GET against an organization-level endpoint that does not take a dataset:
@@ -4361,26 +4453,26 @@ dash0 -X api "/api/agentic-workflows?folderPath=oncall"
 POST with a payload from a file:
 
 ```bash
-dash0 -X api POST /api/sampling-rules -f sampling-rule.json
+dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json
 ```
 
 POST with a payload from stdin and a custom header (the `cat | dash0 …` pipeline is a single command):
 
 ```bash
-cat sampling-rule.json \
-  | dash0 -X api POST /api/sampling-rules -f - -H 'X-Request-Id: abc123'
+cat agentic-workflow.json \
+  | dash0 -X api POST /api/agentic-workflows -f - -H 'X-Request-Id: abc123'
 ```
 
 DELETE with an explicit dataset override:
 
 ```bash
-dash0 -X api delete /api/sampling-rules/<id> --dataset production
+dash0 -X api delete /api/agentic-workflows/<id> --dataset production
 ```
 
 Debug a failing request:
 
 ```bash
-dash0 -X api POST /api/sampling-rules -f sampling-rule.json -v
+dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json -v
 ```
 
 ## Agent tooling commands
@@ -4467,7 +4559,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, diff, evals, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, diff, evals, failed-checks, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

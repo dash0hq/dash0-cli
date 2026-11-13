@@ -7,6 +7,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Labels decode leniently so sampling rules can nest labels.custom, but an
+// identifier label that is not a string must still fail, not read as a
+// document without an identifier.
+func TestExtractIdentifier_NonStringIdentifierLabelFails(t *testing.T) {
+	for _, doc := range []string{
+		"kind: View\nmetadata:\n  labels:\n    dash0.com/id: 12345\n",
+		"kind: SLO\nmetadata:\n  labels:\n    dash0.com/origin: 12345\n",
+	} {
+		_, err := ExtractIdentifier([]byte(doc))
+		require.Error(t, err, doc)
+		assert.Contains(t, err.Error(), "must be a string")
+	}
+
+	id, err := ExtractIdentifier([]byte("kind: View\nmetadata:\n  labels:\n    dash0.com/id: \"12345\"\n    team: 7\n"))
+	require.NoError(t, err, "a quoted identifier and a non-identifier label are fine")
+	assert.Equal(t, "12345", id)
+}
+
 // TestExtractIdentifier_ReadsOnlyTheKindsUpsertField is a regression test for
 // silent no-op deletions. ExtractIdentifier used to fall back across fields,
 // so a View carrying only dash0.com/origin reported that origin as its
