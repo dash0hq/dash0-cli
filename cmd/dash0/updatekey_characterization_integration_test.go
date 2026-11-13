@@ -22,6 +22,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/samplingrules"
 	"github.com/dash0hq/dash0-cli/internal/signaltometricsrules"
 	"github.com/dash0hq/dash0-cli/internal/slos"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
@@ -133,6 +134,10 @@ var updateCommands = []updateCommand{
 	{"signal-to-metrics-rules", signaltometricsrules.NewSignalToMetricsRulesCmd, []string{"signal-to-metrics-rules", "update"}, func(v updateIdentifiers) string {
 		return "kind: Dash0SignalToMetrics\nmetadata:\n  name: n\n" + v.labelBlock(true) +
 			"spec:\n  display:\n    name: n\n  enabled: true\n  match:\n    signal: logs\n    filters: []\n  output:\n    name: m\n    interval: 1m\n"
+	}},
+	{"sampling-rules", samplingrules.NewSamplingRulesCmd, []string{"sampling-rules", "update"}, func(v updateIdentifiers) string {
+		return "kind: Dash0Sampling\nmetadata:\n  name: n\n" + v.labelBlock(true) +
+			"spec:\n  display:\n    name: n\n  enabled: false\n  conditions:\n    kind: error\n    spec: {}\n"
 	}},
 	{"auth-tokens", authtokens.NewAuthTokensCmd, []string{"-X", "auth-tokens", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AuthToken\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  actions:\n    - ingest:*\n"
@@ -272,6 +277,12 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithOrigin:  "GET /api/signal-to-metrics/o",
 			updateWithID:      "GET /api/signal-to-metrics/" + characterizationID,
 			updateWithBoth:    "GET /api/signal-to-metrics/o",
+		},
+		"sampling-rules": {
+			updateWithNeither: "error: no sampling rule origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
+			updateWithOrigin:  "GET /api/sampling-rules/o",
+			updateWithID:      "GET /api/sampling-rules/" + characterizationID,
+			updateWithBoth:    "GET /api/sampling-rules/o",
 		},
 		"auth-tokens": {
 			updateWithNeither: "error: no auth token origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",

@@ -34,11 +34,27 @@ func GetSamplingRuleOrigin(rule *dash0api.SamplingDefinition) string {
 // SamplingRuleKey returns the identifier ImportSamplingRule upserts by: the
 // dash0.com/origin label, else the dash0.com/id label, else "".
 func SamplingRuleKey(rule *dash0api.SamplingDefinition) string {
-	if origin := GetSamplingRuleOrigin(rule); origin != "" {
-		return origin
-	}
-	return dash0api.GetSamplingRuleID(rule)
+	return PreferredKey(SamplingRuleKeys(rule))
 }
+
+// SamplingRuleKeys lets the shared key rules resolve a sampling rule's
+// identifiers: the client gives SamplingDefinition no UpsertKeys. Sampling
+// rules upsert by origin, with the id as the fallback. Read it before
+// StripSamplingRuleServerFields, which clears both labels.
+func SamplingRuleKeys(rule *dash0api.SamplingDefinition) dash0api.AssetMetadata {
+	return samplingRuleKeys{
+		origin: GetSamplingRuleOrigin(rule),
+		id:     dash0api.GetSamplingRuleID(rule),
+		name:   dash0api.GetSamplingRuleName(rule),
+	}
+}
+
+type samplingRuleKeys struct{ origin, id, name string }
+
+func (k samplingRuleKeys) GetOrigin() string                 { return k.origin }
+func (k samplingRuleKeys) GetID() string                     { return k.id }
+func (k samplingRuleKeys) GetName() string                   { return k.name }
+func (k samplingRuleKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }
 
 // ParseSamplingRule decodes a sampling rule document and checks what the API
 // would accept but what could never work, before any API call. apply runs it
