@@ -56,10 +56,12 @@ Keep checkout errors                      4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35  
 Baseline                                  9a3c5e7f-1b2d-4c6e-8f0a-3b5d7f9e1c24  false     probabilistic 0.05                                    default          api-9a3c5e7f-1b2d-4c6e-8f0a-3b5d7f9e1c24
 ```
 
-The CLI checks two things before any API call, also with `--dry-run`, because the API would accept a rule that cannot work:
+The CLI checks each rule before any API call, also with `--dry-run`:
 
 - `spec.enabled` must be present, so that a rule is never created disabled by accident.
-- The condition tree may hold at most 32 `ottl` and `error` conditions; `probabilistic` conditions do not count. Dash0 does not load a rule above the limit, so the rule would never keep a trace.
+- `spec.conditions` must be present, because the API rejects a rule without it.
+- The condition tree may hold at most 32 `ottl` and `error` conditions, and `probabilistic` conditions do not count.
+  The API accepts a rule above the limit, but Dash0 does not load it, so the rule would never keep a trace.
 
 Origins and IDs are unique per organization, while each rule belongs to one dataset.
 `get`, `update`, and `delete` through another dataset fail with an error that names the cause; `delete --force` does not count that as already deleted, because the rule still exists.

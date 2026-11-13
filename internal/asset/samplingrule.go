@@ -40,7 +40,7 @@ func SamplingRuleKey(rule *dash0api.SamplingDefinition) string {
 // SamplingRuleKeys lets the shared key rules resolve a sampling rule's
 // identifiers: the client gives SamplingDefinition no UpsertKeys. Sampling
 // rules upsert by origin, with the id as the fallback. Read it before
-// StripSamplingRuleServerFields, which clears both labels.
+// StripSamplingRuleServerFields, which clears the origin.
 func SamplingRuleKeys(rule *dash0api.SamplingDefinition) dash0api.AssetMetadata {
 	return samplingRuleKeys{
 		origin: GetSamplingRuleOrigin(rule),
@@ -360,10 +360,7 @@ func SamplingTurnOnWarning(ctx context.Context, apiClient dash0api.Client, rule,
 	if !rule.Spec.Enabled || (existing != nil && existing.Spec.Enabled) {
 		return ""
 	}
-	target := "default"
-	if dataset != nil && *dataset != "" {
-		target = *dataset
-	}
+	target := *SamplingRuleListDataset(dataset)
 	name := dash0api.GetSamplingRuleName(rule)
 
 	rules, err := apiClient.ListSamplingRules(ctx, SamplingRuleListDataset(dataset))
@@ -380,7 +377,22 @@ func SamplingTurnOnWarning(ctx context.Context, apiClient dash0api.Client, rule,
 			return ""
 		}
 	}
+	return samplingTurnsOnMessage(name, target)
+}
+
+// SamplingTurnOnWarningInNewDataset returns the turn-on warning for an enabled
+// rule in a dataset that the same run creates. That dataset has no rules yet,
+// so the rule turns sampling on, and its rules cannot be listed before it
+// exists.
+func SamplingTurnOnWarningInNewDataset(rule *dash0api.SamplingDefinition, dataset *string) string {
+	if !rule.Spec.Enabled {
+		return ""
+	}
+	return samplingTurnsOnMessage(dash0api.GetSamplingRuleName(rule), *SamplingRuleListDataset(dataset))
+}
+
+func samplingTurnsOnMessage(name, dataset string) string {
 	return fmt.Sprintf("sampling rule %q is the first enabled sampling rule in dataset %q, so it turns sampling on: "+
 		"Dash0 then drops every trace that no enabled sampling rule keeps, and dropped traces cannot be recovered",
-		name, target)
+		name, dataset)
 }

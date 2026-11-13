@@ -66,6 +66,15 @@ func ExtractIdentifier(data []byte) (string, error) {
 	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
 		return "", fmt.Errorf("failed to extract identifier: %w", err)
 	}
+	// Labels decode leniently for labels.custom, so an identifier label that
+	// is not a string must fail here instead of reading as "no identifier".
+	for _, key := range []string{"dash0.com/id", "dash0.com/origin"} {
+		if value, ok := probe.Metadata.Labels[key]; ok && value != nil {
+			if _, isString := value.(string); !isString {
+				return "", fmt.Errorf("failed to extract identifier: metadata.labels[%q] must be a string, not %v; quote it in YAML", key, value)
+			}
+		}
+	}
 
 	origin := probe.label("dash0.com/origin")
 

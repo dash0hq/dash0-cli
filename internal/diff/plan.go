@@ -128,6 +128,12 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 			}
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "sampling rule", AssetName: name})
 		}
+		// A denied read returns before the plan checks for the turn-on warning.
+		if denied {
+			if warning := asset.SamplingTurnOnWarningInNewDataset(rule, dataset); warning != "" {
+				plan.Warnings = append(plan.Warnings, warning)
+			}
+		}
 		for _, warning := range plan.Warnings {
 			fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 		}

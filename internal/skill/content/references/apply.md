@@ -115,7 +115,7 @@ Use a distinct origin per dataset.
 
 `Dash0Sampling` documents are sampling rules, dispatched to the dataset-scoped sampling rules endpoint.
 The upsert keys are the same as for `Dash0SignalToMetrics` documents above: `dash0.com/origin` first, then `dash0.com/id` with a POST fallback that is not idempotent.
-A document without `spec.enabled`, or with more than 32 `ottl` and `error` conditions, fails during the validation phase, before any document in the run is applied.
+A document without `spec.enabled` or `spec.conditions`, or with more than 32 `ottl` and `error` conditions, fails during the validation phase, before any document in the run is applied.
 Origins and IDs are unique per organization while each rule belongs to one dataset.
 The GET honors `--dataset`, so a rule stored in another dataset fails it with an error that names the cause, before anything is written, and `diff` reports the same error.
 Every write requires the organization admin role, and a write that turns sampling on for the dataset prints a warning; see [Sampling rules](#sampling-rules).

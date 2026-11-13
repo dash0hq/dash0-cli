@@ -1298,6 +1298,53 @@ func TestDiff_SamplingRuleThatTurnsSamplingOnWarns(t *testing.T) {
 	assert.Contains(t, stderr, "is the first enabled sampling rule in dataset \"default\", so it turns sampling on")
 }
 
+// In a dataset the same run creates, the read is denied and no rule can be
+// listed, but an enabled rule there always turns sampling on, so diff must
+// still warn, as apply does once the dataset exists.
+func TestDiff_SamplingRuleInDatasetCreatedInSameRunWarns(t *testing.T) {
+	for name, c := range map[string]struct {
+		enabled  string
+		wantWarn bool
+	}{
+		"enabled rule warns":          {enabled: "enabled: true", wantWarn: true},
+		"disabled rule does not warn": {enabled: "enabled: false", wantWarn: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := writeNewDatasetWithView(t)
+			require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+			doc := strings.Replace(samplingRuleDoc, "enabled: true", c.enabled, 1)
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "rule.yaml"), []byte(doc), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodGet, "/api/sampling-rules/dash0-cli_checkout-errors", forbiddenResponse)
+
+			var output string
+			var err error
+			stderr := testutil.CaptureStderr(t, func() {
+				output, err = runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+			})
+
+			var pending *PendingDifferencesError
+			require.ErrorAs(t, err, &pending, output)
+			assert.Contains(t, output, `Create Sampling rule "Keep checkout errors" (dash0-cli_checkout-errors)`)
+			const warning = `is the first enabled sampling rule in dataset "staging", so it turns sampling on`
+			if c.wantWarn {
+				assert.Contains(t, stderr, warning)
+			} else {
+				assert.NotContains(t, stderr, warning)
+			}
+			for _, request := range server.Requests() {
+				assert.NotEqual(t, "/api/sampling-rules", request.Path, "the dataset does not exist yet, so nothing is listed")
+			}
+		})
+	}
+}
+
 // The GET honors --dataset, so a rule stored in another dataset fails it. apply
 // would fail the same way, so diff must fail too, not report a create.
 func TestDiff_SamplingRuleInAnotherDatasetIsAnError(t *testing.T) {
