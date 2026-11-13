@@ -6,11 +6,33 @@ export DASH0_AGENT_MODE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 FIXTURES="${SCRIPT_DIR}/fixtures"
-FIXTURE="${FIXTURES}/perses-dashboard.yaml"
 TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
 
-ASSET_NAME=$(yq '.spec.display.name' "$FIXTURE")
+# Earlier runs may have left dashboards with the fixture's name behind, so a
+# unique name keeps every lookup by name below on this run's own dashboards.
+FIXTURE="${TMPDIR}/perses-dashboard.yaml"
+ASSET_NAME="$(yq '.spec.display.name' "${FIXTURES}/perses-dashboard.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$ASSET_NAME" yq '.spec.display.name = env(ASSET_NAME)' "${FIXTURES}/perses-dashboard.yaml" > "$FIXTURE"
+
+# dashboard_ids prints the IDs of the dashboards this run created.
+dashboard_ids() {
+  "$DASH0" dashboards list --all -o json \
+    | jq -r --arg name "$ASSET_NAME" '.[] | select(.spec.display.name == $name) | .metadata.dash0Extensions.id // empty'
+}
+
+# cleanup deletes the dashboards this run created. It runs on exit, so a run
+# that fails or is interrupted after a create still cleans up.
+cleanup() {
+  local ids id
+  if ! ids=$(dashboard_ids); then
+    echo "WARN: could not list dashboards to delete those named '$ASSET_NAME'" >&2
+    return
+  fi
+  for id in $ids; do
+    "$DASH0" dashboards delete "$id" --force || echo "WARN: could not delete dashboard $id" >&2
+  done
+}
+trap 'cleanup; rm -rf "$TMPDIR"' EXIT
 
 echo "=== PersesDashboard CRD round-trip test ==="
 echo "Asset name: $ASSET_NAME"
@@ -95,14 +117,19 @@ if ! echo "$CREATE_OUTPUT" | grep -q "$ASSET_NAME"; then
   exit 1
 fi
 
-# Find the second copy and clean it up.
-LIST_JSON2=$("$DASH0" dashboards list --all -o json)
-ID2=$(echo "$LIST_JSON2" | jq -r --arg name "$ASSET_NAME" --arg id "$ID" '[.[] | select(.spec.display.name == $name and .metadata.dash0Extensions.id != $id)][0].metadata.dash0Extensions.id // empty')
-
-# Cleanup.
-echo "--- Cleanup ---"
-"$DASH0" dashboards delete "$ID" --force
-if [ -n "$ID2" ]; then
-  "$DASH0" dashboards delete "$ID2" --force
+if [ "$(dashboard_ids | wc -l | tr -d ' ')" != "2" ]; then
+  echo "FAIL: expected 2 dashboards named '$ASSET_NAME' after apply and create, got:"
+  dashboard_ids
+  exit 1
 fi
+
+# Cleanup: delete both copies and check that none is left.
+echo "--- Cleanup ---"
+cleanup
+REMAINING=$(dashboard_ids)
+if [ -n "$REMAINING" ]; then
+  echo "FAIL: dashboards named '$ASSET_NAME' remain after cleanup: $REMAINING"
+  exit 1
+fi
+trap 'rm -rf "$TMPDIR"' EXIT
 echo "=== PersesDashboard CRD round-trip test PASSED ==="
