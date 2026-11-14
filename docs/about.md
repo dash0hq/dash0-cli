@@ -15,7 +15,7 @@ Humans authenticate interactively via OAuth 2.0 with `dash0 login`; CI/CD and ag
 ## What it does
 
 - **Manage assets as code.**
-  Create, list, get, update, and delete dashboards, views, check rules, recording rules, synthetic checks, SLOs, notification channels, spam filters, and signal-to-metrics rules — one command at a time or via `dash0 apply -f <dir>` for GitOps flows.
+  Create, list, get, update, and delete dashboards, views, check rules, recording rules, synthetic checks, SLOs, evals, notification channels, spam filters, time series aggregations, and signal-to-metrics rules — one command at a time or via `dash0 apply -f <dir>` for GitOps flows.
 - **Query telemetry.**
   Search logs, spans, traces, metrics, and failed checks with a common filter syntax and time-range flags.
 - **Send telemetry.**

@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, and `Dash0SignalToMetrics`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
 
 From a single file:
 
@@ -403,7 +403,7 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 
 ### Asset CRUD commands
 
-Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `signal-to-metrics-rules`) supports the same five subcommands.
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`) supports the same five subcommands.
 Substitute the asset noun in the examples below.
 
 List all assets of a type:
@@ -444,6 +444,24 @@ dash0 dashboards delete <id>
 
 `dashboards create` and `apply` also accept PersesDashboard CRD files; `check-rules create` and `apply` also accept PrometheusRule CRD files.
 See [docs/commands.md](docs/commands.md) for the full per-asset reference and the YAML formats.
+
+### Time series aggregations
+
+Time series aggregations reduce metric cardinality by re-sampling matching series at a coarser interval.
+`time-series-aggregations` (alias `tsa`) has the five subcommands above, and `apply` accepts the `Dash0TimeSeriesAggregation` kind.
+Every command requires the organization admin role, and every document needs a `dash0.com/origin` label.
+
+List the aggregations of the dataset:
+
+```bash
+dash0 tsa list
+```
+
+Export an aggregation, ready to re-apply:
+
+```bash
+dash0 tsa get <origin> -o yaml > aggregation.yaml
+```
 
 ### Signal-to-metrics rules
 
