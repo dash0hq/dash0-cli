@@ -81,6 +81,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_prometheus_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_recording_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_perses_dashboard_roundtrip.sh"
+  "${SCRIPT_DIR}/test_ephemeral_dashboard_roundtrip.sh"
   "${SCRIPT_DIR}/test_notification_channel_roundtrip.sh"
   "${SCRIPT_DIR}/test_spam_filter_roundtrip.sh"
   "${SCRIPT_DIR}/test_spam_filter_v1alpha2_roundtrip.sh"

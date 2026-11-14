@@ -15,6 +15,7 @@ func NewDashboardsCmd() *cobra.Command {
 	cmd.AddCommand(newCreateCmd())
 	cmd.AddCommand(newUpdateCmd())
 	cmd.AddCommand(newDeleteCmd())
+	cmd.AddCommand(newPreviewCmd())
 
 	return cmd
 }

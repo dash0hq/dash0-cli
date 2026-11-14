@@ -75,7 +75,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 	}
 
 	switch NormalizeKind(kind) {
-	case "dashboard":
+	case "dashboard", "ephemeraldashboard":
 		var dashboard dash0api.DashboardDefinition
 		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)

@@ -22,7 +22,7 @@ func newCreateCmd() *cobra.Command {
 		Short:   "Create a dashboard from a file",
 		Long: `Create a new dashboard from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-Accepts both plain Dashboard definitions and PersesDashboard CRD files. When a PersesDashboard CRD is provided, it is converted to a Dash0 dashboard.` + internal.CONFIG_HINT,
+Accepts Dashboard and EphemeralDashboard definitions and PersesDashboard CRD files. When a PersesDashboard CRD is provided, it is converted to a Dash0 dashboard.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 dashboards create -f dashboard.yaml
 
@@ -53,6 +53,9 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	if err != nil {
 		return err
 	}
+	if err := asset.ValidateEphemeralDashboard(dashboard); err != nil {
+		return err
+	}
 
 	if flags.DryRun {
 		fmt.Println("Dry run: dashboard definition is valid")
@@ -72,6 +75,6 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		})
 	}
 
-	fmt.Printf("Dashboard %q %s\n", result.Name, result.Action)
+	fmt.Printf("%s %q %s\n", asset.DashboardDisplayKind(dashboard), result.Name, result.Action)
 	return nil
 }

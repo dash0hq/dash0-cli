@@ -1209,3 +1209,45 @@ func TestDiff_SignalToMetricsRuleWithUnknownIDIsACreate(t *testing.T) {
 	require.ErrorAs(t, err, &pending, output)
 	assert.Contains(t, output, `Create Signal-to-metrics rule "Checkout error logs"`)
 }
+
+func TestDiff_EphemeralDashboardTTLChange(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "preview.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: EphemeralDashboard
+metadata:
+  name: orders
+  dash0Extensions:
+    id: orders-preview
+spec:
+  ttl: 7d
+  display:
+    name: Orders
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/orders-preview", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: map[string]any{
+			"kind":     "EphemeralDashboard",
+			"metadata": map[string]any{"name": "orders", "dash0Extensions": map[string]any{"id": "orders-preview"}},
+			"spec":     map[string]any{"ttl": "1d", "display": map[string]any{"name": "Orders"}},
+		},
+		Validator: testutil.RequireHeaders,
+	})
+
+	cmd := NewDiffCmd()
+	withExperimentalFlag(cmd)
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken, "--experimental"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, cmdErr, &pending)
+	assert.Equal(t, 1, pending.Count)
+	assert.Contains(t, output, "Ephemeral dashboard")
+	assert.Contains(t, output, "1d")
+	assert.Contains(t, output, "7d")
+}

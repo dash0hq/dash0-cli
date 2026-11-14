@@ -183,7 +183,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	}
 
 	switch kind {
-	case "dashboard", "persesdashboard":
+	case "dashboard", "ephemeraldashboard", "persesdashboard":
 		err = apiClient.DeleteDashboard(ctx, identifier, dataset)
 	case "checkrule":
 		if declared[identifier] {

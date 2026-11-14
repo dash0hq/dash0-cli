@@ -6,7 +6,7 @@
 
 | Asset type | Command | Notes |
 |------------|---------|-------|
-| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files |
+| Dashboards | `dash0 dashboards <subcommand>` | `create` also accepts PersesDashboard CRD files and EphemeralDashboard documents. Also has the experimental `preview`; see [Ephemeral dashboards](#ephemeral-dashboards-experimental) |
 | Check rules | `dash0 check-rules <subcommand>` | `create` also accepts PrometheusRule CRD files |
 | Synthetic checks | `dash0 synthetic-checks <subcommand>` | |
 | SLOs | `dash0 slos <subcommand>` | Dataset-scoped; documents use `apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1 with a domain-qualified `apiVersion`, not upstream-identical |
@@ -21,6 +21,52 @@
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
+
+### Ephemeral dashboards (experimental)
+
+An ephemeral dashboard is a dashboard with a `spec.ttl`, such as `12h` or `7d`.
+Dash0 deletes it once the ttl has passed since its latest write, so every write starts the ttl again.
+It follows the [Perses ephemeral dashboard](https://perses.dev/perses/docs/api/ephemeral-dashboard/) model.
+
+`apply`, `diff`, `dashboards create`, and `dashboards update` accept `kind: EphemeralDashboard` (see [Asset YAML formats](#asset-yaml-formats)).
+An ephemeral dashboard shares its identifiers with permanent dashboards, and the API does not change the kind of an existing dashboard.
+So an EphemeralDashboard with the id of a permanent dashboard fails with a 400, and so does the reverse.
+For `apply --since`, a file that changes between `Dashboard`, `PersesDashboard`, and `EphemeralDashboard` under the same identifier is not a deletion.
+
+#### `dashboards preview`
+
+`preview` creates or updates an EphemeralDashboard for each `Dashboard` and `PersesDashboard` in a file or directory, and prints the URL of each preview.
+It is the Dash0 counterpart of `percli dac preview`, for example to review dashboard changes from a pull request.
+Documents of other kinds are skipped.
+
+```bash
+dash0 --experimental dashboards preview -f <file|directory> [--ttl <duration>] [--prefix <prefix>] [-o table|wide|json|yaml|csv]
+```
+
+_For the exact, always-current flag list, run `dash0 --agent-mode dashboards preview --help`._
+
+Each preview gets its own identifier, a UUIDv5 derived from the dashboard's identifier.
+So a preview never replaces the dashboard it comes from, and `apply` of that dashboard still works while the preview exists.
+A second run updates the same previews and starts their ttl again.
+A dashboard without an identifier gets a new preview on every run.
+With `--prefix`, the prefix is part of the derived identifier, so previews with different prefixes, such as one per pull request, do not replace each other.
+
+```bash
+$ dash0 -X dashboards preview -f dashboards/ --ttl 12h
+NAME                                      ID                                    ACTION    URL
+Orders                                    dd67c185-957d-5d5b-afa5-f1be006171e3  created   https://app.dash0.com/goto/dashboards?dashboard_id=dd67c185-957d-5d5b-afa5-f1be006171e3
+```
+
+Preview the dashboards of a pull request apart from the previews of other pull requests:
+
+```bash
+dash0 -X dashboards preview -f dashboards/ --prefix pr-376
+```
+
+When the dashboard a preview comes from exists in Dash0, `-o wide` and `-o csv` add a `CURRENT` column with a link to it.
+`-o json` prints a list of objects with `name`, `id`, `action`, `url`, and, when the dashboard exists, `current`, which is the default in agent mode.
+Both links use the identifier Dash0 assigned, because a link with an identifier that is not a UUID does not open.
+If the CLI cannot list the dashboards to find those identifiers, it prints a warning, keeps the links from the write responses, and leaves out `current`.
 
 Dashboard:
 
@@ -52,6 +98,20 @@ spec:
   panels: {}
 ```
 
-`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and `perses.dev/v1alpha2`).
+EphemeralDashboard (a Dashboard that Dash0 deletes once `spec.ttl` has passed since its latest write):
+
+```yaml
+kind: EphemeralDashboard
+metadata:
+  name: production-overview-preview
+  dash0Extensions:
+    id: production-overview-preview
+spec:
+  ttl: 1d
+  display:
+    name: Production Overview
+```
+
+`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and `perses.dev/v1alpha2`) and EphemeralDashboard documents.
 
 `dashboards get` also returns a deleted dashboard: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `dashboards list` does not show deleted dashboards. `apply`, `dashboards create`, and `dashboards update` with the ID of a deleted dashboard bring it back and print `restored`; `apply` and `dashboards update` then show a diff of any other fields that changed. `dashboards update --dry-run` prints `would be restored` instead, and the dashboard stays deleted.

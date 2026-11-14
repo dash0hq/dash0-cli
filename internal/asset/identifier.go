@@ -42,7 +42,7 @@ type identifierProbe struct {
 // per the "Asset identifiers and idempotent upsert" table in the command
 // reference:
 //
-//   - Dashboard: metadata.dash0Extensions.id
+//   - Dashboard, EphemeralDashboard: metadata.dash0Extensions.id
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
@@ -68,7 +68,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 	origin := probe.Metadata.Labels["dash0.com/origin"]
 
 	switch NormalizeKind(probe.Kind) {
-	case "dashboard":
+	case "dashboard", "ephemeraldashboard":
 		return probe.Metadata.Dash0Extensions.ID, nil
 	case "checkrule":
 		return probe.ID, nil

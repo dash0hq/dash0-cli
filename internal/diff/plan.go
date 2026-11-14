@@ -28,7 +28,7 @@ type docPlan struct {
 // dataset-scoped read means nothing is stored, and the plan stays a create.
 func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	switch asset.NormalizeKind(doc.Kind) {
-	case "dashboard", "persesdashboard":
+	case "dashboard", "ephemeraldashboard", "persesdashboard":
 		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
@@ -42,7 +42,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if name == "" {
 			name = dashboard.Metadata.Name
 		}
-		return []docPlan{{displayKind: "Dashboard", name: name, plan: plan, readDenied: denied}}, nil
+		return []docPlan{{displayKind: asset.DashboardDisplayKind(dashboard), name: name, plan: plan, readDenied: denied}}, nil
 
 	case "checkrule":
 		return planCheckRules(ctx, apiClient, doc, dataset, inNewDataset)
