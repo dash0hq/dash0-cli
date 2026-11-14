@@ -1,0 +1,8 @@
+change_type: bug_fix
+component: apply
+note: "`apply --since` now warns before it deletes a team that its removed document identified by `dash0.com/id` alone, as it already does for SLOs."
+issues: [392]
+subtext: |
+  Team ids are assigned by the server, so the live team can sit at a different id and the delete can miss it.
+  Use `dash0.com/origin` for teams you manage with `--since`.
+change_logs: []

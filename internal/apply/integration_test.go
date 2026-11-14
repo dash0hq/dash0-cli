@@ -49,6 +49,7 @@ var (
 	recordingRuleIDPattern       = regexp.MustCompile(`^/api/recording-rules/[^/]+$`)
 	notificationChannelIDPattern = regexp.MustCompile(`^/api/notification-channels/[^/]+$`)
 	sloIDPattern                 = regexp.MustCompile(`^/api/slos/[^/]+$`)
+	teamIDPattern                = regexp.MustCompile(`^/api/teams/[^/]+$`)
 	datasetIDPattern             = regexp.MustCompile(`^/api/datasets/[^/]+$`)
 	timeSeriesAggOriginPattern   = regexp.MustCompile(`^/api/time-series-aggregations/[^/]+$`)
 )
