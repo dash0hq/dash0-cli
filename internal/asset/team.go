@@ -2,9 +2,23 @@ package asset
 
 import (
 	"context"
+	"fmt"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 )
+
+// TeamUsesOrigin reports whether a team document carries a non-empty
+// dash0.com/origin label. --since uses it the same way as SLOUsesOrigin: an
+// id-only team whose id was not found took ImportTeam's POST fallback, so the
+// live team sits at a server-assigned id the document never learned.
+func TeamUsesOrigin(data []byte) (bool, error) {
+	var team dash0api.TeamDefinitionV1Alpha1
+	if err := dash0yaml.Unmarshal(data, &team); err != nil {
+		return false, fmt.Errorf("failed to decode team: %w", err)
+	}
+	return dash0api.GetTeamOrigin(&team) != "", nil
+}
 
 // ImportTeam creates or upserts a team via the CRD Teams API.
 //
