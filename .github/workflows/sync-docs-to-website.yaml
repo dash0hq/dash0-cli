@@ -51,13 +51,13 @@ jobs:
       - name: checkout dash0-cli
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # sync-docs-action v0.4.0 — https://github.com/dash0hq/sync-docs-action/releases/tag/v0.4.0
+      # sync-docs-action — https://github.com/dash0hq/sync-docs-action/releases
       # `dry-run: 'true'` runs setup and the transformation engine (including the coverage check),
       # then stops before any target-side operation, so no docs-website PAT or target coordinates
       # are needed on PR builds. `source-root` and `transformations-file` inherit their defaults
       # (`.` and `.github/workflows/sync-docs/transformations.yaml`).
       - name: sync docs to dash0.com/docs
-        uses: dash0hq/sync-docs-action@1dc3817bec558ec22265a321177e58fb64a9324c # v0.5.0
+        uses: dash0hq/sync-docs-action@c30aaaaa93f3f8a88b9f9e3acd31cfff3e086954 # v0.6.0
         with:
           dry-run: ${{ inputs.dry-run }}
           target-repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
