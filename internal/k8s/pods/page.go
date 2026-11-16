@@ -271,16 +271,24 @@ func ratio(v, of *float64) (float64, bool) {
 // uses: Dash0's thresholds, past 80 percent needs attention and past 90 is critical
 func (p *page) against(usage, request, limit, util []*float64, unit string) (string, string) {
 	u, r, l, f := last(usage), last(request), last(limit), last(util)
+	// A zero limit is none, as Kubernetes has it
+	if l != nil && *l == 0 {
+		l = nil
+	}
 	var parts []string
-	if x, ok := ratio(u, r); ok {
+	// Under avg, min or max the usage and the request can be different pods'
+	if x, ok := ratio(u, r); ok && (p.target.agg == "" || p.target.agg == "total") {
 		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", x*100, formatValue(r, unit)))
 	}
-	if f == nil || l == nil {
+	switch {
+	case f == nil || (l == nil && p.target.kind == "pod"):
 		return strings.Join(append(parts, "no limit"), " · "), ""
-	}
-	if p.target.kind == "pod" {
+	case p.target.kind == "pod":
 		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", *f*100, formatValue(l, unit)))
-	} else {
+	case l == nil:
+		// Some pods have no limit, so the workload has none, but those that do can still run out
+		parts = append(parts, "not every pod has a limit", fmt.Sprintf("busiest limited pod at %.0f%% of its limit", *f*100))
+	default:
 		parts = append(parts, fmt.Sprintf("busiest pod at %.0f%% of its limit", *f*100))
 	}
 	ink := ""

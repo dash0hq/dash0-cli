@@ -29,7 +29,8 @@ const (
 )
 
 // A query_range handler that answers on the window the command asked for: sample i holds i+0.5, sample gapAt is
-// missing, and the logs panel's one series is ERROR. Queries containing failQuery answer 500.
+// missing, the logs panel's one series is ERROR, and a per-pod panel's is testPodsPod. Queries containing failQuery
+// answer 500.
 func queryRangeHandler(t *testing.T, failQuery string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := testutil.RequireHeaders(r); err != nil {
@@ -54,7 +55,8 @@ func queryRangeHandler(t *testing.T, failQuery string) http.HandlerFunc {
 				values = append(values, [2]any{ts, strconv.FormatFloat(float64(i)+0.5, 'f', -1, 64)})
 			}
 		}
-		metric := map[string]string{}
+		// A panel that isn't split takes the first series, whatever its labels
+		metric := map[string]string{"k8s_pod_name": testPodsPod}
 		if strings.Contains(query, "otel_log_severity_range") {
 			metric["otel_log_severity_range"] = "ERROR"
 		}
@@ -174,6 +176,30 @@ func TestWatch_JSONPartialFailure(t *testing.T) {
 	assert.Len(t, got.Series["cpu"], 16)
 }
 
+func TestWatch_RequestsWithoutErrorRate(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnDefault(queryRangeHandler(t, "100 * sum("))
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", testPodsPod, "-n", testPodsNamespace, "-o", "json", "--range", "15m",
+		"--api-url", server.URL, "--auth-token", testPodsAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	var got watchJSON
+	require.NoError(t, json.Unmarshal([]byte(output), &got))
+	assert.Equal(t, []string{"errorRate"}, got.Failed)
+	assert.Len(t, got.Series["requests"], 16)
+	// The requests alone say the pod served some, so the traces link stays
+	assert.Contains(t, got.Links, "traces")
+}
+
 func TestWatch_Unauthorized(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -245,6 +271,9 @@ func TestWatch_WorkloadJSON(t *testing.T) {
 	assert.Equal(t, "checkout", got.Name)
 	assert.Empty(t, got.Pod)
 	assert.Equal(t, "max", got.Aggregate)
+	for _, key := range []string{"pods", "cpu", "cpuPods:" + testPodsPod, "memUtilPods:" + testPodsPod, "p95Pods:" + testPodsPod} {
+		assert.Len(t, got.Series[key], 16, key)
+	}
 
 	requests := server.Requests()
 	require.Len(t, requests, expectedPanelRequests+1+len(podPanels))

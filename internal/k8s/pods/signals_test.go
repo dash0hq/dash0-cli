@@ -90,6 +90,65 @@ func TestAggregateInPromQL(t *testing.T) {
 	if q := tg.query("k8s.pod.cpu.usage"); !strings.HasPrefix(q, "sum(") {
 		t.Error(q)
 	}
+	// A workload's limit only when every pod with usage has one
+	for _, pn := range panels {
+		if pn.key == "memLimit" {
+			if q := pn.query(tg, time.Minute); !strings.Contains(q, ") and on () (count(") {
+				t.Error(q)
+			}
+		}
+	}
+}
+
+func TestPerPodKeepsClusters(t *testing.T) {
+	tg := target{namespace: "shop", kind: "deployment", name: "checkout"}
+	q := podPanels[0].query(tg, time.Minute)
+	if !strings.HasPrefix(q, `label_join(sum by (k8s_cluster_name, k8s_pod_name) (`) {
+		t.Error(q)
+	}
+	tg.cluster = "eu"
+	if q := podPanels[0].query(tg, time.Minute); !strings.HasPrefix(q, `sum by (k8s_pod_name) (`) {
+		t.Error(q)
+	}
+	if q := podPanels[len(podPanels)-1].query(tg, time.Minute); !strings.HasPrefix(q, `histogram_quantile(0.95, sum by (le, k8s_pod_name) (`) {
+		t.Error(q)
+	}
+
+	// One cluster goes unsaid, two are told apart
+	p := &page{theme: dark, data: map[string][]*float64{"cpuPods:eu/checkout-a": {f(1)}, "cpuPods:eu/checkout-b": {f(2)}}}
+	if got, _ := p.podSeries("cpuPods", ""); got[0].name != "checkout-b" {
+		t.Errorf("got %+v", got)
+	}
+	p.data["cpuPods:us/checkout-a"] = []*float64{f(3)}
+	if got, _ := p.podSeries("cpuPods", ""); got[0].name != "us/checkout-a" {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestPodColorFollowsTheName(t *testing.T) {
+	p := &page{theme: dark, data: map[string][]*float64{"cpuPods:checkout-a": {f(1)}, "cpuPods:checkout-b": {f(2)}}}
+	before, _ := p.podSeries("cpuPods", "")
+	p.data["cpuPods:checkout-a"] = []*float64{f(3)}
+	after, _ := p.podSeries("cpuPods", "")
+	if before[0].name != after[1].name || before[0].color != after[1].color || before[1].color != after[0].color {
+		t.Errorf("before %+v, after %+v", before, after)
+	}
+}
+
+func TestServedWithoutErrorRate(t *testing.T) {
+	p := &page{data: map[string][]*float64{"requests": {f(0), f(2)}}}
+	if !p.served() {
+		t.Error("requests without an error rate are served")
+	}
+	// Under min the requests can be zeros while other pods serve
+	p.data = map[string][]*float64{"requests": {f(0), f(0)}, "errorRate": {nil, f(0)}}
+	if !p.served() {
+		t.Error("an error rate means requests")
+	}
+	p.data = map[string][]*float64{"requests": {f(0), f(0)}}
+	if p.served() {
+		t.Error("zeros are no requests")
+	}
 }
 
 func TestSectionsHideWithoutData(t *testing.T) {
@@ -157,5 +216,21 @@ func TestAgainstTheBusiestPodsLimit(t *testing.T) {
 		if !strings.Contains(note, c.note) || (ink != "") != c.warn {
 			t.Errorf("%s %v: %q %q", c.kind, c.util, note, ink)
 		}
+	}
+
+	// A zero limit is none
+	p := &page{theme: dark, target: target{kind: "pod"}}
+	if note, _ := p.against([]*float64{f(5)}, nil, []*float64{f(0)}, []*float64{f(0.5)}, "cores"); note != "no limit" {
+		t.Errorf("%q", note)
+	}
+	// A workload without a limit on every pod, its limited pods still counted
+	p.target = target{kind: "deployment", agg: "total"}
+	if note, ink := p.against([]*float64{f(5)}, []*float64{f(4)}, nil, []*float64{f(0.95)}, "cores"); note != "125% of 4 cores requested · not every pod has a limit · busiest limited pod at 95% of its limit" || ink == "" {
+		t.Errorf("%q %q", note, ink)
+	}
+	// Under max the usage and the request can be different pods'
+	p.target.agg = "max"
+	if note, _ := p.against([]*float64{f(5)}, []*float64{f(4)}, []*float64{f(10)}, []*float64{f(0.5)}, "cores"); strings.Contains(note, "requested") {
+		t.Errorf("%q", note)
 	}
 }

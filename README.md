@@ -903,7 +903,7 @@ dash0 -X k8s pods watch <pod> -n <namespace>
 ```
 
 With `--kind`, it shows all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob.
-`a` switches between their total and the average, least, or largest pod, and `p` draws a line for each of the busiest pods:
+`a` switches between their total and their average, minimum, or maximum at each step, and `p` draws a line for each of the busiest pods:
 
 ```bash
 dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment

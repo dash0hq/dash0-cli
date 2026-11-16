@@ -2,7 +2,7 @@ package pods
 
 import (
 	"fmt"
-	"math"
+	"hash/fnv"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +46,8 @@ func (t target) perPod(metric string) string {
 	}
 	q := "sum by (" + podLabels + ") (" + t.once(metric) + ")"
 	if strings.HasSuffix(metric, "_limit") {
+		// k8s.container.restarts has a series per container, from the same receiver as the limits; a pending pod
+		// missing from it has no usage to hold against a limit anyway
 		q += " and on (" + podLabels + ") (count by (" + podLabels + ") (" + t.once(metric) + ") == count by (" + podLabels + ") (" + t.once("k8s.container.restarts") + "))"
 	}
 	return q
@@ -61,15 +63,42 @@ func (t target) aggFn() string {
 	return t.agg
 }
 
+// A query grouped by its by labels: the whole target with none, else a series per pod
+type grouped func(t target, step time.Duration, by string) string
+
+func whole(q grouped) func(target, time.Duration) string {
+	return func(t target, step time.Duration) string { return q(t, step, "") }
+}
+
+// " by (labels) ", or nothing for no labels
+func groupBy(labels string) string {
+	if labels == "" {
+		return ""
+	}
+	return " by (" + labels + ") "
+}
+
 // The highest share of its limit any pod uses, Dash0's "% of limit"; none when no pod has a limit
-func utilization(usage, limit string) func(target, time.Duration) string {
-	return func(t target, _ time.Duration) string {
-		return "max(" + t.once(usage) + " / (" + t.perPod(limit) + "))"
+func utilization(usage, limit string) grouped {
+	return func(t target, _ time.Duration, by string) string {
+		return "max" + groupBy(by) + "(" + t.once(usage) + " / (" + t.perPod(limit) + "))"
 	}
 }
 
 func gauge(metric string) func(target, time.Duration) string {
 	return func(t target, _ time.Duration) string { return t.query(metric) }
+}
+
+// A workload's limit only when every pod using CPU or memory has one: a pod without one can use the whole node. The
+// counts are never zero, so Dash0's and keeps them
+func limit(metric, usage string) func(target, time.Duration) string {
+	return func(t target, _ time.Duration) string {
+		q := t.query(metric)
+		if t.kind == "pod" {
+			return q
+		}
+		return q + " and on () (count(" + t.once(usage) + " / (" + t.perPod(metric) + ")) == count(" + t.once(usage) + "))"
+	}
 }
 
 func rangeOf(step time.Duration) string { return fmt.Sprintf("[%ds]", int(step.Seconds())) }
@@ -80,17 +109,20 @@ func spans(t target, extra ...string) string {
 	return t.selector("dash0.spans", append([]string{`otel_span_kind="SERVER"`}, extra...)...)
 }
 
-func quantile(q, by string) func(target, time.Duration) string {
-	return func(t target, step time.Duration) string {
+func quantile(q string) grouped {
+	return func(t target, step time.Duration, by string) string {
+		if by != "" {
+			by = ", " + by
+		}
 		return "histogram_quantile(" + q + ", sum by (le" + by + ") (rate(" + t.selector("dash0.spans.duration", `otel_span_kind="SERVER"`) + rangeOf(step) + ")))"
 	}
 }
 
 var panels = []panel{
-	{"cpu", gauge("k8s.pod.cpu.usage"), ""}, {"cpuRequest", gauge("k8s.container.cpu_request"), ""}, {"cpuLimit", gauge("k8s.container.cpu_limit"), ""},
-	{"cpuUtil", utilization("k8s.pod.cpu.usage", "k8s.container.cpu_limit"), ""},
-	{"mem", gauge("k8s.pod.memory.working_set"), ""}, {"memRequest", gauge("k8s.container.memory_request"), ""}, {"memLimit", gauge("k8s.container.memory_limit"), ""},
-	{"memUtil", utilization("k8s.pod.memory.working_set", "k8s.container.memory_limit"), ""},
+	{"cpu", gauge("k8s.pod.cpu.usage"), ""}, {"cpuRequest", gauge("k8s.container.cpu_request"), ""}, {"cpuLimit", limit("k8s.container.cpu_limit", "k8s.pod.cpu.usage"), ""},
+	{"cpuUtil", whole(utilization("k8s.pod.cpu.usage", "k8s.container.cpu_limit")), ""},
+	{"mem", gauge("k8s.pod.memory.working_set"), ""}, {"memRequest", gauge("k8s.container.memory_request"), ""}, {"memLimit", limit("k8s.container.memory_limit", "k8s.pod.memory.working_set"), ""},
+	{"memUtil", whole(utilization("k8s.pod.memory.working_set", "k8s.container.memory_limit")), ""},
 	{"requests", func(t target, step time.Duration) string {
 		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t) + rangeOf(step) + ")))"
 	}, ""},
@@ -104,35 +136,42 @@ var panels = []panel{
 	{"errorRate", func(t target, step time.Duration) string {
 		return "100 * sum(rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + ")) / sum(rate(" + spans(t) + rangeOf(step) + "))"
 	}, ""},
-	{"p50", quantile("0.5", ""), ""}, {"p95", quantile("0.95", ""), ""}, {"p99", quantile("0.99", ""), ""},
+	{"p50", whole(quantile("0.5")), ""}, {"p95", whole(quantile("0.95")), ""}, {"p99", whole(quantile("0.99")), ""},
 	// Log records per step, by severity
 	{"logs", func(t target, step time.Duration) string {
 		return "sum by (otel_log_severity_range) (increase(" + t.selector("dash0.logs") + rangeOf(step) + "))"
 	}, "otel_log_severity_range"},
 }
 
-// A workload's running pods
-var podCount = panel{"pods", func(t target, _ time.Duration) string { return "count(" + t.once("k8s.pod.cpu.usage") + ")" }, ""}
+// A workload's running pods: the k8s_cluster receiver's k8s.pod.phase is 2 for Running
+var podCount = panel{"pods", func(t target, _ time.Duration) string { return "count(" + t.once("k8s.pod.phase") + " == 2)" }, ""}
 
 // A workload's panels split by pod, for the per-pod view; the shares of their limits rank them
 var podPanels = []panel{
-	{"cpuPods", byPod("k8s.pod.cpu.usage"), "k8s_pod_name"},
-	{"memPods", byPod("k8s.pod.memory.working_set"), "k8s_pod_name"},
-	{"cpuUtilPods", utilByPod("k8s.pod.cpu.usage", "k8s.container.cpu_limit"), "k8s_pod_name"},
-	{"memUtilPods", utilByPod("k8s.pod.memory.working_set", "k8s.container.memory_limit"), "k8s_pod_name"},
-	{"requestsPods", func(t target, step time.Duration) string {
-		return "sum by (k8s_pod_name) (rate(" + spans(t) + rangeOf(step) + "))"
-	}, "k8s_pod_name"},
-	{"p95Pods", quantile("0.95", ", k8s_pod_name"), "k8s_pod_name"},
+	byPod("cpuPods", usageByPod("k8s.pod.cpu.usage")),
+	byPod("memPods", usageByPod("k8s.pod.memory.working_set")),
+	byPod("cpuUtilPods", utilization("k8s.pod.cpu.usage", "k8s.container.cpu_limit")),
+	byPod("memUtilPods", utilization("k8s.pod.memory.working_set", "k8s.container.memory_limit")),
+	byPod("requestsPods", func(t target, step time.Duration, by string) string {
+		return "sum by (" + by + ") (rate(" + spans(t) + rangeOf(step) + "))"
+	}),
+	byPod("p95Pods", quantile("0.95")),
 }
 
-func byPod(metric string) func(target, time.Duration) string {
-	return func(t target, _ time.Duration) string { return "sum by (k8s_pod_name) (" + t.once(metric) + ")" }
+// A panel with a series per pod. Without --cluster, pods of the same name in different clusters stay apart, named
+// <cluster>/<pod>
+func byPod(key string, q grouped) panel {
+	return panel{key, func(t target, step time.Duration) string {
+		if t.cluster != "" {
+			return q(t, step, "k8s_pod_name")
+		}
+		return `label_join(` + q(t, step, "k8s_cluster_name, k8s_pod_name") + `, "k8s_pod_name", "/", "k8s_cluster_name", "k8s_pod_name")`
+	}, "k8s_pod_name"}
 }
 
-func utilByPod(usage, limit string) func(target, time.Duration) string {
-	return func(t target, _ time.Duration) string {
-		return "max by (k8s_pod_name) (" + t.once(usage) + " / (" + t.perPod(limit) + "))"
+func usageByPod(metric string) grouped {
+	return func(t target, _ time.Duration, by string) string {
+		return "sum by (" + by + ") (" + t.once(metric) + ")"
 	}
 }
 
@@ -148,16 +187,17 @@ func panelsFor(t target, perPod bool) []panel {
 	return out
 }
 
-// How a workload's pods add up in its stats and charts: their total, or the mean, least or most of the pods running
-// at each step. Dash0 combines them, so switching asks it again
+// How a workload's pods add up in its stats and charts: their total, or the mean, least or most across the pods at
+// each step, taken for usage, requests and limits apart, so under max each can be another pod's. Dash0 combines them,
+// so switching asks it again
 var aggs = []string{"total", "avg", "min", "max"}
 
-// " · max pod" after a title under avg, min or max
+// " · max across pods" after a title under avg, min or max
 func (p *page) aggNote() string {
 	if p.target.agg == "" || p.target.agg == "total" {
 		return ""
 	}
-	return " · " + p.target.agg + " pod"
+	return " · " + p.target.agg + " across pods"
 }
 
 // Pods drawn in a per-pod chart. Folding the rest into one line would dwarf them: a deployment that rolled churns
@@ -181,12 +221,7 @@ func (p *page) podSeries(key, rankKey string) ([]series, int) {
 		}
 		r := ranked{name: pod, values: v, mean: mean(v)}
 		if u := p.data[rankKey+":"+pod]; rankKey != "" && hasSamples(u) {
-			r.limited = true
-			for _, x := range u {
-				if x != nil {
-					r.peak = math.Max(r.peak, *x)
-				}
-			}
+			r.limited, r.peak = true, peakOf([]series{{values: u}})
 		}
 		all = append(all, r)
 	}
@@ -202,11 +237,29 @@ func (p *page) podSeries(key, rankKey string) ([]series, int) {
 		}
 		return a.name < b.name
 	})
+	// Without --cluster a pod's name carries its cluster: unsaid when every pod is in one
+	clusters := map[string]bool{}
+	for _, r := range all {
+		if c, _, ok := strings.Cut(r.name, "/"); ok {
+			clusters[c] = true
+		}
+	}
 	var out []series
-	for i, r := range all[:min(len(all), maxPods)] {
-		out = append(out, series{r.name, r.values, p.theme.series[i%len(p.theme.series)]})
+	for _, r := range all[:min(len(all), maxPods)] {
+		name := r.name
+		if _, pod, ok := strings.Cut(name, "/"); ok && len(clusters) == 1 {
+			name = pod
+		}
+		out = append(out, series{name, r.values, p.podColor(r.name)})
 	}
 	return out, len(all)
+}
+
+// A pod's colour, from its name, so a pod keeps it when the ranking changes between refreshes
+func (p *page) podColor(pod string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(pod))
+	return p.theme.series[h.Sum32()%uint32(len(p.theme.series))]
 }
 
 func mean(values []*float64) float64 {
@@ -231,8 +284,11 @@ func (p *page) podCard(title, key, rankKey, unit string, width, rows int) block 
 	return p.cardOf(title, unit, ss, width, rows, false)
 }
 
-// Whether the target served any request in the window: the error rate is a gap wherever it served none
-func (p *page) served() bool { return hasSamples(p.data["errorRate"]) }
+// Whether the target served any request in the window. Under min the requests can be all zeros while other pods
+// serve, but the error rate, all the pods' errors over their requests, has a sample wherever any served one
+func (p *page) served() bool {
+	return active(p.data["requests"]) || hasSamples(p.data["errorRate"])
+}
 
 // Whether a series has a sample anywhere in the window
 func hasSamples(values []*float64) bool { return first(values) != nil }

@@ -10,6 +10,6 @@ subtext: |
   Ports the dash0-k9s-plugin into the CLI. The page runs as a k9s plugin on `Shift-D`; see the README for the `plugins.yaml` snippet.
   Unlike the plugin, it works with OAuth profiles and renews the access token while the page stays open.
   `-o json` (the default in agent mode) prints the pod's series and Dash0 links.
-  With `--kind`, it shows all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob: their total, the average, least, or largest pod (`--aggregate`, or `a` in the page), or a line per pod (`--per-pod`, or `p`).
+  With `--kind`, it shows all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob: their total, or their average, minimum, or maximum at each step (`--aggregate`, or `a` in the page), or a line per pod (`--per-pod`, or `p`).
 
 change_logs: []

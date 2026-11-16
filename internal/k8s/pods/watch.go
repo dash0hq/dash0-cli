@@ -79,8 +79,8 @@ The page refreshes every 30 seconds.
 In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pod's metrics, traces and logs in Dash0, and q or Esc quits.
 
 With --kind, the name is a deployment, statefulset, daemonset, replicaset, job or cronjob, and the page shows all of its pods.
-On a workload's page, a switches between the total of its pods and the average, least or largest pod, and p draws a line for each of the 8 busiest pods.
-The busiest pods are those nearest their limits.
+On a workload's page, a switches between the total of its pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a line for each of the 8 busiest pods.
+For CPU and memory, the busiest pods are those nearest their limits; for requests and duration, those with the highest mean.
 
 The pod is matched on the k8s.namespace.name and k8s.pod.name resource attributes, a workload on k8s.<kind>.name.
 Pass --cluster (or set DASH0_CLUSTER) to also match k8s.cluster.name.
@@ -95,7 +95,7 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
   # Match the pod in one cluster only, with a named profile
   dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
 
-  # Watch the largest of a deployment's pods at each step
+  # Watch the maximum across a deployment's pods at each step
   dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --aggregate max
 
   # Watch a statefulset with a line per pod
@@ -397,6 +397,17 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 	defer signal.Stop(winch)
 	ticker := time.NewTicker(refreshEvery)
 	defer ticker.Stop()
+	// A range or view change starts empty, and a fetch for the old one that lands before the next one starts is
+	// dropped. Dash0 combines the pods, so a switch asks it again
+	restart := func(change func()) {
+		p.mu.Lock()
+		change()
+		p.data, p.at, p.failed = nil, time.Time{}, nil
+		p.gen++
+		p.mu.Unlock()
+		ticker.Reset(refreshEvery)
+		ask()
+	}
 
 	ask()
 	for {
@@ -418,18 +429,13 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 				if p.target.kind == "pod" {
 					break
 				}
-				p.mu.Lock()
-				if k == "a" {
-					p.target.agg = aggs[(slices.Index(aggs, p.target.agg)+1)%len(aggs)]
-				} else {
-					p.perPod = !p.perPod
-				}
-				// Dash0 combines the pods, so a switch asks it again, as a range change does
-				p.data, p.at, p.failed = nil, time.Time{}, nil
-				p.gen++
-				p.mu.Unlock()
-				ticker.Reset(refreshEvery)
-				ask()
+				restart(func() {
+					if k == "a" {
+						p.target.agg = aggs[(slices.Index(aggs, p.target.agg)+1)%len(aggs)]
+					} else {
+						p.perPod = !p.perPod
+					}
+				})
 			case "o", "t", "l":
 				p.mu.Lock()
 				links := p.links()
@@ -458,14 +464,7 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 				p.scroll = 1 << 20
 				draw()
 			case "1", "2", "3", "4":
-				p.mu.Lock()
-				p.rangeIdx = int(k[0] - '1')
-				// A range change starts empty, and a fetch for the old range that lands before the next one starts is dropped
-				p.data, p.at, p.failed = nil, time.Time{}, nil
-				p.gen++
-				p.mu.Unlock()
-				ticker.Reset(refreshEvery)
-				ask()
+				restart(func() { p.rangeIdx = int(k[0] - '1') })
 			}
 		case <-ticker.C:
 			ask()

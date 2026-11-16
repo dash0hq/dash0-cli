@@ -27,6 +27,7 @@ The page queries `POST /api/prometheus/api/v1/query_range` over the pod's `k8s_n
 | Memory | `k8s.pod.memory.working_set`, `k8s.container.memory_request`, `k8s.container.memory_limit` |
 | Requests | Rate, errors, and duration p50, p95, and p99 of the pod's `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
 | Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
+| Pods | A workload's running pods, from `k8s.pod.phase` |
 
 It takes each usage gauge once per pod, and each request and limit once per container, before it adds them up, so a pod whose resource attributes changed is not counted twice.
 Pods of the same name in different clusters are still added together.
@@ -70,19 +71,24 @@ The command exits 0 when at least one panel loaded, and non-zero when none did.
 
 #### Workloads
 
-With `--kind`, the page matches every pod of the workload on `k8s_<kind>_name` instead of `k8s_pod_name`, and its header shows how many pods are running.
-`--aggregate` (or `a` in the page) picks how the pods add up at each step: their total, or the average, least, or largest pod.
+With `--kind`, the page matches every pod of the workload on `k8s_<kind>_name` instead of `k8s_pod_name`, and its header shows how many of its pods are running.
+`--aggregate` (or `a` in the page) picks how the pods add up at each step: their total, or their average, minimum, or maximum.
 Dash0 combines the pods in the query, so switching sends the queries again.
-Requests and limits follow the same aggregation, so under `max` the limit line is the largest limit any pod has.
+Usage, requests, and limits are each aggregated on their own, so under `max` the usage line can be one pod's and the limit line another's.
+For the same reason, the share of the request shows only under `total`.
 
+A workload has a limit only when every pod with usage has one, because a pod without a limit can use the whole node.
+When only some pods have one, the page says so and still shows the highest share any limited pod uses.
 The share of the limit is the highest share any one pod uses of its own limit, whatever the aggregation, because the largest usage and the largest limit can belong to different pods.
 The error rate is the share of all the workload's requests that failed, for the same reason.
+Under `avg` and `min`, the errors line leaves out the pods that served no failed request in the range, so it can read higher than the pods' average or minimum.
 
 `--per-pod` (or `p`) draws a line for each of the 8 busiest pods.
 For CPU and memory, the busiest pods are those with the highest share of their limits, followed by the pods without a limit, by usage.
 For requests and duration, they are the pods with the highest mean.
+Without `--cluster`, a pod's name starts with its cluster, as in `<cluster>/<pod>`, when the pods are in more than one cluster.
 
-Watch the largest of a deployment's pods at each step:
+Watch the maximum across a deployment's pods at each step:
 
 ```bash
 dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --aggregate max
@@ -94,8 +100,8 @@ Open a statefulset on a line per pod:
 dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
 ```
 
-A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the running pods.
-With `--per-pod`, it also has a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`.
+A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the number of running pods.
+With `--per-pod`, it also has a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`, or `cpuPods:<cluster>/<pod>` without `--cluster`.
 
 #### k9s plugin
 
