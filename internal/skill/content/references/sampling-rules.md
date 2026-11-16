@@ -62,6 +62,7 @@ The CLI checks each rule before any API call, also with `--dry-run`:
 - `spec.conditions` must be present, because the API rejects a rule without it.
 - The condition tree may hold at most 32 `ottl` and `error` conditions, and `probabilistic` conditions do not count.
   The API accepts a rule above the limit, but Dash0 does not load it, so the rule would never keep a trace.
+- A rule whose conditions are all `probabilistic` cannot set `spec.rateLimit`, because the API rejects it.
 
 Origins and IDs are unique per organization, while each rule belongs to one dataset.
 `get`, `update`, and `delete` through another dataset fail with an error that names the cause; `delete --force` does not count that as already deleted, because the rule still exists.

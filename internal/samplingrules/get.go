@@ -85,7 +85,7 @@ func printSummary(rule *dash0api.SamplingDefinition) {
 	fmt.Printf("Name: %s\n", dash0api.GetSamplingRuleName(rule))
 	fmt.Printf("ID: %s\n", dash0api.GetSamplingRuleID(rule))
 	fmt.Printf("Dataset: %s\n", dash0api.GetSamplingRuleDataset(rule))
-	fmt.Printf("Origin: %s\n", origin(rule))
+	fmt.Printf("Origin: %s\n", asset.GetSamplingRuleOrigin(rule))
 	fmt.Printf("Enabled: %t\n", rule.Spec.Enabled)
 	fmt.Printf("Conditions: %s\n", asset.DescribeSamplingRuleConditions(rule))
 	if limit := rateLimit(rule); limit != "" {

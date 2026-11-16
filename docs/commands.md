@@ -1124,7 +1124,7 @@ Use a distinct origin per dataset.
 
 `Dash0Sampling` documents are sampling rules, dispatched to the dataset-scoped sampling rules endpoint.
 The upsert keys are the same as for `Dash0SignalToMetrics` documents above: `dash0.com/origin` first, then `dash0.com/id` with a POST fallback that is not idempotent.
-A document without `spec.enabled` or `spec.conditions`, or with more than 32 `ottl` and `error` conditions, fails during the validation phase, before any document in the run is applied.
+A document without `spec.enabled` or `spec.conditions`, with more than 32 `ottl` and `error` conditions, or with `spec.rateLimit` on a rule whose conditions are all `probabilistic`, fails during the validation phase, before any document in the run is applied.
 Origins and IDs are unique per organization while each rule belongs to one dataset.
 The GET honors `--dataset`, so a rule stored in another dataset fails it with an error that names the cause, before anything is written, and `diff` reports the same error.
 Every write requires the organization admin role, and a write that turns sampling on for the dataset prints a warning; see [Sampling rules](#sampling-rules).
@@ -2229,6 +2229,7 @@ The CLI checks each rule before any API call, also with `--dry-run`:
 - `spec.conditions` must be present, because the API rejects a rule without it.
 - The condition tree may hold at most 32 `ottl` and `error` conditions, and `probabilistic` conditions do not count.
   The API accepts a rule above the limit, but Dash0 does not load it, so the rule would never keep a trace.
+- A rule whose conditions are all `probabilistic` cannot set `spec.rateLimit`, because the API rejects it.
 
 Origins and IDs are unique per organization, while each rule belongs to one dataset.
 `get`, `update`, and `delete` through another dataset fail with an error that names the cause; `delete --force` does not count that as already deleted, because the rule still exists.

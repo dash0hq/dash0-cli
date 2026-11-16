@@ -146,6 +146,37 @@ func TestParseSamplingRule_MatchingConditionLimit(t *testing.T) {
 	})
 }
 
+// The API rejects a rate limit on a rule with only probabilistic conditions.
+func TestParseSamplingRule_RateLimitNeedsANonProbabilisticCondition(t *testing.T) {
+	const rateLimit = "  rateLimit:\n    rate: 100\n"
+	probabilisticOnly := "  enabled: true\n  conditions:\n    kind: probabilistic\n    spec:\n      rate: 0.1\n"
+
+	for name, spec := range map[string]string{
+		"probabilistic condition":   probabilisticOnly + rateLimit,
+		"and of probabilistic only": andOf(2, probabilisticChild) + rateLimit,
+		"nested probabilistic only": andOf(1, "        - kind: and\n          spec:\n            conditions:\n              - kind: probabilistic\n                spec:\n                  rate: 0.5\n") + rateLimit,
+	} {
+		t.Run(name+" is rejected", func(t *testing.T) {
+			_, err := ParseSamplingRule(samplingDoc("", spec))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "spec.rateLimit is not supported on a rule with only probabilistic conditions")
+			assert.Contains(t, err.Error(), "\nHint: remove spec.rateLimit, or add an ottl or error condition")
+		})
+	}
+
+	for name, spec := range map[string]string{
+		"probabilistic and error":       andOf(1, probabilisticChild+errorChild) + rateLimit,
+		"probabilistic and ottl":        andOf(1, probabilisticChild+ottlChild) + rateLimit,
+		"probabilistic without limit":   probabilisticOnly,
+		"probabilistic with null limit": probabilisticOnly + "  rateLimit: null\n",
+	} {
+		t.Run(name+" is accepted", func(t *testing.T) {
+			_, err := ParseSamplingRule(samplingDoc("", spec))
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestDescribeSamplingRuleConditions(t *testing.T) {
 	tests := map[string]struct {
 		spec string

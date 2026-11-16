@@ -534,6 +534,11 @@ func TestCreateSamplingRule_FirstEnabledRuleWarns(t *testing.T) {
 	assert.Contains(t, out, "created")
 	assert.Contains(t, stderr, `warning: sampling rule "Keep checkout errors" is the first enabled sampling rule in dataset "staging", so it turns sampling on`)
 	assert.NotContains(t, out, "warning", "warnings go to stderr")
+	// The warning names the dataset from --dataset whatever the list asked
+	// for, so check that the list behind it was scoped to that dataset.
+	query, err := url.ParseQuery(findRequest(t, server.Requests(), http.MethodGet, apiPath).Query)
+	require.NoError(t, err)
+	assert.Equal(t, "staging", query.Get("dataset"))
 }
 
 // The CLI sends no dataset parameter for the default dataset, so the warning

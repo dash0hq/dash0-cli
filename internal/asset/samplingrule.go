@@ -71,6 +71,9 @@ func (k samplingRuleKeys) UpsertKeys() (byOrigin, byID bool) { return true, true
 //   - spec.conditions must be present, because the API requires it.
 //   - The condition tree may hold at most 32 ottl and error conditions. Dash0
 //     refuses to load a rule above that limit, and the rule stops matching.
+//   - A rule whose conditions are all probabilistic cannot set
+//     spec.rateLimit. The API rejects it, so in apply it would fail after
+//     the documents before it were written.
 func ParseSamplingRule(data []byte) (*dash0api.SamplingDefinition, error) {
 	var rule dash0api.SamplingDefinition
 	if err := dash0yaml.Unmarshal(data, &rule); err != nil {
@@ -80,6 +83,7 @@ func ParseSamplingRule(data []byte) (*dash0api.SamplingDefinition, error) {
 		Spec struct {
 			Enabled    *bool           `json:"enabled"`
 			Conditions json.RawMessage `json:"conditions"`
+			RateLimit  json.RawMessage `json:"rateLimit"`
 		} `json:"spec"`
 	}
 	if err := dash0yaml.Unmarshal(data, &present); err != nil {
@@ -100,6 +104,11 @@ func ParseSamplingRule(data []byte) (*dash0api.SamplingDefinition, error) {
 		return nil, fmt.Errorf("sampling rule spec.conditions holds %d ottl and error conditions, more than the limit of %d"+
 			"\nHint: Dash0 does not load a rule above the limit, so the rule would never keep a trace; split it into several rules",
 			n, samplingRuleMaxMatchingConditions)
+	}
+	hasRateLimit := len(present.Spec.RateLimit) > 0 && string(present.Spec.RateLimit) != "null"
+	if hasRateLimit && condition.probabilisticConditions() > 0 && condition.matchingConditions() == 0 {
+		return nil, errors.New("sampling rule spec.rateLimit is not supported on a rule with only probabilistic conditions" +
+			"\nHint: remove spec.rateLimit, or add an ottl or error condition; the API rejects a rate limit on a probabilistic-only rule")
 	}
 	return &rule, nil
 }
@@ -133,6 +142,22 @@ func (c samplingCondition) matchingConditions() int {
 		n := 0
 		for _, child := range c.Spec.Conditions {
 			n += child.matchingConditions()
+		}
+		return n
+	default:
+		return 0
+	}
+}
+
+// probabilisticConditions counts the probabilistic conditions in the tree.
+func (c samplingCondition) probabilisticConditions() int {
+	switch c.Kind {
+	case "probabilistic":
+		return 1
+	case "and":
+		n := 0
+		for _, child := range c.Spec.Conditions {
+			n += child.probabilisticConditions()
 		}
 		return n
 	default:

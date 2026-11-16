@@ -16,12 +16,6 @@ const assetType = "sampling rule"
 // asset kind display-name table in docs/cli-naming-conventions.md.
 const displayKind = asset.SamplingRuleDisplayKind
 
-// origin aliases the asset helper so the command files read the same way they
-// do for the other labels.
-func origin(rule *dash0api.SamplingDefinition) string {
-	return asset.GetSamplingRuleOrigin(rule)
-}
-
 // rateLimit renders spec.rateLimit.rate, the most traces per minute the rule
 // keeps, or "" when the rule has no rate limit.
 func rateLimit(rule *dash0api.SamplingDefinition) string {

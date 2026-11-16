@@ -3886,6 +3886,10 @@ func TestApply_SamplingRule_InvalidDocumentFailsValidationBeforeAnyWrite(t *test
 				strings.Repeat("        - kind: error\n          spec: {}\n", 33),
 			"more than the limit of 32",
 		},
+		"rate limit on a probabilistic-only rule": {
+			"kind: Dash0Sampling\nmetadata:\n  name: baseline\nspec:\n  enabled: false\n  conditions:\n    kind: probabilistic\n    spec:\n      rate: 0.1\n  rateLimit:\n    rate: 100\n",
+			"spec.rateLimit is not supported on a rule with only probabilistic conditions",
+		},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

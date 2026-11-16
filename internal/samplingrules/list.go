@@ -120,7 +120,7 @@ func printTable(f *output.Formatter, items []*dash0api.SamplingDefinition, forma
 				return dash0api.GetSamplingRuleDataset(item.(*dash0api.SamplingDefinition))
 			}},
 			output.Column{Header: internal.HEADER_ORIGIN, Width: 40, Value: func(item interface{}) string {
-				return origin(item.(*dash0api.SamplingDefinition))
+				return asset.GetSamplingRuleOrigin(item.(*dash0api.SamplingDefinition))
 			}},
 		)
 	}
