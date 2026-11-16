@@ -289,7 +289,7 @@ func waitWithDeadline(wg *sync.WaitGroup, ctx context.Context) {
 // the resolved configuration plus a display-friendly profile name for
 // the banner. Errors are user-facing: missing profile gets the
 // `dash0 config profiles create` hint per AE7.
-func resolveProxyConfig(ctx context.Context, flags *proxyFlags) (*profiles.Configuration, string, error) {
+func resolveProxyConfig(ctx context.Context, flags *proxyFlags) (*profiles.ResolvedConfiguration, string, error) {
 	cfg := profiles.FromContext(ctx)
 
 	// Effective values after env-var + flag overrides.
@@ -297,10 +297,10 @@ func resolveProxyConfig(ctx context.Context, flags *proxyFlags) (*profiles.Confi
 	authToken := flags.AuthToken
 	if cfg != nil {
 		if otlpURL == "" {
-			otlpURL = cfg.OtlpUrl
+			otlpURL = cfg.OtlpUrl()
 		}
 		if authToken == "" {
-			authToken = cfg.AuthToken
+			authToken = cfg.Token()
 		}
 	}
 
@@ -321,7 +321,7 @@ func resolveProxyConfig(ctx context.Context, flags *proxyFlags) (*profiles.Confi
 //      name so the banner reads `profile: dev` instead of a placeholder.
 //   3. Fallback `env/flags` — only reached when no profile is on disk
 //      and connection settings came from env vars or CLI flags.
-func resolveProfileNameForBanner(ctx context.Context, cfg *profiles.Configuration) string {
+func resolveProfileNameForBanner(ctx context.Context, cfg *profiles.ResolvedConfiguration) string {
 	if sel := config.ProfileSelectorFromContext(ctx); sel.IsSet() {
 		return sel.Name
 	}
@@ -352,12 +352,12 @@ func lookupActiveProfileName() string {
 // datasetLabel returns the dataset string for human-facing banners. The
 // resolved-dataset *string in dash0api is nil for "default"; we expand
 // that for readability.
-func datasetLabel(cfg *profiles.Configuration, flagDataset string) string {
+func datasetLabel(cfg *profiles.ResolvedConfiguration, flagDataset string) string {
 	if flagDataset != "" {
 		return flagDataset
 	}
-	if cfg != nil && cfg.Dataset != "" {
-		return cfg.Dataset
+	if cfg != nil && cfg.Dataset() != "" {
+		return cfg.Dataset()
 	}
 	return "default"
 }

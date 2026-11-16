@@ -136,11 +136,11 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if cfg.ApiUrl != "https://api-prod.example.com" {
-			t.Errorf("expected prod api url, got %q", cfg.ApiUrl)
+		if cfg.ApiUrl() != "https://api-prod.example.com" {
+			t.Errorf("expected prod api url, got %q", cfg.ApiUrl())
 		}
-		if cfg.Dataset != "prod-ds" {
-			t.Errorf("expected prod dataset, got %q", cfg.Dataset)
+		if cfg.Dataset() != "prod-ds" {
+			t.Errorf("expected prod dataset, got %q", cfg.Dataset())
 		}
 	})
 
@@ -152,12 +152,12 @@ func TestResolveConfigurationForProfile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if cfg.Dataset != "env-override-ds" {
-			t.Errorf("expected env override, got %q", cfg.Dataset)
+		if cfg.Dataset() != "env-override-ds" {
+			t.Errorf("expected env override, got %q", cfg.Dataset())
 		}
 		// Other fields should still come from the profile.
-		if cfg.ApiUrl != "https://api-prod.example.com" {
-			t.Errorf("expected prod api url, got %q", cfg.ApiUrl)
+		if cfg.ApiUrl() != "https://api-prod.example.com" {
+			t.Errorf("expected prod api url, got %q", cfg.ApiUrl())
 		}
 	})
 

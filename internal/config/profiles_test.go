@@ -436,11 +436,11 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.ApiUrl != "https://env.example.com" {
-			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl)
+		if config.ApiUrl() != "https://env.example.com" {
+			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl())
 		}
-		if config.AuthToken != "env-token" {
-			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
+		if config.Token() != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.Token())
 		}
 	})
 
@@ -475,11 +475,11 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.ApiUrl != "https://test1.example.com" {
-			t.Errorf("Expected API URL https://test1.example.com, got %s", config.ApiUrl)
+		if config.ApiUrl() != "https://test1.example.com" {
+			t.Errorf("Expected API URL https://test1.example.com, got %s", config.ApiUrl())
 		}
-		if config.AuthToken != "token1" {
-			t.Errorf("Expected auth token token1, got %s", config.AuthToken)
+		if config.Token() != "token1" {
+			t.Errorf("Expected auth token token1, got %s", config.Token())
 		}
 	})
 
@@ -503,11 +503,11 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.OtlpUrl != "https://otlp.example.com" {
-			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", config.OtlpUrl)
+		if config.OtlpUrl() != "https://otlp.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", config.OtlpUrl())
 		}
-		if config.AuthToken != "env-token" {
-			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
+		if config.Token() != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.Token())
 		}
 	})
 
@@ -532,8 +532,8 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.Dataset != "my-dataset" {
-			t.Errorf("Expected dataset my-dataset, got %s", config.Dataset)
+		if config.Dataset() != "my-dataset" {
+			t.Errorf("Expected dataset my-dataset, got %s", config.Dataset())
 		}
 	})
 
@@ -569,8 +569,8 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.Dataset != "env-dataset" {
-			t.Errorf("Expected dataset env-dataset, got %s", config.Dataset)
+		if config.Dataset() != "env-dataset" {
+			t.Errorf("Expected dataset env-dataset, got %s", config.Dataset())
 		}
 	})
 
@@ -605,8 +605,8 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.Dataset != "profile-dataset" {
-			t.Errorf("Expected dataset profile-dataset, got %s", config.Dataset)
+		if config.Dataset() != "profile-dataset" {
+			t.Errorf("Expected dataset profile-dataset, got %s", config.Dataset())
 		}
 	})
 
@@ -641,8 +641,8 @@ func TestGetActiveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to get active configuration: %v", err)
 		}
 
-		if config.OtlpUrl != "https://otlp-override.example.com" {
-			t.Errorf("Expected OTLP URL https://otlp-override.example.com, got %s", config.OtlpUrl)
+		if config.OtlpUrl() != "https://otlp-override.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp-override.example.com, got %s", config.OtlpUrl())
 		}
 	})
 }
@@ -703,11 +703,11 @@ func TestResolveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to resolve configuration: %v", err)
 		}
 
-		if config.ApiUrl != "https://env.example.com" {
-			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl)
+		if config.ApiUrl() != "https://env.example.com" {
+			t.Errorf("Expected API URL https://env.example.com, got %s", config.ApiUrl())
 		}
-		if config.AuthToken != "env-token" {
-			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
+		if config.Token() != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.Token())
 		}
 	})
 
@@ -762,11 +762,11 @@ func TestResolveConfiguration(t *testing.T) {
 		t.Logf("Resolved config: %+v", resolvedCfg)
 
 		// Test assertions
-		if resolvedCfg.ApiUrl != "https://override.example.com" {
-			t.Errorf("Expected API URL https://override.example.com, got %s", resolvedCfg.ApiUrl)
+		if resolvedCfg.ApiUrl() != "https://override.example.com" {
+			t.Errorf("Expected API URL https://override.example.com, got %s", resolvedCfg.ApiUrl())
 		}
-		if resolvedCfg.AuthToken != "original-token" {
-			t.Errorf("Expected auth token original-token, got %s", resolvedCfg.AuthToken)
+		if resolvedCfg.Token() != "original-token" {
+			t.Errorf("Expected auth token original-token, got %s", resolvedCfg.Token())
 		}
 	})
 
@@ -799,14 +799,14 @@ func TestResolveConfiguration(t *testing.T) {
 			t.Fatalf("Expected no error for OTLP-only config, got: %v", err)
 		}
 
-		if config.OtlpUrl != "https://otlp.example.com" {
-			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", config.OtlpUrl)
+		if config.OtlpUrl() != "https://otlp.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp.example.com, got %s", config.OtlpUrl())
 		}
-		if config.AuthToken != "env-token" {
-			t.Errorf("Expected auth token env-token, got %s", config.AuthToken)
+		if config.Token() != "env-token" {
+			t.Errorf("Expected auth token env-token, got %s", config.Token())
 		}
-		if config.ApiUrl != "" {
-			t.Errorf("Expected empty API URL, got %s", config.ApiUrl)
+		if config.ApiUrl() != "" {
+			t.Errorf("Expected empty API URL, got %s", config.ApiUrl())
 		}
 	})
 
@@ -826,8 +826,8 @@ func TestResolveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to resolve configuration: %v", err)
 		}
 
-		if config.Dataset != "env-dataset" {
-			t.Errorf("Expected dataset env-dataset, got %s", config.Dataset)
+		if config.Dataset() != "env-dataset" {
+			t.Errorf("Expected dataset env-dataset, got %s", config.Dataset())
 		}
 	})
 
@@ -847,8 +847,8 @@ func TestResolveConfiguration(t *testing.T) {
 			t.Fatalf("Failed to resolve configuration: %v", err)
 		}
 
-		if config.Dataset != "flag-dataset" {
-			t.Errorf("Expected dataset flag-dataset, got %s", config.Dataset)
+		if config.Dataset() != "flag-dataset" {
+			t.Errorf("Expected dataset flag-dataset, got %s", config.Dataset())
 		}
 	})
 
@@ -864,8 +864,8 @@ func TestResolveConfiguration(t *testing.T) {
 			t.Fatalf("Expected no error for OTLP flag config, got: %v", err)
 		}
 
-		if config.OtlpUrl != "https://otlp-flag.example.com" {
-			t.Errorf("Expected OTLP URL https://otlp-flag.example.com, got %s", config.OtlpUrl)
+		if config.OtlpUrl() != "https://otlp-flag.example.com" {
+			t.Errorf("Expected OTLP URL https://otlp-flag.example.com, got %s", config.OtlpUrl())
 		}
 	})
 }

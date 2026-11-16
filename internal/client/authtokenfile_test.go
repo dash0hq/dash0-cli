@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,10 +70,10 @@ func TestApplyAuthTokenFile_Errors(t *testing.T) {
 }
 
 func TestNewRawHTTPConfig_FlagTokenOverridesStaticProfile(t *testing.T) {
-	ctx := profiles.WithConfiguration(context.Background(), &profiles.Configuration{
+	ctx := profiles.WithConfiguration(context.Background(), testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_profile",
-	})
+	}))
 
 	cfg, err := NewRawHTTPConfig(ctx, "", "auth_flag")
 	require.NoError(t, err)
