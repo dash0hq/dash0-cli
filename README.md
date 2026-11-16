@@ -893,21 +893,25 @@ The proxy exits on `Ctrl-C` (or `SIGTERM`) after draining in-flight work within 
 On startup, if either default port is already in use, the proxy exits non-zero with an actionable error that names the holding process.
 See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the decoration flags (`--scope-attribute`, `--log-attribute`, `--span-attribute`, `--metric-attribute`, `--scope-name`, `--scope-version`), the agent-mode event schema, and the failure-mode classification.
 
-### Pod page and k9s plugin (experimental)
+### Monitor Kubernetes workloads (experimental)
 
-The `k8s pods watch` command draws a Kubernetes pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration, and log counts when the pod has spans and logs.
-The page refreshes every 30 seconds; `1` to `4` pick the range, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0, and `q` quits.
+Watch a pod, or all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, in a terminal page that refreshes every 30 seconds.
+It shows CPU and memory against their requests and limits, plus requests, errors, duration, and log counts, so you can follow a rollout or find the pod that is running out of room.
+
+Watch a pod:
 
 ```bash
 dash0 -X k8s pods watch <pod> -n <namespace>
 ```
 
-`k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, and `k8s cronjobs watch` show all the pods of a workload.
-`a` switches between their total and their average, minimum, or maximum at each step, and `p` draws a line for each of the busiest pods:
+Watch all the pods of a deployment:
 
 ```bash
 dash0 -X k8s deployments watch <deployment> -n <namespace>
 ```
+
+On a workload's page, `a` switches between the pods' total, average, minimum, and maximum, and `p` draws a line for each of the busiest pods.
+`1` to `4` pick the range, `o`, `t`, and `l` open the pods' metrics, traces, and logs in Dash0, and `q` quits.
 
 The same page runs as a [k9s plugin](https://k9scli.io/topics/plugins/) on `Shift-D`.
 Add this to k9s' `plugins.yaml` (`k9s info` prints where it is):

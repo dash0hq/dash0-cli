@@ -38,7 +38,8 @@ func (t target) once(metric string) string {
 }
 
 // A series per pod: its usage, or its containers' requests or limits added up. A limit counts only when every
-// container has one, as Dash0's pod pages have it: a container without one can use the whole node
+// container has one above zero, as Dash0's pod pages have it: a container without one can use the whole node, and
+// Kubernetes reads a zero limit as none
 func (t target) perPod(metric string) string {
 	if !strings.HasPrefix(metric, "k8s.container.") {
 		return t.once(metric)
@@ -47,7 +48,7 @@ func (t target) perPod(metric string) string {
 	if strings.HasSuffix(metric, "_limit") {
 		// k8s.container.restarts has a series per container, from the same receiver as the limits; a pending pod
 		// missing from it has no usage to hold against a limit anyway
-		q += " and on (" + podLabels + ") (count by (" + podLabels + ") (" + t.once(metric) + ") == count by (" + podLabels + ") (" + t.once("k8s.container.restarts") + "))"
+		q += " and on (" + podLabels + ") (count by (" + podLabels + ") (" + t.once(metric) + " > 0) == count by (" + podLabels + ") (" + t.once("k8s.container.restarts") + "))"
 	}
 	return q
 }
@@ -125,8 +126,6 @@ var panels = []panel{
 	{"requests", func(t target, step time.Duration) string {
 		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t) + rangeOf(step) + ")))"
 	}, ""},
-	// ponytail: a pod that served no ERROR span in the range has no series here, so avg and min skip it. Dash0's and,
-	// or and unless drop zero samples, so `or 0 * requests` can't fill it in
 	{"errors", func(t target, step time.Duration) string {
 		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + ")))"
 	}, ""},
@@ -179,7 +178,16 @@ func panelsFor(t target, perPod bool) []panel {
 	if t.kind == "pod" {
 		return panels
 	}
-	out := append(append([]panel{}, panels...), podCount)
+	var out []panel
+	for _, pn := range panels {
+		// A pod that served no ERROR span has no series here, so avg and min would skip it and read too high; Dash0's
+		// and, or and unless drop zero samples, so `or 0 * requests` can't fill it in. The error rate covers them
+		if pn.key == "errors" && (t.agg == "avg" || t.agg == "min") {
+			continue
+		}
+		out = append(out, pn)
+	}
+	out = append(out, podCount)
 	if perPod {
 		out = append(out, podPanels...)
 	}

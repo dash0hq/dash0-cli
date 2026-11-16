@@ -46,7 +46,7 @@ func TestPanelQueries(t *testing.T) {
 	sel := `k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp"`
 	pod := "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
 	limit := `max by (` + pod + `, k8s_container_name) ({otel_metric_name="k8s.container.cpu_limit", ` + sel + `})`
-	perPodLimit := `sum by (` + pod + `) (` + limit + `) and on (` + pod + `) (count by (` + pod + `) (` + limit + `) == count by (` + pod + `) (max by (` + pod + `, k8s_container_name) ({otel_metric_name="k8s.container.restarts", ` + sel + `})))`
+	perPodLimit := `sum by (` + pod + `) (` + limit + `) and on (` + pod + `) (count by (` + pod + `) (` + limit + ` > 0) == count by (` + pod + `) (max by (` + pod + `, k8s_container_name) ({otel_metric_name="k8s.container.restarts", ` + sel + `})))`
 	usage := `max by (` + pod + `) ({otel_metric_name="k8s.pod.cpu.usage", ` + sel + `})`
 	want := map[string]string{
 		"requests":  `sum(sum by (` + pod + `) (rate({otel_metric_name="dash0.spans", ` + sel + `, otel_span_kind="SERVER"}[120s])))`,
@@ -67,6 +67,27 @@ func TestPanelQueries(t *testing.T) {
 	}
 	if len(want) > 0 {
 		t.Errorf("no panels %v", want)
+	}
+}
+
+// A zero limit is no limit: a container reporting 0 must not complete its pod's limit
+func TestZeroLimitIsNoLimit(t *testing.T) {
+	q := target{namespace: "shop", kind: "pod", name: "checkout"}.perPod("k8s.container.memory_limit")
+	if !strings.Contains(q, `k8s_container_name) ({otel_metric_name="k8s.container.memory_limit", k8s_namespace_name="shop", k8s_pod_name="checkout"}) > 0) == count by`) {
+		t.Error(q)
+	}
+}
+
+// avg and min of errors would skip the pods that served no ERROR span, so they leave the errors line out
+func TestErrorsOnlyUnderTotalAndMax(t *testing.T) {
+	for agg, want := range map[string]bool{"total": true, "max": true, "avg": false, "min": false} {
+		got := false
+		for _, pn := range panelsFor(target{kind: "deployment", agg: agg}, false) {
+			got = got || pn.key == "errors"
+		}
+		if got != want {
+			t.Errorf("%s: errors panel %v, want %v", agg, got, want)
+		}
 	}
 }
 

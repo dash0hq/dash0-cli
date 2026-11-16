@@ -3397,10 +3397,46 @@ When stdin is not a terminal, or with `--once`, they draw one frame to stdout an
 
 ### `k8s pods watch` (experimental)
 
-Draw a Kubernetes pod's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when the pod has spans and logs.
-`k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, and `k8s cronjobs watch` draw the same page for all the pods of a workload; see [Workloads](#workloads).
+Watch a Kubernetes pod, or all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, in a full-screen terminal page.
+The page shows CPU and memory against their requests and limits, plus requests, errors, duration, and log counts when the pods have spans and logs.
 Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
 The cluster must be monitored by the [Dash0 operator](https://github.com/dash0hq/dash0-operator), which collects the pod metrics.
+
+Watch a pod:
+
+```bash
+dash0 -X k8s pods watch <pod> -n <namespace>
+```
+
+Watch all the pods of a deployment:
+
+```bash
+dash0 -X k8s deployments watch <deployment> -n <namespace>
+```
+
+Watch the busiest pod's usage at each step instead of the total:
+
+```bash
+dash0 -X k8s deployments watch <deployment> -n <namespace> --aggregate max
+```
+
+Compare a statefulset's pods, with a line per pod:
+
+```bash
+dash0 -X k8s statefulsets watch <statefulset> -n <namespace> --per-pod
+```
+
+Match the pod in one cluster only, with a named profile:
+
+```bash
+dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
+```
+
+In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `l` open the pods' metrics, traces, and logs in Dash0 over the same range, and `q` or `Esc` quits.
+On a workload's page, `a` cycles through the aggregations and `p` turns the line per pod on and off.
+`↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
+The page refreshes every 30 seconds, and resolves the credentials again each time, so an OAuth access token is renewed while it stays open.
+The requests and logs sections show only when the pods have spans or logs in the range.
 
 ```bash
 dash0 -X k8s pods watch <pod> -n <namespace> [flags]
@@ -3418,42 +3454,41 @@ dash0 -X k8s pods watch <pod> -n <namespace> [flags]
 | `-o` | `page` | `page` or `json` (default: `json` in agent mode) |
 | `--dataset` | | Dataset to query |
 
-The charts draw thin braille lines, Ditt0's Dots line type, with a 2 × 4 grid of dots in each cell.
-In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0 over the same range, and `q` or `Esc` quits.
-`↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
-The credentials are resolved again before every refresh, so an OAuth access token is renewed while the page stays open.
+#### Workloads
 
-The page queries `POST /api/prometheus/api/v1/query_range` over the pod's `k8s_namespace_name` and `k8s_pod_name` (and `k8s_cluster_name` with `--cluster`):
+Each workload kind has its own command group, which also takes kubectl's singular and short names: `deployments` (`deploy`), `statefulsets` (`sts`), `daemonsets` (`ds`), `replicasets` (`rs`), `jobs`, and `cronjobs` (`cj`).
+They take the flags of `k8s pods watch`, plus `--aggregate` and `--per-pod`, and their header shows how many of the workload's pods are running.
 
-| Section | Metrics |
-|---------|---------|
-| CPU | `k8s.pod.cpu.usage`, `k8s.container.cpu_request`, `k8s.container.cpu_limit` |
-| Memory | `k8s.pod.memory.working_set`, `k8s.container.memory_request`, `k8s.container.memory_limit` |
-| Requests | Rate, errors, and duration p50, p95, and p99 of the pod's `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
-| Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
-| Pods | A workload's running pods, from `k8s.pod.phase` |
+| View | Flag | Key | Shows at each step |
+|------|------|-----|--------------------|
+| Total | `--aggregate total` (default) | `a` | The sum over the pods |
+| Average | `--aggregate avg` | `a` | The mean over the pods |
+| Minimum | `--aggregate min` | `a` | The least of the pods |
+| Maximum | `--aggregate max` | `a` | The most of the pods |
+| Per pod | `--per-pod` | `p` | A line for each of the 8 busiest pods |
 
-It takes each usage gauge once per pod, and each request and limit once per container, before it adds them up, so a pod whose resource attributes changed is not counted twice.
-Pods of the same name in different clusters are still added together.
+Usage, requests, and limits are each aggregated on their own.
+Under `max`, the CPU line can therefore be one pod's and the limit line another's, so read it as "the highest usage" and "the highest limit", not as one pod near its limit.
+For the same reason, the share of the request shows only under `total`.
+The errors line shows only under `total` and `max`, because a pod that served no failed request has no error series to average; the error rate above it always covers all the pods.
 
-A pod's limit is the sum of its containers' limits, and counts only when every container has one, as in Dash0's Kubernetes pages: a container without a limit can use the whole node.
+With `--per-pod`, the busiest pods for CPU and memory are those with the highest share of their limits, followed by the pods without a limit, by usage.
+For requests and duration, they are the pods with the highest mean.
+When the pods are in more than one cluster and `--cluster` is not set, each name starts with its cluster, as in `<cluster>/<pod>`.
+
+#### Limits and warnings
+
+Under each CPU and memory chart, the page shows how much of the request is used and how close the busiest pod is to its own limit.
 The share of the limit turns yellow above 80 percent and red above 90 percent.
+It is the highest share any one pod uses of its own limit, whatever the aggregation, because the largest usage and the largest limit can belong to different pods.
 
-The requests and logs sections show only when the pod has spans or logs in the range.
+A pod has a limit only when every container has one above zero, as in Dash0's Kubernetes pages, because a container without a limit can use the whole node.
+A workload has a limit only when every pod with usage has one.
+When only some of its pods have a limit, the page says so, and still shows the highest share any limited pod uses.
 
-Watch a pod:
+#### JSON output
 
-```bash
-dash0 -X k8s pods watch <pod> -n <namespace>
-```
-
-Match the pod in one cluster only, with a named profile:
-
-```bash
-dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
-```
-
-Print the pod's series and Dash0 links as JSON (the default in agent mode):
+Print the series and Dash0 links as JSON (the default in agent mode):
 
 ```bash
 $ dash0 -X k8s pods watch <pod> -n <namespace> -o json --range 15m
@@ -3470,50 +3505,29 @@ $ dash0 -X k8s pods watch <pod> -n <namespace> -o json --range 15m
 ```
 
 `cpuUtil` and `memUtil` are the share of the limit, from 0 to 1, and `errorRate` is the percentage of requests that failed.
+A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the number of running pods.
+With `--per-pod`, it also has a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`, or `cpuPods:<cluster>/<pod>` without `--cluster`.
 `failed` lists the panels whose query failed, such as `["p99"]`, and is left out when every panel loaded.
 The command exits 0 when at least one panel loaded, and non-zero when none did.
 
-#### Workloads
+#### Metric semantics
 
-Each workload kind has its own command group, which also takes kubectl's singular and short names: `deployments` (`deploy`), `statefulsets` (`sts`), `daemonsets` (`ds`), `replicasets` (`rs`), `jobs`, and `cronjobs` (`cj`).
-They take the flags of `k8s pods watch`, plus these:
+The page queries `POST /api/prometheus/api/v1/query_range`, matching the pod on `k8s_namespace_name` and `k8s_pod_name`, or a workload's pods on `k8s_<kind>_name`, such as `k8s_deployment_name` (and on `k8s_cluster_name` with `--cluster`):
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--aggregate` | `total` | How the pods add up: `total`, `avg`, `min`, or `max` |
-| `--per-pod` | `false` | Open on a line per pod |
+| Section | Metrics |
+|---------|---------|
+| CPU | `k8s.pod.cpu.usage`, `k8s.container.cpu_request`, `k8s.container.cpu_limit` |
+| Memory | `k8s.pod.memory.working_set`, `k8s.container.memory_request`, `k8s.container.memory_limit` |
+| Requests | Rate, errors, and duration p50, p95, and p99 of the pods' `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
+| Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
+| Pods | A workload's running pods, from `k8s.pod.phase` |
 
-The page matches every pod of the workload on `k8s_<kind>_name`, such as `k8s_deployment_name`, instead of `k8s_pod_name`, and its header shows how many of its pods are running.
-`--aggregate` (or `a` in the page) picks how the pods add up at each step: their total, or their average, minimum, or maximum.
-Dash0 combines the pods in the query, so switching sends the queries again.
-Usage, requests, and limits are each aggregated on their own, so under `max` the usage line can be one pod's and the limit line another's.
-For the same reason, the share of the request shows only under `total`.
+Dash0 aggregates the pods in the query, so switching the aggregation sends the queries again.
+Each usage gauge is taken once per pod, and each request and limit once per container, before they are added up, so a pod whose resource attributes changed is not counted twice.
+Pods of the same name in different clusters are still added together.
+The completeness of a pod's limit is checked against its containers in `k8s.container.restarts`.
 
-A workload has a limit only when every pod with usage has one, because a pod without a limit can use the whole node.
-When only some pods have one, the page says so and still shows the highest share any limited pod uses.
-The share of the limit is the highest share any one pod uses of its own limit, whatever the aggregation, because the largest usage and the largest limit can belong to different pods.
-The error rate is the share of all the workload's requests that failed, for the same reason.
-Under `avg` and `min`, the errors line leaves out the pods that served no failed request in the range, so it can read higher than the pods' average or minimum.
-
-`--per-pod` (or `p`) draws a line for each of the 8 busiest pods.
-For CPU and memory, the busiest pods are those with the highest share of their limits, followed by the pods without a limit, by usage.
-For requests and duration, they are the pods with the highest mean.
-Without `--cluster`, a pod's name starts with its cluster, as in `<cluster>/<pod>`, when the pods are in more than one cluster.
-
-Watch the maximum across a deployment's pods at each step:
-
-```bash
-dash0 -X k8s deployments watch <deployment> -n <namespace> --aggregate max
-```
-
-Open a statefulset on a line per pod:
-
-```bash
-dash0 -X k8s statefulsets watch <statefulset> -n <namespace> --per-pod
-```
-
-A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the number of running pods.
-With `--per-pod`, it also has a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`, or `cpuPods:<cluster>/<pod>` without `--cluster`.
+The charts draw thin braille lines, Ditt0's Dots line type, with a 2 × 4 grid of dots in each cell.
 
 #### k9s plugin
 
