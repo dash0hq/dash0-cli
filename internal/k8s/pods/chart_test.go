@@ -83,3 +83,90 @@ func TestQueryEscapesLabelValues(t *testing.T) {
 		t.Errorf("unescaped: %s", q)
 	}
 }
+
+func TestBrailleDrawsOneJoinedLine(t *testing.T) {
+	// 0 then 1 on one row: the bottom-left dot, the midpoint joined up its right-hand column, then the top dot
+	cells := braille([][]*float64{{f(0), f(1)}}, []string{"#828aff"}, 1, span{0, 1})
+	if got := cells[0][0].sides; got != 0x40|0x20|0x10 {
+		t.Errorf("first cell %#x", got)
+	}
+	if got := cells[0][1].sides; got != 0x01 {
+		t.Errorf("second cell %#x", got)
+	}
+	// The series listed first colours a shared cell
+	cells = braille([][]*float64{{f(0)}, {f(0)}}, []string{"first", "second"}, 1, span{0, 1})
+	if cells[0][0].color != "first" {
+		t.Errorf("shared cell coloured %q", cells[0][0].color)
+	}
+}
+
+func TestBrailleDrawsADescendingLine(t *testing.T) {
+	// 1 then 0: the top-left dot, the midpoint one row down the right-hand column, then down to the bottom
+	cells := braille([][]*float64{{f(1), f(0)}}, []string{"c"}, 1, span{0, 1})
+	if got := cells[0][0].sides; got != 0x01|0x10 {
+		t.Errorf("first cell %#x", got)
+	}
+	if got := cells[0][1].sides; got != 0x04|0x40 {
+		t.Errorf("second cell %#x", got)
+	}
+}
+
+func TestBrailleBreaksTheLineAtAGap(t *testing.T) {
+	cells := braille([][]*float64{{f(0), nil, f(0)}}, []string{"c"}, 1, span{0, 1})
+	if cells[0][1].sides != 0 || cells[0][1].color != "" {
+		t.Errorf("gap drawn: %+v", cells[0][1])
+	}
+	// Each end is a lone sample, so a dash along the bottom row
+	if cells[0][0].sides != 0x40|0x80 || cells[0][2].sides != 0x40|0x80 {
+		t.Errorf("ends %#x %#x", cells[0][0].sides, cells[0][2].sides)
+	}
+}
+
+func TestBrailleKeepsOnlyTheFirstSeriesDotsInASharedCell(t *testing.T) {
+	// The second series' bottom dot would show in the first series' colour if the dots were merged
+	cells := braille([][]*float64{{f(1)}, {f(0)}}, []string{"first", "second"}, 1, span{0, 1})
+	if got := cells[0][0]; got.sides != 0x01|0x08 || got.color != "first" {
+		t.Errorf("shared cell %+v", got)
+	}
+}
+
+func TestBrailleJoinsAcrossCellRows(t *testing.T) {
+	// 0 then 1 over two rows: up the right-hand column of the bottom cell, on into the top one
+	cells := braille([][]*float64{{f(0), f(1)}}, []string{"c"}, 2, span{0, 1})
+	want := [2][2]int{{0x80, 0x07}, {0x78, 0}}
+	for r := range want {
+		for c := range want[r] {
+			if got := cells[r][c].sides; got != want[r][c] {
+				t.Errorf("cell %d,%d %#x, want %#x", r, c, got, want[r][c])
+			}
+		}
+	}
+}
+
+func TestBrailleDrawsALoneSampleAsADash(t *testing.T) {
+	cells := braille([][]*float64{{nil, f(0.5), nil}}, []string{"c"}, 3, span{0, 1})
+	// 0.5 on 12 dot rows lands on dot row 5: the second row of the middle cell, both columns
+	if got := cells[1][1].sides; got != 0x02|0x10 {
+		t.Errorf("lone sample %#x", got)
+	}
+}
+
+func TestBrailleClampsValuesOutsideTheSpan(t *testing.T) {
+	cells := braille([][]*float64{{f(-1), f(2)}}, []string{"c"}, 1, span{0, 1})
+	if cells[0][0].sides&0x40 == 0 || cells[0][1].sides&0x01 == 0 {
+		t.Errorf("clamped %#x %#x", cells[0][0].sides, cells[0][1].sides)
+	}
+}
+
+func TestFlattensCountsDotRows(t *testing.T) {
+	// Errors moving 0 to 15 beside requests up to 100 cross three of the 19 dot-row steps, so they stay on one axis
+	ss := []series{{values: []*float64{f(0), f(100)}}, {values: []*float64{f(0), f(15)}}}
+	if flattens(ss, 5) {
+		t.Error("errors that move three dot rows sent to small multiples")
+	}
+	// Moving 4 of 100 is under one dot row
+	ss[1].values = []*float64{f(0), f(4)}
+	if !flattens(ss, 5) {
+		t.Error("a line flat to the dot kept on the shared axis")
+	}
+}

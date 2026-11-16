@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// Ditt0's Timeseries in its default 'box' line type, ported from ditt0-cli-design-system/components/molecules/charts/timeseries/timeseries.js:
-// box-drawing strokes a row at a time, a dim ┄ rule along every labelled row, max, middle and min on the y axis
+// Ditt0's Timeseries in its braille 'Dots' line type, ported from ditt0-cli-design-system/components/molecules/charts/timeseries/timeseries.js:
+// a thin braille line, a dim ┄ rule along every labelled row, max, middle and min on the y axis
 // between round numbers, the unit once above it, three times under it, and a legend of ━ swatches.
 
 type series struct {
@@ -20,30 +20,6 @@ type series struct {
 
 // Cells left empty right of the plot, so the line doesn't run into the edge of its card
 const rightGap = 2
-
-// Which sides of a cell a stroke leaves by, so a line's strokes join into one glyph
-const (
-	up = 1 << iota
-	down
-	left
-	right
-	point
-)
-
-var glyphs = map[int]string{
-	up: "╵", down: "╷", left: "╴", right: "╶",
-	left | right: "─", up | down: "│",
-	right | down: "╭", left | down: "╮", up | right: "╰", up | left: "╯",
-	left | right | down: "┬", left | right | up: "┴", up | down | right: "├", up | down | left: "┤",
-	up | down | left | right: "┼",
-}
-
-func glyph(sides int) string {
-	if g, ok := glyphs[sides&^point]; ok {
-		return g
-	}
-	return "•"
-}
 
 type span struct{ min, max float64 }
 
@@ -188,61 +164,6 @@ type cell struct {
 	color string
 }
 
-// Each column enters from the left at the previous column's row, runs to its own, and leaves right there; a gap cuts
-// the line. Where two series pass through one cell, the one listed first keeps it, as if drawn over the other
-func strokes(lines [][]*float64, colors []string, rows int, s span) [][]cell {
-	rowOf := func(v float64) int { return rows - 1 - int(math.Round((v-s.min)/(s.max-s.min)*float64(rows-1))) }
-	columns := len(lines[0])
-	cells := make([][]cell, rows)
-	for r := range cells {
-		cells[r] = make([]cell, columns)
-	}
-	for k, values := range lines {
-		for c, v := range values {
-			if v == nil {
-				continue
-			}
-			own := rowOf(*v)
-			entry, exit := -1, -1
-			if c > 0 && values[c-1] != nil {
-				entry = rowOf(*values[c-1])
-			}
-			if c < columns-1 && values[c+1] != nil {
-				exit = own
-			}
-			top, bottom := own, own
-			if entry >= 0 {
-				top, bottom = min(own, entry), max(own, entry)
-			}
-			for r := top; r <= bottom; r++ {
-				sides := 0
-				if r > top {
-					sides |= up
-				}
-				if r < bottom {
-					sides |= down
-				}
-				if r == entry {
-					sides |= left
-				}
-				if r == exit {
-					sides |= right
-				}
-				if sides == 0 {
-					sides = point
-				}
-				at := &cells[r][c]
-				if at.color != "" && at.color != colors[k] {
-					continue
-				}
-				at.sides |= sides
-				at.color = colors[k]
-			}
-		}
-	}
-	return cells
-}
-
 // HH:MM on the local clock, as Dash0 shows times, and the zone once at the end of the axis
 func clock(t time.Time) string { return t.Local().Format("15:04") }
 
@@ -265,8 +186,8 @@ func zoneOf(t time.Time) string {
 // How many rows each panel of small multiples gets: odd, so the middle label and its rule sit exactly halfway
 const multipleRows = 5
 
-// Whether a series that moves would draw as one flat row on the others' axis, as 900 error logs do beside 30K
-// unknown ones: it would hide its own changes, and under another series its colour (timeseries.js flattens)
+// Whether a series that moves would draw as one flat line of dots on the others' axis, as 900 error logs do beside
+// 30K unknown ones: it would hide its own changes, and under another series its colour (timeseries.js flattens)
 func flattens(ss []series, rows int) bool {
 	all := spanOf(ss)
 	for _, s := range ss {
@@ -276,7 +197,7 @@ func flattens(ss []series, rows int) bool {
 				lo, hi = math.Min(lo, *v), math.Max(hi, *v)
 			}
 		}
-		if hi > lo && hi-lo < (all.max-all.min)/float64(rows-1) {
+		if hi > lo && hi-lo < (all.max-all.min)/float64(4*rows-1) {
 			return true
 		}
 	}
@@ -295,13 +216,72 @@ func peakOf(ss []series) float64 {
 	return peak
 }
 
-// One panel's y axis and strokes, rows high, each row the axis then a cell per column
+// Ditt0's braille line type (Dots): each cell a 2 × 4 grid of dots, one thin line through them, a dot column for
+// each column's value and one halfway to the next, each joined to the one before. Where series of different
+// colours share a cell, the one listed first keeps it with only its own dots, as if drawn over the others; series of
+// one colour, such as ERROR and FATAL, merge their dots
+func braille(lines [][]*float64, colors []string, rows int, s span) [][]cell {
+	dotRows := 4 * rows
+	rowOf := func(v float64) int {
+		y := dotRows - 1 - int(math.Round((v-s.min)/(s.max-s.min)*float64(dotRows-1)))
+		return min(max(y, 0), dotRows-1)
+	}
+	// The bit of dot (x, y) of a cell: the braille pattern's numbering
+	bit := [4][2]int{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
+	columns := len(lines[0])
+	cells := make([][]cell, rows)
+	for r := range cells {
+		cells[r] = make([]cell, columns)
+	}
+	for k := len(lines) - 1; k >= 0; k-- {
+		values := lines[k]
+		dots := make([]*float64, 2*columns)
+		for c, v := range values {
+			dots[2*c] = v
+			if v != nil && c+1 < columns && values[c+1] != nil {
+				m := (*v + *values[c+1]) / 2
+				dots[2*c+1] = &m
+			}
+		}
+		for x, v := range dots {
+			if v == nil {
+				continue
+			}
+			y := rowOf(*v)
+			top, bottom := y, y
+			if x > 0 && dots[x-1] != nil {
+				// Down or up to one dot short of the previous, so the steps join without doubling it
+				prev := rowOf(*dots[x-1])
+				if prev < y {
+					top = prev + 1
+				} else if prev > y {
+					bottom = prev - 1
+				}
+			}
+			for yy := top; yy <= bottom; yy++ {
+				at := &cells[yy/4][x/2]
+				if at.color != colors[k] {
+					// A cell has one colour, so the series drawn over it drops the other's dots instead of recolouring them
+					at.sides, at.color = 0, colors[k]
+				}
+				at.sides |= bit[yy%4][x%2]
+			}
+			// A sample with gaps either side is a short dash, both dots of its cell's row, as one dot is too faint to see
+			if x%2 == 0 && (x == 0 || dots[x-1] == nil) && dots[x+1] == nil {
+				cells[y/4][x/2].sides |= bit[y%4][1]
+			}
+		}
+	}
+	return cells
+}
+
+// One panel's y axis and braille line, rows high, each row the axis then a cell per column
 func plot(ss []series, lines [][]*float64, rows int, rng span, labels map[int]string, labelWidth int) block {
 	colors := make([]string, len(ss))
 	for k, s := range ss {
 		colors[k] = s.color
 	}
-	cells := strokes(lines, colors, rows, rng)
+	cells := braille(lines, colors, rows, rng)
 	var out block
 	for r := 0; r < rows; r++ {
 		axis := strings.Repeat(" ", labelWidth) + " │"
@@ -311,7 +291,7 @@ func plot(ss []series, lines [][]*float64, rows int, rng span, labels map[int]st
 		row := line{{axis, dimStyle}}
 		for c := range cells[r] {
 			if at := cells[r][c]; at.color != "" {
-				row = append(row, seg{glyph(at.sides), style{fg: at.color}})
+				row = append(row, seg{string(rune(0x2800 + at.sides)), style{fg: at.color}})
 			} else if _, ok := labels[r]; ok {
 				row = append(row, seg{"┄", dimStyle})
 			} else {
