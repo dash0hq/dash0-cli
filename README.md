@@ -902,6 +902,12 @@ The page refreshes every 30 seconds; `1` to `4` pick the range, `o`, `t`, and `l
 dash0 -X k8s pods watch <pod> -n <namespace>
 ```
 
+With `--kind`, it shows all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, and `a` and `p` switch between their total, the average, least, or busiest pod, and a line per pod:
+
+```bash
+dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment
+```
+
 The same page runs as a [k9s plugin](https://k9scli.io/topics/plugins/) on `Shift-D`.
 Add this to k9s' `plugins.yaml` (`k9s info` prints where it is):
 
@@ -925,6 +931,20 @@ plugins:
     background: false
     confirm: false
     args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+  dash0-workload-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+      - jobs
+      - cronjobs
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --kind, $RESOURCE_NAME, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
 
 See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for the full reference.

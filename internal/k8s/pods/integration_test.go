@@ -217,3 +217,61 @@ func TestWatch_InvalidRange(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown range "2h"`)
 }
+
+func TestWatch_WorkloadJSON(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnDefault(queryRangeHandler(t, ""))
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", "checkout", "-n", testPodsNamespace, "--kind", "deployments", "-o", "json",
+		"--range", "15m", "--api-url", server.URL, "--auth-token", testPodsAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	var got struct {
+		watchJSON
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &got))
+	assert.Equal(t, "deployment", got.Kind)
+	assert.Equal(t, "checkout", got.Name)
+	assert.Empty(t, got.Pod)
+
+	requests := server.Requests()
+	require.Len(t, requests, expectedPanelRequests+len(podPanels))
+	for _, r := range requests {
+		form, err := url.ParseQuery(string(r.Body))
+		require.NoError(t, err)
+		assert.Contains(t, form.Get("query"), `k8s_deployment_name="checkout"`)
+		assert.NotContains(t, form.Get("query"), `k8s_pod_name="`)
+	}
+}
+
+func TestWatch_InvalidKind(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", "checkout", "-n", testPodsNamespace, "--kind", "services"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown kind "services"`)
+}
+
+func TestWatch_AggNeedsAWorkload(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", testPodsPod, "-n", testPodsNamespace, "--agg", "max"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--agg and --per-pod need a workload")
+}

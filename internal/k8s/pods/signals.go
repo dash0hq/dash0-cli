@@ -2,6 +2,8 @@ package pods
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -15,7 +17,7 @@ type panel struct {
 }
 
 func (t target) selector(metric string, extra ...string) string {
-	sel := []string{"otel_metric_name=" + quote(metric), "k8s_namespace_name=" + quote(t.namespace), "k8s_pod_name=" + quote(t.pod)}
+	sel := []string{"otel_metric_name=" + quote(metric), "k8s_namespace_name=" + quote(t.namespace), "k8s_" + t.kind + "_name=" + quote(t.name)}
 	if t.cluster != "" {
 		sel = append(sel, "k8s_cluster_name="+quote(t.cluster))
 	}
@@ -49,9 +51,9 @@ func spans(t target, extra ...string) string {
 	return t.selector("dash0.spans", append([]string{`otel_span_kind="SERVER"`}, extra...)...)
 }
 
-func quantile(q string) func(target, time.Duration) string {
+func quantile(q, by string) func(target, time.Duration) string {
 	return func(t target, step time.Duration) string {
-		return "histogram_quantile(" + q + ", sum by (le) (rate(" + t.selector("dash0.spans.duration", `otel_span_kind="SERVER"`) + rangeOf(step) + ")))"
+		return "histogram_quantile(" + q + ", sum by (le" + by + ") (rate(" + t.selector("dash0.spans.duration", `otel_span_kind="SERVER"`) + rangeOf(step) + ")))"
 	}
 }
 
@@ -62,11 +64,157 @@ var panels = []panel{
 	{"errors", func(t target, step time.Duration) string {
 		return "sum(rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + "))"
 	}, ""},
-	{"p50", quantile("0.5"), ""}, {"p95", quantile("0.95"), ""}, {"p99", quantile("0.99"), ""},
+	{"p50", quantile("0.5", ""), ""}, {"p95", quantile("0.95", ""), ""}, {"p99", quantile("0.99", ""), ""},
 	// Log records per step, by severity
 	{"logs", func(t target, step time.Duration) string {
 		return "sum by (otel_log_severity_range) (increase(" + t.selector("dash0.logs") + rangeOf(step) + "))"
 	}, "otel_log_severity_range"},
+}
+
+// A workload's panels split by pod as well, for the per-pod view and the avg, min and max views
+var podPanels = []panel{
+	{"cpuPods", byPod("k8s.pod.cpu.usage"), "k8s_pod_name"},
+	{"memPods", byPod("k8s.pod.memory.working_set"), "k8s_pod_name"},
+	{"requestsPods", func(t target, step time.Duration) string {
+		return "sum by (k8s_pod_name) (rate(" + spans(t) + rangeOf(step) + "))"
+	}, "k8s_pod_name"},
+	{"p95Pods", quantile("0.95", ", k8s_pod_name"), "k8s_pod_name"},
+	{"cpuRequestPods", byPod("k8s.container.cpu_request"), "k8s_pod_name"},
+	{"cpuLimitPods", byPod("k8s.container.cpu_limit"), "k8s_pod_name"},
+	{"memRequestPods", byPod("k8s.container.memory_request"), "k8s_pod_name"},
+	{"memLimitPods", byPod("k8s.container.memory_limit"), "k8s_pod_name"},
+	{"errorsPods", func(t target, step time.Duration) string {
+		return "sum by (k8s_pod_name) (rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + "))"
+	}, "k8s_pod_name"},
+}
+
+func byPod(metric string) func(target, time.Duration) string {
+	return func(t target, _ time.Duration) string { return "sum by (k8s_pod_name) (" + t.selector(metric) + ")" }
+}
+
+// The panels a target asks for: a pod's, and a workload's per-pod ones too
+func panelsFor(t target) []panel {
+	if t.kind == "pod" {
+		return panels
+	}
+	return append(append([]panel{}, panels...), podPanels...)
+}
+
+// How a workload's pods add up in its stats and charts: their total, or the mean, least or most of the pods running
+// at each step
+var aggs = []string{"total", "avg", "min", "max"}
+
+// key's series under the page's agg: the total as Dash0 sums it, else worked out step by step from key's per-pod
+// series (<key>Pods), so switching asks Dash0 nothing
+func (p *page) of(key string) []*float64 {
+	if p.agg == 0 {
+		return p.data[key]
+	}
+	var pods [][]*float64
+	for k, v := range p.data {
+		if strings.HasPrefix(k, key+"Pods:") {
+			pods = append(pods, v)
+		}
+	}
+	return aggregate(pods, aggs[p.agg])
+}
+
+// Series combined step by step over those with a sample there: avg, min or max; a step none has stays none
+func aggregate(pods [][]*float64, how string) []*float64 {
+	if len(pods) == 0 {
+		return nil
+	}
+	out := make([]*float64, len(pods[0]))
+	for i := range out {
+		var got []float64
+		for _, v := range pods {
+			if i < len(v) && v[i] != nil {
+				got = append(got, *v[i])
+			}
+		}
+		if len(got) == 0 {
+			continue
+		}
+		acc := got[0]
+		for _, x := range got[1:] {
+			switch how {
+			case "avg":
+				acc += x
+			case "min":
+				acc = math.Min(acc, x)
+			case "max":
+				acc = math.Max(acc, x)
+			}
+		}
+		if how == "avg" {
+			acc /= float64(len(got))
+		}
+		out[i] = &acc
+	}
+	return out
+}
+
+// " · max pod" after a title under avg, min or max
+func (p *page) aggNote() string {
+	if p.agg == 0 {
+		return ""
+	}
+	return " · " + aggs[p.agg] + " pod"
+}
+
+// Pods drawn in a per-pod chart. Folding the rest into one line would dwarf them: a deployment that rolled churns
+// through dozens of pods in an hour
+const maxPods = 8
+
+// key's per-pod series, busiest first by mean, and how many pods had any
+func (p *page) podSeries(key string) ([]series, int) {
+	type ranked struct {
+		name   string
+		values []*float64
+		mean   float64
+	}
+	var all []ranked
+	for k, v := range p.data {
+		pod, ok := strings.CutPrefix(k, key+":")
+		if !ok || !hasSamples(v) {
+			continue
+		}
+		total, n := 0.0, 0
+		for _, x := range v {
+			if x != nil {
+				total, n = total+*x, n+1
+			}
+		}
+		all = append(all, ranked{pod, v, total / float64(n)})
+	}
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].mean > all[j].mean || all[i].mean == all[j].mean && all[i].name < all[j].name
+	})
+	var out []series
+	for i, r := range all[:min(len(all), maxPods)] {
+		out = append(out, series{r.name, r.values, p.theme.series[i%len(p.theme.series)]})
+	}
+	return out, len(all)
+}
+
+// A per-pod card, its title saying when it shows only the busiest pods
+func (p *page) podCard(title, key, unit string, width, rows int) block {
+	ss, n := p.podSeries(key)
+	if n > len(ss) {
+		title += fmt.Sprintf(" · busiest %d of %d", len(ss), n)
+	}
+	return p.cardOf(title, unit, ss, width, rows, false)
+}
+
+// Pods with a CPU sample at the window's end: those running now
+func (p *page) runningPods() int {
+	n := 0
+	for k, v := range p.data {
+		if strings.HasPrefix(k, "cpuPods:") && len(v) > 0 && v[len(v)-1] != nil {
+			n++
+		}
+	}
+	return n
 }
 
 // Whether a series has a sample anywhere in the window
@@ -117,33 +265,40 @@ func heading(title, note string) block {
 
 // Requests, errors and duration of the spans the pod serves: nil when it served none in the window
 func (p *page) redSection(cardW int, side bool, rows int) block {
-	requests := p.data["requests"]
-	if !active(requests) {
+	if !active(p.data["requests"]) {
 		return nil
 	}
-	errors := p.data["errors"]
+	requests, errors := p.of("requests"), p.of("errors")
 	since := "vs " + clock(p.win.start)
-	rate := errorRate(requests, errors)
+	// The share of all requests: an avg, min or max pod's errors over another pod's requests would mean nothing
+	rate := errorRate(p.data["requests"], p.data["errors"])
 	stats := hjoin(6,
-		stat("Requests", requests, "/s", "", since, "", true, p.theme),
+		stat("Requests"+p.aggNote(), requests, "/s", "", since, "", true, p.theme),
 		stat("Errors", rate, "percent", "", since, "", false, p.theme),
 		stat("Duration p95", p.data["p95"], "seconds", "", since, "", false, p.theme),
 	)
 
-	var reqSeries []series
-	reqSeries = append(reqSeries, series{"requests", requests, p.theme.series[0]})
-	if active(errors) {
-		// ERROR takes the error red wherever it sits, as Ditt0's color manager colours it by meaning
-		reqSeries = append(reqSeries, series{"errors", errors, p.theme.errorInk})
-	}
-	var durSeries []series
-	for i, q := range []string{"p99", "p95", "p50"} {
-		if v := p.data[q]; hasSamples(v) {
-			durSeries = append(durSeries, series{q, v, p.theme.series[i]})
+	var req, dur block
+	if p.perPod {
+		// One axis for every pod: comparing them is the point
+		req = p.podCard("Requests by pod", "requestsPods", "/s", cardW, rows)
+		dur = p.podCard("Duration p95 by pod", "p95Pods", "seconds", cardW, rows)
+	} else {
+		var reqSeries []series
+		reqSeries = append(reqSeries, series{"requests", requests, p.theme.series[0]})
+		if active(errors) {
+			// ERROR takes the error red wherever it sits, as Ditt0's color manager colours it by meaning
+			reqSeries = append(reqSeries, series{"errors", errors, p.theme.errorInk})
 		}
+		var durSeries []series
+		for i, q := range []string{"p99", "p95", "p50"} {
+			if v := p.data[q]; hasSamples(v) {
+				durSeries = append(durSeries, series{q, v, p.theme.series[i]})
+			}
+		}
+		req = p.cardOf("Requests"+p.aggNote(), "/s", reqSeries, cardW, rows, true)
+		dur = p.cardOf("Duration", "seconds", durSeries, cardW, rows, true)
 	}
-	req := p.cardOf("Requests", "/s", reqSeries, cardW, rows, true)
-	dur := p.cardOf("Duration", "seconds", durSeries, cardW, rows, true)
 	charts := vjoin(1, req, dur)
 	if side {
 		charts = hjoin(1, req, dur)

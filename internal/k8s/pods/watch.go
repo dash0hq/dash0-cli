@@ -36,6 +36,9 @@ type watchFlags struct {
 	cluster      string
 	rangeLabel   string
 	output       string
+	kind         string
+	agg          string
+	perPod       bool
 	light        bool
 	once         bool
 	pauseOnError bool
@@ -68,13 +71,16 @@ func newWatchCmd() *cobra.Command {
 	flags := &watchFlags{}
 
 	cmd := &cobra.Command{
-		Use:   "watch <pod> --namespace <namespace>",
-		Short: "[experimental] Watch a pod's CPU, memory, requests and logs from Dash0",
+		Use:   "watch <name> --namespace <namespace>",
+		Short: "[experimental] Watch a pod's or workload's CPU, memory, requests and logs from Dash0",
 		Long: `Draw a pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration and log counts when it has spans and logs.
 The page refreshes every 30 seconds.
 In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pod's metrics, traces and logs in Dash0, and q or Esc quits.
 
-The pod is matched on the k8s.namespace.name and k8s.pod.name resource attributes.
+With --kind, the name is a deployment, statefulset, daemonset, replicaset, job or cronjob, and the page shows all of its pods.
+On a workload's page, a switches between the total of its pods and the average, least or busiest pod, and p draws a line for each of the 8 busiest pods.
+
+The pod is matched on the k8s.namespace.name and k8s.pod.name resource attributes, a workload on k8s.<kind>.name.
 Pass --cluster (or set DASH0_CLUSTER) to also match k8s.cluster.name.
 
 The command also runs as a k9s plugin; see the k9s plugin section of the README.` + internal.CONFIG_HINT,
@@ -86,6 +92,12 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 
   # Match the pod in one cluster only, with a named profile
   dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
+
+  # Watch a deployment's busiest pod
+  dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --agg max
+
+  # Watch a statefulset with a line per pod
+  dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
 
   # Draw one frame to stdout and exit
   dash0 -X k8s pods watch <pod> -n <namespace> --once
@@ -104,7 +116,10 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 		},
 	}
 
-	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "The pod's namespace (required)")
+	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "The pod's or workload's namespace (required)")
+	cmd.Flags().StringVar(&flags.kind, "kind", "pod", "What the name names: "+strings.Join(kinds, ", ")+"; plurals work, as k9s' $RESOURCE_NAME has them")
+	cmd.Flags().StringVar(&flags.agg, "agg", "total", "How a workload's pods add up: "+strings.Join(aggs, ", "))
+	cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open a workload on a line per pod")
 	cmd.Flags().StringVar(&flags.cluster, "cluster", os.Getenv(envCluster), "Dash0's k8s.cluster.name; empty matches the pod in any cluster (env: DASH0_CLUSTER)")
 	cmd.Flags().StringVar(&flags.kubeContext, "context", "", "The kube context, shown in the header")
 	cmd.Flags().StringVar(&flags.rangeLabel, "range", "1h", "The time range the page opens on: 15m, 1h, 6h or 24h")
@@ -120,7 +135,7 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 	return cmd
 }
 
-func runWatch(cmd *cobra.Command, pod string, flags *watchFlags) error {
+func runWatch(cmd *cobra.Command, name string, flags *watchFlags) error {
 	if err := experimental.RequireExperimental(cmd); err != nil {
 		return err
 	}
@@ -137,6 +152,22 @@ func runWatch(cmd *cobra.Command, pod string, flags *watchFlags) error {
 	if rangeIdx < 0 {
 		return fmt.Errorf("unknown range %q (valid ranges: 15m, 1h, 6h, 24h)", flags.rangeLabel)
 	}
+	kind := kindOf(flags.kind)
+	if kind == "" {
+		return fmt.Errorf("unknown kind %q (valid kinds: %s)", flags.kind, strings.Join(kinds, ", "))
+	}
+	agg := -1
+	for i, a := range aggs {
+		if a == flags.agg {
+			agg = i
+		}
+	}
+	if agg < 0 {
+		return fmt.Errorf("unknown aggregation %q (valid aggregations: %s)", flags.agg, strings.Join(aggs, ", "))
+	}
+	if kind == "pod" && (agg != 0 || flags.perPod) {
+		return fmt.Errorf("--agg and --per-pod need a workload: pass --kind deployment, statefulset, daemonset, replicaset, job or cronjob")
+	}
 
 	ctx := cmd.Context()
 	// Fails up front, with the CLI's hints, on missing credentials or an OAuth profile that is not logged in
@@ -146,8 +177,10 @@ func runWatch(cmd *cobra.Command, pod string, flags *watchFlags) error {
 	cmd.SilenceUsage = true
 
 	p := &page{
-		target:   target{cluster: flags.cluster, namespace: flags.namespace, pod: pod, context: flags.kubeContext, profile: profileName(ctx, flags)},
+		target:   target{cluster: flags.cluster, namespace: flags.namespace, kind: kind, name: name, context: flags.kubeContext, profile: profileName(ctx, flags)},
 		rangeIdx: rangeIdx,
+		agg:      agg,
+		perPod:   flags.perPod,
 		theme:    dark,
 		apiURL:   client.ResolveApiUrl(ctx, flags.apiURL),
 		dataset:  client.ResolveDataset(ctx, flags.dataset),
@@ -175,7 +208,7 @@ func runWatch(cmd *cobra.Command, pod string, flags *watchFlags) error {
 		if err != nil {
 			p.mu.Lock()
 			p.loading, p.lastError = false, err.Error()
-			p.failed = make([]string, len(panels))
+			p.failed = make([]string, len(panelsFor(p.target)))
 			p.mu.Unlock()
 			return
 		}
@@ -266,16 +299,22 @@ func (p *page) printJSON(w io.Writer) error {
 	for i, t := range times {
 		timestamps[i] = t.UTC().Format(time.RFC3339)
 	}
+	pod := ""
+	if p.target.kind == "pod" {
+		pod = p.target.name
+	}
 	out := struct {
 		Namespace  string                `json:"namespace"`
-		Pod        string                `json:"pod"`
+		Kind       string                `json:"kind"`
+		Name       string                `json:"name"`
+		Pod        string                `json:"pod,omitempty"`
 		Cluster    string                `json:"cluster,omitempty"`
 		Step       string                `json:"step"`
 		Timestamps []string              `json:"timestamps"`
 		Series     map[string][]*float64 `json:"series"`
 		Failed     []string              `json:"failed,omitempty"`
 		Links      map[string]string     `json:"links"`
-	}{p.target.namespace, p.target.pod, p.target.cluster, p.win.step.String(), timestamps, p.data, p.failed, links}
+	}{p.target.namespace, p.target.kind, p.target.name, pod, p.target.cluster, p.win.step.String(), timestamps, p.data, p.failed, links}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
@@ -310,6 +349,9 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 		overflow := len(frame) > body
 		p.scroll = max(0, min(p.scroll, len(frame)-body))
 		hints := "o metrics · t traces · l logs in Dash0 · 1-4 range · r refresh · q quit"
+		if p.target.kind != "pod" {
+			hints = "a total/avg/min/max · p per pod · " + hints
+		}
 		if overflow {
 			hints = fmt.Sprintf("↑↓ scroll (%d%%) · ", 100*(p.scroll+body)/len(frame)) + hints
 		}
@@ -375,6 +417,18 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 				return nil
 			case "r":
 				ask()
+			case "a", "p":
+				if p.target.kind == "pod" {
+					break
+				}
+				p.mu.Lock()
+				if k == "a" {
+					p.agg = (p.agg + 1) % len(aggs)
+				} else {
+					p.perPod = !p.perPod
+				}
+				p.mu.Unlock()
+				draw()
 			case "o", "t", "l":
 				p.mu.Lock()
 				links := p.links()

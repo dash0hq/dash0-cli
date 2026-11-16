@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +23,22 @@ var ranges = []struct {
 // Steps a window can take: the smallest that fits the plot's columns
 var steps = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 15 * time.Minute, 30 * time.Minute, time.Hour}
 
-type target struct{ cluster, namespace, pod, context, profile string }
+// kind: what name names, as Dash0's resource attribute k8s.<kind>.name has it: pod, deployment, statefulset, ...
+type target struct{ cluster, namespace, kind, name, context, profile string }
+
+var kinds = []string{"pod", "deployment", "statefulset", "daemonset", "replicaset", "job", "cronjob"}
+
+// The kind for what k9s passes as $RESOURCE_NAME (deployments), or as typed (deployment); "" when Dash0 has no
+// attribute for it
+func kindOf(s string) string {
+	s = strings.ToLower(s)
+	for _, k := range kinds {
+		if s == k || s == k+"s" {
+			return k
+		}
+	}
+	return ""
+}
 
 func quote(v string) string { return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"` }
 
@@ -39,6 +55,8 @@ type page struct {
 	gen       int
 	theme     theme
 	scroll    int
+	perPod    bool
+	agg       int // aggs: total, avg, min, max
 	apiURL    string
 	dataset   *string
 }
@@ -71,6 +89,7 @@ func (p *page) fetch(ctx context.Context, c promClient, columns int) {
 		values map[string][]*float64
 		err    error
 	}
+	panels := panelsFor(t)
 	answers := make(chan answer, len(panels))
 	queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -139,7 +158,7 @@ func (p *page) freshness() line {
 	}
 	at := p.at.Local().Format("15:04:05") + " (" + zoneOf(p.at) + ")"
 	if len(p.failed) > 0 {
-		return text(fmt.Sprintf("Updated %s · %d of %d panels show older data", at, len(p.failed), len(panels)), dimStyle)
+		return text(fmt.Sprintf("Updated %s · %d of %d panels show older data", at, len(p.failed), len(panelsFor(p.target))), dimStyle)
 	}
 	return text("Updated "+at, dimStyle)
 }
@@ -155,7 +174,7 @@ func (p *page) metricsLink(query string) string {
 
 // The traces and logs explorers' filter: the pod's resource, over the page's range
 func (p *page) explorerFilter() []dash0api.DeeplinkFilter {
-	filter := []dash0api.DeeplinkFilter{{Key: "k8s.namespace.name", Operator: "is", Value: p.target.namespace}, {Key: "k8s.pod.name", Operator: "is", Value: p.target.pod}}
+	filter := []dash0api.DeeplinkFilter{{Key: "k8s.namespace.name", Operator: "is", Value: p.target.namespace}, {Key: "k8s." + p.target.kind + ".name", Operator: "is", Value: p.target.name}}
 	if p.target.cluster != "" {
 		filter = append(filter, dash0api.DeeplinkFilter{Key: "k8s.cluster.name", Operator: "is", Value: p.target.cluster})
 	}
@@ -193,6 +212,22 @@ func (p *page) toggles() block {
 		}
 		parts = append(parts, border(block{text(r.label, label)}, len(r.label)+4, 1, st))
 	}
+	// A workload's views: how its pods add up, then a line per pod
+	if p.target.kind != "pod" {
+		toggle := func(m string, on bool) {
+			st, label := style{fg: p.theme.selected}, style{}
+			if !on {
+				st, label = dimStyle, dimStyle
+			}
+			parts = append(parts, border(block{text(m, label)}, len(m)+4, 1, st))
+		}
+		parts = append(parts, block{text("  ", style{})})
+		for i, m := range aggs {
+			toggle(m, i == p.agg)
+		}
+		parts = append(parts, block{text("  ", style{})})
+		toggle("per pod", p.perPod)
+	}
 	return hjoin(0, parts...)
 }
 
@@ -212,7 +247,10 @@ func (p *page) tags() line {
 	add("cluster", p.target.cluster)
 	add("context", p.target.context)
 	add("namespace", p.target.namespace)
-	add("pod", p.target.pod)
+	add(p.target.kind, p.target.name)
+	if p.target.kind != "pod" && p.data != nil {
+		add("pods", strconv.Itoa(p.runningPods()))
+	}
 	return l
 }
 
@@ -223,6 +261,10 @@ func ratio(v, of *float64) (float64, bool) {
 	return *v / *of, true
 }
 
+// Whether limits show: a pod's, or under max, the largest any pod has. A limit holds each container alone, so a
+// workload's total, mean or least against a sum or mean of limits says nothing about any pod nearing its own
+func (p *page) showsLimit() bool { return p.target.kind == "pod" || aggs[p.agg] == "max" }
+
 // The usage against its request and limit, and the status colour it reaches against the limit
 func (p *page) against(usage, request, limit []*float64, unit string) (string, string) {
 	u, r, l := last(usage), last(request), last(limit)
@@ -231,6 +273,9 @@ func (p *page) against(usage, request, limit []*float64, unit string) (string, s
 		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", f*100, formatValue(r, unit)))
 	}
 	ink := ""
+	if !p.showsLimit() {
+		return strings.Join(parts, " · "), ink
+	}
 	if f, ok := ratio(u, l); ok {
 		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", f*100, formatValue(l, unit)))
 		if f >= 0.95 {
@@ -249,8 +294,11 @@ func (p *page) chartSeries(keys [3]string) []series {
 	names := [3]string{"usage", "request", "limit"}
 	var out []series
 	for i, k := range keys {
-		v, ok := p.data[k]
-		if !ok || last(v) == nil && first(v) == nil {
+		if i == 2 && !p.showsLimit() {
+			continue
+		}
+		v := p.of(k)
+		if first(v) == nil {
 			continue
 		}
 		out = append(out, series{names[i], v, p.theme.series[i]})
@@ -290,7 +338,7 @@ func (p *page) render(w, h int) (block, int) {
 		cardW = (inner - 1) / 2
 	}
 	header := block{
-		text(p.target.namespace+"/"+p.target.pod, style{bold: true}),
+		text(p.target.namespace+"/"+p.target.name, style{bold: true}),
 		p.tags(),
 		p.freshness(),
 	}
@@ -326,17 +374,21 @@ func (p *page) render(w, h int) (block, int) {
 
 	var stats block
 	if p.data != nil {
-		cpuNote, cpuInk := p.against(p.data["cpu"], p.data["cpuRequest"], p.data["cpuLimit"], "cores")
-		memNote, memInk := p.against(p.data["mem"], p.data["memRequest"], p.data["memLimit"], "bytes")
+		cpuNote, cpuInk := p.against(p.of("cpu"), p.of("cpuRequest"), p.of("cpuLimit"), "cores")
+		memNote, memInk := p.against(p.of("mem"), p.of("memRequest"), p.of("memLimit"), "bytes")
 		since := "vs " + clock(p.win.start)
 		stats = hjoin(6,
-			stat("CPU", p.data["cpu"], "cores", cpuInk, since, cpuNote, false, p.theme),
-			stat("Memory", p.data["mem"], "bytes", memInk, since, memNote, false, p.theme),
+			stat("CPU"+p.aggNote(), p.of("cpu"), "cores", cpuInk, since, cpuNote, false, p.theme),
+			stat("Memory"+p.aggNote(), p.of("mem"), "bytes", memInk, since, memNote, false, p.theme),
 		)
 	}
 
-	cpu := p.card("CPU", "cores", p.chartSeries([3]string{"cpu", "cpuRequest", "cpuLimit"}), cardW, rows)
-	mem := p.card("Memory", "bytes", p.chartSeries([3]string{"mem", "memRequest", "memLimit"}), cardW, rows)
+	cpu := p.card("CPU"+p.aggNote(), "cores", p.chartSeries([3]string{"cpu", "cpuRequest", "cpuLimit"}), cardW, rows)
+	mem := p.card("Memory"+p.aggNote(), "bytes", p.chartSeries([3]string{"mem", "memRequest", "memLimit"}), cardW, rows)
+	if p.perPod {
+		cpu = p.podCard("CPU by pod", "cpuPods", "cores", cardW, rows)
+		mem = p.podCard("Memory by pod", "memPods", "bytes", cardW, rows)
+	}
 	charts := vjoin(1, cpu, mem)
 	if side {
 		charts = hjoin(1, cpu, mem)

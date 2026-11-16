@@ -3397,17 +3397,20 @@ When stdin is not a terminal, or with `--once`, they draw one frame to stdout an
 
 ### `k8s pods watch` (experimental)
 
-Draw a Kubernetes pod's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when the pod has spans and logs.
+Draw a Kubernetes pod's or workload's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when it has spans and logs.
 Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
 The cluster must be monitored by the [Dash0 operator](https://github.com/dash0hq/dash0-operator), which collects the pod metrics.
 
 ```bash
-dash0 -X k8s pods watch <pod> -n <namespace> [flags]
+dash0 -X k8s pods watch <name> -n <namespace> [--kind <kind>] [flags]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--namespace`, `-n` | | The pod's namespace (required) |
+| `--namespace`, `-n` | | The pod's or workload's namespace (required) |
+| `--kind` | `pod` | What the name names: `pod`, `deployment`, `statefulset`, `daemonset`, `replicaset`, `job`, or `cronjob`; plurals work |
+| `--agg` | `total` | How a workload's pods add up: `total`, `avg`, `min`, or `max` |
+| `--per-pod` | `false` | Open a workload on a line per pod |
 | `--cluster` | `DASH0_CLUSTER` | Dash0's `k8s.cluster.name`; empty matches the pod in any cluster |
 | `--context` | | The kube context, shown in the header |
 | `--range` | `1h` | The range the page opens on: `15m`, `1h`, `6h`, or `24h` |
@@ -3436,6 +3439,26 @@ Pods of the same name in different clusters are still added together.
 
 The requests and logs sections show only when the pod has spans or logs in the range.
 
+#### Workloads
+
+With `--kind`, the page matches every pod of the workload on `k8s_<kind>_name` instead of `k8s_pod_name`, and its header shows how many pods are running.
+`a` switches between the total of the pods and the average, least, or busiest pod at each step, and `p` draws a line for each of the 8 busiest pods by mean.
+The CLI works out the average, least, and busiest pod from per-pod series, so switching sends no new queries.
+The page shows a limit only for a pod or the busiest pod, because a total, average, or least pod is not held to any one pod's limit.
+The error rate is always the share of all requests, because the errors of one pod over the requests of another would mean nothing.
+
+Watch a deployment's busiest pod:
+
+```bash
+dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --agg max
+```
+
+Open a statefulset on a line per pod:
+
+```bash
+dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
+```
+
 Watch a pod:
 
 ```bash
@@ -3454,6 +3477,8 @@ Print the pod's series and Dash0 links as JSON (the default in agent mode):
 $ dash0 -X k8s pods watch <pod> -n <namespace> -o json --range 15m
 {
   "namespace": "<namespace>",
+  "kind": "pod",
+  "name": "<pod>",
   "pod": "<pod>",
   "step": "1m0s",
   "timestamps": ["2026-11-12T19:00:00Z", ...],
@@ -3462,12 +3487,13 @@ $ dash0 -X k8s pods watch <pod> -n <namespace> -o json --range 15m
 }
 ```
 
+A workload's JSON has no `pod` field, and adds a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`.
 `failed` lists the panels whose query failed, such as `["p99"]`, and is left out when every panel loaded.
 The command exits 0 when at least one panel loaded, and non-zero when none did.
 
 #### k9s plugin
 
-Add the page to k9s' `plugins.yaml` (`k9s info` prints where it is) to open it on the selected pod or container with `Shift-D`:
+Add the page to k9s' `plugins.yaml` (`k9s info` prints where it is) to open it on the selected pod, container, or workload with `Shift-D`:
 
 ```yaml
 plugins:
@@ -3489,7 +3515,23 @@ plugins:
     background: false
     confirm: false
     args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+  dash0-workload-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+      - jobs
+      - cronjobs
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --kind, $RESOURCE_NAME, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
+
+k9s passes the workload's resource as `$RESOURCE_NAME`, such as `deployments`, which `--kind` accepts.
 
 `-o page` keeps the page when k9s runs inside an AI agent's environment, where agent mode would default to JSON.
 To query a cluster with its own profile or match it by cluster name, put a copy of the plugin in k9s' per-context `clusters/<cluster>/<context>/plugins.yaml` with `--profile <profile>` before `k8s`, or `--cluster <name>` after `watch`.
