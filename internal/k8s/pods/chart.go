@@ -218,7 +218,7 @@ func peakOf(ss []series) float64 {
 
 // Ditt0's braille line type (Dots): each cell a 2 × 4 grid of dots, one thin line through them, a dot column for
 // each column's value and one halfway to the next, each joined to the one before. Where series share a cell, the
-// one listed first colours it, as if drawn over the others
+// one listed first keeps it with only its own dots, as if drawn over the others
 func braille(lines [][]*float64, colors []string, rows int, s span) [][]cell {
 	dotRows := 4 * rows
 	rowOf := func(v float64) int {
@@ -258,8 +258,11 @@ func braille(lines [][]*float64, colors []string, rows int, s span) [][]cell {
 			}
 			for yy := top; yy <= bottom; yy++ {
 				at := &cells[yy/4][x/2]
+				if at.color != colors[k] {
+					// A cell has one colour, so the series drawn over it drops the other's dots instead of recolouring them
+					at.sides, at.color = 0, colors[k]
+				}
 				at.sides |= bit[yy%4][x%2]
-				at.color = colors[k]
 			}
 		}
 	}

@@ -99,3 +99,32 @@ func TestBrailleDrawsOneJoinedLine(t *testing.T) {
 		t.Errorf("shared cell coloured %q", cells[0][0].color)
 	}
 }
+
+func TestBrailleDrawsADescendingLine(t *testing.T) {
+	// 1 then 0: the top-left dot, the midpoint one row down the right-hand column, then down to the bottom
+	cells := braille([][]*float64{{f(1), f(0)}}, []string{"c"}, 1, span{0, 1})
+	if got := cells[0][0].sides; got != 0x01|0x10 {
+		t.Errorf("first cell %#x", got)
+	}
+	if got := cells[0][1].sides; got != 0x04|0x40 {
+		t.Errorf("second cell %#x", got)
+	}
+}
+
+func TestBrailleBreaksTheLineAtAGap(t *testing.T) {
+	cells := braille([][]*float64{{f(0), nil, f(0)}}, []string{"c"}, 1, span{0, 1})
+	if cells[0][1].sides != 0 || cells[0][1].color != "" {
+		t.Errorf("gap drawn: %+v", cells[0][1])
+	}
+	if cells[0][0].sides != 0x40 || cells[0][2].sides != 0x40 {
+		t.Errorf("ends %#x %#x", cells[0][0].sides, cells[0][2].sides)
+	}
+}
+
+func TestBrailleKeepsOnlyTheFirstSeriesDotsInASharedCell(t *testing.T) {
+	// The second series' bottom dot would show in the first series' colour if the dots were merged
+	cells := braille([][]*float64{{f(1)}, {f(0)}}, []string{"first", "second"}, 1, span{0, 1})
+	if got := cells[0][0]; got.sides != 0x01 || got.color != "first" {
+		t.Errorf("shared cell %+v", got)
+	}
+}
