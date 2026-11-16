@@ -33,6 +33,8 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/about.md
     title: About the Dash0 CLI
     description: Introduction to the Dash0 CLI — what it is, who it's for, and the design principles that shape its ergonomics for humans, AI agents, and CI/CD.
+    tags:
+      - dash0-cli
     transformations:
       - description: rewrite the GitHub Actions link to the nested sub-page (the source path collapses to a directory on the website; extension is dropped because the website serves pages at extensionless URLs and its link-checker rejects a trailing `.md`)
         type: replace-regex
@@ -43,6 +45,8 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/installation.md
     title: Installation
     description: Install the Dash0 CLI via Homebrew, GitHub Releases, Docker, Nix, or from source.
+    tags:
+      - dash0-cli
     transformations:
       - description: rewrite the GitHub Actions link to the nested sub-page (the source path collapses to a directory on the website; extension is dropped because the website serves pages at extensionless URLs and its link-checker rejects a trailing `.md`)
         type: replace-regex
@@ -53,6 +57,8 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/quickstart.md
     title: Quickstart
     description: A five-minute walkthrough — log in, list assets, query telemetry, and send a deployment event.
+    tags:
+      - dash0-cli
     transformations:
       - description: rewrite the GitHub Actions link to the nested sub-page (the source path collapses to a directory on the website; extension is dropped because the website serves pages at extensionless URLs and its link-checker rejects a trailing `.md`)
         type: replace-regex
@@ -63,6 +69,8 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/commands.md
     title: Command Reference
     description: Full reference for every dash0 CLI command, with syntax, flags, expected outputs, and examples for AI agents and automation workflows.
+    tags:
+      - dash0-cli
     transformations:
       - description: rewrite the cross-reference to documentation.md (page is not synced)
         type: replace-regex
@@ -73,6 +81,9 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/about.md
     title: About GitHub Actions
     description: How to use the dash0 CLI from GitHub Actions workflows via the setup, send-log-event, and sync-assets composite actions shipped in this repository.
+    tags:
+      - github-actions
+      - dash0-cli
     transformations:
       - description: rewrite the cross-repo relative link to the setup action README into a sibling website page link
         type: replace-regex
@@ -91,6 +102,9 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/setup.md
     title: Setup Dash0 CLI
     description: Composite GitHub Action that installs and configures the Dash0 CLI in CI workflows.
+    tags:
+      - github-actions
+      - dash0-cli
     transformations:
       - description: rewrite the "Dash0 CLI" repo-landing link to the About page on the website
         type: replace-regex
@@ -105,6 +119,10 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/send-log-event.md
     title: Send Log Event
     description: Composite GitHub Action that emits a log event (e.g., a deployment marker) to Dash0 via the CLI.
+    tags:
+      - github-actions
+      - logging
+      - dash0-cli
     transformations:
       - description: rewrite the "../setup/README.md" cross-action link to the sibling website page
         type: replace-regex
@@ -115,6 +133,10 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/github-actions/sync-assets.md
     title: Sync Dash0 Assets
     description: Composite GitHub Action that syncs a directory of Dash0 asset YAML files, deleting assets removed since the last push, via the CLI.
+    tags:
+      - github-actions
+      - infrastructure-as-code
+      - dash0-cli
     transformations:
       - description: rewrite the "../setup/README.md" cross-action link to the sibling website page
         type: replace-regex
@@ -125,6 +147,8 @@ files:
     target: dash0/miscellaneous/tooling/dash0-cli/brew-tap-migration-2026-06.md
     title: Homebrew Tap Migration (June 2026)
     description: One-time migration notice for users who installed the Dash0 CLI from the legacy Homebrew formula before it moved to the qualified dash0hq/dash0-cli/dash0 cask.
+    tags:
+      - dash0-cli
     transformations:
       - description: rewrite the setup action README link to the sibling website page (github-actions/setup)
         type: replace-regex

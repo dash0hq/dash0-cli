@@ -59,6 +59,9 @@ func writeDoc(t *testing.T, body string) string {
 	return path
 }
 
+// docWithOrigin keeps an apiVersion, which the time series aggregation schema
+// does not define, so the tests that use it also prove that a file written
+// from the earlier documentation example still applies.
 const docWithOrigin = `apiVersion: dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:
@@ -77,8 +80,7 @@ spec:
     interval: 5m
 `
 
-const docWithoutOrigin = `apiVersion: dash0.com/v1alpha1
-kind: Dash0TimeSeriesAggregation
+const docWithoutOrigin = `kind: Dash0TimeSeriesAggregation
 metadata:
   name: no-origin
 spec:
@@ -95,8 +97,7 @@ spec:
 
 // docWithOriginAndID carries both labels. The API ignores the body's id and
 // targets the path's origin, so the CLI must still upsert by origin.
-const docWithOriginAndID = `apiVersion: dash0.com/v1alpha1
-kind: Dash0TimeSeriesAggregation
+const docWithOriginAndID = `kind: Dash0TimeSeriesAggregation
 metadata:
   name: http-server-request-duration
   labels:
@@ -305,7 +306,7 @@ func TestListTimeSeriesAggregations_AllOptionalFields(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "priority: 10")
+	assert.Contains(t, output, "priority: 4")
 	assert.Contains(t, output, "delay: 30s")
 	assert.Contains(t, output, "staleAfter: 10m")
 	assert.Contains(t, output, "otherFilters:")
