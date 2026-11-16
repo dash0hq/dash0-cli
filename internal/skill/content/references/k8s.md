@@ -6,7 +6,7 @@
 
 Watch a Kubernetes pod, or all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, in a full-screen terminal page.
 The page shows CPU and memory against their requests and limits, plus requests, errors, duration, and log counts when the pods have spans and logs.
-Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+Requires `-X` (or `--experimental`) and authentication, through the active profile, including one you logged in to with `dash0 login`, or through `--api-url` and `--auth-token`.
 The cluster must be monitored by the [Dash0 operator](https://github.com/dash0hq/dash0-operator), which collects the pod metrics.
 
 Watch a pod:
