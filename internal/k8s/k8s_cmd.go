@@ -13,7 +13,7 @@ func NewK8sCmd() *cobra.Command {
 		Long:  `Show the telemetry Dash0 holds for Kubernetes workloads.`,
 	}
 
-	cmd.AddCommand(pods.NewPodsCmd())
+	cmd.AddCommand(pods.NewCmds()...)
 
 	return cmd
 }

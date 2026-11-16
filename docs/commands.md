@@ -17,7 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| [Interactive](#interactive-commands) | `k8s pods watch` | Full-screen terminal page, refreshes on a timer, experimental |
+| [Interactive](#interactive-commands) | `k8s pods watch`, `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, `k8s cronjobs watch` | Full-screen terminal page, refreshes on a timer, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
@@ -3397,21 +3397,19 @@ When stdin is not a terminal, or with `--once`, they draw one frame to stdout an
 
 ### `k8s pods watch` (experimental)
 
-Draw a Kubernetes pod's or workload's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when it has spans and logs.
+Draw a Kubernetes pod's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when the pod has spans and logs.
+`k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, and `k8s cronjobs watch` draw the same page for all the pods of a workload; see [Workloads](#workloads).
 Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
 The cluster must be monitored by the [Dash0 operator](https://github.com/dash0hq/dash0-operator), which collects the pod metrics.
 
 ```bash
-dash0 -X k8s pods watch <name> -n <namespace> [--kind <kind>] [flags]
+dash0 -X k8s pods watch <pod> -n <namespace> [flags]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--namespace`, `-n` | | The pod's or workload's namespace (required) |
-| `--kind` | `pod` | What the name names: `pod`, `deployment`, `statefulset`, `daemonset`, `replicaset`, `job`, or `cronjob`; plurals and kubectl's short names, such as `deploy`, work |
-| `--aggregate` | `total` | How a workload's pods add up: `total`, `avg`, `min`, or `max` |
-| `--per-pod` | `false` | Open a workload on a line per pod |
-| `--cluster` | `DASH0_CLUSTER` | Dash0's `k8s.cluster.name`; empty matches the pod or workload in any cluster |
+| `--namespace`, `-n` | | The pod's namespace (required) |
+| `--cluster` | `DASH0_CLUSTER` | Dash0's `k8s.cluster.name`; empty matches the pod in any cluster |
 | `--context` | | The kube context, shown in the header |
 | `--range` | `1h` | The range the page opens on: `15m`, `1h`, `6h`, or `24h` |
 | `--light` | `DITT0_THEME=light` | Draw in Dash0's light colours |
@@ -3477,7 +3475,15 @@ The command exits 0 when at least one panel loaded, and non-zero when none did.
 
 #### Workloads
 
-With `--kind`, the page matches every pod of the workload on `k8s_<kind>_name` instead of `k8s_pod_name`, and its header shows how many of its pods are running.
+Each workload kind has its own command group, which also takes kubectl's singular and short names: `deployments` (`deploy`), `statefulsets` (`sts`), `daemonsets` (`ds`), `replicasets` (`rs`), `jobs`, and `cronjobs` (`cj`).
+They take the flags of `k8s pods watch`, plus these:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--aggregate` | `total` | How the pods add up: `total`, `avg`, `min`, or `max` |
+| `--per-pod` | `false` | Open on a line per pod |
+
+The page matches every pod of the workload on `k8s_<kind>_name`, such as `k8s_deployment_name`, instead of `k8s_pod_name`, and its header shows how many of its pods are running.
 `--aggregate` (or `a` in the page) picks how the pods add up at each step: their total, or their average, minimum, or maximum.
 Dash0 combines the pods in the query, so switching sends the queries again.
 Usage, requests, and limits are each aggregated on their own, so under `max` the usage line can be one pod's and the limit line another's.
@@ -3497,13 +3503,13 @@ Without `--cluster`, a pod's name starts with its cluster, as in `<cluster>/<pod
 Watch the maximum across a deployment's pods at each step:
 
 ```bash
-dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --aggregate max
+dash0 -X k8s deployments watch <deployment> -n <namespace> --aggregate max
 ```
 
 Open a statefulset on a line per pod:
 
 ```bash
-dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
+dash0 -X k8s statefulsets watch <statefulset> -n <namespace> --per-pod
 ```
 
 A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the number of running pods.
@@ -3546,10 +3552,10 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --kind, $RESOURCE_NAME, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
 
-k9s passes the workload's resource as `$RESOURCE_NAME`, such as `deployments`, which `--kind` accepts.
+k9s passes the workload's resource as `$RESOURCE_NAME`, such as `deployments`, which names its command group.
 
 `-o page` keeps the page when k9s runs inside an AI agent's environment, where agent mode would default to JSON.
 To query a cluster with its own profile or match it by cluster name, put a copy of the plugin in k9s' per-context `clusters/<cluster>/<context>/plugins.yaml` with `--profile <profile>` before `k8s`, or `--cluster <name>` after `watch`.

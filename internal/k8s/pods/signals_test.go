@@ -175,14 +175,6 @@ func TestSectionsHideWithoutData(t *testing.T) {
 	}
 }
 
-func TestKindOf(t *testing.T) {
-	for in, want := range map[string]string{"deployments": "deployment", "StatefulSet": "statefulset", "pods": "pod", "deploy": "deployment", "sts": "statefulset", "services": ""} {
-		if got := kindOf(in); got != want {
-			t.Errorf("kindOf(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestPodSeriesRanksBusiestFirst(t *testing.T) {
 	p := &page{theme: dark, data: map[string][]*float64{"cpu": {f(99)}}}
 	for i := 0; i < maxPods+2; i++ {

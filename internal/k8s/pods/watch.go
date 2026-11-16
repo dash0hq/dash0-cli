@@ -37,7 +37,6 @@ type watchFlags struct {
 	cluster      string
 	rangeLabel   string
 	output       string
-	kind         string
 	agg          string
 	perPod       bool
 	light        bool
@@ -68,25 +67,16 @@ func parseWatchFormat(s string) (watchFormat, error) {
 	}
 }
 
-func newWatchCmd() *cobra.Command {
-	flags := &watchFlags{}
+func newWatchCmd(kind string) *cobra.Command {
+	flags := &watchFlags{agg: "total"}
+	plural := kind + "s"
 
-	cmd := &cobra.Command{
-		Use:   "watch <name> --namespace <namespace>",
-		Short: "[experimental] Watch a pod's or workload's CPU, memory, requests and logs from Dash0",
-		Long: `Draw a pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration and log counts when it has spans and logs.
+	long := `Draw a pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration and log counts when it has spans and logs.
 The page refreshes every 30 seconds.
 In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pod's metrics, traces and logs in Dash0, and q or Esc quits.
 
-With --kind, the name is a deployment, statefulset, daemonset, replicaset, job or cronjob, and the page shows all of its pods.
-On a workload's page, a switches between the total of its pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a line for each of the 8 busiest pods.
-For CPU and memory, the busiest pods are those nearest their limits; for requests and duration, those with the highest mean.
-
-The pod is matched on the k8s.namespace.name and k8s.pod.name resource attributes, a workload on k8s.<kind>.name.
-Pass --cluster (or set DASH0_CLUSTER) to also match k8s.cluster.name.
-
-The command also runs as a k9s plugin; see the k9s plugin section of the README.` + internal.CONFIG_HINT,
-		Example: `  # Watch a pod
+The pod is matched on the k8s.namespace.name and k8s.pod.name resource attributes.`
+	example := `  # Watch a pod
   dash0 -X k8s pods watch <pod> -n <namespace>
 
   # Open on the last 6 hours, in Dash0's light colours
@@ -95,20 +85,43 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
   # Match the pod in one cluster only, with a named profile
   dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
 
-  # Watch the maximum across a deployment's pods at each step
-  dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --aggregate max
-
-  # Watch a statefulset with a line per pod
-  dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
-
   # Draw one frame to stdout and exit
   dash0 -X k8s pods watch <pod> -n <namespace> --once
 
   # Print the pod's series and Dash0 links as JSON
-  dash0 -X k8s pods watch <pod> -n <namespace> -o json`,
-		Args: cobra.ExactArgs(1),
+  dash0 -X k8s pods watch <pod> -n <namespace> -o json`
+	if kind != "pod" {
+		long = `Draw the CPU and memory of a ` + kind + `'s pods from Dash0 in the terminal, plus their requests, errors, duration and log counts when they have spans and logs.
+The page refreshes every 30 seconds.
+In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pods' metrics, traces and logs in Dash0, and q or Esc quits.
+a switches between the total of the pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a line for each of the 8 busiest pods.
+For CPU and memory, the busiest pods are those nearest their limits; for requests and duration, those with the highest mean.
+
+The ` + kind + ` is matched on the k8s.namespace.name and k8s.` + kind + `.name resource attributes.`
+		example = `  # Watch a ` + kind + `
+  dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace>
+
+  # Watch the maximum across its pods at each step
+  dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> --aggregate max
+
+  # Watch it with a line per pod
+  dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> --per-pod
+
+  # Print its series and Dash0 links as JSON
+  dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> -o json`
+	}
+
+	cmd := &cobra.Command{
+		Use:   "watch <" + kind + "> --namespace <namespace>",
+		Short: "[experimental] Watch a " + kind + "'s CPU, memory, requests and logs from Dash0",
+		Long: long + `
+Pass --cluster (or set DASH0_CLUSTER) to also match k8s.cluster.name.
+
+The command also runs as a k9s plugin; see the k9s plugin section of the README.` + internal.CONFIG_HINT,
+		Example: example,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := runWatch(cmd, args[0], flags)
+			err := runWatch(cmd, kind, args[0], flags)
 			if err != nil && flags.pauseOnError {
 				// k9s clears the screen when a plugin exits: hold the error until it has been read
 				fmt.Fprintln(os.Stderr, "Error: "+err.Error())
@@ -118,11 +131,12 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 		},
 	}
 
-	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "The pod's or workload's namespace (required)")
-	cmd.Flags().StringVar(&flags.kind, "kind", "pod", "What the name names: "+strings.Join(kinds, ", ")+"; plurals and kubectl's short names work")
-	cmd.Flags().StringVar(&flags.agg, "aggregate", "total", "How a workload's pods add up: "+strings.Join(aggs, ", "))
-	cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open a workload on a line per pod")
-	cmd.Flags().StringVar(&flags.cluster, "cluster", os.Getenv(envCluster), "Dash0's k8s.cluster.name; empty matches the pod or workload in any cluster (env: DASH0_CLUSTER)")
+	if kind != "pod" {
+		cmd.Flags().StringVar(&flags.agg, "aggregate", "total", "How the pods add up: "+strings.Join(aggs, ", "))
+		cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open on a line per pod")
+	}
+	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "The "+kind+"'s namespace (required)")
+	cmd.Flags().StringVar(&flags.cluster, "cluster", os.Getenv(envCluster), "Dash0's k8s.cluster.name; empty matches the "+kind+" in any cluster (env: DASH0_CLUSTER)")
 	cmd.Flags().StringVar(&flags.kubeContext, "context", "", "The kube context, shown in the header")
 	cmd.Flags().StringVar(&flags.rangeLabel, "range", "1h", "The time range the page opens on: 15m, 1h, 6h or 24h")
 	cmd.Flags().BoolVar(&flags.light, "light", os.Getenv("DITT0_THEME") == "light", "Draw in Dash0's light colours (env: DITT0_THEME=light)")
@@ -137,7 +151,7 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 	return cmd
 }
 
-func runWatch(cmd *cobra.Command, name string, flags *watchFlags) error {
+func runWatch(cmd *cobra.Command, kind, name string, flags *watchFlags) error {
 	if err := experimental.RequireExperimental(cmd); err != nil {
 		return err
 	}
@@ -154,16 +168,9 @@ func runWatch(cmd *cobra.Command, name string, flags *watchFlags) error {
 	if rangeIdx < 0 {
 		return fmt.Errorf("unknown range %q (valid ranges: 15m, 1h, 6h, 24h)", flags.rangeLabel)
 	}
-	kind := kindOf(flags.kind)
-	if kind == "" {
-		return fmt.Errorf("unknown kind %q (valid kinds: %s)", flags.kind, strings.Join(kinds, ", "))
-	}
 	agg := strings.ToLower(flags.agg)
 	if !slices.Contains(aggs, agg) {
 		return fmt.Errorf("unknown aggregation %q (valid aggregations: %s)", flags.agg, strings.Join(aggs, ", "))
-	}
-	if kind == "pod" && (agg != "total" || flags.perPod) {
-		return fmt.Errorf("--aggregate and --per-pod need a workload: pass --kind %s", strings.Join(kinds[1:], ", "))
 	}
 
 	ctx := cmd.Context()

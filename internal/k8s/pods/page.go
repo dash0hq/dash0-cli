@@ -27,26 +27,6 @@ var steps = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * 
 // agg: how a workload's pods add up, one of aggs
 type target struct{ cluster, namespace, kind, name, context, profile, agg string }
 
-var kinds = []string{"pod", "deployment", "statefulset", "daemonset", "replicaset", "job", "cronjob"}
-
-// kubectl's short names
-var shortKinds = map[string]string{"po": "pod", "deploy": "deployment", "sts": "statefulset", "ds": "daemonset", "rs": "replicaset", "cj": "cronjob"}
-
-// The kind for what k9s passes as $RESOURCE_NAME (deployments), or as typed (deployment, deploy); "" when Dash0 has
-// no attribute for it
-func kindOf(s string) string {
-	s = strings.ToLower(s)
-	if k, ok := shortKinds[s]; ok {
-		return k
-	}
-	for _, k := range kinds {
-		if s == k || s == k+"s" {
-			return k
-		}
-	}
-	return ""
-}
-
 func quote(v string) string { return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"` }
 
 type page struct {

@@ -72,7 +72,7 @@ func newExperimentalPodsCmd() *cobra.Command {
 	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
 	k8sCmd := &cobra.Command{Use: "k8s"}
-	k8sCmd.AddCommand(NewPodsCmd())
+	k8sCmd.AddCommand(NewCmds()...)
 	root.AddCommand(k8sCmd)
 	return root
 }
@@ -251,7 +251,7 @@ func TestWatch_WorkloadJSON(t *testing.T) {
 	server.OnDefault(queryRangeHandler(t, ""))
 
 	cmd := newExperimentalPodsCmd()
-	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", "checkout", "-n", testPodsNamespace, "--kind", "deploy", "--aggregate", "MAX", "--per-pod", "-o", "json",
+	cmd.SetArgs([]string{"-X", "k8s", "deploy", "watch", "checkout", "-n", testPodsNamespace, "--aggregate", "MAX", "--per-pod", "-o", "json",
 		"--range", "15m", "--api-url", server.URL, "--auth-token", testPodsAuthToken})
 
 	var err error
@@ -291,18 +291,7 @@ func TestWatch_WorkloadJSON(t *testing.T) {
 	assert.Equal(t, 10, maxed)
 }
 
-func TestWatch_InvalidKind(t *testing.T) {
-	testutil.SetupTestEnv(t)
-
-	cmd := newExperimentalPodsCmd()
-	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", "checkout", "-n", testPodsNamespace, "--kind", "services"})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown kind "services"`)
-}
-
-func TestWatch_AggNeedsAWorkload(t *testing.T) {
+func TestWatch_PodHasNoAggregate(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	cmd := newExperimentalPodsCmd()
@@ -310,5 +299,5 @@ func TestWatch_AggNeedsAWorkload(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--aggregate and --per-pod need a workload")
+	assert.Contains(t, err.Error(), "unknown flag: --aggregate")
 }
