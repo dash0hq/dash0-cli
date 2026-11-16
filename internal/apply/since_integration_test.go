@@ -1721,6 +1721,74 @@ func TestApply_Since_SLOOriginDeletionDoesNotWarn(t *testing.T) {
 	assert.NotContains(t, stderr, "identified by dash0.com/id alone")
 }
 
+// runSinceTeamDeletion commits a team document with the given labels, removes
+// it in a second commit, runs apply --since against the first, and returns
+// stderr.
+func runSinceTeamDeletion(t *testing.T, labels string) string {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "team.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dash0Team\nmetadata:\n  name: backend-team\n  labels:\n"+labels+"spec:\n  display:\n    name: Backend Team\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add team")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "team.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove team")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, teamIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	stderr := testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+	require.NoError(t, cmdErr)
+	return stderr
+}
+
+// TestApply_Since_TeamIDOnlyDeletionWarns is the team analogue of the SLO
+// warning above: an id-only team whose id was not found took ImportTeam's
+// POST fallback, so the live team sits at a server-assigned id.
+func TestApply_Since_TeamIDOnlyDeletionWarns(t *testing.T) {
+	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
+	stderr := runSinceTeamDeletion(t, "    dash0.com/id: "+teamID+"\n")
+	assert.Contains(t, stderr, "warning: team ")
+	assert.Contains(t, stderr, "("+teamID+") was identified by dash0.com/id alone")
+}
+
+// TestApply_Since_TeamOriginDeletionDoesNotWarn confirms the team warning
+// does not fire when the document carries an origin.
+func TestApply_Since_TeamOriginDeletionDoesNotWarn(t *testing.T) {
+	stderr := runSinceTeamDeletion(t, "    dash0.com/origin: backend-team\n")
+	assert.NotContains(t, stderr, "identified by dash0.com/id alone")
+}
+
 // TestApply_Since_SpamFilterIDOnlyDeletionWarns is a regression test for a
 // gap where deleting a spam filter identified by dash0.com/id alone gave no
 // indication that the id recorded in git history might no longer match the

@@ -91,6 +91,9 @@ type Snapshot struct {
 	// organizations, so an id-only document applied to a second organization
 	// gets a new, server-assigned id there.
 	SamplingRuleUsesOriginByIdentifier map[string]bool
+	// TeamUsesOriginByIdentifier is the same signal for teams (per
+	// asset.TeamUsesOrigin).
+	TeamUsesOriginByIdentifier map[string]bool
 
 	// Paths is the set of every file path scanned, regardless of whether it
 	// parsed into a recognized kind. Used to check whether a NoIdentifier
@@ -119,6 +122,7 @@ func newSnapshot() Snapshot {
 		GenerativeAiEvaluationUsesOriginByIdentifier: map[string]bool{},
 		SignalToMetricsRuleUsesOriginByIdentifier:    map[string]bool{},
 		SamplingRuleUsesOriginByIdentifier:           map[string]bool{},
+		TeamUsesOriginByIdentifier:                   map[string]bool{},
 		Paths:                                        map[string]bool{},
 		RawContent:                                   map[string][]byte{},
 	}
@@ -356,6 +360,14 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to determine sampling rule identifier source: %w", err)
 			}
 			snap.SamplingRuleUsesOriginByIdentifier[identifier] = usesOrigin
+		}
+
+		if normalizedKind == "team" {
+			usesOrigin, err := asset.TeamUsesOrigin(docBytes)
+			if err != nil {
+				return fmt.Errorf("failed to determine team identifier source: %w", err)
+			}
+			snap.TeamUsesOriginByIdentifier[identifier] = usesOrigin
 		}
 	}
 	return nil

@@ -317,6 +317,9 @@ A `Dash0Sampling` document removed since `<ref>` deletes the sampling rule by it
 The delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
 In agent mode, a `--since` run that would delete a sampling rule requires an explicit `--force`, as `sampling-rules delete` does, and otherwise refuses before it applies anything.
 
+A `Dash0Team` document removed since `<ref>` deletes the team by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `teams delete`.
+As for SLOs, `--since` warns before it deletes a team identified by `dash0.com/id` alone, because the live team may sit at a different, server-assigned ID.
+
 A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
 ```bash
