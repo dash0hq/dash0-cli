@@ -14,6 +14,7 @@ dash0 -X k8s pods watch <pod> -n <namespace> [flags]
 
 _For the exact, always-current flag list, run `dash0 --agent-mode k8s pods watch --help`._
 
+The charts draw thin braille lines, Ditt0's Dots line type, with a 2 × 4 grid of dots in each cell.
 In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0 over the same range, and `q` or `Esc` quits.
 `↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
 The credentials are resolved again before every refresh, so an OAuth access token is renewed while the page stays open.

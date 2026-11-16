@@ -83,3 +83,19 @@ func TestQueryEscapesLabelValues(t *testing.T) {
 		t.Errorf("unescaped: %s", q)
 	}
 }
+
+func TestBrailleDrawsOneJoinedLine(t *testing.T) {
+	// 0 then 1 on one row: the bottom-left dot, the midpoint joined up its right-hand column, then the top dot
+	cells := braille([][]*float64{{f(0), f(1)}}, []string{"#828aff"}, 1, span{0, 1})
+	if got := cells[0][0].sides; got != 0x40|0x20|0x10 {
+		t.Errorf("first cell %#x", got)
+	}
+	if got := cells[0][1].sides; got != 0x01 {
+		t.Errorf("second cell %#x", got)
+	}
+	// The series listed first colours a shared cell
+	cells = braille([][]*float64{{f(0)}, {f(0)}}, []string{"first", "second"}, 1, span{0, 1})
+	if cells[0][0].color != "first" {
+		t.Errorf("shared cell coloured %q", cells[0][0].color)
+	}
+}
