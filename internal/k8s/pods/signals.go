@@ -2,7 +2,6 @@ package pods
 
 import (
 	"fmt"
-	"hash/fnv"
 	"sort"
 	"strings"
 	"time"
@@ -244,22 +243,23 @@ func (p *page) podSeries(key, rankKey string) ([]series, int) {
 			clusters[c] = true
 		}
 	}
+	shown := all[:min(len(all), maxPods)]
+	// Colours by name among the pods shown, not by rank: they stay apart, and a pod keeps its colour when the
+	// ranking changes between refreshes, as long as the same pods are shown
+	names := make([]string, len(shown))
+	for i, r := range shown {
+		names[i] = r.name
+	}
+	sort.Strings(names)
 	var out []series
-	for _, r := range all[:min(len(all), maxPods)] {
+	for _, r := range shown {
 		name := r.name
 		if _, pod, ok := strings.Cut(name, "/"); ok && len(clusters) == 1 {
 			name = pod
 		}
-		out = append(out, series{name, r.values, p.podColor(r.name)})
+		out = append(out, series{name, r.values, p.theme.series[sort.SearchStrings(names, r.name)%len(p.theme.series)]})
 	}
 	return out, len(all)
-}
-
-// A pod's colour, from its name, so a pod keeps it when the ranking changes between refreshes
-func (p *page) podColor(pod string) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(pod))
-	return p.theme.series[h.Sum32()%uint32(len(p.theme.series))]
 }
 
 func mean(values []*float64) float64 {

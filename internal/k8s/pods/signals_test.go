@@ -133,6 +133,17 @@ func TestPodColorFollowsTheName(t *testing.T) {
 	if before[0].name != after[1].name || before[0].color != after[1].color || before[1].color != after[0].color {
 		t.Errorf("before %+v, after %+v", before, after)
 	}
+	for i := 0; i < maxPods; i++ {
+		p.data["cpuPods:pod-"+string(rune('a'+i))] = []*float64{f(9)}
+	}
+	got, _ := p.podSeries("cpuPods", "")
+	seen := map[string]bool{}
+	for _, s := range got {
+		seen[s.color] = true
+	}
+	if len(seen) != len(got) {
+		t.Errorf("%d pods share %d colours", len(got), len(seen))
+	}
 }
 
 func TestServedWithoutErrorRate(t *testing.T) {
