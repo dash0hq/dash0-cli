@@ -2,7 +2,11 @@ package metrics
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -149,6 +153,7 @@ func runInstant(cmd *cobra.Command, flags *instantFlags) error {
 	if err != nil {
 		return err
 	}
+	explorerURL := queryBuilderURL(apiURL, promql, flags.from, datasetPtr)
 
 	// Render output.
 	customColumns := len(flags.column) > 0
@@ -159,7 +164,7 @@ func runInstant(cmd *cobra.Command, flags *instantFlags) error {
 
 	switch format {
 	case queryFormatJSON:
-		return renderInstantJSON(response)
+		return renderInstantJSON(response, explorerURL)
 	case queryFormatCSV:
 		renderInstantCSV(response, cols, flags.skipHeader)
 	case queryFormatTable:
@@ -169,6 +174,33 @@ func runInstant(cmd *cobra.Command, flags *instantFlags) error {
 		}
 		renderInstantTable(response, cols, flags.skipHeader, customColumns)
 	}
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
 
 	return nil
+}
+
+// The query builder draws a range, so a link for an evaluation in the past
+// ends its range at that time; otherwise the chart would not show it.
+func queryBuilderURL(apiURL, promql, from string, dataset *string) string {
+	evaluatedAt, ok := evaluationTime(from, time.Now())
+	if !ok {
+		return dash0api.MetricsQueryBuilderURL(apiURL, promql, "", "", dataset)
+	}
+	return dash0api.MetricsQueryBuilderURL(apiURL, promql,
+		evaluatedAt.Add(-time.Hour).Format(time.RFC3339), evaluatedAt.Format(time.RFC3339), dataset)
+}
+
+func evaluationTime(from string, now time.Time) (time.Time, bool) {
+	if from == "" || from == "now" {
+		return time.Time{}, false
+	}
+	if ago, isRelative := strings.CutPrefix(from, "now-"); isRelative {
+		duration, err := time.ParseDuration(ago)
+		if err != nil {
+			return time.Time{}, false
+		}
+		return now.Add(-duration), true
+	}
+	evaluatedAt, err := time.Parse("2006-01-02T15:04:05.000Z", query.NormalizeTimestamp(from))
+	return evaluatedAt, err == nil
 }

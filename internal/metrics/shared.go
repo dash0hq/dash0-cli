@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -274,11 +275,22 @@ func renderInstantCSV(response *QueryInstantResponse, cols []query.ColumnDef, sk
 	}
 }
 
-// renderInstantJSON renders an instant query response as JSON.
-func renderInstantJSON(response *QueryInstantResponse) error {
+// renderInstantJSON renders an instant query response as JSON, with the
+// query builder link next to the Prometheus payload.
+func renderInstantJSON(response *QueryInstantResponse, explorerURL string) error {
+	raw, err := json.Marshal(response)
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var document map[string]any
+	if err := decoder.Decode(&document); err != nil {
+		return err
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(response)
+	return enc.Encode(query.AddExplorerURL(document, explorerURL))
 }
 
 // printAvailableColumnsHint collects all label keys from an instant query result
