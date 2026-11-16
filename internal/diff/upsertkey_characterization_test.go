@@ -78,6 +78,10 @@ func (c *keyRecordingClient) GetSignalToMetrics(_ context.Context, key string, _
 	return nil, c.notFound("GetSignalToMetrics", key)
 }
 
+func (c *keyRecordingClient) GetSamplingRule(_ context.Context, key string, _ *string) (*dash0api.SamplingDefinition, error) {
+	return nil, c.notFound("GetSamplingRule", key)
+}
+
 func (c *keyRecordingClient) GetGenerativeAiEvaluation(_ context.Context, key string, _ *string) (*dash0api.GenerativeAiEvaluationDefinition, error) {
 	return nil, c.notFound("GetGenerativeAiEvaluation", key)
 }
@@ -160,6 +164,11 @@ func characterizationDocument(kind string, variant identifierVariant) string {
 	case "signaltometrics":
 		return "kind: Dash0SignalToMetrics\nmetadata:\n  name: n\n" + labelBlock +
 			"spec:\n  display:\n    name: n\n  enabled: true\n  match:\n    signal: logs\n    filters: []\n  output:\n    name: m\n    interval: 1m\n"
+	case "sampling":
+		// Disabled, so planning reads only the rule and never lists the
+		// dataset for the turn-on warning.
+		return "kind: Dash0Sampling\nmetadata:\n  name: n\n" + labelBlock +
+			"spec:\n  display:\n    name: n\n  enabled: false\n  conditions:\n    kind: error\n    spec: {}\n"
 	case "awsmetricscrapeconfig":
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + labelBlock + "spec:\n  namespaces: []\n"
 	}
@@ -298,6 +307,12 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withOrigin:  {"o", "o", "GetSignalToMetrics(o)"},
 			withID:      {"i", "i", "GetSignalToMetrics(i)"},
 			withBoth:    {"o", "o", "GetSignalToMetrics(o)"},
+		},
+		"sampling": {
+			withNeither: {"", "", ""},
+			withOrigin:  {"o", "o", "GetSamplingRule(o)"},
+			withID:      {"i", "i", "GetSamplingRule(i)"},
+			withBoth:    {"o", "o", "GetSamplingRule(o)"},
 		},
 	}
 

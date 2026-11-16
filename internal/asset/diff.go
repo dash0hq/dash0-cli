@@ -168,6 +168,18 @@ func marshalForDiff(asset any) (string, error) {
 		dash0api.StripSignalToMetricsServerFields(&r)
 		dash0api.ClearSignalToMetricsID(&r)
 		stripped = &r
+	case *dash0api.SamplingDefinition:
+		var r dash0api.SamplingDefinition
+		if err := dash0yaml.Unmarshal(jsonBytes, &r); err != nil {
+			return "", fmt.Errorf("failed to unmarshal sampling rule: %w", err)
+		}
+		// The strip drops the version, source, dataset, and origin labels,
+		// which the server sets on every write. It keeps the id on purpose, so
+		// clear it too: a document upserted by origin carries no id, and keeping
+		// it would show up as a phantom removal in the diff.
+		dash0api.StripSamplingRuleServerFields(&r)
+		dash0api.ClearSamplingRuleID(&r)
+		stripped = &r
 	case *dash0api.AwsMetricScrapeConfigDefinition:
 		var c dash0api.AwsMetricScrapeConfigDefinition
 		if err := dash0yaml.Unmarshal(jsonBytes, &c); err != nil {

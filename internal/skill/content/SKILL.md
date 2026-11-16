@@ -1,13 +1,13 @@
 ---
 name: dash0-cli
-description: Use when working with Dash0 observability data or configuration via the dash0 CLI (the `dash0` binary) — querying logs, spans, traces, metrics, or failed checks; managing dashboards, views, check rules, synthetic checks, service level objectives (SLOs), recording rules, notification channels, spam filters, time series aggregations, or signal-to-metrics rules; sending OTLP telemetry or deployment events; or managing teams, members, and profiles. Trigger on "Dash0", "dash0 CLI", or any of these operations.
+description: Use when working with Dash0 observability data or configuration via the dash0 CLI (the `dash0` binary) — querying logs, spans, traces, metrics, or failed checks; managing dashboards, views, check rules, synthetic checks, service level objectives (SLOs), recording rules, notification channels, spam filters, time series aggregations, signal-to-metrics rules, or sampling rules; sending OTLP telemetry or deployment events; or managing teams, members, and profiles. Trigger on "Dash0", "dash0 CLI", or any of these operations.
 ---
 
 <!-- This file is packaged with the dash0-cli distribution. Installed copies are overwritten by `dash0 skill install` / `make skill-bundle`; edit the hand-curated source at internal/skill/content/SKILL.md in the dash0hq/dash0-cli repository instead. -->
 
 # dash0-cli
 
-`dash0` is a command-line interface for the [Dash0](https://www.dash0.com) observability platform. It manages Dash0 assets (dashboards, views, check rules, synthetic checks, SLOs, recording rules, notification channels, spam filters, time series aggregations, signal-to-metrics rules), queries telemetry (logs, spans, traces, metrics, failed checks), sends telemetry via OTLP, and manages organization entities (teams, members, profiles).
+`dash0` is a command-line interface for the [Dash0](https://www.dash0.com) observability platform. It manages Dash0 assets (dashboards, views, check rules, synthetic checks, SLOs, recording rules, notification channels, spam filters, time series aggregations, signal-to-metrics rules, sampling rules), queries telemetry (logs, spans, traces, metrics, failed checks), sends telemetry via OTLP, and manages organization entities (teams, members, profiles).
 
 **Prefer `dash0 --agent-mode <command> --help` over guessing flags.** Every command's exact, always-current flag list, aliases, and examples are available as structured JSON via `--agent-mode <command> --help` (e.g. `dash0 --agent-mode dashboards list --help`). This bundle deliberately does not duplicate flag tables — they'd go stale the moment a flag is added or renamed. Use the topics below for concepts, YAML formats, and workflows that `--help` output can't express; use `--agent-mode <command> --help` for the exact flags to pass.
 
@@ -17,7 +17,7 @@ description: Use when working with Dash0 observability data or configuration via
 |----------|----------|-----------------|
 | Authentication | `login`, `logout` | Browser-based OAuth 2.0 + PKCE; per-profile |
 | Configuration | `config profiles`, `config show` | Profile management, no API calls |
-| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
+| Asset CRUD | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
@@ -39,7 +39,7 @@ Agent mode optimizes the CLI for AI agents: JSON output by default, structured `
 
 ## How asset commands work
 
-All eleven asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`. `update`'s diff (and `diff`'s) is computed semantically: cosmetic differences (key order, duration formatting, int-vs-float, API-populated defaults) never produce a spurious "changed" result.
+All twelve asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`) share the same five subcommands: `list`, `get`, `create` (alias `add`), `update`, `delete` (alias `remove`). Output formats are `table`, `wide`, `json`, `yaml`, `csv` (query commands use `table`/`json`/`csv` only). `create`/`update` accept `-f <file>` (or `-f -` for stdin) and `--dry-run`. `update`'s diff (and `diff`'s) is computed semantically: cosmetic differences (key order, duration formatting, int-vs-float, API-populated defaults) never produce a spurious "changed" result.
 
 `dash0 apply -f <file|directory>` provides create-or-update semantics across all asset types in one command, and (experimentally, via `--since <ref>`) delete semantics based on git history — see the `apply` topic. `dash0 --experimental diff -f <file|directory>` previews what `apply` would do, fetching each document's current state from Dash0 first so it can tell a create from an update, without mutating anything; see the `diff` topic.
 
@@ -63,11 +63,12 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]`, the AWS integration id — **required**. One config per integration; `apply` replaces it (PUT), there is no create. `spec.namespaces` is required (`[]` stops all scraping). `dash0.com/origin` is never sent |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]`; `metadata.labels["dash0.com/id"]` only updates an existing skill when origin is absent |
 | `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent). Rule IDs are server-assigned, so pin origin. An id-only document updates the rule with that ID, or creates a new rule when no rule has it, which is not idempotent. Origins are unique per organization while each rule belongs to one dataset, so one document cannot serve two datasets |
+| `Dash0Sampling` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent). Rule IDs are server-assigned, so pin origin. An id-only document updates the rule with that ID, or creates a new rule when no rule has it, which is not idempotent. Origins are unique per organization while each rule belongs to one dataset, so one document cannot serve two datasets |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]`, and it is **mandatory** — the API rejects an aggregation without one, so there is no POST fallback. A `dash0.com/id` in the body is ignored. Origins are unique per organization while each aggregation belongs to one dataset, so one document cannot serve two datasets |
 
 **Origin vs ID — do not conflate them.** *ID* is the user-defined external identifier described above. *Origin* (`dash0.com/origin` label) records which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`, `operator`). Which of the two is the upsert key depends on the kind, and the split follows the shape of the underlying API rather than being a list of exceptions:
 
-- **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, teams, time series aggregations, signal-to-metrics rules, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent. For time series aggregations it is mandatory: the API rejects a document without one.
+- **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, teams, time series aggregations, signal-to-metrics rules, sampling rules, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent. For time series aggregations it is mandatory: the API rejects a document without one.
 - **ID is the upsert key, and origin is provenance only** for views, check rules, recording rules, and synthetic checks. The CLI strips `dash0.com/origin` before sending these documents, so an `apply` never claims ownership of an asset managed by Terraform or the Kubernetes operator.
 - **Dashboards** use `metadata.dash0Extensions.id`; the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never upsert a dashboard by origin.
 
@@ -197,6 +198,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `notification-channels` | Notification channel CRUD (organization-level, no dataset) |
 | `otlp` | Local OTLP forwarding proxy (`otlp proxy`) |
 | `recording-rules` | Recording rule CRUD (PrometheusRule CRD format) |
+| `sampling-rules` | Sampling rule CRUD (decides which traces Dash0 keeps; the first enabled rule of a dataset turns sampling on; admin role required for writes) |
 | `signal-to-metrics-rules` | Signal-to-metrics rule CRUD and `test` (alias `s2m`; turns logs or spans into metrics) |
 | `slos` | SLO CRUD (`apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1, not upstream-identical; `dash0.com/origin` is the upsert key) |
 | `spam-filters` | Spam filter CRUD (v1alpha1 and v1alpha2) |

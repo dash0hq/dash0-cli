@@ -90,6 +90,8 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_time_series_aggregation_roundtrip.sh"
   "${SCRIPT_DIR}/test_signal_to_metrics_rule_roundtrip.sh"
   "${SCRIPT_DIR}/test_apply_signal_to_metrics_rule_idempotency.sh"
+  "${SCRIPT_DIR}/test_sampling_rule_roundtrip.sh"
+  "${SCRIPT_DIR}/test_apply_sampling_rule_idempotency.sh"
   "${SCRIPT_DIR}/test_dataset_roundtrip.sh"
   "${SCRIPT_DIR}/test_auth_token_roundtrip.sh"
   "${SCRIPT_DIR}/test_aws_metric_scrape_config_roundtrip.sh"

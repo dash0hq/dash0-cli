@@ -86,6 +86,11 @@ type Snapshot struct {
 	// signal-to-metrics rules (per asset.SignalToMetricsRuleUsesOrigin), whose
 	// ids are also server-assigned.
 	SignalToMetricsRuleUsesOriginByIdentifier map[string]bool
+	// SamplingRuleUsesOriginByIdentifier is the same signal for sampling
+	// rules (per asset.SamplingRuleUsesOrigin). Their ids are unique across
+	// organizations, so an id-only document applied to a second organization
+	// gets a new, server-assigned id there.
+	SamplingRuleUsesOriginByIdentifier map[string]bool
 	// TeamUsesOriginByIdentifier is the same signal for teams (per
 	// asset.TeamUsesOrigin).
 	TeamUsesOriginByIdentifier map[string]bool
@@ -116,9 +121,10 @@ func newSnapshot() Snapshot {
 		SLOUsesOriginByIdentifier:                    map[string]bool{},
 		GenerativeAiEvaluationUsesOriginByIdentifier: map[string]bool{},
 		SignalToMetricsRuleUsesOriginByIdentifier:    map[string]bool{},
+		SamplingRuleUsesOriginByIdentifier:           map[string]bool{},
 		TeamUsesOriginByIdentifier:                   map[string]bool{},
-		Paths:      map[string]bool{},
-		RawContent: map[string][]byte{},
+		Paths:                                        map[string]bool{},
+		RawContent:                                   map[string][]byte{},
 	}
 }
 
@@ -346,6 +352,14 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 				return fmt.Errorf("failed to determine signal-to-metrics rule identifier source: %w", err)
 			}
 			snap.SignalToMetricsRuleUsesOriginByIdentifier[identifier] = usesOrigin
+		}
+
+		if normalizedKind == "sampling" {
+			usesOrigin, err := asset.SamplingRuleUsesOrigin(docBytes)
+			if err != nil {
+				return fmt.Errorf("failed to determine sampling rule identifier source: %w", err)
+			}
+			snap.SamplingRuleUsesOriginByIdentifier[identifier] = usesOrigin
 		}
 
 		if normalizedKind == "team" {
