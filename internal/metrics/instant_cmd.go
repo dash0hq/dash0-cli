@@ -153,7 +153,7 @@ func runInstant(cmd *cobra.Command, flags *instantFlags) error {
 	if err != nil {
 		return err
 	}
-	explorerURL := queryBuilderURL(apiURL, promql, flags.from, datasetPtr)
+	explorerURL := queryBuilderURL(apiURL, promql, evalTime, dash0api.DatasetPtr(dataset))
 
 	// Render output.
 	customColumns := len(flags.column) > 0
@@ -181,8 +181,8 @@ func runInstant(cmd *cobra.Command, flags *instantFlags) error {
 
 // The query builder draws a range, so a link for an evaluation in the past
 // ends its range at that time; otherwise the chart would not show it.
-func queryBuilderURL(apiURL, promql, from string, dataset *string) string {
-	evaluatedAt, ok := evaluationTime(from, time.Now())
+func queryBuilderURL(apiURL, promql, evalTime string, dataset *string) string {
+	evaluatedAt, ok := evaluationTime(evalTime, time.Now())
 	if !ok {
 		return dash0api.MetricsQueryBuilderURL(apiURL, promql, "", "", dataset)
 	}
@@ -190,17 +190,19 @@ func queryBuilderURL(apiURL, promql, from string, dataset *string) string {
 		evaluatedAt.Add(-time.Hour).Format(time.RFC3339), evaluatedAt.Format(time.RFC3339), dataset)
 }
 
-func evaluationTime(from string, now time.Time) (time.Time, bool) {
-	if from == "" || from == "now" {
+// evaluationTime resolves an evaluation time that query.NormalizeTimestamp
+// already normalized.
+func evaluationTime(evalTime string, now time.Time) (time.Time, bool) {
+	if evalTime == "" || evalTime == "now" {
 		return time.Time{}, false
 	}
-	if ago, isRelative := strings.CutPrefix(from, "now-"); isRelative {
+	if ago, isRelative := strings.CutPrefix(evalTime, "now-"); isRelative {
 		duration, err := time.ParseDuration(ago)
 		if err != nil {
 			return time.Time{}, false
 		}
 		return now.Add(-duration), true
 	}
-	evaluatedAt, err := time.Parse("2006-01-02T15:04:05.000Z", query.NormalizeTimestamp(from))
+	evaluatedAt, err := time.Parse(query.TimestampLayout, evalTime)
 	return evaluatedAt, err == nil
 }

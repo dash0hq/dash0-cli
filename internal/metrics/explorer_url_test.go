@@ -26,7 +26,7 @@ func runInstantWithMockServer(t *testing.T, args ...string) (stdout, stderr stri
 	setTestEnv(t, server.URL)
 
 	cmd := newInstantCmd()
-	cmd.SetArgs(append([]string{"--promql", testPromQL}, args...))
+	cmd.SetArgs(args)
 	var err error
 	stderr = testutil.CaptureStderr(t, func() {
 		stdout = testutil.CaptureStdout(t, func() {
@@ -47,7 +47,7 @@ func explorerURLFromStderr(t *testing.T, stderr string) *url.URL {
 }
 
 func TestInstantCmd_ExplorerURLGoesToStderrInTableOutput(t *testing.T) {
-	stdout, stderr := runInstantWithMockServer(t)
+	stdout, stderr := runInstantWithMockServer(t, "--promql", testPromQL)
 
 	link := explorerURLFromStderr(t, stderr)
 	assert.Equal(t, "/goto/metrics/query-builder", link.Path)
@@ -57,14 +57,14 @@ func TestInstantCmd_ExplorerURLGoesToStderrInTableOutput(t *testing.T) {
 }
 
 func TestInstantCmd_ExplorerURLGoesToStderrInCSVOutput(t *testing.T) {
-	stdout, stderr := runInstantWithMockServer(t, "-o", "csv")
+	stdout, stderr := runInstantWithMockServer(t, "--promql", testPromQL, "-o", "csv")
 
 	explorerURLFromStderr(t, stderr)
 	assert.NotContains(t, stdout, "Open this query in Dash0:")
 }
 
 func TestInstantCmd_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
-	stdout, stderr := runInstantWithMockServer(t, "-o", "json")
+	stdout, stderr := runInstantWithMockServer(t, "--promql", testPromQL, "-o", "json")
 
 	var payload map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
@@ -78,11 +78,30 @@ func TestInstantCmd_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
 }
 
 func TestInstantCmd_ExplorerURLEndsAtAnAbsoluteEvaluationTime(t *testing.T) {
-	_, stderr := runInstantWithMockServer(t, "--from", "2026-11-15T10:00:00Z")
+	_, stderr := runInstantWithMockServer(t, "--promql", testPromQL, "--from", "2026-11-15T10:00:00Z")
 
 	query := explorerURLFromStderr(t, stderr).Query()
 	assert.Equal(t, "2026-11-15T09:00:00.000Z", query.Get("from"))
 	assert.Equal(t, "2026-11-15T10:00:00.000Z", query.Get("to"))
+}
+
+func TestInstantCmd_ExplorerURLCarriesNamedDataset(t *testing.T) {
+	_, stderr := runInstantWithMockServer(t, "--promql", testPromQL, "--dataset", "staging")
+
+	assert.Equal(t, "staging", explorerURLFromStderr(t, stderr).Query().Get("dataset"))
+}
+
+// The web app opens the default dataset anyway, so the link leaves it out.
+func TestInstantCmd_ExplorerURLOmitsDefaultDataset(t *testing.T) {
+	_, stderr := runInstantWithMockServer(t, "--promql", testPromQL, "--dataset", "default")
+
+	assert.NotContains(t, explorerURLFromStderr(t, stderr).Query(), "dataset")
+}
+
+func TestInstantCmd_ExplorerURLCarriesThePromQLOfFilters(t *testing.T) {
+	_, stderr := runInstantWithMockServer(t, "--filter", "service.name is my-service")
+
+	assert.Equal(t, `{service_name="my-service"}`, explorerURLFromStderr(t, stderr).Query().Get("query"))
 }
 
 func TestEvaluationTime(t *testing.T) {
@@ -96,8 +115,7 @@ func TestEvaluationTime(t *testing.T) {
 		{"now", time.Time{}, false},
 		{"now-2h", time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC), true},
 		{"now-1d", time.Time{}, false},
-		{"2026-11-15T10:00:00Z", time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC), true},
-		{"2026-11-15", time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC), true},
+		{"2026-11-15T10:00:00.000Z", time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.from, func(t *testing.T) {
