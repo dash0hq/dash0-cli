@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -21,28 +21,28 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "[experimental] List spam filters",
+		Short:   "List spam filters",
 		Long: `List all spam filters in the specified dataset. Both v1alpha1 (spec.contexts as
 an array) and v1alpha2 (spec.context as a scalar) definitions are returned in
-their native shape.` + internal.CONFIG_HINT,
+their native shape.
+
+The ENABLED column shows the dash0.com/enabled annotation; a filter without the
+annotation is enabled.` + internal.CONFIG_HINT,
 		Example: `  # List spam filters (default: up to 50)
-  dash0 --experimental spam-filters list
+  dash0 spam-filters list
 
   # Output as YAML for backup or version control
-  dash0 --experimental spam-filters list -o yaml > spam-filters.yaml
+  dash0 spam-filters list -o yaml > spam-filters.yaml
 
   # Output as JSON for scripting
-  dash0 --experimental spam-filters list -o json
+  dash0 spam-filters list -o json
 
   # Output as CSV (pipe-friendly)
-  dash0 --experimental spam-filters list -o csv
+  dash0 spam-filters list -o csv
 
   # List without the header row (pipe-friendly)
-  dash0 --experimental spam-filters list --skip-header`,
+  dash0 spam-filters list --skip-header`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runList(cmd.Context(), &flags)
 		},
 	}
@@ -227,6 +227,9 @@ func printSpamFilterTable(f *output.Formatter, items []dash0api.SpamFilterObject
 		}},
 		{Header: internal.HEADER_CONTEXT, Width: 16, Value: func(item interface{}) string {
 			return renderContext(item.(dash0api.SpamFilterObject))
+		}},
+		{Header: internal.HEADER_ENABLED, Width: 8, Value: func(item interface{}) string {
+			return strconv.FormatBool(objectEnabled(item.(dash0api.SpamFilterObject)))
 		}},
 	}
 

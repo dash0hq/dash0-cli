@@ -42,7 +42,7 @@ const (
 var originPattern = regexp.MustCompile(`^/api/time-series-aggregations/[^/]+$`)
 
 // newRootCmd mirrors the real command tree. This command is not gated behind
-// --experimental, unlike spam filters and teams.
+// --experimental, unlike teams.
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")

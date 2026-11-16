@@ -17,7 +17,7 @@ echo "Asset name: $ASSET_NAME"
 
 # Step 1: Create from v1alpha2 fixture
 echo "--- Step 1: Create spam filter from v1alpha2 fixture ---"
-if ! CREATE_OUTPUT=$("$DASH0" --experimental spam-filters create -f "$FIXTURE"); then
+if ! CREATE_OUTPUT=$("$DASH0" spam-filters create -f "$FIXTURE"); then
   echo "FAIL: spam-filters create failed"
   exit 1
 fi
@@ -32,7 +32,7 @@ fi
 # were created via v1alpha2. We only need the ID here, which lives in the
 # same metadata.labels location in both schemas.
 echo "--- Step 2: List spam filters and find created asset ---"
-if ! LIST_JSON=$("$DASH0" --experimental spam-filters list --all -o json); then
+if ! LIST_JSON=$("$DASH0" spam-filters list --all -o json); then
   echo "FAIL: spam-filters list -o json failed"
   exit 1
 fi
@@ -46,7 +46,7 @@ echo "Created spam filter ID: $ID"
 # Step 3: Get by ID — verify the server returned a v1alpha2 representation
 # (apiVersion: v1alpha2 and spec.context as a scalar, not spec.contexts).
 echo "--- Step 3: Get spam filter by ID and verify it is returned as v1alpha2 ---"
-if ! GET_YAML=$("$DASH0" --experimental spam-filters get "$ID" -o yaml); then
+if ! GET_YAML=$("$DASH0" spam-filters get "$ID" -o yaml); then
   echo "FAIL: spam-filters get -o yaml failed"
   exit 1
 fi
@@ -67,7 +67,7 @@ fi
 
 # Step 4: Default-format get prints a single "Context:" line (not "Contexts:").
 echo "--- Step 4: Default-format get prints v1alpha2 'Context:' line ---"
-if ! GET_DEFAULT=$("$DASH0" --experimental spam-filters get "$ID"); then
+if ! GET_DEFAULT=$("$DASH0" spam-filters get "$ID"); then
   echo "FAIL: spam-filters get failed"
   exit 1
 fi
@@ -83,12 +83,12 @@ fi
 
 # Step 5: Export to YAML and re-import via update — verifies the v1alpha2 PUT path.
 echo "--- Step 5: Export v1alpha2 YAML and re-import via update ---"
-"$DASH0" --experimental spam-filters get "$ID" -o yaml > "${TMPDIR}/exported.yaml"
+"$DASH0" spam-filters get "$ID" -o yaml > "${TMPDIR}/exported.yaml"
 if ! grep -q "^apiVersion: v1alpha2$" "${TMPDIR}/exported.yaml"; then
   echo "FAIL: exported YAML is not v1alpha2"
   exit 1
 fi
-if ! "$DASH0" --experimental spam-filters update "$ID" -f "${TMPDIR}/exported.yaml"; then
+if ! "$DASH0" spam-filters update "$ID" -f "${TMPDIR}/exported.yaml"; then
   echo "FAIL: spam-filters update failed"
   exit 1
 fi
@@ -96,21 +96,21 @@ fi
 # Step 6: Update without an explicit ID arg — ID must be taken from the file's
 # dash0.com/id label (exported in Step 5).
 echo "--- Step 6: Update using ID embedded in exported YAML ---"
-if ! "$DASH0" --experimental spam-filters update -f "${TMPDIR}/exported.yaml"; then
+if ! "$DASH0" spam-filters update -f "${TMPDIR}/exported.yaml"; then
   echo "FAIL: spam-filters update (ID from file) failed"
   exit 1
 fi
 
 # Step 7: Delete (version-agnostic endpoint).
 echo "--- Step 7: Delete spam filter ---"
-if ! "$DASH0" --experimental spam-filters delete "$ID" --force; then
+if ! "$DASH0" spam-filters delete "$ID" --force; then
   echo "FAIL: spam-filters delete failed"
   exit 1
 fi
 
 # Step 8: Verify deletion.
 echo "--- Step 8: Verify deletion ---"
-if ! LIST_JSON=$("$DASH0" --experimental spam-filters list --all -o json); then
+if ! LIST_JSON=$("$DASH0" spam-filters list --all -o json); then
   echo "FAIL: spam-filters list -o json failed"
   exit 1
 fi

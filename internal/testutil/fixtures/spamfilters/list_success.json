@@ -49,6 +49,31 @@
           }
         ]
       }
+    },
+    {
+      "apiVersion": "v1alpha2",
+      "kind": "Dash0SpamFilter",
+      "metadata": {
+        "name": "Drop debug logs",
+        "labels": {
+          "dash0.com/id": "00000000-0000-0000-0000-0000000000a2",
+          "dash0.com/origin": "dash0-cli_drop-debug-logs",
+          "dash0.com/dataset": "default"
+        },
+        "annotations": {
+          "dash0.com/enabled": "false"
+        }
+      },
+      "spec": {
+        "context": "log",
+        "filter": [
+          {
+            "key": "otel.log.severity.range",
+            "operator": "is",
+            "value": "DEBUG"
+          }
+        ]
+      }
     }
   ]
 }
