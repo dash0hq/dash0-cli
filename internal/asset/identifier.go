@@ -33,9 +33,6 @@ type identifierProbe struct {
 		// Values are not all strings: sampling rules nest custom labels
 		// under labels.custom, so only string values are read.
 		Labels          map[string]any `json:"labels"`
-		Dash0Extensions struct {
-			ID string `json:"id"`
-		} `json:"dash0Extensions"`
 	} `json:"metadata"`
 }
 
@@ -44,7 +41,8 @@ type identifierProbe struct {
 // per the "Asset identifiers and idempotent upsert" table in the command
 // reference:
 //
-//   - Dashboard: metadata.dash0Extensions.id
+//   - Dashboard: dash0.com/origin, then metadata.dash0Extensions.id, then
+//     dash0.com/id
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
@@ -80,7 +78,11 @@ func ExtractIdentifier(data []byte) (string, error) {
 
 	switch NormalizeKind(probe.Kind) {
 	case "dashboard":
-		return probe.Metadata.Dash0Extensions.ID, nil
+		var dashboard dash0api.DashboardDefinition
+		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+			return "", fmt.Errorf("failed to extract identifier: %w", err)
+		}
+		return DashboardKey(&dashboard), nil
 	case "checkrule":
 		return probe.ID, nil
 	case "notificationchannel", "timeseriesaggregation":

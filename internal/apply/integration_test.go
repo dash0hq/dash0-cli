@@ -1342,6 +1342,110 @@ spec:
 	}
 }
 
+func TestApply_Dashboard_OriginOnly_UpdatesTheSameDashboardOnEveryApply(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: checkout
+  labels:
+    dash0.com/origin: dash0-cli_checkout
+spec:
+  display:
+    name: Checkout
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/dash0-cli_checkout", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	for range 2 {
+		cmd := NewApplyCmd()
+		cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+		var cmdErr error
+		testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+		require.NoError(t, cmdErr)
+	}
+
+	var puts int
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, http.MethodPost, req.Method, "an origin-only dashboard must never be created with POST")
+		if req.Method == http.MethodPut {
+			assert.Equal(t, "/api/dashboards/dash0-cli_checkout", req.Path)
+			puts++
+		}
+	}
+	assert.Equal(t, 2, puts)
+}
+
+func TestApply_Dashboard_ServerIDLabelOnly_UpdatesThatDashboard(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const serverID = "0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90"
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: checkout
+  labels:
+    dash0.com/id: `+serverID+`
+spec:
+  display:
+    name: Checkout
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+serverID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDashboardsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+	require.NoError(t, cmdErr)
+
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathDashboards), "an exported dashboard must not be created a second time")
+	putReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards)
+	require.NotNil(t, putReq)
+	assert.Equal(t, "/api/dashboards/"+serverID, putReq.Path)
+}
+
+func TestApply_Dashboard_OriginAndExtensionsIDDiffer_FailsBeforeAnyWrite(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: checkout
+  labels:
+    dash0.com/origin: dash0-cli_checkout
+  dash0Extensions:
+    id: other-id
+spec:
+  display:
+    name: Checkout
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `metadata.labels["dash0.com/origin"] ("dash0-cli_checkout") and metadata.dash0Extensions.id ("other-id") must be equal`)
+	assert.Empty(t, server.Requests())
+}
+
 func TestApply_Dashboard_RoundTrip(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

@@ -834,7 +834,7 @@ The identifier field location varies by asset kind:
 
 | Kind | Identifier field | Notes |
 |------|------------------|-------|
-| `Dashboard` | `metadata.dash0Extensions.id` | |
+| `Dashboard` | `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` | `dash0.com/origin` is the recommended key, and a Kubernetes custom resource keeps it, while Kubernetes drops the unknown `dash0Extensions` field. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
 | `CheckRule` | top-level `id` | |
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
@@ -861,7 +861,8 @@ Notification channels have no user-settable ID field at all, and for SLOs origin
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
 Stripping origin keeps an `apply` from claiming ownership of an asset that Terraform or the Kubernetes operator manages.
-Dashboards are a third case: they use `metadata.dash0Extensions.id`, and the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never use origin as a dashboard upsert key.
+Dashboards upsert by `dash0.com/origin` too, and also accept `metadata.dash0Extensions.id`, which names the same identifier.
+The deprecated `metadata.dash0Extensions.origin` field is never used as a key.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
 
@@ -1529,9 +1530,9 @@ Dashboard:
 apiVersion: dash0.com/v1alpha1
 kind: Dashboard
 metadata:
-  name: a1b2c3d4-5678-90ab-cdef-1234567890ab
-  dash0Extensions:
-    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+  name: production-overview
+  labels:
+    dash0.com/origin: dash0-cli_production-overview
 spec:
   display:
     name: Production Overview
@@ -1539,9 +1540,9 @@ spec:
 
 Pinning `apiVersion` on every user-authored file is a defense against silent migrations: today the server infers the default version when the field is omitted, but the same document with an explicit `apiVersion` will keep the same shape when a future default changes.
 
-The user-defined identifier lives in `metadata.dash0Extensions.id` (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
+The user-defined identifier lives in `metadata.labels["dash0.com/origin"]`; files that set `metadata.dash0Extensions.id` instead keep working (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
 `metadata.name` is the CRD-style metadata name and is independent of `spec.display.name`, which is the title shown in the UI.
-Omitting `dash0Extensions.id` causes every `create` / `apply` to allocate a new server-assigned ID, breaking idempotency.
+A document with no identifier makes every `create` / `apply` allocate a new server-assigned ID, breaking idempotency.
 
 PersesDashboard (Perses CRD, converted to a Dashboard on import):
 

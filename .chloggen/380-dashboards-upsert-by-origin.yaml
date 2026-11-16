@@ -1,0 +1,9 @@
+change_type: enhancement
+component: dashboards, apply
+note: "Dashboards upsert by the `dash0.com/origin` label, so a dashboard kept as a Kubernetes custom resource no longer becomes a new dashboard on every apply."
+issues: [380]
+subtext: |
+  The CLI reads the identifier from `dash0.com/origin`, then `metadata.dash0Extensions.id`, then `dash0.com/id`.
+  A file exported with `dashboards get -o yaml` updates the dashboard it came from.
+  A file whose `dash0.com/origin` and `dash0Extensions.id` differ fails validation before anything is written.
+change_logs: []

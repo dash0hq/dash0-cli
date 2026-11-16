@@ -649,9 +649,20 @@ spec:
   display:
     name: Shared Dashboard
 `
+	const originYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/origin: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
 	for _, tt := range []struct{ name, before, after string }{
 		{"PersesDashboard to Dashboard", persesYAML, plainYAML},
 		{"Dashboard to PersesDashboard", plainYAML, persesYAML},
+		{"dash0Extensions.id to dash0.com/origin", plainYAML, originYAML},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.SetupTestEnv(t)

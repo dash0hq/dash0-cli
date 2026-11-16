@@ -58,9 +58,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 
+	if err := asset.ValidateDashboard(dashboard); err != nil {
+		return err
+	}
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:   "dashboard",
-		Upsert: dashboard,
+		Upsert: asset.DashboardKeys(dashboard),
 	})
 	if err != nil {
 		return err

@@ -183,10 +183,10 @@ func runUpdateAgainstNotFound(t *testing.T, command updateCommand, v updateIdent
 func TestUpdateKey_Characterization(t *testing.T) {
 	want := map[string]map[updateIdentifiers]string{
 		"dashboards": {
-			updateWithNeither: "error: no dashboard id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no dashboard id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no dashboard origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/dashboards/o",
 			updateWithID:      "GET /api/dashboards/" + characterizationID,
-			updateWithBoth:    "GET /api/dashboards/" + characterizationID,
+			updateWithBoth:    `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("` + characterizationID + `") must be equal; set only metadata.labels["dash0.com/origin"]`,
 		},
 		"check-rules": {
 			updateWithNeither: "error: no check rule id given: pass one as an argument, or set the id in the file",

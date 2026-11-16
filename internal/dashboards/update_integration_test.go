@@ -97,6 +97,43 @@ spec:
 	assert.Contains(t, output, "no changes")
 }
 
+func TestUpdateDashboard_WithOriginFromFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: My Dashboard
+  labels:
+    dash0.com/origin: dash0-cli_my-dashboard
+spec:
+  display:
+    name: My Dashboard
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		server.On(method, "/api/dashboards/dash0-cli_my-dashboard", testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   fixtureGetSuccess,
+			Validator:  testutil.RequireHeaders,
+		})
+	}
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.True(t, slices.ContainsFunc(server.Requests(), func(req testutil.RecordedRequest) bool {
+		return req.Method == http.MethodPut && req.Path == "/api/dashboards/dash0-cli_my-dashboard"
+	}))
+}
+
 func TestUpdateDashboard_IDMismatch(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -144,7 +181,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no dashboard id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no dashboard origin or id given: pass one as an argument")
 }
 
 func TestUpdateDashboard_PersesDashboardCRD_IDFromFile(t *testing.T) {
@@ -254,7 +291,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no dashboard id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no dashboard origin or id given: pass one as an argument")
 }
 
 func TestUpdateDashboard_PersesDashboardCRD_IDMismatch(t *testing.T) {

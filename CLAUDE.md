@@ -54,7 +54,7 @@ Detailed guidelines are split into focused documents:
   - Check rules: top-level `id` field (`PrometheusAlertRule.Id`)
   - Views: `metadata.labels["dash0.com/id"]` (`ViewLabels.Dash0Comid`)
   - Synthetic checks: `metadata.labels["dash0.com/id"]`
-  - Dashboards: `metadata.dash0Extensions.id` (`DashboardMetadataExtensions.Id`)
+  - Dashboards: `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` (the server UUID). `asset.DashboardKeys` sets this order, because the client's `GetID` reads `dash0.com/id` before `dash0Extensions.id`. Read the key before `StripDashboardServerFields`, which clears `dash0.com/id`. An origin that differs from `dash0Extensions.id` fails validation.
   - PersesDashboard CRD: `metadata.labels["dash0.com/id"]`
   - PrometheusRule CRD (alerting and recording rules): `metadata.labels["dash0.com/id"]`
   - Spam filters (v1alpha1 and v1alpha2): `metadata.labels["dash0.com/id"]`, but `metadata.labels["dash0.com/origin"]` takes precedence as the upsert key when both are present
