@@ -20,8 +20,8 @@ const (
 	apiPathQueryRange     = "/api/prometheus/api/v1/query_range"
 	fixtureUnauthorized   = "dashboards/error_unauthorized.json"
 	testPodsAuthToken     = "auth_test_token"
-	testPodsNamespace     = "dash0-shared"
-	testPodsPod           = "api-757b495d7d-cqhb2"
+	testPodsNamespace     = "shop"
+	testPodsPod           = "checkout-757b495d7d-cqhb2"
 	testPodsDataset       = "staging"
 	expectedPanelRequests = 12
 	// The sample the handler leaves out of every series, so a gap must parse as null
