@@ -131,6 +131,7 @@ var topics = []topicSpec{
 		},
 	},
 	{name: "otlp", sections: []string{"otlp proxy"}},
+	{name: "k8s", sections: []string{"k8s pods watch"}},
 	{
 		name:            "recording-rules",
 		includeQuickRef: true,
@@ -146,6 +147,16 @@ var topics = []topicSpec{
 		sections:        []string{"eval documents"},
 		assetYAMLLabels: []string{"Eval (generative AI evaluation"},
 		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
+	},
+	{
+		name:            "sampling-rules",
+		includeQuickRef: true,
+		sections:        []string{"sampling rules"},
+		assetYAMLLabels: []string{"Sampling rule ("},
+		extraNote: "`metadata.labels[\"dash0.com/origin\"]` is the upsert key: `create` and `apply` PUT to that origin, " +
+			"which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only " +
+			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
+			"apply; pin `dash0.com/origin` instead.",
 	},
 	{
 		name:            "signal-to-metrics-rules",
@@ -212,6 +223,9 @@ var topics = []topicSpec{
 			"Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document " +
 			"therefore cannot be applied to two datasets the way it can for every other asset kind — the second " +
 			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.\n\n" +
+			"The document has no `apiVersion`; the CLI ignores one if a file sets it. `spec.priority` is an integer " +
+			"from 0 to 4 and defaults to 2, and the API rejects any other value. When more than one aggregation " +
+			"matches a metric, only the one with the lowest priority applies.\n\n" +
 			deletedAssetNote("time-series-aggregations", "time series aggregation", "time series aggregations", "origin"),
 	},
 	{name: "traces", sections: []string{"traces get"}},

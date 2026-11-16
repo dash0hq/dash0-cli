@@ -1,0 +1,5 @@
+{
+  "code": 400,
+  "message": "Bad Request: A sampling rule with this origin exists, but it is associated with a different dataset.",
+  "traceId": "7d2a4c6e8f0b1d3f5a7c9e1b3d5f7a9c"
+}

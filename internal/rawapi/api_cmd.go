@@ -42,7 +42,7 @@ api-url. Absolute URLs (http:// or https://) are passed through verbatim.
 Query parameters are baked into the path. Headers are set with -H.
 Request bodies are read from a file or stdin with -f.`,
 		Example: `  # GET — dataset auto-injected from the active profile
-  dash0 -X api /api/sampling-rules
+  dash0 -X api /api/agentic-workflows
 
   # GET against an organization-level endpoint that does not take a dataset
   dash0 -X api /api/organization/settings --dataset ""
@@ -51,13 +51,13 @@ Request bodies are read from a file or stdin with -f.`,
   dash0 -X api "/api/agentic-workflows?folderPath=oncall"
 
   # POST with a payload from a file
-  dash0 -X api POST /api/sampling-rules -f sampling-rule.json
+  dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json
 
   # POST with a payload from stdin and a custom header
-  cat sampling-rule.json | dash0 -X api POST /api/sampling-rules -f - -H 'X-Request-Id: abc123'
+  cat agentic-workflow.json | dash0 -X api POST /api/agentic-workflows -f - -H 'X-Request-Id: abc123'
 
   # Debug a failing request
-  dash0 -X api POST /api/sampling-rules -f sampling-rule.json -v`,
+  dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json -v`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := experimental.RequireExperimental(cmd); err != nil {

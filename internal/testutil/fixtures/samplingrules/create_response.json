@@ -1,0 +1,39 @@
+{
+  "kind": "Dash0Sampling",
+  "metadata": {
+    "name": "checkout-errors",
+    "labels": {
+      "dash0.com/dataset": "default",
+      "dash0.com/id": "c2f81a47-9d3e-4b6c-8a05-7e1d4b9f2c60",
+      "dash0.com/origin": "api-c2f81a47-9d3e-4b6c-8a05-7e1d4b9f2c60",
+      "dash0.com/source": "api",
+      "dash0.com/version": "1"
+    }
+  },
+  "spec": {
+    "display": {
+      "name": "Keep checkout errors"
+    },
+    "enabled": true,
+    "conditions": {
+      "kind": "and",
+      "spec": {
+        "conditions": [
+          {
+            "kind": "ottl",
+            "spec": {
+              "ottl": "resource.attributes[\"service.name\"] == \"checkout\""
+            }
+          },
+          {
+            "kind": "error",
+            "spec": {}
+          }
+        ]
+      }
+    },
+    "rateLimit": {
+      "rate": 100
+    }
+  }
+}

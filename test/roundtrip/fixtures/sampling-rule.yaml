@@ -1,0 +1,22 @@
+kind: Dash0Sampling
+metadata:
+  name: roundtrip-sampling
+  labels:
+    dash0.com/origin: roundtrip-sampling
+spec:
+  display:
+    name: roundtrip-sampling
+  # Disabled, so the rule never turns sampling on for the dataset and a leaked
+  # rule keeps no traces.
+  enabled: false
+  conditions:
+    kind: and
+    spec:
+      conditions:
+        - kind: ottl
+          spec:
+            ottl: resource.attributes["service.name"] == "dash0-cli-roundtrip"
+        - kind: error
+          spec: {}
+  rateLimit:
+    rate: 100

@@ -26,6 +26,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/failedchecks"
 	"github.com/dash0hq/dash0-cli/internal/help"
+	"github.com/dash0hq/dash0-cli/internal/k8s"
 	"github.com/dash0hq/dash0-cli/internal/logging"
 	"github.com/dash0hq/dash0-cli/internal/login"
 	"github.com/dash0hq/dash0-cli/internal/members"
@@ -34,6 +35,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/dash0hq/dash0-cli/internal/rawapi"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
+	"github.com/dash0hq/dash0-cli/internal/samplingrules"
 	"github.com/dash0hq/dash0-cli/internal/signaltometricsrules"
 	"github.com/dash0hq/dash0-cli/internal/skill"
 	"github.com/dash0hq/dash0-cli/internal/slos"
@@ -100,7 +102,9 @@ func init() {
 	rootCmd.AddCommand(metrics.NewMetricsCmd())
 	rootCmd.AddCommand(notificationchannels.NewNotificationChannelsCmd())
 	rootCmd.AddCommand(otlp.NewOtlpCmd())
+	rootCmd.AddCommand(k8s.NewK8sCmd())
 	rootCmd.AddCommand(recordingrules.NewRecordingRulesCmd())
+	rootCmd.AddCommand(samplingrules.NewSamplingRulesCmd())
 	rootCmd.AddCommand(signaltometricsrules.NewSignalToMetricsRulesCmd())
 	rootCmd.AddCommand(skill.NewSkillCmd())
 	rootCmd.AddCommand(slos.NewSlosCmd())

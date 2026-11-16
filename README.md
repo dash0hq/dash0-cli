@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, and `Dash0SignalToMetrics`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
 
 From a single file:
 
@@ -403,7 +403,7 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 
 ### Asset CRUD commands
 
-Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `signal-to-metrics-rules`) supports the same five subcommands.
+Every asset type (`dashboards`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `views`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`) supports the same five subcommands.
 Substitute the asset noun in the examples below.
 
 List all assets of a type:
@@ -445,6 +445,24 @@ dash0 dashboards delete <id>
 `dashboards create` and `apply` also accept PersesDashboard CRD files; `check-rules create` and `apply` also accept PrometheusRule CRD files.
 See [docs/commands.md](docs/commands.md) for the full per-asset reference and the YAML formats.
 
+### Time series aggregations
+
+Time series aggregations reduce metric cardinality by re-sampling matching series at a coarser interval.
+`time-series-aggregations` (alias `tsa`) has the five subcommands above, and `apply` accepts the `Dash0TimeSeriesAggregation` kind.
+Every command requires the organization admin role, and every document needs a `dash0.com/origin` label.
+
+List the aggregations of the dataset:
+
+```bash
+dash0 tsa list
+```
+
+Export an aggregation, ready to re-apply:
+
+```bash
+dash0 tsa get <origin> -o yaml > aggregation.yaml
+```
+
 ### Signal-to-metrics rules
 
 Signal-to-metrics rules turn matching logs or spans into a metric.
@@ -460,6 +478,27 @@ Count the signals a rule would match over the last hour, without creating it:
 
 ```bash
 dash0 s2m test -f rule.yaml --from now-1h
+```
+
+### Sampling rules
+
+Sampling rules decide which traces Dash0 keeps for a dataset.
+`sampling-rules` has the five subcommands above, and `apply` accepts the `Dash0Sampling` kind.
+
+> [!WARNING]
+> The first enabled rule of a dataset turns sampling on: Dash0 then drops every trace that no enabled rule keeps.
+> The CLI prints a warning when a write would do that.
+
+List the rules and their conditions:
+
+```bash
+dash0 sampling-rules list -o wide
+```
+
+Create a rule from a file:
+
+```bash
+dash0 sampling-rules create -f sampling-rule.yaml
 ```
 
 ### Logging
@@ -815,12 +854,12 @@ It is useful for endpoints that do not yet have a dedicated subcommand.
 
 ```bash
 # GET — dataset auto-injected from the active profile
-dash0 -X api /api/sampling-rules
+dash0 -X api /api/agentic-workflows
 ```
 
 ```bash
 # POST with a payload from a file
-dash0 -X api POST /api/sampling-rules -f sampling-rule.json
+dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json
 ```
 
 ```bash
@@ -854,6 +893,42 @@ The proxy exits on `Ctrl-C` (or `SIGTERM`) after draining in-flight work within 
 On startup, if either default port is already in use, the proxy exits non-zero with an actionable error that names the holding process.
 See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the decoration flags (`--scope-attribute`, `--log-attribute`, `--span-attribute`, `--metric-attribute`, `--scope-name`, `--scope-version`), the agent-mode event schema, and the failure-mode classification.
 
+### Pod page and k9s plugin (experimental)
+
+The `k8s pods watch` command draws a Kubernetes pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration, and log counts when the pod has spans and logs.
+The page refreshes every 30 seconds; `1` to `4` pick the range, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0, and `q` quits.
+
+```bash
+dash0 -X k8s pods watch <pod> -n <namespace>
+```
+
+The same page runs as a [k9s plugin](https://k9scli.io/topics/plugins/) on `Shift-D`.
+Add this to k9s' `plugins.yaml` (`k9s info` prints where it is):
+
+```yaml
+plugins:
+  dash0-pod-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - pods
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+  dash0-container-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - containers
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+```
+
+See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for the full reference.
+
 ### Common settings
 
 | Flag | Short | Env Variable | Description |
@@ -870,6 +945,8 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 | `--file` | `-f` | | Input file path (use `-` for stdin) |
 | `--output` | `-o` | | Output format: `table`, `wide`, `json`, `yaml`, `csv` |
 | `--config-dir` | | `DASH0_CONFIG_DIR` | Override the configuration directory (default: `~/.dash0`). The flag takes precedence over the environment variable. |
+| `--cluster` | | `DASH0_CLUSTER` | Default for `dash0 k8s pods watch --cluster` |
+| `--light` | | `DITT0_THEME` | `light` is the default for `dash0 k8s pods watch --light` |
 | | | `DASH0_OTLP_PROXY_GRPC_PORT` | Override `dash0 otlp proxy --grpc-port` |
 | | | `DASH0_OTLP_PROXY_HTTP_PORT` | Override `dash0 otlp proxy --http-port` |
 | `--max-retries` | | `DASH0_MAX_RETRIES` | Max retries for failed API requests (default: `3`, max: `5`; `0` to disable) |
