@@ -30,7 +30,9 @@ type identifierProbe struct {
 	Kind     string `json:"kind"`
 	ID       string `json:"id"`
 	Metadata struct {
-		Labels          map[string]string `json:"labels"`
+		// Values are not all strings: sampling rules nest custom labels
+		// under labels.custom, so only string values are read.
+		Labels          map[string]any `json:"labels"`
 		Dash0Extensions struct {
 			ID string `json:"id"`
 		} `json:"dash0Extensions"`
@@ -47,7 +49,7 @@ type identifierProbe struct {
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
 //   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0GenerativeAiEvaluation,
-//     Dash0SignalToMetrics:
+//     Dash0SignalToMetrics, Dash0Sampling:
 //     dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
 //     Dash0AwsMetricScrapeConfig):
@@ -57,15 +59,24 @@ type identifierProbe struct {
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, evals, and
-// signal-to-metrics rules genuinely accept either field.
+// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, evals,
+// signal-to-metrics rules, and sampling rules genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
 		return "", fmt.Errorf("failed to extract identifier: %w", err)
 	}
+	// Labels decode leniently for labels.custom, so an identifier label that
+	// is not a string must fail here instead of reading as "no identifier".
+	for _, key := range []string{"dash0.com/id", "dash0.com/origin"} {
+		if value, ok := probe.Metadata.Labels[key]; ok && value != nil {
+			if _, isString := value.(string); !isString {
+				return "", fmt.Errorf("failed to extract identifier: metadata.labels[%q] must be a string, not %v; quote it in YAML", key, value)
+			}
+		}
+	}
 
-	origin := probe.Metadata.Labels["dash0.com/origin"]
+	origin := probe.label("dash0.com/origin")
 
 	switch NormalizeKind(probe.Kind) {
 	case "dashboard":
@@ -82,12 +93,19 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics":
+	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics", "sampling":
 		if origin != "" {
 			return origin, nil
 		}
-		return probe.Metadata.Labels["dash0.com/id"], nil
+		return probe.label("dash0.com/id"), nil
 	default:
-		return probe.Metadata.Labels["dash0.com/id"], nil
+		return probe.label("dash0.com/id"), nil
 	}
+}
+
+// label returns the string value of a metadata label, or "" when it is absent
+// or not a string.
+func (p identifierProbe) label(key string) string {
+	s, _ := p.Metadata.Labels[key].(string)
+	return s
 }

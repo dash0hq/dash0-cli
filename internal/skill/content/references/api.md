@@ -21,7 +21,7 @@ Query parameters are baked into the path.
 
 Relative paths must start with `/api/` and are resolved against the profile's `api-url`:
 
-- `dash0 -X api /api/sampling-rules` → `<api-url>/api/sampling-rules`
+- `dash0 -X api /api/agentic-workflows` → `<api-url>/api/agentic-workflows`
 
 Absolute URLs (`http://` or `https://`) are passed through verbatim.
 Query parameters are part of the path:
@@ -73,7 +73,7 @@ Use `-v` to see the full request line, outbound headers, request body, response 
 GET — dataset auto-injected from the active profile:
 
 ```bash
-dash0 -X api /api/sampling-rules
+dash0 -X api /api/agentic-workflows
 ```
 
 GET against an organization-level endpoint that does not take a dataset:
@@ -91,24 +91,24 @@ dash0 -X api "/api/agentic-workflows?folderPath=oncall"
 POST with a payload from a file:
 
 ```bash
-dash0 -X api POST /api/sampling-rules -f sampling-rule.json
+dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json
 ```
 
 POST with a payload from stdin and a custom header (the `cat | dash0 …` pipeline is a single command):
 
 ```bash
-cat sampling-rule.json \
-  | dash0 -X api POST /api/sampling-rules -f - -H 'X-Request-Id: abc123'
+cat agentic-workflow.json \
+  | dash0 -X api POST /api/agentic-workflows -f - -H 'X-Request-Id: abc123'
 ```
 
 DELETE with an explicit dataset override:
 
 ```bash
-dash0 -X api delete /api/sampling-rules/<id> --dataset production
+dash0 -X api delete /api/agentic-workflows/<id> --dataset production
 ```
 
 Debug a failing request:
 
 ```bash
-dash0 -X api POST /api/sampling-rules -f sampling-rule.json -v
+dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json -v
 ```
