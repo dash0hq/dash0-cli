@@ -6,13 +6,6 @@ import (
 	"time"
 )
 
-func TestErrorRate(t *testing.T) {
-	got := errorRate([]*float64{f(10), f(0), nil, f(4)}, []*float64{f(1), f(0), nil, nil})
-	if *got[0] != 10 || got[1] != nil || got[2] != nil || *got[3] != 0 {
-		t.Errorf("got %v", got)
-	}
-}
-
 func TestActiveIgnoresDash0Zeros(t *testing.T) {
 	if active([]*float64{f(0), f(0), nil}) {
 		t.Error("zeros are no data")
@@ -50,19 +43,52 @@ func TestREDUnits(t *testing.T) {
 
 func TestPanelQueries(t *testing.T) {
 	tg := target{namespace: "shop", kind: "pod", name: "checkout-84d7c98f5d-m7tjp"}
+	sel := `k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp"`
+	pod := "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
+	limit := `max by (` + pod + `, k8s_container_name) ({otel_metric_name="k8s.container.cpu_limit", ` + sel + `})`
+	perPodLimit := `sum by (` + pod + `) (` + limit + `) and on (` + pod + `) (count by (` + pod + `) (` + limit + `) == count by (` + pod + `) (max by (` + pod + `, k8s_container_name) ({otel_metric_name="k8s.container.restarts", ` + sel + `})))`
+	usage := `max by (` + pod + `) ({otel_metric_name="k8s.pod.cpu.usage", ` + sel + `})`
 	want := map[string]string{
-		"requests": `sum(rate({otel_metric_name="dash0.spans", k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp", otel_span_kind="SERVER"}[120s]))`,
-		"p95":      `histogram_quantile(0.95, sum by (le) (rate({otel_metric_name="dash0.spans.duration", k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp", otel_span_kind="SERVER"}[120s])))`,
-		"cpu":      `sum(max by (k8s_cluster_name, k8s_namespace_name, k8s_pod_name) ({otel_metric_name="k8s.pod.cpu.usage", k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp"}))`,
-		"cpuLimit": `sum(max by (k8s_cluster_name, k8s_namespace_name, k8s_pod_name, k8s_container_name) ({otel_metric_name="k8s.container.cpu_limit", k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp"}))`,
-		"logs":     `sum by (otel_log_severity_range) (increase({otel_metric_name="dash0.logs", k8s_namespace_name="shop", k8s_pod_name="checkout-84d7c98f5d-m7tjp"}[120s]))`,
+		"requests":  `sum(sum by (` + pod + `) (rate({otel_metric_name="dash0.spans", ` + sel + `, otel_span_kind="SERVER"}[120s])))`,
+		"errorRate": `100 * sum(rate({otel_metric_name="dash0.spans", ` + sel + `, otel_span_kind="SERVER", otel_span_status_code="ERROR"}[120s])) / sum(rate({otel_metric_name="dash0.spans", ` + sel + `, otel_span_kind="SERVER"}[120s]))`,
+		"p95":       `histogram_quantile(0.95, sum by (le) (rate({otel_metric_name="dash0.spans.duration", ` + sel + `, otel_span_kind="SERVER"}[120s])))`,
+		"cpu":       `sum(` + usage + `)`,
+		"cpuLimit":  `sum(` + perPodLimit + `)`,
+		"cpuUtil":   `max(` + usage + ` / (` + perPodLimit + `))`,
+		"logs":      `sum by (otel_log_severity_range) (increase({otel_metric_name="dash0.logs", ` + sel + `}[120s]))`,
 	}
 	for _, pn := range panels {
 		if q, ok := want[pn.key]; ok {
 			if got := pn.query(tg, 2*time.Minute); got != q {
 				t.Errorf("%s:\n got %s\nwant %s", pn.key, got, q)
 			}
+			delete(want, pn.key)
 		}
+	}
+	if len(want) > 0 {
+		t.Errorf("no panels %v", want)
+	}
+}
+
+func TestAggregateInPromQL(t *testing.T) {
+	tg := target{namespace: "shop", kind: "deployment", name: "checkout", agg: "max"}
+	for _, pn := range panels {
+		q := pn.query(tg, time.Minute)
+		switch pn.key {
+		case "cpu", "cpuRequest", "memLimit", "requests", "errors":
+			if !strings.HasPrefix(q, "max(") {
+				t.Errorf("%s: %s", pn.key, q)
+			}
+		case "cpuUtil", "errorRate":
+			// The busiest pod's share of its own limit, and the share of all requests, whatever the aggregation
+			if strings.HasPrefix(q, "max(") != (pn.key == "cpuUtil") {
+				t.Errorf("%s: %s", pn.key, q)
+			}
+		}
+	}
+	tg.agg = "total"
+	if q := tg.query("k8s.pod.cpu.usage"); !strings.HasPrefix(q, "sum(") {
+		t.Error(q)
 	}
 }
 
@@ -80,7 +106,7 @@ func TestSectionsHideWithoutData(t *testing.T) {
 }
 
 func TestKindOf(t *testing.T) {
-	for in, want := range map[string]string{"deployments": "deployment", "StatefulSet": "statefulset", "pods": "pod", "services": ""} {
+	for in, want := range map[string]string{"deployments": "deployment", "StatefulSet": "statefulset", "pods": "pod", "deploy": "deployment", "sts": "statefulset", "services": ""} {
 		if got := kindOf(in); got != want {
 			t.Errorf("kindOf(%q) = %q, want %q", in, got, want)
 		}
@@ -93,9 +119,17 @@ func TestPodSeriesRanksBusiestFirst(t *testing.T) {
 		p.data["cpuPods:pod-"+string(rune('a'+i))] = []*float64{f(float64(i)), nil}
 	}
 	p.data["cpuPods:gone"] = []*float64{nil, nil}
-	got, n := p.podSeries("cpuPods")
+	got, n := p.podSeries("cpuPods", "")
 	if len(got) != maxPods || n != maxPods+2 || got[0].name != "pod-j" || got[maxPods-1].name != "pod-c" {
 		t.Errorf("got %d of %d: %+v", len(got), n, got)
+	}
+
+	// Nearest its limit first, then pods without a limit by usage
+	p.data["cpuUtilPods:pod-a"] = []*float64{f(0.95), f(0.1)}
+	p.data["cpuUtilPods:pod-b"] = []*float64{f(0.5), nil}
+	got, _ = p.podSeries("cpuPods", "cpuUtilPods")
+	if got[0].name != "pod-a" || got[1].name != "pod-b" || got[2].name != "pod-j" {
+		t.Errorf("got %+v", got[:3])
 	}
 }
 
@@ -106,35 +140,22 @@ func TestWorkloadSelector(t *testing.T) {
 	}
 }
 
-func TestAggregateOverRunningPods(t *testing.T) {
-	pods := [][]*float64{{f(1), f(4), nil}, {f(3), nil, nil}}
-	for how, want := range map[string][2]float64{"avg": {2, 4}, "min": {1, 4}, "max": {3, 4}} {
-		got := aggregate(pods, how)
-		if *got[0] != want[0] || *got[1] != want[1] || got[2] != nil {
-			t.Errorf("%s: got %v %v %v", how, *got[0], *got[1], got[2])
-		}
-	}
-	p := &page{agg: 3, data: map[string][]*float64{"cpu": {f(9)}, "cpuPods:a": {f(2)}, "cpuPods:b": {f(5)}, "cpuRequestPods:a": {f(7)}}}
-	if got := p.of("cpu"); *got[0] != 5 {
-		t.Errorf("max cpu %v", *got[0])
-	}
-}
-
-func TestLimitsOnlyWhereTheyHold(t *testing.T) {
-	data := map[string][]*float64{"cpu": {f(9)}, "cpuRequest": {f(10)}, "cpuLimit": {f(9.5)},
-		"cpuPods:a": {f(2)}, "cpuRequestPods:a": {f(4)}, "cpuLimitPods:a": {f(2.1)}}
+func TestAgainstTheBusiestPodsLimit(t *testing.T) {
 	for _, c := range []struct {
 		kind string
-		agg  int
-		want int
-	}{{"pod", 0, 3}, {"deployment", 0, 2}, {"deployment", 1, 2}, {"deployment", 3, 3}} {
-		p := &page{theme: dark, target: target{kind: c.kind}, agg: c.agg, data: data}
-		if n := len(p.chartSeries([3]string{"cpu", "cpuRequest", "cpuLimit"})); n != c.want {
-			t.Errorf("%s %s: %d series, want %d", c.kind, aggs[c.agg], n, c.want)
-		}
-		note, ink := p.against(p.of("cpu"), p.of("cpuRequest"), p.of("cpuLimit"), "cores")
-		if strings.Contains(note, "limit") != (c.want == 3) || (c.want == 2 && ink != "") {
-			t.Errorf("%s %s: %q %q", c.kind, aggs[c.agg], note, ink)
+		util *float64
+		note string
+		warn bool
+	}{
+		{"pod", f(0.85), "85% of 10 cores limit", true},
+		{"pod", f(0.5), "50% of 10 cores limit", false},
+		{"deployment", f(0.95), "busiest pod at 95% of its limit", true},
+		{"deployment", nil, "no limit", false},
+	} {
+		p := &page{theme: dark, target: target{kind: c.kind}}
+		note, ink := p.against([]*float64{f(5)}, []*float64{f(4)}, []*float64{f(10)}, []*float64{c.util}, "cores")
+		if !strings.Contains(note, c.note) || (ink != "") != c.warn {
+			t.Errorf("%s %v: %q %q", c.kind, c.util, note, ink)
 		}
 	}
 }

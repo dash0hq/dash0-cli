@@ -23,7 +23,7 @@ const (
 	testPodsNamespace     = "shop"
 	testPodsPod           = "checkout-757b495d7d-cqhb2"
 	testPodsDataset       = "staging"
-	expectedPanelRequests = 12
+	expectedPanelRequests = 15
 	// The sample the handler leaves out of every series, so a gap must parse as null
 	gapAt = 3
 )
@@ -107,7 +107,7 @@ func TestWatch_JSON(t *testing.T) {
 	assert.Equal(t, testPodsPod, got.Pod)
 	assert.Equal(t, "1m0s", got.Step)
 	assert.Len(t, got.Timestamps, 16)
-	for _, key := range []string{"cpu", "cpuRequest", "cpuLimit", "mem", "memRequest", "memLimit", "requests", "errors", "p50", "p95", "p99", "logs:ERROR"} {
+	for _, key := range []string{"cpu", "cpuRequest", "cpuLimit", "mem", "memRequest", "memLimit", "cpuUtil", "memUtil", "requests", "errors", "errorRate", "p50", "p95", "p99", "logs:ERROR"} {
 		require.Len(t, got.Series[key], 16, key)
 		for i, v := range got.Series[key] {
 			if i == gapAt {
@@ -225,7 +225,7 @@ func TestWatch_WorkloadJSON(t *testing.T) {
 	server.OnDefault(queryRangeHandler(t, ""))
 
 	cmd := newExperimentalPodsCmd()
-	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", "checkout", "-n", testPodsNamespace, "--kind", "deployments", "-o", "json",
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", "checkout", "-n", testPodsNamespace, "--kind", "deploy", "--aggregate", "MAX", "--per-pod", "-o", "json",
 		"--range", "15m", "--api-url", server.URL, "--auth-token", testPodsAuthToken})
 
 	var err error
@@ -236,22 +236,30 @@ func TestWatch_WorkloadJSON(t *testing.T) {
 
 	var got struct {
 		watchJSON
-		Kind string `json:"kind"`
-		Name string `json:"name"`
+		Kind      string `json:"kind"`
+		Name      string `json:"name"`
+		Aggregate string `json:"aggregate"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(output), &got))
 	assert.Equal(t, "deployment", got.Kind)
 	assert.Equal(t, "checkout", got.Name)
 	assert.Empty(t, got.Pod)
+	assert.Equal(t, "max", got.Aggregate)
 
 	requests := server.Requests()
-	require.Len(t, requests, expectedPanelRequests+len(podPanels))
+	require.Len(t, requests, expectedPanelRequests+1+len(podPanels))
+	var maxed int
 	for _, r := range requests {
 		form, err := url.ParseQuery(string(r.Body))
 		require.NoError(t, err)
 		assert.Contains(t, form.Get("query"), `k8s_deployment_name="checkout"`)
 		assert.NotContains(t, form.Get("query"), `k8s_pod_name="`)
+		if strings.HasPrefix(form.Get("query"), "max(") {
+			maxed++
+		}
 	}
+	// Dash0 combines the pods: CPU and memory with their requests, limits and shares of the limits, requests and errors
+	assert.Equal(t, 10, maxed)
 }
 
 func TestWatch_InvalidKind(t *testing.T) {
@@ -269,9 +277,9 @@ func TestWatch_AggNeedsAWorkload(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	cmd := newExperimentalPodsCmd()
-	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", testPodsPod, "-n", testPodsNamespace, "--agg", "max"})
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", testPodsPod, "-n", testPodsNamespace, "--aggregate", "max"})
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--agg and --per-pod need a workload")
+	assert.Contains(t, err.Error(), "--aggregate and --per-pod need a workload")
 }

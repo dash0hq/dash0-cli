@@ -3408,10 +3408,10 @@ dash0 -X k8s pods watch <name> -n <namespace> [--kind <kind>] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--namespace`, `-n` | | The pod's or workload's namespace (required) |
-| `--kind` | `pod` | What the name names: `pod`, `deployment`, `statefulset`, `daemonset`, `replicaset`, `job`, or `cronjob`; plurals work |
-| `--agg` | `total` | How a workload's pods add up: `total`, `avg`, `min`, or `max` |
+| `--kind` | `pod` | What the name names: `pod`, `deployment`, `statefulset`, `daemonset`, `replicaset`, `job`, or `cronjob`; plurals and kubectl's short names, such as `deploy`, work |
+| `--aggregate` | `total` | How a workload's pods add up: `total`, `avg`, `min`, or `max` |
 | `--per-pod` | `false` | Open a workload on a line per pod |
-| `--cluster` | `DASH0_CLUSTER` | Dash0's `k8s.cluster.name`; empty matches the pod in any cluster |
+| `--cluster` | `DASH0_CLUSTER` | Dash0's `k8s.cluster.name`; empty matches the pod or workload in any cluster |
 | `--context` | | The kube context, shown in the header |
 | `--range` | `1h` | The range the page opens on: `15m`, `1h`, `6h`, or `24h` |
 | `--light` | `DITT0_THEME=light` | Draw in Dash0's light colours |
@@ -3425,7 +3425,7 @@ In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `
 `↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
 The credentials are resolved again before every refresh, so an OAuth access token is renewed while the page stays open.
 
-The page queries `POST /api/prometheus/api/v1/query_range` with `sum()` over the pod's `k8s_namespace_name` and `k8s_pod_name` (and `k8s_cluster_name` with `--cluster`):
+The page queries `POST /api/prometheus/api/v1/query_range` over the pod's `k8s_namespace_name` and `k8s_pod_name` (and `k8s_cluster_name` with `--cluster`):
 
 | Section | Metrics |
 |---------|---------|
@@ -3434,30 +3434,13 @@ The page queries `POST /api/prometheus/api/v1/query_range` with `sum()` over the
 | Requests | Rate, errors, and duration p50, p95, and p99 of the pod's `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
 | Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
 
-It takes each usage gauge once per pod, and each request and limit once per container, before it sums them, so a pod whose resource attributes changed is not counted twice.
+It takes each usage gauge once per pod, and each request and limit once per container, before it adds them up, so a pod whose resource attributes changed is not counted twice.
 Pods of the same name in different clusters are still added together.
 
+A pod's limit is the sum of its containers' limits, and counts only when every container has one, as in Dash0's Kubernetes pages: a container without a limit can use the whole node.
+The share of the limit turns yellow above 80 percent and red above 90 percent.
+
 The requests and logs sections show only when the pod has spans or logs in the range.
-
-#### Workloads
-
-With `--kind`, the page matches every pod of the workload on `k8s_<kind>_name` instead of `k8s_pod_name`, and its header shows how many pods are running.
-`a` switches between the total of the pods and the average, least, or busiest pod at each step, and `p` draws a line for each of the 8 busiest pods by mean.
-The CLI works out the average, least, and busiest pod from per-pod series, so switching sends no new queries.
-The page shows a limit only for a pod or the busiest pod, because a total, average, or least pod is not held to any one pod's limit.
-The error rate is always the share of all requests, because the errors of one pod over the requests of another would mean nothing.
-
-Watch a deployment's busiest pod:
-
-```bash
-dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --agg max
-```
-
-Open a statefulset on a line per pod:
-
-```bash
-dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
-```
 
 Watch a pod:
 
@@ -3482,14 +3465,43 @@ $ dash0 -X k8s pods watch <pod> -n <namespace> -o json --range 15m
   "pod": "<pod>",
   "step": "1m0s",
   "timestamps": ["2026-11-12T19:00:00Z", ...],
-  "series": {"cpu": [0.12, ...], "mem": [...], "requests": [...], "logs:ERROR": [...], ...},
+  "series": {"cpu": [0.12, ...], "cpuUtil": [0.31, ...], "mem": [...], "requests": [...], "errorRate": [...], "logs:ERROR": [...], ...},
   "links": {"metrics": "https://app.dash0.com/goto/metrics/query-builder?...", "traces": "...", "logs": "..."}
 }
 ```
 
-A workload's JSON has no `pod` field, and adds a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`.
+`cpuUtil` and `memUtil` are the share of the limit, from 0 to 1, and `errorRate` is the percentage of requests that failed.
 `failed` lists the panels whose query failed, such as `["p99"]`, and is left out when every panel loaded.
 The command exits 0 when at least one panel loaded, and non-zero when none did.
+
+#### Workloads
+
+With `--kind`, the page matches every pod of the workload on `k8s_<kind>_name` instead of `k8s_pod_name`, and its header shows how many pods are running.
+`--aggregate` (or `a` in the page) picks how the pods add up at each step: their total, or the average, least, or largest pod.
+Dash0 combines the pods in the query, so switching sends the queries again.
+Requests and limits follow the same aggregation, so under `max` the limit line is the largest limit any pod has.
+
+The share of the limit is the highest share any one pod uses of its own limit, whatever the aggregation, because the largest usage and the largest limit can belong to different pods.
+The error rate is the share of all the workload's requests that failed, for the same reason.
+
+`--per-pod` (or `p`) draws a line for each of the 8 busiest pods.
+For CPU and memory, the busiest pods are those with the highest share of their limits, followed by the pods without a limit, by usage.
+For requests and duration, they are the pods with the highest mean.
+
+Watch the largest of a deployment's pods at each step:
+
+```bash
+dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment --aggregate max
+```
+
+Open a statefulset on a line per pod:
+
+```bash
+dash0 -X k8s pods watch <statefulset> -n <namespace> --kind statefulset --per-pod
+```
+
+A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the running pods.
+With `--per-pod`, it also has a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`.
 
 #### k9s plugin
 

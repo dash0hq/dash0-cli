@@ -24,20 +24,49 @@ func (t target) selector(metric string, extra ...string) string {
 	return "{" + strings.Join(append(sel, extra...), ", ") + "}"
 }
 
+const podLabels = "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
+
 // A gauge once per pod, or per pod and container for the containers' requests and limits (the k8s_cluster receiver
 // reports them per container). A pod whose resource attributes change mid-life has two series for a while, the same
 // value under two dash0_resource_hash; summing them would count it twice. The cluster stays in the grouping, because
 // without --cluster the selector matches a pod of the same namespace and name in every cluster, and those are summed
 func (t target) once(metric string) string {
-	by := "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
+	by := podLabels
 	if strings.HasPrefix(metric, "k8s.container.") {
 		by += ", k8s_container_name"
 	}
 	return "max by (" + by + ") (" + t.selector(metric) + ")"
 }
 
-// sum() of a gauge, each pod and container counted once
-func (t target) query(metric string) string { return "sum(" + t.once(metric) + ")" }
+// A series per pod: its usage, or its containers' requests or limits added up. A limit counts only when every
+// container has one, as Dash0's pod pages have it: a container without one can use the whole node
+func (t target) perPod(metric string) string {
+	if !strings.HasPrefix(metric, "k8s.container.") {
+		return t.once(metric)
+	}
+	q := "sum by (" + podLabels + ") (" + t.once(metric) + ")"
+	if strings.HasSuffix(metric, "_limit") {
+		q += " and on (" + podLabels + ") (count by (" + podLabels + ") (" + t.once(metric) + ") == count by (" + podLabels + ") (" + t.once("k8s.container.restarts") + "))"
+	}
+	return q
+}
+
+// The target's pods combined under its aggregation: their total, or the mean, least or most of those running
+func (t target) query(metric string) string { return t.aggFn() + "(" + t.perPod(metric) + ")" }
+
+func (t target) aggFn() string {
+	if t.agg == "" || t.agg == "total" {
+		return "sum"
+	}
+	return t.agg
+}
+
+// The highest share of its limit any pod uses, Dash0's "% of limit"; none when no pod has a limit
+func utilization(usage, limit string) func(target, time.Duration) string {
+	return func(t target, _ time.Duration) string {
+		return "max(" + t.once(usage) + " / (" + t.perPod(limit) + "))"
+	}
+}
 
 func gauge(metric string) func(target, time.Duration) string {
 	return func(t target, _ time.Duration) string { return t.query(metric) }
@@ -59,10 +88,21 @@ func quantile(q, by string) func(target, time.Duration) string {
 
 var panels = []panel{
 	{"cpu", gauge("k8s.pod.cpu.usage"), ""}, {"cpuRequest", gauge("k8s.container.cpu_request"), ""}, {"cpuLimit", gauge("k8s.container.cpu_limit"), ""},
+	{"cpuUtil", utilization("k8s.pod.cpu.usage", "k8s.container.cpu_limit"), ""},
 	{"mem", gauge("k8s.pod.memory.working_set"), ""}, {"memRequest", gauge("k8s.container.memory_request"), ""}, {"memLimit", gauge("k8s.container.memory_limit"), ""},
-	{"requests", func(t target, step time.Duration) string { return "sum(rate(" + spans(t) + rangeOf(step) + "))" }, ""},
+	{"memUtil", utilization("k8s.pod.memory.working_set", "k8s.container.memory_limit"), ""},
+	{"requests", func(t target, step time.Duration) string {
+		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t) + rangeOf(step) + ")))"
+	}, ""},
+	// ponytail: a pod that served no ERROR span in the range has no series here, so avg and min skip it. Dash0's and,
+	// or and unless drop zero samples, so `or 0 * requests` can't fill it in
 	{"errors", func(t target, step time.Duration) string {
-		return "sum(rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + "))"
+		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + ")))"
+	}, ""},
+	// The share of all the target's requests that failed, whatever the aggregation: one pod's errors over another's
+	// requests would mean nothing. No requests make it 0 / 0, a gap
+	{"errorRate", func(t target, step time.Duration) string {
+		return "100 * sum(rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + ")) / sum(rate(" + spans(t) + rangeOf(step) + "))"
 	}, ""},
 	{"p50", quantile("0.5", ""), ""}, {"p95", quantile("0.95", ""), ""}, {"p99", quantile("0.99", ""), ""},
 	// Log records per step, by severity
@@ -71,107 +111,67 @@ var panels = []panel{
 	}, "otel_log_severity_range"},
 }
 
-// A workload's panels split by pod as well, for the per-pod view and the avg, min and max views
+// A workload's running pods
+var podCount = panel{"pods", func(t target, _ time.Duration) string { return "count(" + t.once("k8s.pod.cpu.usage") + ")" }, ""}
+
+// A workload's panels split by pod, for the per-pod view; the shares of their limits rank them
 var podPanels = []panel{
 	{"cpuPods", byPod("k8s.pod.cpu.usage"), "k8s_pod_name"},
 	{"memPods", byPod("k8s.pod.memory.working_set"), "k8s_pod_name"},
+	{"cpuUtilPods", utilByPod("k8s.pod.cpu.usage", "k8s.container.cpu_limit"), "k8s_pod_name"},
+	{"memUtilPods", utilByPod("k8s.pod.memory.working_set", "k8s.container.memory_limit"), "k8s_pod_name"},
 	{"requestsPods", func(t target, step time.Duration) string {
 		return "sum by (k8s_pod_name) (rate(" + spans(t) + rangeOf(step) + "))"
 	}, "k8s_pod_name"},
 	{"p95Pods", quantile("0.95", ", k8s_pod_name"), "k8s_pod_name"},
-	{"cpuRequestPods", byPod("k8s.container.cpu_request"), "k8s_pod_name"},
-	{"cpuLimitPods", byPod("k8s.container.cpu_limit"), "k8s_pod_name"},
-	{"memRequestPods", byPod("k8s.container.memory_request"), "k8s_pod_name"},
-	{"memLimitPods", byPod("k8s.container.memory_limit"), "k8s_pod_name"},
-	{"errorsPods", func(t target, step time.Duration) string {
-		return "sum by (k8s_pod_name) (rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + "))"
-	}, "k8s_pod_name"},
 }
 
 func byPod(metric string) func(target, time.Duration) string {
-	return func(t target, _ time.Duration) string { return "sum by (k8s_pod_name) (" + t.selector(metric) + ")" }
+	return func(t target, _ time.Duration) string { return "sum by (k8s_pod_name) (" + t.once(metric) + ")" }
 }
 
-// The panels a target asks for: a pod's, and a workload's per-pod ones too
-func panelsFor(t target) []panel {
+func utilByPod(usage, limit string) func(target, time.Duration) string {
+	return func(t target, _ time.Duration) string {
+		return "max by (k8s_pod_name) (" + t.once(usage) + " / (" + t.perPod(limit) + "))"
+	}
+}
+
+// The panels a target asks for: a pod's; a workload's adds its pod count, and the per-pod view its pods' series
+func panelsFor(t target, perPod bool) []panel {
 	if t.kind == "pod" {
 		return panels
 	}
-	return append(append([]panel{}, panels...), podPanels...)
-}
-
-// How a workload's pods add up in its stats and charts: their total, or the mean, least or most of the pods running
-// at each step
-var aggs = []string{"total", "avg", "min", "max"}
-
-// key's series under the page's agg: the total as Dash0 sums it, else worked out step by step from key's per-pod
-// series (<key>Pods), so switching asks Dash0 nothing
-func (p *page) of(key string) []*float64 {
-	if p.agg == 0 {
-		return p.data[key]
-	}
-	var pods [][]*float64
-	for k, v := range p.data {
-		if strings.HasPrefix(k, key+"Pods:") {
-			pods = append(pods, v)
-		}
-	}
-	return aggregate(pods, aggs[p.agg])
-}
-
-// Series combined step by step over those with a sample there: avg, min or max; a step none has stays none
-func aggregate(pods [][]*float64, how string) []*float64 {
-	if len(pods) == 0 {
-		return nil
-	}
-	out := make([]*float64, len(pods[0]))
-	for i := range out {
-		var got []float64
-		for _, v := range pods {
-			if i < len(v) && v[i] != nil {
-				got = append(got, *v[i])
-			}
-		}
-		if len(got) == 0 {
-			continue
-		}
-		acc := got[0]
-		for _, x := range got[1:] {
-			switch how {
-			case "avg":
-				acc += x
-			case "min":
-				acc = math.Min(acc, x)
-			case "max":
-				acc = math.Max(acc, x)
-			}
-		}
-		if how == "avg" {
-			acc /= float64(len(got))
-		}
-		out[i] = &acc
+	out := append(append([]panel{}, panels...), podCount)
+	if perPod {
+		out = append(out, podPanels...)
 	}
 	return out
 }
 
+// How a workload's pods add up in its stats and charts: their total, or the mean, least or most of the pods running
+// at each step. Dash0 combines them, so switching asks it again
+var aggs = []string{"total", "avg", "min", "max"}
+
 // " · max pod" after a title under avg, min or max
 func (p *page) aggNote() string {
-	if p.agg == 0 {
+	if p.target.agg == "" || p.target.agg == "total" {
 		return ""
 	}
-	return " · " + aggs[p.agg] + " pod"
+	return " · " + p.target.agg + " pod"
 }
 
 // Pods drawn in a per-pod chart. Folding the rest into one line would dwarf them: a deployment that rolled churns
 // through dozens of pods in an hour
 const maxPods = 8
 
-// key's per-pod series, busiest first by mean, and how many pods had any
-func (p *page) podSeries(key string) ([]series, int) {
+// key's per-pod series, busiest first, and how many pods had any. Busiest is the highest share of its limit
+// (rankKey's per-pod series), as Dash0 flags a pod past 80 and 90 percent; pods without a limit follow, by mean
+func (p *page) podSeries(key, rankKey string) ([]series, int) {
 	type ranked struct {
-		name   string
-		values []*float64
-		mean   float64
+		name       string
+		values     []*float64
+		peak, mean float64
+		limited    bool
 	}
 	var all []ranked
 	for k, v := range p.data {
@@ -179,16 +179,28 @@ func (p *page) podSeries(key string) ([]series, int) {
 		if !ok || !hasSamples(v) {
 			continue
 		}
-		total, n := 0.0, 0
-		for _, x := range v {
-			if x != nil {
-				total, n = total+*x, n+1
+		r := ranked{name: pod, values: v, mean: mean(v)}
+		if u := p.data[rankKey+":"+pod]; rankKey != "" && hasSamples(u) {
+			r.limited = true
+			for _, x := range u {
+				if x != nil {
+					r.peak = math.Max(r.peak, *x)
+				}
 			}
 		}
-		all = append(all, ranked{pod, v, total / float64(n)})
+		all = append(all, r)
 	}
 	sort.Slice(all, func(i, j int) bool {
-		return all[i].mean > all[j].mean || all[i].mean == all[j].mean && all[i].name < all[j].name
+		a, b := all[i], all[j]
+		switch {
+		case a.limited != b.limited:
+			return a.limited
+		case a.peak != b.peak:
+			return a.peak > b.peak
+		case a.mean != b.mean:
+			return a.mean > b.mean
+		}
+		return a.name < b.name
 	})
 	var out []series
 	for i, r := range all[:min(len(all), maxPods)] {
@@ -197,25 +209,30 @@ func (p *page) podSeries(key string) ([]series, int) {
 	return out, len(all)
 }
 
+func mean(values []*float64) float64 {
+	total, n := 0.0, 0
+	for _, x := range values {
+		if x != nil {
+			total, n = total+*x, n+1
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return total / float64(n)
+}
+
 // A per-pod card, its title saying when it shows only the busiest pods
-func (p *page) podCard(title, key, unit string, width, rows int) block {
-	ss, n := p.podSeries(key)
+func (p *page) podCard(title, key, rankKey, unit string, width, rows int) block {
+	ss, n := p.podSeries(key, rankKey)
 	if n > len(ss) {
 		title += fmt.Sprintf(" · busiest %d of %d", len(ss), n)
 	}
 	return p.cardOf(title, unit, ss, width, rows, false)
 }
 
-// Pods with a CPU sample at the window's end: those running now
-func (p *page) runningPods() int {
-	n := 0
-	for k, v := range p.data {
-		if strings.HasPrefix(k, "cpuPods:") && len(v) > 0 && v[len(v)-1] != nil {
-			n++
-		}
-	}
-	return n
-}
+// Whether the target served any request in the window: the error rate is a gap wherever it served none
+func (p *page) served() bool { return hasSamples(p.data["errorRate"]) }
 
 // Whether a series has a sample anywhere in the window
 func hasSamples(values []*float64) bool { return first(values) != nil }
@@ -229,23 +246,6 @@ func active(values []*float64) bool {
 		}
 	}
 	return false
-}
-
-// The error rate per step, in percent of the requests; none where there were no requests
-func errorRate(requests, errors []*float64) []*float64 {
-	out := make([]*float64, len(requests))
-	for i, r := range requests {
-		if r == nil || *r == 0 {
-			continue
-		}
-		e := 0.0
-		if i < len(errors) && errors[i] != nil {
-			e = *errors[i]
-		}
-		v := 100 * e / *r
-		out[i] = &v
-	}
-	return out
 }
 
 func sum(values []*float64) float64 {
@@ -265,24 +265,26 @@ func heading(title, note string) block {
 
 // Requests, errors and duration of the spans the pod serves: nil when it served none in the window
 func (p *page) redSection(cardW int, side bool, rows int) block {
-	if !active(p.data["requests"]) {
+	if !p.served() {
 		return nil
 	}
-	requests, errors := p.of("requests"), p.of("errors")
+	requests, errors := p.data["requests"], p.data["errors"]
 	since := "vs " + clock(p.win.start)
-	// The share of all requests: an avg, min or max pod's errors over another pod's requests would mean nothing
-	rate := errorRate(p.data["requests"], p.data["errors"])
+	errTitle := "Errors"
+	if p.aggNote() != "" {
+		errTitle += " · all pods"
+	}
 	stats := hjoin(6,
 		stat("Requests"+p.aggNote(), requests, "/s", "", since, "", true, p.theme),
-		stat("Errors", rate, "percent", "", since, "", false, p.theme),
+		stat(errTitle, p.data["errorRate"], "percent", "", since, "", false, p.theme),
 		stat("Duration p95", p.data["p95"], "seconds", "", since, "", false, p.theme),
 	)
 
 	var req, dur block
 	if p.perPod {
 		// One axis for every pod: comparing them is the point
-		req = p.podCard("Requests by pod", "requestsPods", "/s", cardW, rows)
-		dur = p.podCard("Duration p95 by pod", "p95Pods", "seconds", cardW, rows)
+		req = p.podCard("Requests by pod", "requestsPods", "", "/s", cardW, rows)
+		dur = p.podCard("Duration p95 by pod", "p95Pods", "", "seconds", cardW, rows)
 	} else {
 		var reqSeries []series
 		reqSeries = append(reqSeries, series{"requests", requests, p.theme.series[0]})

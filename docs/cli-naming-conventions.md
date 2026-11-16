@@ -90,11 +90,12 @@ The `teams` command manages organizational teams (not assets — no dataset, no 
 
 ## Kubernetes Subcommands (experimental)
 The `k8s` command groups what shows Dash0 telemetry for Kubernetes workloads, so commands for other Kubernetes objects land next to `pods` instead of at the top level.
-`k8s pods` shows the telemetry of one pod (not an asset: no YAML input, no `apply`):
+`k8s pods` shows the telemetry of one pod, or with `--kind` of a workload's pods (not an asset: no YAML input, no `apply`).
+A workload stays under `pods` with `--kind` rather than getting its own command, because the page shows the same pod metrics either way, and k9s passes the workload's resource name for `--kind`:
 
 | Subcommand | Alias | Description                                                               |
 |------------|-------|---------------------------------------------------------------------------|
-| `watch`    | -     | Full-screen page of a pod's CPU, memory, requests, and logs; refreshes on a timer |
+| `watch`    | -     | Full-screen page of a pod's or workload's CPU, memory, requests, and logs; refreshes on a timer |
 
 Use `watch` for a subcommand that keeps a page open and refreshes it until the user quits.
 

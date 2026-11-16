@@ -192,7 +192,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
 | `evals` | Generative AI evaluation (eval) CRUD (dataset-scoped, experimental; `kind: Dash0GenerativeAiEvaluation`; `dash0.com/origin` is the upsert key; `metadata.name` and the judge output kind cannot change) |
 | `failed-checks` | Query active and historical alerting issues |
-| `k8s` | A pod's CPU, memory, requests, and logs as a terminal page or JSON (`k8s pods watch`, experimental; also a k9s plugin) |
+| `k8s` | A pod's or workload's CPU, memory, requests, and logs as a terminal page or JSON (`k8s pods watch`, experimental; also a k9s plugin) |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
 | `logs` | Query and send log records |
 | `members` | Organization membership management |

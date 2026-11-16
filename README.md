@@ -902,7 +902,8 @@ The page refreshes every 30 seconds; `1` to `4` pick the range, `o`, `t`, and `l
 dash0 -X k8s pods watch <pod> -n <namespace>
 ```
 
-With `--kind`, it shows all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, and `a` and `p` switch between their total, the average, least, or busiest pod, and a line per pod:
+With `--kind`, it shows all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob.
+`a` switches between their total and the average, least, or largest pod, and `p` draws a line for each of the busiest pods:
 
 ```bash
 dash0 -X k8s pods watch <deployment> -n <namespace> --kind deployment

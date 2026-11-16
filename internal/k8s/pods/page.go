@@ -24,14 +24,21 @@ var ranges = []struct {
 var steps = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 15 * time.Minute, 30 * time.Minute, time.Hour}
 
 // kind: what name names, as Dash0's resource attribute k8s.<kind>.name has it: pod, deployment, statefulset, ...
-type target struct{ cluster, namespace, kind, name, context, profile string }
+// agg: how a workload's pods add up, one of aggs
+type target struct{ cluster, namespace, kind, name, context, profile, agg string }
 
 var kinds = []string{"pod", "deployment", "statefulset", "daemonset", "replicaset", "job", "cronjob"}
 
-// The kind for what k9s passes as $RESOURCE_NAME (deployments), or as typed (deployment); "" when Dash0 has no
-// attribute for it
+// kubectl's short names
+var shortKinds = map[string]string{"po": "pod", "deploy": "deployment", "sts": "statefulset", "ds": "daemonset", "rs": "replicaset", "cj": "cronjob"}
+
+// The kind for what k9s passes as $RESOURCE_NAME (deployments), or as typed (deployment, deploy); "" when Dash0 has
+// no attribute for it
 func kindOf(s string) string {
 	s = strings.ToLower(s)
+	if k, ok := shortKinds[s]; ok {
+		return k
+	}
 	for _, k := range kinds {
 		if s == k || s == k+"s" {
 			return k
@@ -56,7 +63,6 @@ type page struct {
 	theme     theme
 	scroll    int
 	perPod    bool
-	agg       int // aggs: total, avg, min, max
 	apiURL    string
 	dataset   *string
 }
@@ -81,6 +87,7 @@ func (p *page) fetch(ctx context.Context, c promClient, columns int) {
 	gen := p.gen
 	win := windowFor(ranges[p.rangeIdx].d, columns, time.Now())
 	t := p.target
+	panels := panelsFor(t, p.perPod)
 	p.loading = true
 	p.mu.Unlock()
 
@@ -89,7 +96,6 @@ func (p *page) fetch(ctx context.Context, c promClient, columns int) {
 		values map[string][]*float64
 		err    error
 	}
-	panels := panelsFor(t)
 	answers := make(chan answer, len(panels))
 	queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -158,7 +164,7 @@ func (p *page) freshness() line {
 	}
 	at := p.at.Local().Format("15:04:05") + " (" + zoneOf(p.at) + ")"
 	if len(p.failed) > 0 {
-		return text(fmt.Sprintf("Updated %s · %d of %d panels show older data", at, len(p.failed), len(panelsFor(p.target))), dimStyle)
+		return text(fmt.Sprintf("Updated %s · %d of %d panels show older data", at, len(p.failed), len(panelsFor(p.target, p.perPod))), dimStyle)
 	}
 	return text("Updated "+at, dimStyle)
 }
@@ -190,7 +196,7 @@ func (p *page) links() []dash0Link {
 		return links
 	}
 	from := "now-" + ranges[p.rangeIdx].label
-	if active(p.data["requests"]) {
+	if p.served() {
 		links = append(links, dash0Link{"t", "Open traces", dash0api.SpansExplorerURL(p.apiURL, p.explorerFilter(), from, "now", p.dataset)})
 	}
 	for _, sev := range p.severities() {
@@ -222,8 +228,8 @@ func (p *page) toggles() block {
 			parts = append(parts, border(block{text(m, label)}, len(m)+4, 1, st))
 		}
 		parts = append(parts, block{text("  ", style{})})
-		for i, m := range aggs {
-			toggle(m, i == p.agg)
+		for _, m := range aggs {
+			toggle(m, m == p.target.agg)
 		}
 		parts = append(parts, block{text("  ", style{})})
 		toggle("per pod", p.perPod)
@@ -248,8 +254,8 @@ func (p *page) tags() line {
 	add("context", p.target.context)
 	add("namespace", p.target.namespace)
 	add(p.target.kind, p.target.name)
-	if p.target.kind != "pod" && p.data != nil {
-		add("pods", strconv.Itoa(p.runningPods()))
+	if n := last(p.data["pods"]); p.target.kind != "pod" && n != nil {
+		add("pods", strconv.Itoa(int(*n)))
 	}
 	return l
 }
@@ -261,30 +267,27 @@ func ratio(v, of *float64) (float64, bool) {
 	return *v / *of, true
 }
 
-// Whether limits show: a pod's, or under max, the largest any pod has. A limit holds each container alone, so a
-// workload's total, mean or least against a sum or mean of limits says nothing about any pod nearing its own
-func (p *page) showsLimit() bool { return p.target.kind == "pod" || aggs[p.agg] == "max" }
-
-// The usage against its request and limit, and the status colour it reaches against the limit
-func (p *page) against(usage, request, limit []*float64, unit string) (string, string) {
-	u, r, l := last(usage), last(request), last(limit)
+// The usage against its request and limit, and the status colour of util, the highest share of its limit any pod
+// uses: Dash0's thresholds, past 80 percent needs attention and past 90 is critical
+func (p *page) against(usage, request, limit, util []*float64, unit string) (string, string) {
+	u, r, l, f := last(usage), last(request), last(limit), last(util)
 	var parts []string
-	if f, ok := ratio(u, r); ok {
-		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", f*100, formatValue(r, unit)))
+	if x, ok := ratio(u, r); ok {
+		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", x*100, formatValue(r, unit)))
+	}
+	if f == nil || l == nil {
+		return strings.Join(append(parts, "no limit"), " · "), ""
+	}
+	if p.target.kind == "pod" {
+		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", *f*100, formatValue(l, unit)))
+	} else {
+		parts = append(parts, fmt.Sprintf("busiest pod at %.0f%% of its limit", *f*100))
 	}
 	ink := ""
-	if !p.showsLimit() {
-		return strings.Join(parts, " · "), ink
-	}
-	if f, ok := ratio(u, l); ok {
-		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", f*100, formatValue(l, unit)))
-		if f >= 0.95 {
-			ink = p.theme.errorInk
-		} else if f >= 0.8 {
-			ink = p.theme.warningInk
-		}
-	} else {
-		parts = append(parts, "no limit")
+	if *f > 0.9 {
+		ink = p.theme.errorInk
+	} else if *f > 0.8 {
+		ink = p.theme.warningInk
 	}
 	return strings.Join(parts, " · "), ink
 }
@@ -294,10 +297,7 @@ func (p *page) chartSeries(keys [3]string) []series {
 	names := [3]string{"usage", "request", "limit"}
 	var out []series
 	for i, k := range keys {
-		if i == 2 && !p.showsLimit() {
-			continue
-		}
-		v := p.of(k)
+		v := p.data[k]
 		if first(v) == nil {
 			continue
 		}
@@ -374,20 +374,21 @@ func (p *page) render(w, h int) (block, int) {
 
 	var stats block
 	if p.data != nil {
-		cpuNote, cpuInk := p.against(p.of("cpu"), p.of("cpuRequest"), p.of("cpuLimit"), "cores")
-		memNote, memInk := p.against(p.of("mem"), p.of("memRequest"), p.of("memLimit"), "bytes")
+		d := p.data
+		cpuNote, cpuInk := p.against(d["cpu"], d["cpuRequest"], d["cpuLimit"], d["cpuUtil"], "cores")
+		memNote, memInk := p.against(d["mem"], d["memRequest"], d["memLimit"], d["memUtil"], "bytes")
 		since := "vs " + clock(p.win.start)
 		stats = hjoin(6,
-			stat("CPU"+p.aggNote(), p.of("cpu"), "cores", cpuInk, since, cpuNote, false, p.theme),
-			stat("Memory"+p.aggNote(), p.of("mem"), "bytes", memInk, since, memNote, false, p.theme),
+			stat("CPU"+p.aggNote(), d["cpu"], "cores", cpuInk, since, cpuNote, false, p.theme),
+			stat("Memory"+p.aggNote(), d["mem"], "bytes", memInk, since, memNote, false, p.theme),
 		)
 	}
 
 	cpu := p.card("CPU"+p.aggNote(), "cores", p.chartSeries([3]string{"cpu", "cpuRequest", "cpuLimit"}), cardW, rows)
 	mem := p.card("Memory"+p.aggNote(), "bytes", p.chartSeries([3]string{"mem", "memRequest", "memLimit"}), cardW, rows)
 	if p.perPod {
-		cpu = p.podCard("CPU by pod", "cpuPods", "cores", cardW, rows)
-		mem = p.podCard("Memory by pod", "memPods", "bytes", cardW, rows)
+		cpu = p.podCard("CPU by pod", "cpuPods", "cpuUtilPods", "cores", cardW, rows)
+		mem = p.podCard("Memory by pod", "memPods", "memUtilPods", "bytes", cardW, rows)
 	}
 	charts := vjoin(1, cpu, mem)
 	if side {
