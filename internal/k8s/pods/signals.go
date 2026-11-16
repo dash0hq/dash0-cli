@@ -24,9 +24,10 @@ func (t target) selector(metric string, extra ...string) string {
 
 // A gauge once per pod, or per pod and container for the containers' requests and limits (the k8s_cluster receiver
 // reports them per container). A pod whose resource attributes change mid-life has two series for a while, the same
-// value under two dash0_resource_hash; summing them would count it twice
+// value under two dash0_resource_hash; summing them would count it twice. The cluster stays in the grouping, because
+// without --cluster the selector matches a pod of the same namespace and name in every cluster, and those are summed
 func (t target) once(metric string) string {
-	by := "k8s_pod_name"
+	by := "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
 	if strings.HasPrefix(metric, "k8s.container.") {
 		by += ", k8s_container_name"
 	}

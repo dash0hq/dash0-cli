@@ -3364,7 +3364,8 @@ In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `
 The credentials are resolved again before every refresh, so an OAuth access token is renewed while the page stays open.
 
 The page queries `POST /api/prometheus/api/v1/query_range` with `sum()` over the pod's `k8s_namespace_name` and `k8s_pod_name` (and `k8s_cluster_name` with `--cluster`).
-It takes each usage gauge once per pod, and each request and limit once per container, before it sums them, so a pod whose resource attributes changed is not counted twice:
+It takes each usage gauge once per pod, and each request and limit once per container, before it sums them, so a pod whose resource attributes changed is not counted twice.
+Pods of the same name in different clusters are still added together, as before:
 
 | Section | Metrics |
 |---------|---------|
