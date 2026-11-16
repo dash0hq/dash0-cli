@@ -371,6 +371,8 @@ func (m *MockServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		Header: r.Header.Clone(),
 	})
 	m.mu.Unlock()
+	// Handlers and validators can read the body again
+	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Find matching route
 	resp, found := m.findRoute(r)

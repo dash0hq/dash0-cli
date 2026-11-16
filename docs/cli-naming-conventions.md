@@ -7,7 +7,7 @@ Use the word "asset" consistently where appropriate.
 ## Top-level Asset Commands
 - Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
 - Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `auth-tokens`, `aws-metric-scrape-configs`
-- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0
+- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0, `k8s pods` for Kubernetes workloads
 
 ## Standard CRUD Subcommands for Assets
 All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
@@ -87,6 +87,16 @@ The `teams` command manages organizational teams (not assets — no dataset, no 
 | `list-members`   | -        | List members of a team                          |
 | `add-members`    | -        | Add members to a team                           |
 | `remove-members` | -        | Remove members from a team                      |
+
+## Kubernetes Subcommands (experimental)
+The `k8s` command groups what shows Dash0 telemetry for Kubernetes workloads, so commands for other Kubernetes objects land next to `pods` instead of at the top level.
+`k8s pods` shows the telemetry of one pod (not an asset: no YAML input, no `apply`):
+
+| Subcommand | Alias | Description                                                               |
+|------------|-------|---------------------------------------------------------------------------|
+| `watch`    | -     | Full-screen page of a pod's CPU, memory, requests, and logs; refreshes on a timer |
+
+Use `watch` for a subcommand that keeps a page open and refreshes it until the user quits.
 
 ## Members Subcommands (experimental)
 The `members` command manages organization membership:
