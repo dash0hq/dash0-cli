@@ -186,8 +186,8 @@ func zoneOf(t time.Time) string {
 // How many rows each panel of small multiples gets: odd, so the middle label and its rule sit exactly halfway
 const multipleRows = 5
 
-// Whether a series that moves would draw as one flat row on the others' axis, as 900 error logs do beside 30K
-// unknown ones: it would hide its own changes, and under another series its colour (timeseries.js flattens)
+// Whether a series that moves would draw as one flat line of dots on the others' axis, as 900 error logs do beside
+// 30K unknown ones: it would hide its own changes, and under another series its colour (timeseries.js flattens)
 func flattens(ss []series, rows int) bool {
 	all := spanOf(ss)
 	for _, s := range ss {
@@ -197,7 +197,7 @@ func flattens(ss []series, rows int) bool {
 				lo, hi = math.Min(lo, *v), math.Max(hi, *v)
 			}
 		}
-		if hi > lo && hi-lo < (all.max-all.min)/float64(rows-1) {
+		if hi > lo && hi-lo < (all.max-all.min)/float64(4*rows-1) {
 			return true
 		}
 	}
@@ -217,12 +217,14 @@ func peakOf(ss []series) float64 {
 }
 
 // Ditt0's braille line type (Dots): each cell a 2 × 4 grid of dots, one thin line through them, a dot column for
-// each column's value and one halfway to the next, each joined to the one before. Where series share a cell, the
-// one listed first keeps it with only its own dots, as if drawn over the others
+// each column's value and one halfway to the next, each joined to the one before. Where series of different
+// colours share a cell, the one listed first keeps it with only its own dots, as if drawn over the others; series of
+// one colour, such as ERROR and FATAL, merge their dots
 func braille(lines [][]*float64, colors []string, rows int, s span) [][]cell {
 	dotRows := 4 * rows
 	rowOf := func(v float64) int {
-		return dotRows - 1 - int(math.Round((v-s.min)/(s.max-s.min)*float64(dotRows-1)))
+		y := dotRows - 1 - int(math.Round((v-s.min)/(s.max-s.min)*float64(dotRows-1)))
+		return min(max(y, 0), dotRows-1)
 	}
 	// The bit of dot (x, y) of a cell: the braille pattern's numbering
 	bit := [4][2]int{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
@@ -263,6 +265,10 @@ func braille(lines [][]*float64, colors []string, rows int, s span) [][]cell {
 					at.sides, at.color = 0, colors[k]
 				}
 				at.sides |= bit[yy%4][x%2]
+			}
+			// A sample with gaps either side is a short dash, both dots of its cell's row, as one dot is too faint to see
+			if x%2 == 0 && (x == 0 || dots[x-1] == nil) && dots[x+1] == nil {
+				cells[y/4][x/2].sides |= bit[y%4][1]
 			}
 		}
 	}
