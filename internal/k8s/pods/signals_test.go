@@ -53,6 +53,8 @@ func TestPanelQueries(t *testing.T) {
 	want := map[string]string{
 		"requests": `sum(rate({otel_metric_name="dash0.spans", k8s_namespace_name="dash0-shared", k8s_pod_name="api-84d7c98f5d-m7tjp", otel_span_kind="SERVER"}[120s]))`,
 		"p95":      `histogram_quantile(0.95, sum by (le) (rate({otel_metric_name="dash0.spans.duration", k8s_namespace_name="dash0-shared", k8s_pod_name="api-84d7c98f5d-m7tjp", otel_span_kind="SERVER"}[120s])))`,
+		"cpu":      `sum(max by (k8s_pod_name) ({otel_metric_name="k8s.pod.cpu.usage", k8s_namespace_name="dash0-shared", k8s_pod_name="api-84d7c98f5d-m7tjp"}))`,
+		"cpuLimit": `sum(max by (k8s_pod_name, k8s_container_name) ({otel_metric_name="k8s.container.cpu_limit", k8s_namespace_name="dash0-shared", k8s_pod_name="api-84d7c98f5d-m7tjp"}))`,
 		"logs":     `sum by (otel_log_severity_range) (increase({otel_metric_name="dash0.logs", k8s_namespace_name="dash0-shared", k8s_pod_name="api-84d7c98f5d-m7tjp"}[120s]))`,
 	}
 	for _, pn := range panels {

@@ -22,9 +22,19 @@ func (t target) selector(metric string, extra ...string) string {
 	return "{" + strings.Join(append(sel, extra...), ", ") + "}"
 }
 
-// sum() of a gauge: the pod's usage, and its containers' requests and limits (the k8s_cluster receiver reports them
-// per container)
-func (t target) query(metric string) string { return "sum(" + t.selector(metric) + ")" }
+// A gauge once per pod, or per pod and container for the containers' requests and limits (the k8s_cluster receiver
+// reports them per container). A pod whose resource attributes change mid-life has two series for a while, the same
+// value under two dash0_resource_hash; summing them would count it twice
+func (t target) once(metric string) string {
+	by := "k8s_pod_name"
+	if strings.HasPrefix(metric, "k8s.container.") {
+		by += ", k8s_container_name"
+	}
+	return "max by (" + by + ") (" + t.selector(metric) + ")"
+}
+
+// sum() of a gauge, each pod and container counted once
+func (t target) query(metric string) string { return "sum(" + t.once(metric) + ")" }
 
 func gauge(metric string) func(target, time.Duration) string {
 	return func(t target, _ time.Duration) string { return t.query(metric) }
