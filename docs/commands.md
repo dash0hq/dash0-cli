@@ -3430,6 +3430,9 @@ The page queries `POST /api/prometheus/api/v1/query_range` with `sum()` over the
 | Requests | Rate, errors, and duration p50, p95, and p99 of the pod's `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
 | Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
 
+It takes each usage gauge once per pod, and each request and limit once per container, before it sums them, so a pod whose resource attributes changed is not counted twice.
+Pods of the same name in different clusters are still added together.
+
 The requests and logs sections show only when the pod has spans or logs in the range.
 
 Watch a pod:
