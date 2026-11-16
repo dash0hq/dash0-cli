@@ -895,8 +895,9 @@ See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full re
 
 ### Monitor Kubernetes workloads (experimental)
 
-Watch a pod, or all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, in a terminal page that refreshes every 30 seconds.
-It shows CPU and memory against their requests and limits, plus requests, errors, duration, and log counts, so you can follow a rollout or find the pod that is running out of room.
+Monitor Kubernetes pods and workloads in your terminal, with telemetry from Dash0.
+The page shows CPU and memory against their requests and limits, plus request rate, errors, duration, and logs when the pods have spans and logs.
+It refreshes every 30 seconds.
 
 Watch a pod:
 
@@ -910,10 +911,20 @@ Watch all the pods of a deployment:
 dash0 -X k8s deployments watch <deployment> -n <namespace>
 ```
 
-On a workload's page, `a` switches between the pods' total, average, minimum, and maximum, and `p` draws a line for each of the busiest pods.
-`1` to `4` pick the range, `o`, `t`, and `l` open the pods' metrics, traces, and logs in Dash0, and `q` quits.
+`k8s statefulsets`, `k8s daemonsets`, `k8s replicasets`, `k8s jobs`, and `k8s cronjobs` work the same way.
 
-The same page runs as a [k9s plugin](https://k9scli.io/topics/plugins/) on `Shift-D`.
+In the page:
+
+- `1` to `4` change the time range.
+- `o`, `t`, and `l` open the metrics, traces, and logs in Dash0.
+- `q` or `Esc` quits.
+
+On a workload's page:
+
+- `a` switches between the pods' total, average, minimum, and maximum.
+- `p` draws a line for each of the busiest pods, to find those closest to their limits.
+
+The page also runs as a [k9s plugin](https://k9scli.io/topics/plugins/): press `Shift-D` on a pod, container, or workload to open it.
 Add this to k9s' `plugins.yaml` (`k9s info` prints where it is):
 
 ```yaml
@@ -952,7 +963,7 @@ plugins:
     args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
 
-See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for the full reference.
+See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for all the flags, how the aggregations work, and the metric details.
 
 ### Common settings
 
