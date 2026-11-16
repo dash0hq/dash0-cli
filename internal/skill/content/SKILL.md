@@ -50,7 +50,7 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 
 | Kind | Identifier field |
 |------|------------------|
-| `Dashboard` | `metadata.dash0Extensions.id` |
+| `Dashboard` | `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` |
 | `CheckRule` | top-level `id` |
 | `PrometheusRule` (alerting or recording) | `metadata.labels["dash0.com/id"]` (a CRD with 2+ alerting rules derives a distinct id per alert instead: `<label>--<slug of "<group> - <alert>">`) |
@@ -71,7 +71,7 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 
 - **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, teams, time series aggregations, signal-to-metrics rules, sampling rules, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent. For time series aggregations it is mandatory: the API rejects a document without one.
 - **ID is the upsert key, and origin is provenance only** for views, check rules, recording rules, and synthetic checks. The CLI strips `dash0.com/origin` before sending these documents, so an `apply` never claims ownership of an asset managed by Terraform or the Kubernetes operator.
-- **Dashboards** use `metadata.dash0Extensions.id`; the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never upsert a dashboard by origin.
+- **Dashboards** upsert by `dash0.com/origin`, which is the recommended key. `metadata.dash0Extensions.id` names the same identifier, so when both are set they must be equal. When no dashboard has the origin, the CLI updates the dashboard named by the `dash0.com/id` label, so an exported dashboard that gains an origin is not created a second time. Never use the deprecated `metadata.dash0Extensions.origin` field.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so an export → edit → `apply` (or `update`) round-trips through the identifier automatically.
 

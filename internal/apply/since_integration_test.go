@@ -659,10 +659,36 @@ spec:
   display:
     name: Shared Dashboard
 `
+	// An exported dashboard carries its server id in dash0.com/id. Adding an
+	// origin changes its key, but apply updates it at that id, so it is the
+	// same dashboard.
+	const idYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
+	const originAndIDYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+    dash0.com/origin: dash0-cli_shared-dashboard
+spec:
+  display:
+    name: Shared Dashboard
+`
 	for _, tt := range []struct{ name, before, after string }{
 		{"PersesDashboard to Dashboard", persesYAML, plainYAML},
 		{"Dashboard to PersesDashboard", plainYAML, persesYAML},
 		{"dash0Extensions.id to dash0.com/origin", plainYAML, originYAML},
+		{"dash0.com/id gains dash0.com/origin", idYAML, originAndIDYAML},
+		{"PersesDashboard dash0.com/id gains a Dashboard origin", persesYAML, originAndIDYAML},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.SetupTestEnv(t)

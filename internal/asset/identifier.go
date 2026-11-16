@@ -32,7 +32,7 @@ type identifierProbe struct {
 	Metadata struct {
 		// Values are not all strings: sampling rules nest custom labels
 		// under labels.custom, so only string values are read.
-		Labels          map[string]any `json:"labels"`
+		Labels map[string]any `json:"labels"`
 	} `json:"metadata"`
 }
 
@@ -103,6 +103,21 @@ func ExtractIdentifier(data []byte) (string, error) {
 	default:
 		return probe.label("dash0.com/id"), nil
 	}
+}
+
+// ExtractAlias returns a second identifier that names the same asset as the
+// one ExtractIdentifier returns, or "". Only dashboards have one: see
+// DashboardAlias.
+func ExtractAlias(data []byte) (string, error) {
+	kind, err := dash0yaml.DetectKind(data)
+	if err != nil || NormalizeKind(kind) != "dashboard" {
+		return "", err
+	}
+	var dashboard dash0api.DashboardDefinition
+	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+		return "", fmt.Errorf("failed to extract alias: %w", err)
+	}
+	return DashboardAlias(&dashboard), nil
 }
 
 // label returns the string value of a metadata label, or "" when it is absent

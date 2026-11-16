@@ -109,6 +109,11 @@ type Snapshot struct {
 	// resolveDeletionNames in internal/apply/since.go) from memory instead
 	// of shelling out to `git cat-file` a second time for the same blob.
 	RawContent map[string][]byte
+
+	// Aliases maps an identifier to a second identifier of the same asset
+	// (see asset.ExtractAlias), so an asset still declared under either one
+	// is not a deletion.
+	Aliases map[IdentifierKey]string
 }
 
 func newSnapshot() Snapshot {
@@ -125,6 +130,7 @@ func newSnapshot() Snapshot {
 		TeamUsesOriginByIdentifier:                   map[string]bool{},
 		Paths:                                        map[string]bool{},
 		RawContent:                                   map[string][]byte{},
+		Aliases:                                      map[IdentifierKey]string{},
 	}
 }
 
@@ -299,7 +305,16 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
 			continue
 		}
-		snap.Identifiers[IdentifierKey{Kind: normalizedKind, Identifier: identifier}] = docPath
+		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
+		snap.Identifiers[key] = docPath
+
+		alias, err := asset.ExtractAlias(docBytes)
+		if err != nil {
+			return fmt.Errorf("failed to extract alias: %w", err)
+		}
+		if alias != "" {
+			snap.Aliases[key] = alias
+		}
 
 		if normalizedKind == "prometheusrule" {
 			// asset.ExtractPrometheusAlertNames, not

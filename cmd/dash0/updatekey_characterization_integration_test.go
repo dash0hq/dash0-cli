@@ -186,7 +186,7 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithNeither: `error: no dashboard origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
 			updateWithOrigin:  "GET /api/dashboards/o",
 			updateWithID:      "GET /api/dashboards/" + characterizationID,
-			updateWithBoth:    `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("` + characterizationID + `") must be equal; set only metadata.labels["dash0.com/origin"]`,
+			updateWithBoth:    `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("` + characterizationID + `") must be equal; set only metadata.labels["dash0.com/origin"], and move "` + characterizationID + `" to metadata.labels["dash0.com/id"] if it is the id of an existing dashboard`,
 		},
 		"check-rules": {
 			updateWithNeither: "error: no check rule id given: pass one as an argument, or set the id in the file",

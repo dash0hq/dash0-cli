@@ -1383,6 +1383,48 @@ spec:
 	assert.Equal(t, 2, puts)
 }
 
+// The second apply of an origin-only dashboard finds it at the origin and
+// reports no changes, instead of creating it again.
+func TestApply_Dashboard_OriginOnly_SecondApplyReportsNoChanges(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const originPath = "/api/dashboards/dash0-cli_checkout"
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: test-dashboard
+  labels:
+    dash0.com/origin: dash0-cli_checkout
+spec:
+  display:
+    name: Test Dashboard
+    description: Test dashboard for apply command
+  layouts:
+    - kind: Grid
+      spec:
+        items: []
+  panels: {}
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, originPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   testutil.FixtureDashboardsImportSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "no changes")
+	assert.NotContains(t, output, "created")
+	assert.Equal(t, []string{"GET " + originPath, "PUT " + originPath}, methodsAndPaths(server.Requests()))
+}
+
 func TestApply_Dashboard_ServerIDLabelOnly_UpdatesThatDashboard(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -1442,8 +1484,79 @@ spec:
 	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), `metadata.labels["dash0.com/origin"] ("dash0-cli_checkout") and metadata.dash0Extensions.id ("other-id") must be equal`)
+	assert.Contains(t, cmdErr.Error(), `metadata.labels["dash0.com/origin"] ("dash0-cli_checkout") and metadata.dash0Extensions.id ("other-id") must be equal; set only metadata.labels["dash0.com/origin"], and move "other-id" to metadata.labels["dash0.com/id"] if it is the id of an existing dashboard`)
 	assert.Empty(t, server.Requests())
+}
+
+const (
+	exportedDashboardID     = "0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90"
+	exportedDashboardOrigin = "dash0-cli_checkout"
+)
+
+// applyExportedDashboardWithNewOrigin applies an exported dashboard that has
+// gained an origin. The origin is unknown; storedStatus is the answer for the
+// exported id.
+func applyExportedDashboardWithNewOrigin(t *testing.T, storedStatus int) []testutil.RecordedRequest {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: Dashboard
+metadata:
+  name: checkout
+  labels:
+    dash0.com/id: `+exportedDashboardID+`
+    dash0.com/origin: `+exportedDashboardOrigin+`
+spec:
+  display:
+    name: Checkout
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+exportedDashboardOrigin, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureDashboardsNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	stored := testutil.MockResponse{StatusCode: storedStatus, BodyFile: testutil.FixtureDashboardsImportSuccess, Validator: testutil.RequireHeaders}
+	if storedStatus == http.StatusNotFound {
+		stored.BodyFile = testutil.FixtureDashboardsNotFound
+	}
+	server.On(http.MethodGet, "/api/dashboards/"+exportedDashboardID, stored)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+	require.NoError(t, cmdErr)
+	return server.Requests()
+}
+
+// Adding an origin to an exported dashboard must update that dashboard, not
+// create a second one at the origin.
+func TestApply_Dashboard_OriginNotFoundUpdatesAtID(t *testing.T) {
+	requests := applyExportedDashboardWithNewOrigin(t, http.StatusOK)
+
+	assert.Equal(t, []string{
+		"GET /api/dashboards/" + exportedDashboardOrigin,
+		"GET /api/dashboards/" + exportedDashboardID,
+		"PUT /api/dashboards/" + exportedDashboardID,
+	}, methodsAndPaths(requests))
+
+	var body dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(requests[2].Body, &body))
+	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "the existing dashboard gets the origin")
+}
+
+func TestApply_Dashboard_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
+	requests := applyExportedDashboardWithNewOrigin(t, http.StatusNotFound)
+
+	assert.Equal(t, []string{
+		"GET /api/dashboards/" + exportedDashboardOrigin,
+		"GET /api/dashboards/" + exportedDashboardID,
+		"PUT /api/dashboards/" + exportedDashboardOrigin,
+	}, methodsAndPaths(requests))
 }
 
 func TestApply_Dashboard_RoundTrip(t *testing.T) {
@@ -2858,6 +2971,23 @@ spec:
     name: Test Dashboard
 `,
 			path:           apiPathDashboards + "/test-dashboard-id",
+			deletedFixture: testutil.FixtureDashboardsGetDeleted,
+			putFixture:     testutil.FixtureDashboardsImportSuccess,
+			want:           `Dashboard "Test Dashboard" (test-dashboard-id) restored`,
+			wantErr:        `Dashboard "Test Dashboard" was saved, but the API still shows it as deleted`,
+		},
+		{
+			name: "dashboard by origin",
+			yaml: `kind: Dashboard
+metadata:
+  name: test-dashboard
+  labels:
+    dash0.com/origin: dash0-cli_checkout
+spec:
+  display:
+    name: Test Dashboard
+`,
+			path:           apiPathDashboards + "/dash0-cli_checkout",
 			deletedFixture: testutil.FixtureDashboardsGetDeleted,
 			putFixture:     testutil.FixtureDashboardsImportSuccess,
 			want:           `Dashboard "Test Dashboard" (test-dashboard-id) restored`,

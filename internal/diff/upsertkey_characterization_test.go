@@ -216,7 +216,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withNeither: {"", "", ""},
 			withOrigin:  {"o", "o", "GetDashboard(o)"},
 			withID:      {"i", "i", "GetDashboard(i)"},
-			withBoth:    {"o", "o", `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("i") must be equal; set only metadata.labels["dash0.com/origin"]`},
+			withBoth:    {"o", "o", `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("i") must be equal; set only metadata.labels["dash0.com/origin"], and move "i" to metadata.labels["dash0.com/id"] if it is the id of an existing dashboard`},
 		},
 		"checkrule": {
 			withNeither: {"", "", ""},
