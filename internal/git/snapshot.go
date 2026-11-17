@@ -311,9 +311,7 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		if err != nil {
 			return err
 		}
-		if idOnly {
-			snap.IdentifiedByIDOnly[key] = true
-		}
+		snap.IdentifiedByIDOnly[key] = idOnly
 	}
 	return nil
 }

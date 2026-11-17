@@ -288,3 +288,21 @@ spec:
 		assert.Equal(t, "shared-id", plan.ByIdentifier[0].Identifier)
 	})
 }
+
+// The last document with a key decides whether it is id-only, as it decides
+// the key's path in Identifiers.
+func TestIngestDocuments_LastDocumentDecidesIDOnly(t *testing.T) {
+	data := []byte(`kind: Dash0Team
+metadata:
+  labels:
+    dash0.com/id: shared
+---
+kind: Dash0Team
+metadata:
+  labels:
+    dash0.com/origin: shared
+`)
+	snap := newSnapshot()
+	require.NoError(t, ingestDocuments(&snap, "teams.yaml", data))
+	assert.False(t, snap.IdentifiedByIDOnly[IdentifierKey{Kind: "team", Identifier: "shared"}])
+}
