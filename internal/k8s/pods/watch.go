@@ -7,10 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cli/browser"
@@ -21,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/color"
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/dash0hq/dash0-cli/internal/otlp"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -353,9 +352,11 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 			}
 		}
 	}()
-	winch := make(chan os.Signal, 1)
-	signal.Notify(winch, syscall.SIGWINCH)
-	defer signal.Stop(winch)
+	// SIGWINCH does not exist on Windows; otlp.InstallWidthRefresh is a no-op there
+	winch := make(chan struct{}, 1)
+	winchCtx, stopWinch := context.WithCancel(ctx)
+	defer stopWinch()
+	otlp.InstallWidthRefresh(winchCtx, winch)
 	ticker := time.NewTicker(refreshEvery)
 	defer ticker.Stop()
 
