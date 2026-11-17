@@ -27,6 +27,12 @@ var steps = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * 
 // agg: how a workload's pods add up, one of aggs
 type target struct{ cluster, namespace, kind, name, context, profile, agg string }
 
+// A single pod, not a workload's pods
+func (t target) isPod() bool { return t.kind == "pod" }
+
+// The pods added up, not their mean, least or most
+func (t target) isTotal() bool { return t.agg == "" || t.agg == "total" }
+
 func quote(v string) string { return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"` }
 
 type page struct {
@@ -199,7 +205,7 @@ func (p *page) toggles() block {
 		parts = append(parts, border(block{text(r.label, label)}, len(r.label)+4, 1, st))
 	}
 	// A workload's views: how its pods add up, then a line per pod
-	if p.target.kind != "pod" {
+	if !p.target.isPod() {
 		toggle := func(m string, on bool) {
 			st, label := style{fg: p.theme.selected}, style{}
 			if !on {
@@ -234,7 +240,7 @@ func (p *page) tags() line {
 	add("context", p.target.context)
 	add("namespace", p.target.namespace)
 	add(p.target.kind, p.target.name)
-	if n := last(p.data["pods"]); p.target.kind != "pod" && n != nil {
+	if n := last(p.data["pods"]); !p.target.isPod() && n != nil {
 		add("pods", strconv.Itoa(int(*n)))
 	}
 	return l
@@ -257,13 +263,13 @@ func (p *page) against(usage, request, limit, util []*float64, unit string) (str
 	}
 	var parts []string
 	// Under avg, min or max the usage and the request can be different pods'
-	if x, ok := ratio(u, r); ok && (p.target.agg == "" || p.target.agg == "total") {
+	if x, ok := ratio(u, r); ok && p.target.isTotal() {
 		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", x*100, formatValue(r, unit)))
 	}
 	switch {
-	case f == nil || (l == nil && p.target.kind == "pod"):
+	case f == nil || (l == nil && p.target.isPod()):
 		return strings.Join(append(parts, "no limit"), " · "), ""
-	case p.target.kind == "pod":
+	case p.target.isPod():
 		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", *f*100, formatValue(l, unit)))
 	case l == nil:
 		// Some pods have no limit, so the workload has none, but those that do can still run out

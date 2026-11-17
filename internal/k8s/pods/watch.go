@@ -67,9 +67,9 @@ func parseWatchFormat(s string) (watchFormat, error) {
 	}
 }
 
-func newWatchCmd(kind string) *cobra.Command {
+func newWatchCmd(kind, plural string) *cobra.Command {
 	flags := &watchFlags{agg: "total"}
-	plural := kind + "s"
+	workload := kind != "pod"
 
 	long := `Draw a pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration and log counts when it has spans and logs.
 The page refreshes every 30 seconds.
@@ -90,7 +90,7 @@ The pod is matched on the k8s.namespace.name and k8s.pod.name resource attribute
 
   # Print the pod's series and Dash0 links as JSON
   dash0 -X k8s pods watch <pod> -n <namespace> -o json`
-	if kind != "pod" {
+	if workload {
 		long = `Draw the CPU and memory of a ` + kind + `'s pods from Dash0 in the terminal, plus their requests, errors, duration and log counts when they have spans and logs.
 The page refreshes every 30 seconds.
 In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pods' metrics, traces and logs in Dash0, and q or Esc quits.
@@ -131,7 +131,7 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 		},
 	}
 
-	if kind != "pod" {
+	if workload {
 		cmd.Flags().StringVar(&flags.agg, "aggregate", "total", "How the pods add up: "+strings.Join(aggs, ", "))
 		cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open on a line per pod")
 	}
@@ -303,7 +303,7 @@ func (p *page) printJSON(w io.Writer) error {
 		timestamps[i] = t.UTC().Format(time.RFC3339)
 	}
 	pod, agg := "", p.target.agg
-	if p.target.kind == "pod" {
+	if p.target.isPod() {
 		pod, agg = p.target.name, ""
 	}
 	out := struct {
@@ -353,7 +353,7 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 		overflow := len(frame) > body
 		p.scroll = max(0, min(p.scroll, len(frame)-body))
 		hints := "o metrics · t traces · l logs in Dash0 · 1-4 range · r refresh · q quit"
-		if p.target.kind != "pod" {
+		if !p.target.isPod() {
 			hints = "a total/avg/min/max · p per pod · " + hints
 		}
 		if overflow {
@@ -433,7 +433,7 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 			case "r":
 				ask()
 			case "a", "p":
-				if p.target.kind == "pod" {
+				if p.target.isPod() {
 					break
 				}
 				restart(func() {

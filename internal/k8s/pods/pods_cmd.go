@@ -29,7 +29,7 @@ func NewCmds() []*cobra.Command {
 			Short:   "[experimental] Watch Kubernetes " + w.plural + " in Dash0",
 			Long:    `Watch the telemetry Dash0 holds for a Kubernetes ` + w.kind + `.`,
 		}
-		cmd.AddCommand(newWatchCmd(w.kind))
+		cmd.AddCommand(newWatchCmd(w.kind, w.plural))
 		cmds = append(cmds, cmd)
 	}
 	return cmds
