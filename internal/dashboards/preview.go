@@ -101,7 +101,7 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 
 	results := make([]previewResult, 0, len(dashboards))
 	for _, dashboard := range dashboards {
-		sourceID := dashboardID(dashboard)
+		sourceID := asset.DashboardKey(dashboard)
 		asset.ToEphemeralDashboard(dashboard, flags.TTL)
 		usePrefix(dashboard, flags.Prefix)
 		usePreviewID(dashboard, flags.Prefix)
@@ -113,9 +113,9 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 			})
 		}
 		results = append(results, previewResult{
-			Name:   result.Name,
-			ID:     result.ID,
-			Action: string(result.Action),
+			Name:     result.Name,
+			ID:       result.ID,
+			Action:   string(result.Action),
 			URL:      dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, result.ID, dataset),
 			sourceID: sourceID,
 		})
@@ -123,14 +123,6 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 
 	linkPreviews(ctx, apiClient, apiUrl, dataset, results)
 	return printPreviewResults(output.NewFormatter(format, os.Stdout), results)
-}
-
-func dashboardID(dashboard *dash0api.DashboardDefinition) string {
-	extensions := dashboard.Metadata.Dash0Extensions
-	if extensions == nil || extensions.Id == nil {
-		return ""
-	}
-	return *extensions.Id
 }
 
 // prefixSlug matches the name prefix of `percli dac preview --prefix`.
@@ -152,19 +144,26 @@ func usePrefix(dashboard *dash0api.DashboardDefinition, prefix string) {
 	}
 }
 
-// usePreviewID replaces the dashboard's id with a UUIDv5 of it, because the API
-// rejects an EphemeralDashboard under the id of a permanent dashboard and the
-// reverse. The prefix is part of the UUIDv5 input only when set, so previews made
-// without --prefix keep the ids they had before the flag existed.
+// usePreviewID replaces the dashboard's key with a UUIDv5 of it, because the API
+// rejects an EphemeralDashboard under the key of a permanent dashboard and the
+// reverse. It also drops dash0.com/origin and dash0.com/id, which name the
+// dashboard itself. The prefix is part of the UUIDv5 input only when set, so
+// previews made without --prefix keep the ids they had before the flag existed.
 func usePreviewID(dashboard *dash0api.DashboardDefinition, prefix string) {
-	id := dashboardID(dashboard)
-	if id == "" {
+	key := asset.DashboardKey(dashboard)
+	if labels := dashboard.Metadata.Labels; labels != nil {
+		labels.Dash0Comorigin, labels.Dash0Comid = nil, nil
+	}
+	if key == "" {
 		return
 	}
 	if prefix != "" {
-		id = prefixSlug(prefix) + "-" + id
+		key = prefixSlug(prefix) + "-" + key
 	}
-	previewID := uuid.NewSHA1(previewIDNamespace, []byte(id)).String()
+	previewID := uuid.NewSHA1(previewIDNamespace, []byte(key)).String()
+	if dashboard.Metadata.Dash0Extensions == nil {
+		dashboard.Metadata.Dash0Extensions = &dash0api.DashboardMetadataExtensions{}
+	}
 	dashboard.Metadata.Dash0Extensions.Id = &previewID
 }
 

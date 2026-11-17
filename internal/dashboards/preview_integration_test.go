@@ -136,6 +136,55 @@ func TestPreviewDashboards_UpsertsEveryDashboardAsEphemeralUnderADerivedID(t *te
 	assert.Regexp(t, `Checkout\s+`+checkoutPreviewID+`\s+created`, output)
 }
 
+// A dashboard exported from Dash0 and keyed by its origin carries both
+// dash0.com/origin and dash0.com/id. The preview must take neither, or the
+// write lands on the dashboard itself.
+func TestPreviewDashboards_DashboardKeyedByOriginGetsItsOwnPreview(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writePreviewFiles(t, map[string]string{"orders.yaml": `kind: Dashboard
+metadata:
+  name: orders
+  labels:
+    dash0.com/origin: orders-overview
+    dash0.com/id: ` + ordersServerID + `
+spec:
+  display:
+    name: Orders
+  panels: {}
+  layouts: []
+`})
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+	})
+	server.On(http.MethodPut, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       ephemeralDashboardResponse("Orders"),
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	bodies := server.RequestBodies(t, http.MethodPut, apiPathDashboards+"/"+ordersPreviewID)
+	require.Len(t, bodies, 1)
+	labels, _ := bodies[0]["metadata"].(map[string]any)["labels"].(map[string]any)
+	assert.NotContains(t, labels, "dash0.com/origin")
+	assert.NotContains(t, labels, "dash0.com/id")
+	for _, req := range server.Requests() {
+		assert.NotContains(t, req.Path, "orders-overview", "the preview must not address the dashboard by its origin")
+		assert.NotContains(t, req.Path, ordersServerID, "the preview must not address the dashboard by its server id")
+	}
+}
+
 func TestPreviewDashboards_LinksEachPreviewToItsDashboardByServerID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writePreviewFiles(t, map[string]string{
