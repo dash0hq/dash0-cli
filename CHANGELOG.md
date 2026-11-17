@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.22.1
+
+
+### Bug Fixes
+
+
+- `release`: Windows binaries build again, so the release publishes every platform (#407)
+  v1.22.0 was tagged but never published, because the Windows build failed.
+  This release contains everything listed under v1.22.0.
+  
+
 ## 1.22.0
 
 
