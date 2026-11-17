@@ -452,6 +452,44 @@ spec:
 	assert.Empty(t, server.Requests())
 }
 
+func TestApply_EphemeralDashboard_OverPermanentDashboardFailsBeforeTheWrite(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "orders.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: EphemeralDashboard
+metadata:
+  dash0extensions:
+    id: orders
+  name: orders
+spec:
+  ttl: 12h
+  display:
+    name: Orders
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/orders", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: map[string]any{
+			"kind":     "Dashboard",
+			"metadata": map[string]any{"name": "orders"},
+			"spec":     map[string]any{"display": map[string]any{"name": "Orders"}},
+		},
+	})
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `dashboard "orders" is stored as dashboard`)
+	assert.Empty(t, server.RequestBodies(t, http.MethodPut, "/api/dashboards/orders"))
+}
+
 func TestApply_Dashboard_PreservesAnnotations(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

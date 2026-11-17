@@ -31,12 +31,13 @@ type previewFlags struct {
 }
 
 type previewResult struct {
-	Name     string `json:"name"`
-	ID       string `json:"id"`
-	Action   string `json:"action"`
-	URL      string `json:"url"`
-	Current  string `json:"current,omitempty"`
-	sourceID string
+	Name        string `json:"name"`
+	ID          string `json:"id"`
+	Action      string `json:"action"`
+	URL         string `json:"url"`
+	Current     string `json:"current,omitempty"`
+	sourceID    string
+	sourceAlias string
 }
 
 func newPreviewCmd() *cobra.Command {
@@ -101,23 +102,31 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 
 	results := make([]previewResult, 0, len(dashboards))
 	for _, dashboard := range dashboards {
-		sourceID := asset.DashboardKey(dashboard)
+		sourceID, sourceAlias := asset.DashboardKey(dashboard), asset.DashboardAlias(dashboard)
 		asset.ToEphemeralDashboard(dashboard, flags.TTL)
 		usePrefix(dashboard, flags.Prefix)
 		usePreviewID(dashboard, flags.Prefix)
 		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
 		if err != nil {
+			// Report the previews this run already wrote, so their links are not lost.
+			if len(results) > 0 {
+				linkPreviews(ctx, apiClient, apiUrl, dataset, results)
+				if printErr := printPreviewResults(output.NewFormatter(format, os.Stdout), results); printErr != nil {
+					return printErr
+				}
+			}
 			return client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "ephemeral dashboard",
 				AssetName: dash0api.GetDashboardName(dashboard),
 			})
 		}
 		results = append(results, previewResult{
-			Name:     result.Name,
-			ID:       result.ID,
-			Action:   string(result.Action),
-			URL:      dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, result.ID, dataset),
-			sourceID: sourceID,
+			Name:        result.Name,
+			ID:          result.ID,
+			Action:      string(result.Action),
+			URL:         dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, result.ID, dataset),
+			sourceID:    sourceID,
+			sourceAlias: sourceAlias,
 		})
 	}
 
@@ -188,11 +197,11 @@ func linkPreviews(ctx context.Context, apiClient dash0api.Client, apiUrl string,
 		if preview, ok := byIDOrOrigin[results[i].ID]; ok {
 			results[i].URL = dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, preview.Id, dataset)
 		}
-		if results[i].sourceID == "" {
-			continue
-		}
-		if current, ok := byIDOrOrigin[results[i].sourceID]; ok && current.Kind == dash0api.Dashboard {
-			results[i].Current = dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, current.Id, dataset)
+		for _, key := range []string{results[i].sourceID, results[i].sourceAlias} {
+			if current, ok := byIDOrOrigin[key]; ok && key != "" && current.Kind == dash0api.Dashboard {
+				results[i].Current = dash0api.DeeplinkURL(apiUrl, dash0api.DeeplinkAssetTypeDashboard, current.Id, dataset)
+				break
+			}
 		}
 	}
 }

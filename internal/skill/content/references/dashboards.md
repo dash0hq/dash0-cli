@@ -31,7 +31,8 @@ It follows the [Perses ephemeral dashboard](https://perses.dev/perses/docs/api/e
 
 `apply`, `diff`, `dashboards create`, and `dashboards update` accept `kind: EphemeralDashboard` (see [Asset YAML formats](#asset-yaml-formats)).
 An ephemeral dashboard shares its identifiers with permanent dashboards, and the API does not change the kind of an existing dashboard.
-So an EphemeralDashboard with the id of a permanent dashboard fails with a 400, and so does the reverse.
+So an EphemeralDashboard with the id of a permanent dashboard fails before the write, and so does the reverse.
+`diff` reports the same error instead of an update.
 For `apply --since`, a file that changes between `Dashboard`, `PersesDashboard`, and `EphemeralDashboard` under the same identifier is not a deletion.
 
 #### `dashboards preview`
@@ -50,6 +51,7 @@ Each preview gets its own identifier, a UUIDv5 derived from the dashboard's iden
 So a preview never replaces the dashboard it comes from, and `apply` of that dashboard still works while the preview exists.
 A second run updates the same previews and starts their ttl again.
 A dashboard without an identifier gets a new preview on every run.
+If a write fails, `preview` still prints the previews it wrote before the error, then fails.
 With `--prefix`, the prefix is part of the derived identifier, so previews with different prefixes, such as one per pull request, do not replace each other.
 
 ```bash

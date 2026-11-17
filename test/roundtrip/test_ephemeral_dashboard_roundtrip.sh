@@ -122,7 +122,12 @@ fi
 
 echo "--- Step 6: Delete removes the ephemeral dashboard ---"
 "$DASH0" dashboards delete "$EPHEMERAL_ID" --force
-if "$DASH0" dashboards get "$EPHEMERAL_ID" >/dev/null 2>&1; then
+# get also returns a deleted dashboard, so check that list no longer has it.
+if ! LIST_JSON=$("$DASH0" dashboards list --all -o json); then
+  echo "FAIL: dashboards list -o json failed"
+  exit 1
+fi
+if echo "$LIST_JSON" | jq -e --arg id "$EPHEMERAL_ID" '.[] | select(.metadata.dash0Extensions.id == $id or .metadata.labels["dash0.com/origin"] == $id)' > /dev/null 2>&1; then
   echo "FAIL: expected '${EPHEMERAL_ID}' to be gone after delete"
   exit 1
 fi

@@ -228,6 +228,79 @@ func TestPreviewDashboards_LinksEachPreviewToItsDashboardByServerID(t *testing.T
 	}, currentByID, "only Orders exists as a permanent dashboard, and its link uses the server id, not its origin")
 }
 
+func TestPreviewDashboards_LinksADashboardStoredAtItsIDLabel(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writePreviewFiles(t, map[string]string{"orders.yaml": `kind: Dashboard
+metadata:
+  name: orders
+  labels:
+    dash0.com/origin: orders-overview
+    dash0.com/id: ` + ordersServerID + `
+spec:
+  display:
+    name: Orders
+`})
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound})
+	server.On(http.MethodPut, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{StatusCode: http.StatusOK, Body: ephemeralDashboardResponse("Orders")})
+	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body: []map[string]any{
+			{"id": ordersServerID, "kind": "Dashboard", "dataset": "default", "tags": []string{}},
+			{"id": ordersPreviewID, "kind": "EphemeralDashboard", "dataset": "default", "tags": []string{}},
+		},
+	})
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "-o", "json", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	var results []map[string]string
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, "https://app.dash0.test/goto/dashboards?dashboard_id="+ordersServerID, results[0]["current"],
+		"the dashboard keeps no origin when apply updated it at its dash0.com/id, so the link falls back to that id")
+}
+
+func TestPreviewDashboards_FailedWriteStillPrintsEarlierPreviews(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writePreviewFiles(t, map[string]string{
+		"checkout.yaml": previewPersesDashboardYAML,
+		"orders.yaml":   previewDashboardYAML,
+	})
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, id := range []string{ordersPreviewID, checkoutPreviewID} {
+		server.On(http.MethodGet, apiPathDashboards+"/"+id, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound})
+	}
+	server.On(http.MethodPut, apiPathDashboards+"/"+checkoutPreviewID, testutil.MockResponse{StatusCode: http.StatusOK, Body: ephemeralDashboardResponse(checkoutPreviewID)})
+	server.On(http.MethodPut, apiPathDashboards+"/"+ordersPreviewID, testutil.MockResponse{
+		StatusCode: http.StatusBadRequest,
+		Body:       map[string]any{"error": map[string]any{"code": 400, "message": "invalid ttl"}},
+	})
+	server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{StatusCode: http.StatusOK, Body: []map[string]any{}})
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "-o", "json", "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.Error(t, err)
+	var results []map[string]string
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, checkoutPreviewID, results[0]["id"])
+}
+
 func TestPreviewDashboards_PrefixSeparatesPreviewsAndPrefixesTheirNames(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writePreviewFiles(t, map[string]string{"orders.yaml": previewDashboardYAML})
