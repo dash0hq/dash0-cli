@@ -5,6 +5,7 @@ package logging
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -433,4 +434,36 @@ func TestQueryLogs_ExplorerURLPrintedForEmptyResult(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, stderr, "Open this query in Dash0:")
+}
+
+// Dash0 rejects a link whose absolute from or to lacks milliseconds, which is
+// how a user often types them.
+func TestQueryLogs_ExplorerURLSendsAbsoluteTimesWithMilliseconds(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathLogs, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureQuerySuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalLogsCmd()
+	cmd.SetArgs([]string{"logs", "query", "-o", "json", "--api-url", server.URL, "--auth-token", testLogsAuthToken,
+		"--from", "2026-11-15T09:00:00Z", "--to", "2026-11-15T10:00:00Z"})
+
+	var err error
+	stdout := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	var payload struct {
+		ExplorerURL string `json:"dash0ExplorerUrl"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	link, err := url.Parse(payload.ExplorerURL)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-11-15T09:00:00.000Z", link.Query().Get("from"))
+	assert.Equal(t, "2026-11-15T10:00:00.000Z", link.Query().Get("to"))
 }

@@ -29,9 +29,9 @@ Dashboard:
 apiVersion: dash0.com/v1alpha1
 kind: Dashboard
 metadata:
-  name: a1b2c3d4-5678-90ab-cdef-1234567890ab
-  dash0Extensions:
-    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+  name: production-overview
+  labels:
+    dash0.com/origin: dash0-cli_production-overview
 spec:
   display:
     name: Production Overview

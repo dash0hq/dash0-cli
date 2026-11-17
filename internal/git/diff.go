@@ -17,6 +17,11 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
+	// Alias is the dash0.com/id label of a dashboard keyed by its origin (see
+	// asset.DashboardAlias). The API ignores the origin on an update, so a
+	// dashboard that apply updated at this id has no origin, and the delete
+	// must fall back to the id.
+	Alias string
 	// SpamFilterUsesOrigin records whether the deleted spam filter carried a
 	// dash0.com/origin label, when Kind is "spamfilter" (meaningless for
 	// every other kind). false means the filter was identified by
@@ -94,13 +99,14 @@ func Diff(before, after Snapshot) DeletionPlan {
 	var plan DeletionPlan
 
 	for key, path := range before.Identifiers {
-		if survives(after, key) {
+		if survives(before, after, key) {
 			continue
 		}
 		deletion := Deletion{
 			Kind:                             key.Kind,
 			Identifier:                       key.Identifier,
 			Path:                             path,
+			Alias:                            before.Aliases[key],
 			SpamFilterUsesOrigin:             before.SpamFilterUsesOriginByIdentifier[key.Identifier],
 			SLOUsesOrigin:                    before.SLOUsesOriginByIdentifier[key.Identifier],
 			GenerativeAiEvaluationUsesOrigin: before.GenerativeAiEvaluationUsesOriginByIdentifier[key.Identifier],
@@ -227,19 +233,45 @@ func Diff(before, after Snapshot) DeletionPlan {
 	return plan
 }
 
-// survives reports whether the asset behind key is still declared in after.
+// survives reports whether the asset behind key is still declared in after,
+// under its identifier or its alias, in either snapshot. A dashboard file
+// that gains an origin keeps its server id as the alias, and apply updates the
+// same dashboard, so the old id is not a deletion.
+//
 // apply upserts PersesDashboard and Dashboard documents through the same
 // dashboard import (see applyDocument in internal/apply), so a file
 // re-authored from one kind spelling to the other under the same identifier
 // is still the same live dashboard, not a deletion. The key keeps its own
 // kind, so a real deletion is still reported under the spelling it had.
-func survives(after Snapshot, key IdentifierKey) bool {
-	if _, ok := after.Identifiers[key]; ok {
+func survives(before, after Snapshot, key IdentifierKey) bool {
+	names := []string{key.Identifier}
+	if alias := before.Aliases[key]; alias != "" {
+		names = append(names, alias)
+	}
+	kinds := []string{key.Kind}
+	if equivalent := equivalentDashboardKind(key.Kind); equivalent != "" {
+		kinds = append(kinds, equivalent)
+	}
+	for _, kind := range kinds {
+		for _, name := range names {
+			if declares(after, IdentifierKey{Kind: kind, Identifier: name}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// declares reports whether snapshot names key as an identifier or an alias.
+// ponytail: linear scan of aliases per lookup, fine for a repo's asset count.
+func declares(snapshot Snapshot, key IdentifierKey) bool {
+	if _, ok := snapshot.Identifiers[key]; ok {
 		return true
 	}
-	if alias := equivalentDashboardKind(key.Kind); alias != "" {
-		_, ok := after.Identifiers[IdentifierKey{Kind: alias, Identifier: key.Identifier}]
-		return ok
+	for aliasOf, alias := range snapshot.Aliases {
+		if aliasOf.Kind == key.Kind && alias == key.Identifier {
+			return true
+		}
 	}
 	return false
 }

@@ -834,7 +834,7 @@ The identifier field location varies by asset kind:
 
 | Kind | Identifier field | Notes |
 |------|------------------|-------|
-| `Dashboard` | `metadata.dash0Extensions.id` | |
+| `Dashboard` | `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` | `dash0.com/origin` is the recommended key, and a Kubernetes custom resource keeps it, while Kubernetes drops the unknown `dash0Extensions` field. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from. When the document carries both `dash0.com/origin` and `dash0.com/id` and the origin is not found, the CLI updates the dashboard at the id. The API does not set the origin on an update, so keep `dash0.com/id` in the file: without it, the next apply creates a new dashboard at the origin. `apply --since` deletes such a dashboard at the id |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
 | `CheckRule` | top-level `id` | |
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
@@ -861,7 +861,8 @@ Notification channels have no user-settable ID field at all, and for SLOs origin
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
 Stripping origin keeps an `apply` from claiming ownership of an asset that Terraform or the Kubernetes operator manages.
-Dashboards are a third case: they use `metadata.dash0Extensions.id`, and the sibling `metadata.dash0Extensions.origin` field is deprecated in favor of it, so never use origin as a dashboard upsert key.
+Dashboards upsert by `dash0.com/origin` too, and also accept `metadata.dash0Extensions.id`, which names the same identifier.
+The deprecated `metadata.dash0Extensions.origin` field is never used as a key.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
 
@@ -1529,9 +1530,9 @@ Dashboard:
 apiVersion: dash0.com/v1alpha1
 kind: Dashboard
 metadata:
-  name: a1b2c3d4-5678-90ab-cdef-1234567890ab
-  dash0Extensions:
-    id: a1b2c3d4-5678-90ab-cdef-1234567890ab
+  name: production-overview
+  labels:
+    dash0.com/origin: dash0-cli_production-overview
 spec:
   display:
     name: Production Overview
@@ -1539,9 +1540,9 @@ spec:
 
 Pinning `apiVersion` on every user-authored file is a defense against silent migrations: today the server infers the default version when the field is omitted, but the same document with an explicit `apiVersion` will keep the same shape when a future default changes.
 
-The user-defined identifier lives in `metadata.dash0Extensions.id` (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
+The user-defined identifier lives in `metadata.labels["dash0.com/origin"]`; files that set `metadata.dash0Extensions.id` instead keep working (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
 `metadata.name` is the CRD-style metadata name and is independent of `spec.display.name`, which is the title shown in the UI.
-Omitting `dash0Extensions.id` causes every `create` / `apply` to allocate a new server-assigned ID, breaking idempotency.
+A document with no identifier makes every `create` / `apply` allocate a new server-assigned ID, breaking idempotency.
 
 PersesDashboard (Perses CRD, converted to a Dashboard on import):
 
@@ -2592,6 +2593,8 @@ At least one of `--promql` or `--filter` must be specified.
 
 The `--query` flag (alias for `--promql`) and `--time` flag (alias for `--from`) are deprecated but still accepted for backwards compatibility.
 
+A link that opens the same PromQL in the Dash0 query builder is emitted alongside the results; see [explorer deep links](#explorer-deep-links).
+
 #### Output formats
 
 The default `table` output uses a verbose label-per-line format showing all labels for each metric result.
@@ -2924,7 +2927,7 @@ Using `--column` with `-o json` returns an error.
 
 ### Explorer deep links
 
-`logs query`, `spans query`, `failed-checks query`, and `traces get` print a link that reopens the same query in the corresponding Dash0 explorer.
+`logs query`, `spans query`, `failed-checks query`, `traces get`, and `metrics instant` print a link that reopens the same query in the Dash0 web app.
 The link carries the filters, the time range, and the dataset, so following it lands on the same result set in the web app, ready to narrow further or share with a colleague.
 
 Where the link appears depends on the output format:
@@ -2960,7 +2963,7 @@ $ dash0 logs query --filter "otel.log.severity.range is ERROR" -o json
 }
 ```
 
-The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`) is unaffected.
+The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`, or `.data`, for `metrics instant`) is unaffected.
 It is omitted entirely when no link could be built.
 
 > [!NOTE]
@@ -2975,9 +2978,15 @@ Which explorer each command opens:
 | `spans query` | `/goto/traces/explorer` | `--filter`, `--from`, `--to`, dataset |
 | `failed-checks query` | `/goto/alerting/failed-checks` | `--filter`, `--status`, `--active`, `--from`, `--to`, dataset |
 | `traces get` | `/goto/traces/explorer` | trace ID, dataset |
+| `metrics instant` | `/goto/metrics/query-builder` | PromQL from `--promql` or `--filter`, `--from`, dataset |
 
 On `failed-checks query`, `--status` and `--active` are expanded into their equivalent `dash0.issue.status` and `dash0.issue.end_time` filters before the link is built, so they are carried like any other filter.
-`metrics instant` prints no deep link.
+On `metrics instant`, the link carries the PromQL, so `--filter` reaches the query builder as the PromQL it translates to.
+The query builder draws a chart over a time range, so a link for a `--from` in the past opens the hour that ends at the evaluation time.
+Without `--from`, the link carries no time range, and the query builder opens on its default range, which ends now.
+A relative `--from` with a unit other than `h`, `m`, or `s`, such as `now-1d`, also carries no time range.
+
+Absolute `--from` and `--to` values are written into the link with milliseconds, such as `2026-11-15T09:00:00.000Z`, because the web app rejects a link without them.
 
 Two more details are worth knowing before scripting against this:
 

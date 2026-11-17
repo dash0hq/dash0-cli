@@ -3,7 +3,6 @@ package pods
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -155,13 +154,8 @@ func (p *page) freshness() line {
 	return text("Updated "+at, dimStyle)
 }
 
-// The metrics query builder, under the dataset when set
 func (p *page) metricsLink(query string) string {
-	q := url.Values{"query": {query}}
-	if p.dataset != nil && *p.dataset != "" {
-		q.Set("dataset", *p.dataset)
-	}
-	return dash0api.AppBaseURL(p.apiURL) + "/goto/metrics/query-builder?" + q.Encode()
+	return dash0api.MetricsQueryBuilderURL(p.apiURL, query, "", "", p.dataset)
 }
 
 // The traces and logs explorers' filter: the pod's resource, over the page's range

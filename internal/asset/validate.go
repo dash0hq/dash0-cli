@@ -30,6 +30,13 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 			if _, err := DetectSpamFilterAPIVersion(doc.Raw); err != nil {
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
 			}
+		} else if NormalizeKind(doc.Kind) == "dashboard" {
+			var dashboard dash0api.DashboardDefinition
+			if err := dash0yaml.Unmarshal(doc.Raw, &dashboard); err == nil {
+				if err := ValidateDashboard(&dashboard); err != nil {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
+				}
+			}
 		} else if NormalizeKind(doc.Kind) == "prometheusrule" {
 			// Catch CRDs that contain no usable rules at all up front, before
 			// any API call. ParseAsPrometheusAlertRules already rejects

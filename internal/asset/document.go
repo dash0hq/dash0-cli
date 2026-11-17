@@ -84,7 +84,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		if name == "" {
 			name = dashboard.Metadata.Name
 		}
-		id = dash0api.GetDashboardID(&dashboard)
+		id = DashboardKey(&dashboard)
 
 	case "checkrule":
 		var rule dash0api.PrometheusAlertRule

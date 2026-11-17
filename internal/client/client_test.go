@@ -134,11 +134,11 @@ func TestResolveMaxRetries_FlagExceedsMax(t *testing.T) {
 }
 
 func TestResolveDataset_FlagTakesPrecedence(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "config-dataset",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "flag-dataset")
@@ -147,11 +147,11 @@ func TestResolveDataset_FlagTakesPrecedence(t *testing.T) {
 }
 
 func TestResolveDataset_FallsBackToConfig(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "config-dataset",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "")
@@ -160,10 +160,10 @@ func TestResolveDataset_FallsBackToConfig(t *testing.T) {
 }
 
 func TestResolveDataset_NilWhenEmpty(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "")
@@ -171,11 +171,11 @@ func TestResolveDataset_NilWhenEmpty(t *testing.T) {
 }
 
 func TestResolveDataset_NilForDefaultInConfig(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "default",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "")
@@ -188,11 +188,11 @@ func TestResolveDataset_NilForDefaultFlag(t *testing.T) {
 }
 
 func TestResolveDataset_DefaultFlagOverridesConfig(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "config-dataset",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 
 	result := ResolveDataset(ctx, "default")
@@ -271,8 +271,8 @@ func TestResolveDataset_EnvCredentialsKeepProfileDataset(t *testing.T) {
 
 	cfg, err := profiles.ResolveConfiguration("", "")
 	require.NoError(t, err)
-	assert.Equal(t, "https://api.env.dash0.com", cfg.ApiUrl)
-	assert.Equal(t, "auth_env-token-12345", cfg.AuthToken)
+	assert.Equal(t, "https://api.env.dash0.com", cfg.ApiUrl())
+	assert.Equal(t, "auth_env-token-12345", cfg.Token())
 
 	result := ResolveDataset(profiles.WithConfiguration(context.Background(), cfg), "")
 	require.NotNil(t, result)
@@ -293,11 +293,11 @@ func TestNewRawHTTPConfig_DatasetFromEnvWithoutContext(t *testing.T) {
 }
 
 func TestNewRawHTTPConfig_DatasetFromContext(t *testing.T) {
-	profileCfg := &profiles.Configuration{
+	profileCfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.test.dash0.com",
 		AuthToken: "auth_test-token-12345",
 		Dataset:   "profile-dataset",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), profileCfg)
 
 	cfg, err := NewRawHTTPConfig(ctx, "", "")
@@ -429,16 +429,16 @@ func TestHandleAPIError_NotFoundWithoutContext(t *testing.T) {
 func TestCheckOAuthOnOtlp_RefusesOAuthProfile(t *testing.T) {
 	os.Unsetenv("DASH0_AUTH_TOKEN")
 
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
 		AuthToken: "dash0_at_oauth_access_xyz",
 		OAuth: &profiles.OAuthState{
 			ClientID:     "client-abc",
 			RefreshToken: "dash0_rt_xyz",
 		},
-	}
+	})
 
-	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken)
+	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.Token())
 	if err == nil {
 		t.Fatalf("expected an error for OAuth profile + no override, got nil")
 	}
@@ -455,12 +455,12 @@ func TestCheckOAuthOnOtlp_RefusesOAuthProfile(t *testing.T) {
 func TestCheckOAuthOnOtlp_StaticProfilePassesThrough(t *testing.T) {
 	os.Unsetenv("DASH0_AUTH_TOKEN")
 
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
 		AuthToken: "auth_static_xxx",
-	}
+	})
 
-	if err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken); err != nil {
+	if err := checkOAuthOnOtlp(context.Background(), cfg, cfg.Token()); err != nil {
 		t.Errorf("expected nil for static profile, got %v", err)
 	}
 }
@@ -473,14 +473,14 @@ func TestCheckOAuthOnOtlp_EnvOverrideShadowsOAuth(t *testing.T) {
 	os.Setenv("DASH0_AUTH_TOKEN", "auth_static_override_xxx")
 	defer os.Unsetenv("DASH0_AUTH_TOKEN")
 
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
 		AuthToken: "dash0_at_oauth_access_xyz",
 		OAuth: &profiles.OAuthState{
 			ClientID:     "client-abc",
 			RefreshToken: "dash0_rt_xyz",
 		},
-	}
+	})
 
 	if err := checkOAuthOnOtlp(context.Background(), cfg, "auth_static_override_xxx"); err != nil {
 		t.Errorf("expected env-var override to suppress the gate, got %v", err)
@@ -488,19 +488,19 @@ func TestCheckOAuthOnOtlp_EnvOverrideShadowsOAuth(t *testing.T) {
 }
 
 // TestCheckOAuthOnOtlp_FlagOverrideShadowsOAuth asserts that a per-command
-// --auth-token override (resolvedAuthToken != cfg.AuthToken) bypasses the
+// --auth-token override (resolvedAuthToken != cfg.Token()) bypasses the
 // gate.
 func TestCheckOAuthOnOtlp_FlagOverrideShadowsOAuth(t *testing.T) {
 	os.Unsetenv("DASH0_AUTH_TOKEN")
 
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
 		AuthToken: "dash0_at_oauth_access_xyz",
 		OAuth: &profiles.OAuthState{
 			ClientID:     "client-abc",
 			RefreshToken: "dash0_rt_xyz",
 		},
-	}
+	})
 
 	if err := checkOAuthOnOtlp(context.Background(), cfg, "auth_flag_override_xxx"); err != nil {
 		t.Errorf("expected --auth-token override to suppress the gate, got %v", err)
@@ -597,16 +597,16 @@ func TestCheckOAuthOnOtlp_AgentModeMessage(t *testing.T) {
 	agentmode.Enabled = true
 	defer func() { agentmode.Enabled = prev }()
 
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    "https://api.eu-west-1.aws.dash0.com",
 		AuthToken: "dash0_at_oauth_access_xyz",
 		OAuth: &profiles.OAuthState{
 			ClientID:     "client-abc",
 			RefreshToken: "dash0_rt_xyz",
 		},
-	}
+	})
 
-	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.AuthToken)
+	err := checkOAuthOnOtlp(context.Background(), cfg, cfg.Token())
 	if err == nil {
 		t.Fatalf("expected an error in agent mode, got nil")
 	}

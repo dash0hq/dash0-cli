@@ -27,16 +27,16 @@ func ResolveDataset(ctx context.Context, flagDataset string) *string {
 		return dash0api.DatasetPtr(flagDataset)
 	}
 	if cfg := profiles.FromContext(ctx); cfg != nil {
-		if cfg.Dataset != "" {
-			return dash0api.DatasetPtr(cfg.Dataset)
+		if cfg.Dataset() != "" {
+			return dash0api.DatasetPtr(cfg.Dataset())
 		}
 		return nil
 	}
 	if envDataset := os.Getenv(profiles.EnvDataset); envDataset != "" {
 		return dash0api.DatasetPtr(envDataset)
 	}
-	if cfg, err := profiles.ResolveConfigurationContext(ctx, "", ""); err == nil && cfg.Dataset != "" {
-		return dash0api.DatasetPtr(cfg.Dataset)
+	if cfg, err := profiles.ResolveConfigurationContext(ctx, "", ""); err == nil && cfg.Dataset() != "" {
+		return dash0api.DatasetPtr(cfg.Dataset())
 	}
 	return nil
 }

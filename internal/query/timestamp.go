@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// TimestampLayout is the absolute timestamp format NormalizeTimestamp returns.
+const TimestampLayout = "2006-01-02T15:04:05.000Z"
+
 // NormalizeTimestamp normalizes an absolute timestamp to the format required by the
 // Dash0 API (RFC 3339 with millisecond precision). Relative expressions like "now"
 // and "now-1h" are returned as-is.
@@ -23,7 +26,7 @@ func NormalizeTimestamp(s string) string {
 	}
 	for _, layout := range formats {
 		if t, err := time.Parse(layout, s); err == nil {
-			return t.UTC().Format("2006-01-02T15:04:05.000Z")
+			return t.UTC().Format(TimestampLayout)
 		}
 	}
 

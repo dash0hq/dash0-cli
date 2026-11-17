@@ -41,20 +41,20 @@ func NewRawHTTPConfig(ctx context.Context, apiUrl, authToken string) (*RawHTTPCo
 
 	if cfg := profiles.FromContext(ctx); cfg != nil {
 		if resolvedApiUrl == "" {
-			resolvedApiUrl = cfg.ApiUrl
+			resolvedApiUrl = cfg.ApiUrl()
 		}
 		if resolvedAuthToken == "" {
-			resolvedAuthToken = cfg.AuthToken
+			resolvedAuthToken = cfg.Token()
 		}
-		resolvedDataset = cfg.Dataset
+		resolvedDataset = cfg.Dataset()
 	} else {
 		resolved, err := profiles.ResolveConfiguration(resolvedApiUrl, resolvedAuthToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve configuration: %w", err)
 		}
-		resolvedApiUrl = resolved.ApiUrl
-		resolvedAuthToken = resolved.AuthToken
-		resolvedDataset = resolved.Dataset
+		resolvedApiUrl = resolved.ApiUrl()
+		resolvedAuthToken = resolved.Token()
+		resolvedDataset = resolved.Dataset()
 	}
 
 	if resolvedApiUrl == "" {

@@ -54,6 +54,10 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return err
 	}
 
+	if err := asset.ValidateDashboard(dashboard); err != nil {
+		return err
+	}
+
 	if flags.DryRun {
 		fmt.Println("Dry run: dashboard definition is valid")
 		return nil
