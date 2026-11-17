@@ -3,11 +3,13 @@
 package checkrules
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,24 +56,30 @@ spec:
 
 	require.NoError(t, cmd.Execute())
 
-	posts := server.RequestBodies(t, http.MethodPost, apiPathCheckRules)
-	require.Len(t, posts, 2)
+	var rules []dash0api.PrometheusAlertRule
+	for _, req := range server.Requests() {
+		if req.Method != http.MethodPost || req.Path != apiPathCheckRules {
+			continue
+		}
+		var rule dash0api.PrometheusAlertRule
+		require.NoError(t, json.Unmarshal(req.Body, &rule))
+		rules = append(rules, rule)
+	}
+	require.Len(t, rules, 2)
 
-	bodiesByName := make(map[string]map[string]any, len(posts))
-	for _, body := range posts {
-		name, ok := body["name"].(string)
-		require.True(t, ok, "check rule body missing a string name: %v", body)
-		bodiesByName[name] = body
+	rulesByName := make(map[string]dash0api.PrometheusAlertRule, len(rules))
+	for _, rule := range rules {
+		rulesByName[rule.Name] = rule
 	}
 
-	latencyAnnotations, ok := bodiesByName["Alerting - CheckoutHighLatency"]["annotations"].(map[string]any)
-	require.True(t, ok, "latency rule has no annotations; the rule must inherit the top-level metadata.annotations entry")
-	assert.Equal(t, "3fa42d0c-6b8e-4c1a-9f2d-111111111111", latencyAnnotations["dash0.com/notification-channel-ids"])
+	latencyRule := rulesByName["Alerting - CheckoutHighLatency"]
+	require.NotNil(t, latencyRule.Annotations, "latency rule has no annotations; the rule must inherit the top-level metadata.annotations entry")
+	assert.Equal(t, "3fa42d0c-6b8e-4c1a-9f2d-111111111111", latencyRule.Annotations.AdditionalProperties["dash0.com/notification-channel-ids"])
 
-	errorRateAnnotations, ok := bodiesByName["Alerting - CheckoutHighErrorRate"]["annotations"].(map[string]any)
-	require.True(t, ok, "error-rate rule has no annotations; it declares its own dash0.com/notification-channel-ids and runbook_url")
-	assert.Equal(t, "3fa42d0c-6b8e-4c1a-9f2d-333333333333", errorRateAnnotations["dash0.com/notification-channel-ids"])
-	assert.Equal(t, "https://runbooks.example.com/checkout-error-rate", errorRateAnnotations["runbook_url"])
+	errorRateRule := rulesByName["Alerting - CheckoutHighErrorRate"]
+	require.NotNil(t, errorRateRule.Annotations, "error-rate rule has no annotations; it declares its own dash0.com/notification-channel-ids and runbook_url")
+	assert.Equal(t, "3fa42d0c-6b8e-4c1a-9f2d-333333333333", errorRateRule.Annotations.AdditionalProperties["dash0.com/notification-channel-ids"])
+	assert.Equal(t, "https://runbooks.example.com/checkout-error-rate", errorRateRule.Annotations.AdditionalProperties["runbook_url"])
 }
 
 func TestCreateCheckRule_Restored(t *testing.T) {

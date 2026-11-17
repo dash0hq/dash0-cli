@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.22.0
+
+
+### New Components
+
+
+- `sampling-rules`: Manage sampling rules with `sampling-rules` and `apply`. (#364)
+  `apply` accepts the `Dash0Sampling` kind and upserts by `dash0.com/origin`, and `apply --since` deletes a rule removed from git.
+  `create`, `update`, `apply`, and `diff` warn when a write enables the first rule of a dataset, which turns sampling on.
+  Deletes are permanent, so in agent mode `sampling-rules delete` and an `apply --since` run that deletes a sampling rule require `--force`.
+  
+
+- `k8s`: Add the experimental `dash0 -X k8s pods watch` command, a terminal page with a pod's CPU, memory, requests and logs from Dash0 (#381, #399)
+  Ports the dash0-k9s-plugin into the CLI. The page runs as a k9s plugin on `Shift-D`; see the README for the `plugins.yaml` snippet.
+  Unlike the plugin, it works with OAuth profiles and renews the access token while the page stays open.
+  `-o json` (the default in agent mode) prints the pod's series and Dash0 links.
+  `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, and `k8s cronjobs watch` show all the pods of a workload: their total, or their average, minimum, or maximum at each step (`--aggregate`, or `a` in the page), or a line per pod (`--per-pod`, or `p`).
+  
+
+
+### Enhancements
+
+
+- `dashboards, apply`: Dashboards upsert by the `dash0.com/origin` label, so a dashboard kept as a Kubernetes custom resource no longer becomes a new dashboard on every apply. (#380)
+  The CLI reads the identifier from `dash0.com/origin`, then `metadata.dash0Extensions.id`, then `dash0.com/id`.
+  A file exported with `dashboards get -o yaml` updates the dashboard it came from, also after you add a `dash0.com/origin` label to it.
+  The API does not set the origin on an update, so keep the `dash0.com/id` label in that file. `apply --since` deletes such a dashboard at the id.
+  A file whose `dash0.com/origin` and `dash0Extensions.id` differ fails validation before anything is written.
+  The API already rejected such a file, so no file that worked before fails now.
+  A file with only the `dash0.com/id` label updates that dashboard instead of creating a new one.
+  Commands that use an OAuth profile now resolve the access token when they start, so a rejected refresh shows the `dash0 login` hint before any request, as before v1.34.0 of the API client.
+  
+
+- `spam-filters`: `spam-filters list` shows an `ENABLED` column and `spam-filters get` an `Enabled:` line, read from the `dash0.com/enabled` annotation (#386)
+  A filter without the annotation is shown as enabled, because that is how Dash0 reads it.
+  
+
+- `spam-filters`: `spam-filters list`, `get`, `create`, `update`, and `delete` no longer require `--experimental` (#386)
+  `apply` already accepted `Dash0SpamFilter` documents without the flag.
+  Passing `-X` still works, so existing scripts keep running.
+  
+
+- `metrics`: `metrics instant` prints a link that opens the PromQL in the Dash0 query builder (#405)
+  The link goes to stderr in `table` and `csv` output, and into the `dash0ExplorerUrl` field in `json` output.
+  With `--from`, the chart shows the hour that ends at the evaluation time.
+  
+
+
+### Bug Fixes
+
+
+- `notification-channels`: `notification-channels update -f` without an argument now addresses the channel by its `dash0.com/origin` label, like `apply`; a file without an origin fails instead of addressing its id (#366)
+
+- `time-series-aggregations`: `time-series-aggregations update -f` without an argument now fails for a file without a `dash0.com/origin` label, like `apply`, instead of addressing its id (#367)
+
+- `datasets`: `datasets update -f` without an argument now addresses the dataset by its slug, like `apply`, when the file also has a `dash0.com/origin` label (#368)
+  Before, such a file failed with a "not found" or mismatch error when the origin was not on that dataset. A file with only an origin now fails, as in `apply`; pass the origin as an argument instead.
+
+- `slos`: `slos update -f` without an argument now addresses the SLO by its `dash0.com/origin` label when the file also has a `dash0.com/id`, like `apply` (#370)
+
+- `apply`: `apply --since` now warns before it deletes a team that its removed document identified by `dash0.com/id` alone, as it already does for SLOs. (#392)
+  Team ids are assigned by the server, so the live team can sit at a different id and the delete can miss it.
+  Use `dash0.com/origin` for teams you manage with `--since`.
+  
+
+- `k8s`: `dash0 -X k8s pods watch` counts each container once in a pod's CPU and memory, and in its requests and limits (#397)
+  Dash0 starts a new series for a container when its resource attributes change, for example when it restarts or the Dash0 operator is upgraded.
+  The page added the old and new series while they overlapped, so a pod's 8.05-core CPU request could read as 32.2 cores.
+  The request rate, errors, duration, and log counts were not affected.
+  
+
+- `logs, spans, failed-checks`: The Dash0 link that `logs query`, `spans query`, and `failed-checks query` print opens when `--from` or `--to` is an absolute timestamp without milliseconds (#404)
+  Before, a value such as `2026-11-15T09:00:00Z` went into the link as typed, and Dash0 answered "URL Not Found".
+  
+
 ## 1.21.0
 
 

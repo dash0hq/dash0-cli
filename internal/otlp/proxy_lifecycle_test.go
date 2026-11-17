@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"strings"
 	"sync"
 	"testing"
@@ -18,11 +19,11 @@ func TestResolveProxyConfig_FromContextProfile(t *testing.T) {
 	// store lookup returns nothing and we exercise the fallback branch.
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
 
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		OtlpUrl:   "https://ingress.example.com",
 		AuthToken: "tok",
 		Dataset:   "staging",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 	flags := &proxyFlags{}
 
@@ -39,10 +40,10 @@ func TestResolveProxyConfig_FromContextProfile(t *testing.T) {
 }
 
 func TestResolveProxyConfig_FlagOverridesProfile(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		OtlpUrl:   "https://ingress.profile.com",
 		AuthToken: "profile-tok",
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 	flags := &proxyFlags{
 		OtlpUrl:   "https://ingress.override.com",
@@ -67,10 +68,10 @@ func TestResolveProxyConfig_NoProfileNoFlagsFails(t *testing.T) {
 }
 
 func TestResolveProxyConfig_MissingTokenFails(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		OtlpUrl: "https://ingress.example.com",
 		// AuthToken missing
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 	flags := &proxyFlags{}
 
@@ -81,10 +82,10 @@ func TestResolveProxyConfig_MissingTokenFails(t *testing.T) {
 }
 
 func TestResolveProxyConfig_MissingOtlpURLFails(t *testing.T) {
-	cfg := &profiles.Configuration{
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		AuthToken: "tok",
 		// OtlpUrl missing
-	}
+	})
 	ctx := profiles.WithConfiguration(context.Background(), cfg)
 	flags := &proxyFlags{}
 
@@ -99,7 +100,7 @@ func TestResolveProfileNameForBanner_ExplicitSelectorWins(t *testing.T) {
 		Name:   "prod",
 		Source: config.ProfileSourceFlag,
 	})
-	if got := resolveProfileNameForBanner(ctx, &profiles.Configuration{}); got != "prod" {
+	if got := resolveProfileNameForBanner(ctx, testutil.ResolvedConfiguration(t, "test", profiles.Configuration{})); got != "prod" {
 		t.Errorf("got %q; want prod", got)
 	}
 }
@@ -108,7 +109,7 @@ func TestResolveProfileNameForBanner_ConfigOnly_NoStore(t *testing.T) {
 	// Empty config dir → lookupActiveProfileName returns "" → fallback
 	// label "active" is emitted.
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
-	if got := resolveProfileNameForBanner(context.Background(), &profiles.Configuration{}); got != "active" {
+	if got := resolveProfileNameForBanner(context.Background(), testutil.ResolvedConfiguration(t, "test", profiles.Configuration{})); got != "active" {
 		t.Errorf("got %q; want 'active' (fallback when store has no active profile)", got)
 	}
 }
@@ -120,14 +121,14 @@ func TestResolveProfileNameForBanner_NoConfigNoSelector(t *testing.T) {
 }
 
 func TestDatasetLabel_FlagOverridesConfig(t *testing.T) {
-	cfg := &profiles.Configuration{Dataset: "from-config"}
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{Dataset: "from-config"})
 	if got := datasetLabel(cfg, "from-flag"); got != "from-flag" {
 		t.Errorf("got %q; want from-flag", got)
 	}
 }
 
 func TestDatasetLabel_ConfigUsedWhenNoFlag(t *testing.T) {
-	cfg := &profiles.Configuration{Dataset: "staging"}
+	cfg := testutil.ResolvedConfiguration(t, "test", profiles.Configuration{Dataset: "staging"})
 	if got := datasetLabel(cfg, ""); got != "staging" {
 		t.Errorf("got %q; want staging", got)
 	}
@@ -137,7 +138,7 @@ func TestDatasetLabel_FallsBackToDefault(t *testing.T) {
 	if got := datasetLabel(nil, ""); got != "default" {
 		t.Errorf("got %q; want default", got)
 	}
-	if got := datasetLabel(&profiles.Configuration{}, ""); got != "default" {
+	if got := datasetLabel(testutil.ResolvedConfiguration(t, "test", profiles.Configuration{}), ""); got != "default" {
 		t.Errorf("got %q for empty cfg; want default", got)
 	}
 }

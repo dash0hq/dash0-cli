@@ -15,30 +15,94 @@ type panel struct {
 }
 
 func (t target) selector(metric string, extra ...string) string {
-	sel := []string{"otel_metric_name=" + quote(metric), "k8s_namespace_name=" + quote(t.namespace), "k8s_pod_name=" + quote(t.pod)}
+	sel := []string{"otel_metric_name=" + quote(metric), "k8s_namespace_name=" + quote(t.namespace), "k8s_" + t.kind + "_name=" + quote(t.name)}
 	if t.cluster != "" {
 		sel = append(sel, "k8s_cluster_name="+quote(t.cluster))
 	}
 	return "{" + strings.Join(append(sel, extra...), ", ") + "}"
 }
 
+const podLabels = "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
+
 // A gauge once per pod, or per pod and container for the containers' requests and limits (the k8s_cluster receiver
 // reports them per container). A pod whose resource attributes change mid-life has two series for a while, the same
 // value under two dash0_resource_hash; summing them would count it twice. The cluster stays in the grouping, because
 // without --cluster the selector matches a pod of the same namespace and name in every cluster, and those are summed
 func (t target) once(metric string) string {
-	by := "k8s_cluster_name, k8s_namespace_name, k8s_pod_name"
+	labels := podLabels
 	if strings.HasPrefix(metric, "k8s.container.") {
-		by += ", k8s_container_name"
+		labels += ", k8s_container_name"
 	}
-	return "max by (" + by + ") (" + t.selector(metric) + ")"
+	return by("max", labels, t.selector(metric))
 }
 
-// sum() of a gauge, each pod and container counted once
-func (t target) query(metric string) string { return "sum(" + t.once(metric) + ")" }
+// fn by (labels) (expr)
+func by(fn, labels, expr string) string { return fn + " by (" + labels + ") (" + expr + ")" }
+
+// A series per pod: its usage, or its containers' requests or limits added up. A limit counts only when every
+// container has one above zero, as Dash0's pod pages have it: a container without one can use the whole node, and
+// Kubernetes reads a zero limit as none
+func (t target) perPod(metric string) string {
+	if !strings.HasPrefix(metric, "k8s.container.") {
+		return t.once(metric)
+	}
+	q := by("sum", podLabels, t.once(metric))
+	if strings.HasSuffix(metric, "_limit") {
+		// k8s.container.restarts has a series per container, from the same receiver as the limits; a pending pod
+		// missing from it has no usage to hold against a limit anyway
+		limited := by("count", podLabels, t.once(metric)+" > 0")
+		containers := by("count", podLabels, t.once("k8s.container.restarts"))
+		q += " and on (" + podLabels + ") (" + limited + " == " + containers + ")"
+	}
+	return q
+}
+
+// The target's pods combined under its aggregation: their total, or the mean, least or most of those running
+func (t target) query(metric string) string { return t.aggFn() + "(" + t.perPod(metric) + ")" }
+
+func (t target) aggFn() string {
+	if t.isTotal() {
+		return "sum"
+	}
+	return t.agg
+}
+
+// A query grouped by its by labels: the whole target with none, else a series per pod
+type grouped func(t target, step time.Duration, by string) string
+
+func whole(q grouped) func(target, time.Duration) string {
+	return func(t target, step time.Duration) string { return q(t, step, "") }
+}
+
+// " by (labels) ", or nothing for no labels
+func groupBy(labels string) string {
+	if labels == "" {
+		return ""
+	}
+	return " by (" + labels + ") "
+}
+
+// The highest share of its limit any pod uses, Dash0's "% of limit"; none when no pod has a limit
+func utilization(usage, limit string) grouped {
+	return func(t target, _ time.Duration, by string) string {
+		return "max" + groupBy(by) + "(" + t.once(usage) + " / (" + t.perPod(limit) + "))"
+	}
+}
 
 func gauge(metric string) func(target, time.Duration) string {
 	return func(t target, _ time.Duration) string { return t.query(metric) }
+}
+
+// A workload's limit only when every pod using CPU or memory has one: a pod without one can use the whole node. The
+// counts are never zero, so Dash0's and keeps them
+func limit(metric, usage string) func(target, time.Duration) string {
+	return func(t target, _ time.Duration) string {
+		q := t.query(metric)
+		if t.isPod() {
+			return q
+		}
+		return q + " and on () (count(" + t.once(usage) + " / (" + t.perPod(metric) + ")) == count(" + t.once(usage) + "))"
+	}
 }
 
 func rangeOf(step time.Duration) string { return fmt.Sprintf("[%ds]", int(step.Seconds())) }
@@ -49,193 +113,92 @@ func spans(t target, extra ...string) string {
 	return t.selector("dash0.spans", append([]string{`otel_span_kind="SERVER"`}, extra...)...)
 }
 
-func quantile(q string) func(target, time.Duration) string {
-	return func(t target, step time.Duration) string {
-		return "histogram_quantile(" + q + ", sum by (le) (rate(" + t.selector("dash0.spans.duration", `otel_span_kind="SERVER"`) + rangeOf(step) + ")))"
+func quantile(q string) grouped {
+	return func(t target, step time.Duration, by string) string {
+		if by != "" {
+			by = ", " + by
+		}
+		return "histogram_quantile(" + q + ", sum by (le" + by + ") (rate(" + t.selector("dash0.spans.duration", `otel_span_kind="SERVER"`) + rangeOf(step) + ")))"
 	}
 }
 
 var panels = []panel{
-	{"cpu", gauge("k8s.pod.cpu.usage"), ""}, {"cpuRequest", gauge("k8s.container.cpu_request"), ""}, {"cpuLimit", gauge("k8s.container.cpu_limit"), ""},
-	{"mem", gauge("k8s.pod.memory.working_set"), ""}, {"memRequest", gauge("k8s.container.memory_request"), ""}, {"memLimit", gauge("k8s.container.memory_limit"), ""},
-	{"requests", func(t target, step time.Duration) string { return "sum(rate(" + spans(t) + rangeOf(step) + "))" }, ""},
-	{"errors", func(t target, step time.Duration) string {
-		return "sum(rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + "))"
+	{"cpu", gauge("k8s.pod.cpu.usage"), ""}, {"cpuRequest", gauge("k8s.container.cpu_request"), ""}, {"cpuLimit", limit("k8s.container.cpu_limit", "k8s.pod.cpu.usage"), ""},
+	{"cpuUtil", whole(utilization("k8s.pod.cpu.usage", "k8s.container.cpu_limit")), ""},
+	{"mem", gauge("k8s.pod.memory.working_set"), ""}, {"memRequest", gauge("k8s.container.memory_request"), ""}, {"memLimit", limit("k8s.container.memory_limit", "k8s.pod.memory.working_set"), ""},
+	{"memUtil", whole(utilization("k8s.pod.memory.working_set", "k8s.container.memory_limit")), ""},
+	{"requests", func(t target, step time.Duration) string {
+		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t) + rangeOf(step) + ")))"
 	}, ""},
-	{"p50", quantile("0.5"), ""}, {"p95", quantile("0.95"), ""}, {"p99", quantile("0.99"), ""},
+	{"errors", func(t target, step time.Duration) string {
+		return t.aggFn() + "(sum by (" + podLabels + ") (rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + ")))"
+	}, ""},
+	// The share of all the target's requests that failed, whatever the aggregation: one pod's errors over another's
+	// requests would mean nothing. No requests make it 0 / 0, a gap
+	{"errorRate", func(t target, step time.Duration) string {
+		return "100 * sum(rate(" + spans(t, `otel_span_status_code="ERROR"`) + rangeOf(step) + ")) / sum(rate(" + spans(t) + rangeOf(step) + "))"
+	}, ""},
+	{"p50", whole(quantile("0.5")), ""}, {"p95", whole(quantile("0.95")), ""}, {"p99", whole(quantile("0.99")), ""},
 	// Log records per step, by severity
 	{"logs", func(t target, step time.Duration) string {
 		return "sum by (otel_log_severity_range) (increase(" + t.selector("dash0.logs") + rangeOf(step) + "))"
 	}, "otel_log_severity_range"},
 }
 
-// Whether a series has a sample anywhere in the window
-func hasSamples(values []*float64) bool { return first(values) != nil }
+// A workload's running pods: the k8s_cluster receiver's k8s.pod.phase is 2 for Running
+var podCount = panel{"pods", func(t target, _ time.Duration) string { return "count(" + t.once("k8s.pod.phase") + " == 2)" }, ""}
 
-// Whether a count or rate is above zero anywhere in the window. Dash0 answers sum() over no series with zeros, where
-// Prometheus answers nothing, so zeros alone mean the pod has none
-func active(values []*float64) bool {
-	for _, v := range values {
-		if v != nil && *v > 0 {
-			return true
-		}
-	}
-	return false
+// A workload's panels split by pod, for the per-pod view; the shares of their limits rank them
+var podPanels = []panel{
+	byPod("cpuPods", usageByPod("k8s.pod.cpu.usage")),
+	byPod("memPods", usageByPod("k8s.pod.memory.working_set")),
+	byPod("cpuUtilPods", utilization("k8s.pod.cpu.usage", "k8s.container.cpu_limit")),
+	byPod("memUtilPods", utilization("k8s.pod.memory.working_set", "k8s.container.memory_limit")),
+	byPod("requestsPods", func(t target, step time.Duration, by string) string {
+		return "sum by (" + by + ") (rate(" + spans(t) + rangeOf(step) + "))"
+	}),
+	byPod("p95Pods", quantile("0.95")),
 }
 
-// The error rate per step, in percent of the requests; none where there were no requests
-func errorRate(requests, errors []*float64) []*float64 {
-	out := make([]*float64, len(requests))
-	for i, r := range requests {
-		if r == nil || *r == 0 {
+// A panel with a series per pod. Without --cluster, pods of the same name in different clusters stay apart, named
+// <cluster>/<pod>
+func byPod(key string, q grouped) panel {
+	return panel{key, func(t target, step time.Duration) string {
+		if t.cluster != "" {
+			return q(t, step, "k8s_pod_name")
+		}
+		return `label_join(` + q(t, step, "k8s_cluster_name, k8s_pod_name") + `, "k8s_pod_name", "/", "k8s_cluster_name", "k8s_pod_name")`
+	}, "k8s_pod_name"}
+}
+
+func usageByPod(metric string) grouped {
+	return func(t target, _ time.Duration, by string) string {
+		return "sum by (" + by + ") (" + t.once(metric) + ")"
+	}
+}
+
+// The panels a target asks for: a pod's; a workload's adds its pod count, and the per-pod view its pods' series
+func panelsFor(t target, perPod bool) []panel {
+	if t.isPod() {
+		return panels
+	}
+	var out []panel
+	for _, pn := range panels {
+		// A pod that served no ERROR span has no series here, so avg and min would skip it and read too high; Dash0's
+		// and, or and unless drop zero samples, so `or 0 * requests` can't fill it in. The error rate covers them
+		if pn.key == "errors" && (t.agg == "avg" || t.agg == "min") {
 			continue
 		}
-		e := 0.0
-		if i < len(errors) && errors[i] != nil {
-			e = *errors[i]
-		}
-		v := 100 * e / *r
-		out[i] = &v
+		out = append(out, pn)
+	}
+	out = append(out, podCount)
+	if perPod {
+		out = append(out, podPanels...)
 	}
 	return out
 }
 
-func sum(values []*float64) float64 {
-	total := 0.0
-	for _, v := range values {
-		if v != nil {
-			total += *v
-		}
-	}
-	return total
-}
-
-// The section's heading, bold over a dim line saying what it counts (Heading, level 'heading')
-func heading(title, note string) block {
-	return block{line{{title, style{bold: true}}, {"  " + note, dimStyle}}}
-}
-
-// Requests, errors and duration of the spans the pod serves: nil when it served none in the window
-func (p *page) redSection(cardW int, side bool, rows int) block {
-	requests := p.data["requests"]
-	if !active(requests) {
-		return nil
-	}
-	errors := p.data["errors"]
-	since := "vs " + clock(p.win.start)
-	rate := errorRate(requests, errors)
-	stats := hjoin(6,
-		stat("Requests", requests, "/s", "", since, "", true, p.theme),
-		stat("Errors", rate, "percent", "", since, "", false, p.theme),
-		stat("Duration p95", p.data["p95"], "seconds", "", since, "", false, p.theme),
-	)
-
-	var reqSeries []series
-	reqSeries = append(reqSeries, series{"requests", requests, p.theme.series[0]})
-	if active(errors) {
-		// ERROR takes the error red wherever it sits, as Ditt0's color manager colours it by meaning
-		reqSeries = append(reqSeries, series{"errors", errors, p.theme.errorInk})
-	}
-	var durSeries []series
-	for i, q := range []string{"p99", "p95", "p50"} {
-		if v := p.data[q]; hasSamples(v) {
-			durSeries = append(durSeries, series{q, v, p.theme.series[i]})
-		}
-	}
-	req := p.cardOf("Requests", "/s", reqSeries, cardW, rows, true)
-	dur := p.cardOf("Duration", "seconds", durSeries, cardW, rows, true)
-	charts := vjoin(1, req, dur)
-	if side {
-		charts = hjoin(1, req, dur)
-	}
-	return vjoin(1, heading("Requests", "SERVER spans"), stats, charts)
-}
-
-// The severities in the order a log chart lists them, worst first, each in its status colour
-func (p *page) severities() []struct{ name, color string } {
-	t := p.theme
-	return []struct{ name, color string }{
-		{"FATAL", t.errorInk}, {"ERROR", t.errorInk}, {"WARN", t.warningInk}, {"INFO", t.infoInk},
-		{"DEBUG", t.debugInk}, {"TRACE", t.debugInk}, {"UNKNOWN", t.unknownInk},
-	}
-}
-
-// Log record counts by severity: nil when the pod wrote none in the window
-func (p *page) logsSection(width, rows int) block {
-	var ss []series
-	var total, errs, warns []*float64
-	for _, sev := range p.severities() {
-		v, ok := p.data["logs:"+sev.name]
-		if !ok || !active(v) {
-			continue
-		}
-		ss = append(ss, series{sev.name, v, sev.color})
-		total = addSeries(total, v)
-		switch sev.name {
-		case "FATAL", "ERROR":
-			errs = addSeries(errs, v)
-		case "WARN":
-			warns = addSeries(warns, v)
-		}
-	}
-	if len(ss) == 0 {
-		return nil
-	}
-	span := ranges[p.rangeIdx].label
-	count := func(label string, v []*float64, ink string) block {
-		n := sum(v)
-		out := block{text(label, dimStyle)}
-		if n > 0 || v != nil {
-			txt := formatValue(&n, "")
-			st := style{bold: true}
-			if n > 0 && ink != "" {
-				st.fg = ink
-			}
-			out = append(out, text(txt, st))
-		} else {
-			out = append(out, text("0", style{bold: true, dim: true}))
-		}
-		if active(v) {
-			out = append(out, text(sparkline(v, 20), style{fg: ink, dim: ink == ""}))
-		} else {
-			// As wide as a sparkline, so the stats beside it keep their places
-			out = append(out, text(strings.Repeat(" ", 20), style{}))
-		}
-		return out
-	}
-	stats := hjoin(6,
-		count("Log records · "+span, total, ""),
-		count("Errors", errs, p.theme.errorInk),
-		count("Warnings", warns, p.theme.warningInk),
-	)
-	chart := p.cardOf("Log records per "+stepLabel(p.win.step), "", ss, width, rows, true)
-	return vjoin(1, heading("Logs", "records by severity"), stats, chart)
-}
-
-// Series added step by step; a step none of them has stays none
-func addSeries(a, b []*float64) []*float64 {
-	if a == nil {
-		a = make([]*float64, len(b))
-	}
-	for i := range b {
-		if b[i] == nil {
-			continue
-		}
-		v := *b[i]
-		if a[i] != nil {
-			v += *a[i]
-		}
-		a[i] = &v
-	}
-	return a
-}
-
-func stepLabel(step time.Duration) string {
-	if step >= time.Hour {
-		return fmt.Sprintf("%d h", int(step.Hours()))
-	}
-	if step == time.Minute {
-		return "minute"
-	}
-	return fmt.Sprintf("%d min", int(step.Minutes()))
-}
+// How a workload's pods add up in its stats and charts: their total, or the mean, least or most across the pods at
+// each step, taken for usage, requests and limits apart, so under max each can be another pod's. Dash0 combines them,
+// so switching asks it again
+var aggs = []string{"total", "avg", "min", "max"}

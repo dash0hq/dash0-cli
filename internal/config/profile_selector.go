@@ -91,7 +91,7 @@ func ProfileSelectorFromContext(ctx context.Context) ProfileSelector {
 //
 // The returned configuration records the profile it came from, which is what
 // lets the client refresh its OAuth access token per request.
-func ResolveConfigurationForProfile(ctx context.Context, profileName string) (*profiles.Configuration, error) {
+func ResolveConfigurationForProfile(ctx context.Context, profileName string) (*profiles.ResolvedConfiguration, error) {
 	if profileName == "" {
 		return nil, fmt.Errorf("profile name must not be empty")
 	}

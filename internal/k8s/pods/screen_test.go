@@ -33,7 +33,7 @@ func TestRenderTinyTerminals(t *testing.T) {
 	values := []*float64{f(0.1), f(0.2), nil, f(0.4)}
 	end := time.Unix(1_800_000_000, 0)
 	for _, withData := range []bool{false, true} {
-		p := &page{target: target{namespace: "ns", pod: "pod"}, theme: dark, apiURL: "https://api.example.com"}
+		p := &page{target: target{namespace: "ns", kind: "pod", name: "pod"}, theme: dark, apiURL: "https://api.example.com"}
 		if withData {
 			p.win = window{end.Add(-3 * time.Minute), end, time.Minute}
 			p.at = end

@@ -258,7 +258,7 @@ func skillHintSuppressed() bool {
 // This approach avoids the need to predict which command will run — something
 // that cobra's Traverse cannot reliably do when persistent flags like -X
 // precede the subcommand name.
-func loadConfig() *profiles.Configuration {
+func loadConfig() *profiles.ResolvedConfiguration {
 	cfg, err := profiles.ResolveConfiguration("", "")
 	if err != nil {
 		return nil
