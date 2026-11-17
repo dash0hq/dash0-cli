@@ -104,23 +104,8 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 		name = "<name>"
 	}
 	display := asset.FormatNameAndID(name, d.Identifier)
-	if d.Kind == "slo" && !d.SLOUsesOrigin {
-		fmt.Fprintf(os.Stderr, "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
-	}
-	if d.Kind == "generativeaievaluation" && !d.GenerativeAiEvaluationUsesOrigin {
-		fmt.Fprintf(os.Stderr, "warning: eval %s was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
-	}
-	if d.Kind == "signaltometrics" && !d.SignalToMetricsRuleUsesOrigin {
-		fmt.Fprintf(os.Stderr, "warning: signal-to-metrics rule %s was identified by dash0.com/id alone; rule ids are server-assigned, so if this document was first applied to an organization without that id the live rule now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
-	}
-	if d.Kind == "sampling" && !d.SamplingRuleUsesOrigin {
-		fmt.Fprintf(os.Stderr, "warning: sampling rule %s was identified by dash0.com/id alone; if this document was first applied to an organization without that id, the live rule got a new id from the server (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
-	}
-	if d.Kind == "team" && !d.TeamUsesOrigin {
-		fmt.Fprintf(os.Stderr, "warning: team %s was identified by dash0.com/id alone; team ids are server-assigned, so if this document was first applied to an organization without that id the live team now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n", display)
-	}
-	if d.Kind == "spamfilter" && !d.SpamFilterUsesOrigin {
-		fmt.Fprintf(os.Stderr, "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n", display)
+	if d.IdentifiedByIDOnly {
+		fmt.Fprintln(os.Stderr, asset.IDOnlyDeleteWarning(d.Kind, display))
 	}
 	var prompt string
 	if d.Kind == "recordingrule" {
