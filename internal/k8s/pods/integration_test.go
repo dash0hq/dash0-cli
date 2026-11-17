@@ -20,16 +20,17 @@ const (
 	apiPathQueryRange     = "/api/prometheus/api/v1/query_range"
 	fixtureUnauthorized   = "dashboards/error_unauthorized.json"
 	testPodsAuthToken     = "auth_test_token"
-	testPodsNamespace     = "dash0-shared"
-	testPodsPod           = "api-757b495d7d-cqhb2"
+	testPodsNamespace     = "shop"
+	testPodsPod           = "checkout-757b495d7d-cqhb2"
 	testPodsDataset       = "staging"
-	expectedPanelRequests = 12
+	expectedPanelRequests = 15
 	// The sample the handler leaves out of every series, so a gap must parse as null
 	gapAt = 3
 )
 
 // A query_range handler that answers on the window the command asked for: sample i holds i+0.5, sample gapAt is
-// missing, and the logs panel's one series is ERROR. Queries containing failQuery answer 500.
+// missing, the logs panel's one series is ERROR, and a per-pod panel's is testPodsPod. Queries containing failQuery
+// answer 500.
 func queryRangeHandler(t *testing.T, failQuery string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := testutil.RequireHeaders(r); err != nil {
@@ -54,7 +55,8 @@ func queryRangeHandler(t *testing.T, failQuery string) http.HandlerFunc {
 				values = append(values, [2]any{ts, strconv.FormatFloat(float64(i)+0.5, 'f', -1, 64)})
 			}
 		}
-		metric := map[string]string{}
+		// A panel that isn't split takes the first series, whatever its labels
+		metric := map[string]string{"k8s_pod_name": testPodsPod}
 		if strings.Contains(query, "otel_log_severity_range") {
 			metric["otel_log_severity_range"] = "ERROR"
 		}
@@ -70,7 +72,7 @@ func newExperimentalPodsCmd() *cobra.Command {
 	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
 	k8sCmd := &cobra.Command{Use: "k8s"}
-	k8sCmd.AddCommand(NewPodsCmd())
+	k8sCmd.AddCommand(NewCmds()...)
 	root.AddCommand(k8sCmd)
 	return root
 }
@@ -107,7 +109,7 @@ func TestWatch_JSON(t *testing.T) {
 	assert.Equal(t, testPodsPod, got.Pod)
 	assert.Equal(t, "1m0s", got.Step)
 	assert.Len(t, got.Timestamps, 16)
-	for _, key := range []string{"cpu", "cpuRequest", "cpuLimit", "mem", "memRequest", "memLimit", "requests", "errors", "p50", "p95", "p99", "logs:ERROR"} {
+	for _, key := range []string{"cpu", "cpuRequest", "cpuLimit", "mem", "memRequest", "memLimit", "cpuUtil", "memUtil", "requests", "errors", "errorRate", "p50", "p95", "p99", "logs:ERROR"} {
 		require.Len(t, got.Series[key], 16, key)
 		for i, v := range got.Series[key] {
 			if i == gapAt {
@@ -174,6 +176,30 @@ func TestWatch_JSONPartialFailure(t *testing.T) {
 	assert.Len(t, got.Series["cpu"], 16)
 }
 
+func TestWatch_RequestsWithoutErrorRate(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnDefault(queryRangeHandler(t, "100 * sum("))
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", testPodsPod, "-n", testPodsNamespace, "-o", "json", "--range", "15m",
+		"--api-url", server.URL, "--auth-token", testPodsAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	var got watchJSON
+	require.NoError(t, json.Unmarshal([]byte(output), &got))
+	assert.Equal(t, []string{"errorRate"}, got.Failed)
+	assert.Len(t, got.Series["requests"], 16)
+	// The requests alone say the pod served some, so the traces link stays
+	assert.Contains(t, got.Links, "traces")
+}
+
 func TestWatch_Unauthorized(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -216,4 +242,62 @@ func TestWatch_InvalidRange(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown range "2h"`)
+}
+
+func TestWatch_WorkloadJSON(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnDefault(queryRangeHandler(t, ""))
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "deploy", "watch", "checkout", "-n", testPodsNamespace, "--aggregate", "MAX", "--per-pod", "-o", "json",
+		"--range", "15m", "--api-url", server.URL, "--auth-token", testPodsAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.NoError(t, err)
+
+	var got struct {
+		watchJSON
+		Kind      string `json:"kind"`
+		Name      string `json:"name"`
+		Aggregate string `json:"aggregate"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &got))
+	assert.Equal(t, "deployment", got.Kind)
+	assert.Equal(t, "checkout", got.Name)
+	assert.Empty(t, got.Pod)
+	assert.Equal(t, "max", got.Aggregate)
+	for _, key := range []string{"pods", "cpu", "cpuPods:" + testPodsPod, "memUtilPods:" + testPodsPod, "p95Pods:" + testPodsPod} {
+		assert.Len(t, got.Series[key], 16, key)
+	}
+
+	requests := server.Requests()
+	require.Len(t, requests, expectedPanelRequests+1+len(podPanels))
+	var maxed int
+	for _, r := range requests {
+		form, err := url.ParseQuery(string(r.Body))
+		require.NoError(t, err)
+		assert.Contains(t, form.Get("query"), `k8s_deployment_name="checkout"`)
+		assert.NotContains(t, form.Get("query"), `k8s_pod_name="`)
+		if strings.HasPrefix(form.Get("query"), "max(") {
+			maxed++
+		}
+	}
+	// Dash0 combines the pods: CPU and memory with their requests, limits and shares of the limits, requests and errors
+	assert.Equal(t, 10, maxed)
+}
+
+func TestWatch_PodHasNoAggregate(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	cmd := newExperimentalPodsCmd()
+	cmd.SetArgs([]string{"-X", "k8s", "pods", "watch", testPodsPod, "-n", testPodsNamespace, "--aggregate", "max"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag: --aggregate")
 }

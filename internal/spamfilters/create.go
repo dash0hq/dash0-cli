@@ -9,7 +9,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
-	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/spf13/cobra"
 )
 
@@ -19,21 +18,18 @@ func newCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "create -f <file>",
 		Aliases: []string{"add"},
-		Short:   "[experimental] Create a spam filter from a file",
+		Short:   "Create a spam filter from a file",
 		Long: `Create a new spam filter from a YAML or JSON definition file. Use '-f -' to
 read from stdin.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
-  dash0 --experimental spam-filters create -f filter.yaml
+  dash0 spam-filters create -f filter.yaml
 
   # Create from stdin
-  cat filter.yaml | dash0 --experimental spam-filters create -f -
+  cat filter.yaml | dash0 spam-filters create -f -
 
   # Validate without creating
-  dash0 --experimental spam-filters create -f filter.yaml --dry-run`,
+  dash0 spam-filters create -f filter.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := experimental.RequireExperimental(cmd); err != nil {
-				return err
-			}
 			return runCreate(cmd.Context(), &flags)
 		},
 	}

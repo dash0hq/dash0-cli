@@ -4,11 +4,12 @@ component: k8s
 
 note: "Add the experimental `dash0 -X k8s pods watch` command, a terminal page with a pod's CPU, memory, requests and logs from Dash0"
 
-issues: [381]
+issues: [381, 399]
 
 subtext: |
   Ports the dash0-k9s-plugin into the CLI. The page runs as a k9s plugin on `Shift-D`; see the README for the `plugins.yaml` snippet.
   Unlike the plugin, it works with OAuth profiles and renews the access token while the page stays open.
   `-o json` (the default in agent mode) prints the pod's series and Dash0 links.
+  `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, and `k8s cronjobs watch` show all the pods of a workload: their total, or their average, minimum, or maximum at each step (`--aggregate`, or `a` in the page), or a line per pod (`--per-pod`, or `p`).
 
 change_logs: []

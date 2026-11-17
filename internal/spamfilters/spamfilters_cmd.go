@@ -6,7 +6,7 @@ import "github.com/spf13/cobra"
 func NewSpamFiltersCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "spam-filters",
-		Short: "[experimental] Manage Dash0 spam filters",
+		Short: "Manage Dash0 spam filters",
 		Long:  `Create, list, get, update, and delete spam filters in Dash0`,
 	}
 
