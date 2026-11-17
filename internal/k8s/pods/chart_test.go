@@ -78,7 +78,7 @@ func TestTimeseriesDrawsAxisAndLegend(t *testing.T) {
 }
 
 func TestQueryEscapesLabelValues(t *testing.T) {
-	q := target{namespace: `a"b`, pod: "p"}.query("k8s.pod.cpu.usage")
+	q := target{namespace: `a"b`, kind: "pod", name: "p"}.query("k8s.pod.cpu.usage")
 	if !strings.Contains(q, `k8s_namespace_name="a\"b"`) {
 		t.Errorf("unescaped: %s", q)
 	}

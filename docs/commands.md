@@ -17,7 +17,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| [Interactive](#interactive-commands) | `k8s pods watch` | Full-screen terminal page, refreshes on a timer, experimental |
+| [Interactive](#interactive-commands) | `k8s pods watch`, `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, `k8s cronjobs watch` | Full-screen terminal page, refreshes on a timer, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
@@ -3397,9 +3397,46 @@ When stdin is not a terminal, or with `--once`, they draw one frame to stdout an
 
 ### `k8s pods watch` (experimental)
 
-Draw a Kubernetes pod's CPU and memory from Dash0, plus its requests, errors, duration, and log counts when the pod has spans and logs.
-Requires the `-X` (or `--experimental`) flag, plus `api-url` and `auth-token`.
+Watch a Kubernetes pod, or all the pods of a deployment, statefulset, daemonset, replicaset, job, or cronjob, in a full-screen terminal page.
+The page shows CPU and memory against their requests and limits, plus requests, errors, duration, and log counts when the pods have spans and logs.
+Requires `-X` (or `--experimental`) and authentication, through the active profile, including one you logged in to with `dash0 login`, or through `--api-url` and `--auth-token`.
 The cluster must be monitored by the [Dash0 operator](https://github.com/dash0hq/dash0-operator), which collects the pod metrics.
+
+Watch a pod:
+
+```bash
+dash0 -X k8s pods watch <pod> -n <namespace>
+```
+
+Watch all the pods of a deployment:
+
+```bash
+dash0 -X k8s deployments watch <deployment> -n <namespace>
+```
+
+Watch the busiest pod's usage at each step instead of the total:
+
+```bash
+dash0 -X k8s deployments watch <deployment> -n <namespace> --aggregate max
+```
+
+Compare a statefulset's pods, with a line per pod:
+
+```bash
+dash0 -X k8s statefulsets watch <statefulset> -n <namespace> --per-pod
+```
+
+Match the pod in one cluster only, with a named profile:
+
+```bash
+dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
+```
+
+In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `l` open the pods' metrics, traces, and logs in Dash0 over the same range, and `q` or `Esc` quits.
+On a workload's page, `a` cycles through the aggregations and `p` turns the line per pod on and off.
+`↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
+The page refreshes every 30 seconds, and resolves the credentials again each time, so an OAuth access token is renewed while it stays open.
+The requests and logs sections show only when the pods have spans or logs in the range.
 
 ```bash
 dash0 -X k8s pods watch <pod> -n <namespace> [flags]
@@ -3417,57 +3454,133 @@ dash0 -X k8s pods watch <pod> -n <namespace> [flags]
 | `-o` | `page` | `page` or `json` (default: `json` in agent mode) |
 | `--dataset` | | Dataset to query |
 
-The charts draw thin braille lines, Ditt0's Dots line type, with a 2 × 4 grid of dots in each cell.
-In the page, `1` to `4` pick 15m, 1h, 6h, or 24h, `r` refreshes, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0 over the same range, and `q` or `Esc` quits.
-`↑` `↓` (or `k` `j`), `PgUp` `PgDn` (or `b` `space`), and `Home` `End` (or `g` `G`) scroll a page taller than the terminal.
-The credentials are resolved again before every refresh, so an OAuth access token is renewed while the page stays open.
+#### Workloads
 
-The page queries `POST /api/prometheus/api/v1/query_range` with `sum()` over the pod's `k8s_namespace_name` and `k8s_pod_name` (and `k8s_cluster_name` with `--cluster`):
+Watch all the pods of a Kubernetes workload together, or compare its pods to find resource pressure and uneven load.
 
-| Section | Metrics |
-|---------|---------|
-| CPU | `k8s.pod.cpu.usage`, `k8s.container.cpu_request`, `k8s.container.cpu_limit` |
-| Memory | `k8s.pod.memory.working_set`, `k8s.container.memory_request`, `k8s.container.memory_limit` |
-| Requests | Rate, errors, and duration p50, p95, and p99 of the pod's `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
-| Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
-
-It takes each usage gauge once per pod, and each request and limit once per container, before it sums them, so a pod whose resource attributes changed is not counted twice.
-Pods of the same name in different clusters are still added together.
-
-The requests and logs sections show only when the pod has spans or logs in the range.
-
-Watch a pod:
+Watch a deployment:
 
 ```bash
-dash0 -X k8s pods watch <pod> -n <namespace>
+dash0 -X k8s deployments watch <deployment> -n <namespace>
 ```
 
-Match the pod in one cluster only, with a named profile:
+Each workload kind has its own command, which also takes kubectl's singular and short names:
+
+| Workload | Command | Aliases |
+|----------|---------|---------|
+| Deployment | `k8s deployments watch` | `deployment`, `deploy` |
+| StatefulSet | `k8s statefulsets watch` | `statefulset`, `sts` |
+| DaemonSet | `k8s daemonsets watch` | `daemonset`, `ds` |
+| ReplicaSet | `k8s replicasets watch` | `replicaset`, `rs` |
+| Job | `k8s jobs watch` | `job` |
+| CronJob | `k8s cronjobs watch` | `cronjob`, `cj` |
+
+They take the flags of `k8s pods watch`, plus `--aggregate` and `--per-pod`.
+
+##### Choose how to view the pods
+
+| View | Flag | Shows at each step |
+|------|------|--------------------|
+| Total | `--aggregate total` (default) | The pods' values added up |
+| Average | `--aggregate avg` | The mean across the pods |
+| Minimum | `--aggregate min` | The lowest value across the pods |
+| Maximum | `--aggregate max` | The highest value across the pods |
+| Per pod | `--per-pod` | A line for each of the 8 busiest pods |
+
+In the page, `a` cycles through total, average, minimum, and maximum, and `p` turns the line per pod on and off.
+Switching the aggregation queries Dash0 again.
+
+Show the highest CPU and memory usage across a deployment's pods:
 
 ```bash
-dash0 -X --profile <profile> k8s pods watch <pod> -n <namespace> --cluster <cluster>
+dash0 -X k8s deployments watch <deployment> -n <namespace> --aggregate max
 ```
 
-Print the pod's series and Dash0 links as JSON (the default in agent mode):
+Compare the pods of a statefulset:
+
+```bash
+dash0 -X k8s statefulsets watch <statefulset> -n <namespace> --per-pod
+```
+
+Match the deployment in one cluster only:
+
+```bash
+dash0 -X k8s deployments watch <deployment> -n <namespace> --cluster <cluster>
+```
+
+##### Read the page
+
+The header shows how many of the workload's pods are in Kubernetes' Running phase.
+
+The CPU and memory charts show usage against the pods' requests and limits.
+Under `avg`, `min`, and `max`, usage, requests, and limits are each aggregated on their own, so the highest CPU usage and the highest CPU limit can belong to different pods.
+For the same reason, the share of the request shows only under `total`.
+
+The share of the limit is each pod's usage over its own limit, never one aggregate over another, and the page shows the highest share any pod reaches:
+
+- Above 80 percent of its limit, it turns yellow.
+- Above 90 percent of its limit, it turns red.
+- When only some pods have a limit, the workload has no limit line, and the page says so, but the pods with a limit still count toward the share.
+
+A pod has a limit only when every container has one above zero, as in Dash0's Kubernetes pages, because a container without a limit can use the whole node.
+
+The per-pod view shows up to 8 pods:
+
+- For CPU and memory, the pods with the highest share of their limits come first, then the pods without a limit, by usage.
+- For requests and duration, the pods with the highest mean come first.
+
+When the pods are in more than one cluster and `--cluster` is not set, each pod's name starts with its cluster, as in `<cluster>/<pod>`.
+
+The request rate follows the aggregation.
+The errors line shows only under `total` and `max`: a pod that served no failed request has no error series, so an average or minimum would leave it out and read too high.
+The error rate, the percentage of all the workload's requests that failed, and the duration percentiles always cover the whole workload.
+
+#### JSON output
+
+Print the series and Dash0 links as JSON (the default in agent mode):
 
 ```bash
 $ dash0 -X k8s pods watch <pod> -n <namespace> -o json --range 15m
 {
   "namespace": "<namespace>",
+  "kind": "pod",
+  "name": "<pod>",
   "pod": "<pod>",
   "step": "1m0s",
   "timestamps": ["2026-11-12T19:00:00Z", ...],
-  "series": {"cpu": [0.12, ...], "mem": [...], "requests": [...], "logs:ERROR": [...], ...},
+  "series": {"cpu": [0.12, ...], "cpuUtil": [0.31, ...], "mem": [...], "requests": [...], "errorRate": [...], "logs:ERROR": [...], ...},
   "links": {"metrics": "https://app.dash0.com/goto/metrics/query-builder?...", "traces": "...", "logs": "..."}
 }
 ```
 
+`cpuUtil` and `memUtil` are the share of the limit, from 0 to 1, and `errorRate` is the percentage of requests that failed.
+A workload's JSON has no `pod` field, and adds `aggregate`, the aggregation its series use, and a `pods` series with the number of running pods.
+With `--per-pod`, it also has a `<key>Pods:<pod>` series for each pod, such as `cpuPods:<pod>`, or `cpuPods:<cluster>/<pod>` without `--cluster`.
 `failed` lists the panels whose query failed, such as `["p99"]`, and is left out when every panel loaded.
 The command exits 0 when at least one panel loaded, and non-zero when none did.
 
+#### Metric semantics
+
+The page queries `POST /api/prometheus/api/v1/query_range`, matching the pod on `k8s_namespace_name` and `k8s_pod_name`, or a workload's pods on `k8s_<kind>_name`, such as `k8s_deployment_name` (and on `k8s_cluster_name` with `--cluster`):
+
+| Section | Metrics |
+|---------|---------|
+| CPU | `k8s.pod.cpu.usage`, `k8s.container.cpu_request`, `k8s.container.cpu_limit` |
+| Memory | `k8s.pod.memory.working_set`, `k8s.container.memory_request`, `k8s.container.memory_limit` |
+| Requests | Rate, errors, and duration p50, p95, and p99 of the pods' `SERVER` spans, from `dash0.spans` and `dash0.spans.duration` |
+| Logs | Log records per step by `otel_log_severity_range`, from `dash0.logs` |
+| Pods | A workload's running pods, from `k8s.pod.phase` |
+
+Dash0 aggregates the pods in the query, so switching the aggregation sends the queries again.
+Each usage gauge is taken once per pod, and each request and limit once per container, before they are added up, so a pod whose resource attributes changed is not counted twice.
+Without `--cluster`, a workload or pod of the same name in different clusters is added together; pass `--cluster` to match one cluster.
+The completeness of a pod's limit is checked against its containers in `k8s.container.restarts`.
+
+The charts draw thin braille lines, Ditt0's Dots line type, with a 2 × 4 grid of dots in each cell.
+
 #### k9s plugin
 
-Add the page to k9s' `plugins.yaml` (`k9s info` prints where it is) to open it on the selected pod or container with `Shift-D`:
+Add the page to k9s' `plugins.yaml` (`k9s info` prints where it is) to open it on the selected pod, container, or workload with `Shift-D`:
 
 ```yaml
 plugins:
@@ -3489,7 +3602,23 @@ plugins:
     background: false
     confirm: false
     args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+  dash0-workload-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+      - jobs
+      - cronjobs
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
+
+k9s passes the workload's resource as `$RESOURCE_NAME`, such as `deployments`, which names its command group.
 
 `-o page` keeps the page when k9s runs inside an AI agent's environment, where agent mode would default to JSON.
 To query a cluster with its own profile or match it by cluster name, put a copy of the plugin in k9s' per-context `clusters/<cluster>/<context>/plugins.yaml` with `--profile <profile>` before `k8s`, or `--cluster <name>` after `watch`.

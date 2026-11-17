@@ -7,7 +7,7 @@ Use the word "asset" consistently where appropriate.
 ## Top-level Asset Commands
 - Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
 - Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `auth-tokens`, `aws-metric-scrape-configs`
-- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0, `k8s pods` for Kubernetes workloads
+- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0, `k8s pods`, `k8s deployments`, and the other kinds for Kubernetes workloads
 
 ## Standard CRUD Subcommands for Assets
 All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
@@ -89,12 +89,14 @@ The `teams` command manages organizational teams (not assets — no dataset, no 
 | `remove-members` | -        | Remove members from a team                      |
 
 ## Kubernetes Subcommands (experimental)
-The `k8s` command groups what shows Dash0 telemetry for Kubernetes workloads, so commands for other Kubernetes objects land next to `pods` instead of at the top level.
-`k8s pods` shows the telemetry of one pod (not an asset: no YAML input, no `apply`):
+The `k8s` command groups what shows Dash0 telemetry for Kubernetes workloads, with one command group per kind, as in `kubectl get <kind>`.
+`k8s pods` shows the telemetry of one pod, and `k8s deployments`, `k8s statefulsets`, `k8s daemonsets`, `k8s replicasets`, `k8s jobs`, and `k8s cronjobs` that of all a workload's pods (not assets: no YAML input, no `apply`).
+Each group is named by the plural resource name that k9s passes as `$RESOURCE_NAME`, and takes kubectl's singular and short names as aliases: `pod` and `po`, `deployment` and `deploy`, `statefulset` and `sts`, `daemonset` and `ds`, `replicaset` and `rs`, `job`, and `cronjob` and `cj`.
+Each group has one subcommand:
 
 | Subcommand | Alias | Description                                                               |
 |------------|-------|---------------------------------------------------------------------------|
-| `watch`    | -     | Full-screen page of a pod's CPU, memory, requests, and logs; refreshes on a timer |
+| `watch`    | -     | Full-screen page of a pod's or a workload's pods' CPU, memory, requests, and logs; refreshes on a timer |
 
 Use `watch` for a subcommand that keeps a page open and refreshes it until the user quits.
 

@@ -21,7 +21,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Query | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
 | Send | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
-| Interactive | `k8s pods watch` | Full-screen terminal page, refreshes on a timer, experimental |
+| Interactive | `k8s pods watch`, `k8s deployments watch`, and the other kinds | Full-screen terminal page, refreshes on a timer, experimental |
 | Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
@@ -192,7 +192,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
 | `evals` | Generative AI evaluation (eval) CRUD (dataset-scoped, experimental; `kind: Dash0GenerativeAiEvaluation`; `dash0.com/origin` is the upsert key; `metadata.name` and the judge output kind cannot change) |
 | `failed-checks` | Query active and historical alerting issues |
-| `k8s` | A pod's CPU, memory, requests, and logs as a terminal page or JSON (`k8s pods watch`, experimental; also a k9s plugin) |
+| `k8s` | A pod's or workload's CPU, memory, requests, and logs as a terminal page or JSON (`k8s pods watch`, `k8s deployments watch`, and the other kinds, experimental; also a k9s plugin) |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
 | `logs` | Query and send log records |
 | `members` | Organization membership management |

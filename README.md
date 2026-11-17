@@ -893,16 +893,38 @@ The proxy exits on `Ctrl-C` (or `SIGTERM`) after draining in-flight work within 
 On startup, if either default port is already in use, the proxy exits non-zero with an actionable error that names the holding process.
 See [docs/commands.md](docs/commands.md#otlp-proxy-experimental) for the full reference, including the decoration flags (`--scope-attribute`, `--log-attribute`, `--span-attribute`, `--metric-attribute`, `--scope-name`, `--scope-version`), the agent-mode event schema, and the failure-mode classification.
 
-### Pod page and k9s plugin (experimental)
+### Monitor Kubernetes workloads (experimental)
 
-The `k8s pods watch` command draws a Kubernetes pod's CPU and memory from Dash0 in the terminal, plus its requests, errors, duration, and log counts when the pod has spans and logs.
-The page refreshes every 30 seconds; `1` to `4` pick the range, `o`, `t`, and `l` open the pod's metrics, traces, and logs in Dash0, and `q` quits.
+Monitor Kubernetes pods and workloads in your terminal, with telemetry from Dash0.
+The page shows CPU and memory against their requests and limits, plus request rate, errors, duration, and logs when the pods have spans and logs.
+It refreshes every 30 seconds.
+
+Watch a pod:
 
 ```bash
 dash0 -X k8s pods watch <pod> -n <namespace>
 ```
 
-The same page runs as a [k9s plugin](https://k9scli.io/topics/plugins/) on `Shift-D`.
+Watch all the pods of a deployment:
+
+```bash
+dash0 -X k8s deployments watch <deployment> -n <namespace>
+```
+
+`k8s statefulsets`, `k8s daemonsets`, `k8s replicasets`, `k8s jobs`, and `k8s cronjobs` work the same way.
+
+In the page:
+
+- `1` to `4` change the time range.
+- `o`, `t`, and `l` open the metrics, traces, and logs in Dash0.
+- `q` or `Esc` quits.
+
+On a workload's page:
+
+- `a` switches between the pods' total, average, minimum, and maximum.
+- `p` draws a line for each of the busiest pods, to find those closest to their limits.
+
+The page also runs as a [k9s plugin](https://k9scli.io/topics/plugins/): press `Shift-D` on a pod, container, or workload to open it.
 Add this to k9s' `plugins.yaml` (`k9s info` prints where it is):
 
 ```yaml
@@ -925,9 +947,23 @@ plugins:
     background: false
     confirm: false
     args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+  dash0-workload-metrics:
+    shortCut: Shift-D
+    description: Dash0 metrics
+    scopes:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+      - jobs
+      - cronjobs
+    command: dash0
+    background: false
+    confirm: false
+    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
 
-See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for the full reference.
+See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for all the flags, how the aggregations work, and the metric details.
 
 ### Common settings
 
