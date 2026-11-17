@@ -2535,6 +2535,8 @@ At least one of `--promql` or `--filter` must be specified.
 
 The `--query` flag (alias for `--promql`) and `--time` flag (alias for `--from`) are deprecated but still accepted for backwards compatibility.
 
+A link that opens the same PromQL in the Dash0 query builder is emitted alongside the results; see [explorer deep links](#explorer-deep-links).
+
 #### Output formats
 
 The default `table` output uses a verbose label-per-line format showing all labels for each metric result.
@@ -2867,7 +2869,7 @@ Using `--column` with `-o json` returns an error.
 
 ### Explorer deep links
 
-`logs query`, `spans query`, `failed-checks query`, and `traces get` print a link that reopens the same query in the corresponding Dash0 explorer.
+`logs query`, `spans query`, `failed-checks query`, `traces get`, and `metrics instant` print a link that reopens the same query in the Dash0 web app.
 The link carries the filters, the time range, and the dataset, so following it lands on the same result set in the web app, ready to narrow further or share with a colleague.
 
 Where the link appears depends on the output format:
@@ -2903,7 +2905,7 @@ $ dash0 logs query --filter "otel.log.severity.range is ERROR" -o json
 }
 ```
 
-The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`) is unaffected.
+The field sits next to the payload rather than wrapping it, so a consumer reading `.resourceLogs` (or `.issues`, for `failed-checks query`, or `.data`, for `metrics instant`) is unaffected.
 It is omitted entirely when no link could be built.
 
 > [!NOTE]
@@ -2918,9 +2920,15 @@ Which explorer each command opens:
 | `spans query` | `/goto/traces/explorer` | `--filter`, `--from`, `--to`, dataset |
 | `failed-checks query` | `/goto/alerting/failed-checks` | `--filter`, `--status`, `--active`, `--from`, `--to`, dataset |
 | `traces get` | `/goto/traces/explorer` | trace ID, dataset |
+| `metrics instant` | `/goto/metrics/query-builder` | PromQL from `--promql` or `--filter`, `--from`, dataset |
 
 On `failed-checks query`, `--status` and `--active` are expanded into their equivalent `dash0.issue.status` and `dash0.issue.end_time` filters before the link is built, so they are carried like any other filter.
-`metrics instant` prints no deep link.
+On `metrics instant`, the link carries the PromQL, so `--filter` reaches the query builder as the PromQL it translates to.
+The query builder draws a chart over a time range, so a link for a `--from` in the past opens the hour that ends at the evaluation time.
+Without `--from`, the link carries no time range, and the query builder opens on its default range, which ends now.
+A relative `--from` with a unit other than `h`, `m`, or `s`, such as `now-1d`, also carries no time range.
+
+Absolute `--from` and `--to` values are written into the link with milliseconds, such as `2026-11-15T09:00:00.000Z`, because the web app rejects a link without them.
 
 Two more details are worth knowing before scripting against this:
 
