@@ -190,7 +190,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 
 	switch kind {
 	case "dashboard", "persesdashboard":
-		err = apiClient.DeleteDashboard(ctx, identifier, dataset)
+		identifier, err = dashboardDeleteKey(ctx, apiClient, dataset, d)
+		if err == nil {
+			err = apiClient.DeleteDashboard(ctx, identifier, dataset)
+		}
 	case "checkrule":
 		if declared[identifier] {
 			// A surviving single-alert CRD's check rule lives here. Reporting
@@ -464,4 +467,19 @@ func (index checkRuleNameIndex) resolve(name string) (string, error) {
 		return "", nil
 	}
 	return deletable[0], nil
+}
+
+// dashboardDeleteKey returns the key apply wrote the dashboard at: its
+// identifier, or its alias when the identifier is not found. The API answers
+// a DELETE of an unknown dashboard with 200, so deleting at the wrong key
+// would report a deletion that never happened.
+func dashboardDeleteKey(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (string, error) {
+	if d.Alias == "" {
+		return d.Identifier, nil
+	}
+	_, err := apiClient.GetDashboard(ctx, d.Identifier, dataset)
+	if dash0api.IsNotFound(err) {
+		return d.Alias, nil
+	}
+	return d.Identifier, err
 }

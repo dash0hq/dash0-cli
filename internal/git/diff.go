@@ -17,6 +17,11 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
+	// Alias is the dash0.com/id label of a dashboard keyed by its origin (see
+	// asset.DashboardAlias). The API ignores the origin on an update, so a
+	// dashboard that apply updated at this id has no origin, and the delete
+	// must fall back to the id.
+	Alias string
 	// SpamFilterUsesOrigin records whether the deleted spam filter carried a
 	// dash0.com/origin label, when Kind is "spamfilter" (meaningless for
 	// every other kind). false means the filter was identified by
@@ -101,6 +106,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			Kind:                             key.Kind,
 			Identifier:                       key.Identifier,
 			Path:                             path,
+			Alias:                            before.Aliases[key],
 			SpamFilterUsesOrigin:             before.SpamFilterUsesOriginByIdentifier[key.Identifier],
 			SLOUsesOrigin:                    before.SLOUsesOriginByIdentifier[key.Identifier],
 			GenerativeAiEvaluationUsesOrigin: before.GenerativeAiEvaluationUsesOriginByIdentifier[key.Identifier],

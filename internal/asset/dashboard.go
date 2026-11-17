@@ -73,8 +73,9 @@ func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 	lookupKey := key
 	existing, err := apiClient.GetDashboard(ctx, lookupKey, dataset)
 	// An exported dashboard that gains an origin still names its server id in
-	// dash0.com/id, so updating at that id gives the existing dashboard the
-	// origin instead of creating a second one.
+	// dash0.com/id, so updating at that id keeps it from becoming a second
+	// dashboard. The API ignores the origin on an update, so the dashboard
+	// keeps no origin, and apply --since deletes it at the id.
 	if dash0api.IsNotFound(err) && alias != "" {
 		lookupKey = alias
 		existing, err = apiClient.GetDashboard(ctx, lookupKey, dataset)
@@ -133,7 +134,7 @@ func DashboardKey(dashboard *dash0api.DashboardDefinition) string {
 
 // DashboardAlias returns the dash0.com/id label when the dashboard upserts by
 // another key, or "". It names the same dashboard: ImportDashboard falls back
-// to it, and apply --since does not delete it.
+// to it, and apply --since deletes at it when the key is not found.
 func DashboardAlias(dashboard *dash0api.DashboardDefinition) string {
 	if dashboard == nil || dashboard.Metadata.Labels == nil || dashboard.Metadata.Labels.Dash0Comid == nil {
 		return ""

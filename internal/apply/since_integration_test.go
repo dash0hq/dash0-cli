@@ -2940,3 +2940,77 @@ func TestApply_Since_SamplingRuleInAnotherDatasetFails(t *testing.T) {
 	require.Error(t, cmdErr)
 	assert.Contains(t, cmdErr.Error(), `sampling rule "dash0-cli_checkout-errors" already exists in another dataset`)
 }
+
+// A dashboard file with both labels was updated at its dash0.com/id, and the
+// API ignores the origin on an update, so the dashboard may have no origin.
+// Removing the file must delete it at the key apply wrote it at.
+func TestApply_Since_DashboardWithOriginAndIDDeletesWhereApplyWrote(t *testing.T) {
+	const (
+		origin     = "dash0-cli_checkout"
+		id         = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+		originPath = apiPathDashboards + "/" + origin
+		idPath     = apiPathDashboards + "/" + id
+	)
+	for _, tt := range []struct {
+		name         string
+		originStatus int
+		originBody   string
+		wantDeleted  string
+	}{
+		{"origin not found deletes at the id", http.StatusNotFound, testutil.FixtureDashboardsNotFound, idPath},
+		{"origin found deletes at the origin", http.StatusOK, testutil.FixtureDashboardsImportSuccess, originPath},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "dashboard.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: "+id+"\n    dash0.com/origin: "+origin+"\nspec:\n  display:\n    name: Checkout\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboard")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, originPath, testutil.MockResponse{
+				StatusCode: tt.originStatus,
+				BodyFile:   tt.originBody,
+				Validator:  testutil.RequireHeaders,
+			})
+			for _, path := range []string{originPath, idPath} {
+				server.On(http.MethodDelete, path, testutil.MockResponse{
+					StatusCode: http.StatusOK,
+					Body:       map[string]any{},
+					Validator:  testutil.RequireHeaders,
+				})
+			}
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.NoError(t, cmdErr)
+			var deletes []string
+			for _, request := range server.Requests() {
+				if request.Method == http.MethodDelete {
+					deletes = append(deletes, request.Path)
+				}
+			}
+			assert.Equal(t, []string{tt.wantDeleted}, deletes)
+		})
+	}
+}

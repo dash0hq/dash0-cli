@@ -1546,7 +1546,7 @@ func TestApply_Dashboard_OriginNotFoundUpdatesAtID(t *testing.T) {
 
 	var body dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(requests[2].Body, &body))
-	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "the existing dashboard gets the origin")
+	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "the PUT carries the origin, which the API ignores on an update")
 }
 
 func TestApply_Dashboard_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
