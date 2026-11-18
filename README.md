@@ -937,7 +937,7 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $NAME]
   dash0-container-metrics:
     shortCut: Shift-D
     description: Dash0 metrics
@@ -946,7 +946,7 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $POD]
   dash0-workload-metrics:
     shortCut: Shift-D
     description: Dash0 metrics
@@ -960,8 +960,12 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
+
+`--cluster, $CONTEXT` assumes that each kube context is named like the cluster in Dash0.
+If yours are not, see [the k9s plugin docs](docs/commands.md#k9s-plugin) to read the cluster name from the Dash0 operator instead.
+Without `--cluster`, the page adds together the pods of every cluster with a workload of that name.
 
 See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for all the flags, how the aggregations work, and the metric details.
 
