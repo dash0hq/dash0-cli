@@ -86,12 +86,21 @@ func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 	if err != nil {
 		return plan, ignoreNotFound(err)
 	}
-	deletedAt := DashboardDeletedAt(existing)
-	if deletedAt == nil && IsEphemeralDashboard(existing) != IsEphemeralDashboard(dashboard) {
-		return plan, &DashboardKindMismatchError{ID: lookupKey, Stored: DashboardDisplayKind(existing), Proposed: DashboardDisplayKind(dashboard)}
+	if err := CheckDashboardKind(lookupKey, existing, dashboard); err != nil {
+		return plan, err
 	}
-	plan.Key, plan.Action, plan.Before = lookupKey, actionForExisting(deletedAt), existing
+	plan.Key, plan.Action, plan.Before = lookupKey, actionForExisting(DashboardDeletedAt(existing)), existing
 	return plan, nil
+}
+
+// CheckDashboardKind returns a DashboardKindMismatchError when proposed would
+// change the stored dashboard at id between ephemeral and permanent. A deleted
+// dashboard can come back as either kind.
+func CheckDashboardKind(id string, stored, proposed *dash0api.DashboardDefinition) error {
+	if DashboardDeletedAt(stored) != nil || IsEphemeralDashboard(stored) == IsEphemeralDashboard(proposed) {
+		return nil
+	}
+	return &DashboardKindMismatchError{ID: id, Stored: DashboardDisplayKind(stored), Proposed: DashboardDisplayKind(proposed)}
 }
 
 // DashboardKindMismatchError reports a write that would change a dashboard

@@ -576,6 +576,7 @@ Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,gitops/prod,htt
 For dashboards, a failed name lookup emits a warning to stderr and shows `<name>` in `table` and `wide` output, or an empty name in `csv` output.
 Listing continues with the remaining dashboards, and name lookup failures do not change the exit status.
 JSON and YAML exports fail on any dashboard fetch error instead of producing incomplete definitions.
+A dashboard deleted between the list and its fetch, such as an ephemeral dashboard whose ttl ran out, is left out of the export.
 
 Aliases: `ls`
 

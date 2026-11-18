@@ -411,3 +411,76 @@ spec:
   display:
     name: Test Dashboard
 `
+
+func TestUpdateDashboard_EphemeralOverPermanentFailsBeforeTheWrite(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: EphemeralDashboard
+metadata:
+  name: My Dashboard
+spec:
+  ttl: 1h
+  display:
+    name: My Dashboard
+`), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+testDashboardID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPut, "/api/dashboards/"+testDashboardID, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	for _, extra := range [][]string{{"--dry-run"}, nil} {
+		cmd := NewDashboardsCmd()
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+		cmd.SetArgs(append([]string{"update", testDashboardID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken}, extra...))
+		var err error
+		testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+		require.Error(t, err, "args %v", extra)
+		assert.Contains(t, err.Error(), "is stored as dashboard")
+	}
+	assert.Empty(t, server.RequestBodies(t, http.MethodPut, "/api/dashboards/"+testDashboardID))
+}
+
+func TestUpdateDashboard_EphemeralShowsItsKindAfterTheWrite(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	yamlFile := filepath.Join(t.TempDir(), "dashboard.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: EphemeralDashboard
+metadata:
+  name: My Dashboard
+spec:
+  ttl: 1h
+  display:
+    name: My Dashboard
+`), 0644))
+	stored := map[string]any{
+		"kind":     "EphemeralDashboard",
+		"metadata": map[string]any{"name": "My Dashboard"},
+		"spec":     map[string]any{"ttl": "1h", "display": map[string]any{"name": "My Dashboard"}},
+	}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+testDashboardID, testutil.MockResponse{StatusCode: http.StatusOK, Body: stored, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, "/api/dashboards/"+testDashboardID, testutil.MockResponse{StatusCode: http.StatusOK, Body: stored, Validator: testutil.RequireHeaders})
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"update", testDashboardID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Ephemeral dashboard "My Dashboard"`)
+}

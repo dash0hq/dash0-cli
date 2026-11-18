@@ -4,6 +4,7 @@ package dashboards
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -83,6 +84,49 @@ func TestListDashboards_NameLookupFailures(t *testing.T) {
 			assert.Contains(t, stderr, "server returned 500")
 			assert.Contains(t, stderr, "warning: failed to resolve dashboard "+ids[2]+":")
 			assert.Contains(t, stderr, "dashboard disappeared")
+		})
+	}
+}
+
+func TestListDashboards_ExportLeavesOutADashboardDeletedAfterTheList(t *testing.T) {
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			ids := []string{
+				"0c3893ac-3d26-11ef-943e-eedf0419e619",
+				"0e1e559b-a2e7-4504-b665-6121b84a28c2",
+			}
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, apiPathDashboards, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureListSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodGet, apiPathDashboards+"/"+ids[0], testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   fixtureNotFound,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodGet, apiPathDashboards+"/"+ids[1], testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureGetSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			cmd := NewDashboardsCmd()
+			cmd.SetArgs([]string{"list", "--api-url", server.URL, "--auth-token", testAuthToken, "--limit", "2", "-o", format})
+			var err error
+			stdout := testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+			require.NoError(t, err)
+			definitions := strings.Count("\n"+stdout, "\nkind: Dashboard\n")
+			if format == "json" {
+				var list []any
+				require.NoError(t, json.Unmarshal([]byte(stdout), &list))
+				definitions = len(list)
+			}
+			assert.Equal(t, 1, definitions)
+			assert.NotContains(t, stdout, ids[0])
 		})
 	}
 }

@@ -91,6 +91,9 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 			AssetID:   id,
 		})
 	}
+	if err := asset.CheckDashboardKind(id, before, dashboard); err != nil {
+		return err
+	}
 
 	displayName := dash0api.GetDashboardName(dashboard)
 	if displayName == "" {
@@ -124,7 +127,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 		resultDisplayName = result.Metadata.Name
 	}
 	return asset.PrintUpdateOutcome(os.Stdout, asset.UpdateOutcome{
-		DisplayKind:     "Dashboard",
+		DisplayKind:     asset.DashboardDisplayKind(result),
 		Name:            resultDisplayName,
 		ID:              id,
 		Before:          before,
