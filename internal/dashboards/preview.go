@@ -167,7 +167,8 @@ func usePreviewID(dashboard *dash0api.DashboardDefinition, prefix string) {
 		return
 	}
 	if prefix != "" {
-		key = prefixSlug(prefix) + "-" + key
+		// The NUL keeps prefix "pr" with key "1-x" apart from prefix "pr-1" with key "x".
+		key = prefixSlug(prefix) + "\x00" + key
 	}
 	previewID := uuid.NewSHA1(previewIDNamespace, []byte(key)).String()
 	if dashboard.Metadata.Dash0Extensions == nil {

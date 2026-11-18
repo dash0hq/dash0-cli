@@ -44,7 +44,7 @@ spec:
 const (
 	ordersPreviewID         = "dd67c185-957d-5d5b-afa5-f1be006171e3"
 	checkoutPreviewID       = "a2b44bf1-36e5-5b71-a673-3296084b8222"
-	ordersPrefixedPreviewID = "711a89a5-0d38-52bd-9707-31779be82673" // "pr-376-orders-overview"
+	ordersPrefixedPreviewID = "3ea8cb46-3cb3-58f7-b558-c65c36aae969" // "pr-376\x00orders-overview"
 )
 
 // The id the API assigned to the permanent dashboard whose own id,
