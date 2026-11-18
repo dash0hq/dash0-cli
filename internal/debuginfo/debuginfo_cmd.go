@@ -61,12 +61,22 @@ func newUploadCmd() *cobra.Command {
 Only source-map is supported yet.
 
 For source maps, <path> is a script or a build output directory.
-In a directory, every .js, .mjs, and .cjs file with a source map is uploaded. The source map is the
-file named by the //# sourceMappingURL= comment of the script, or <file>.map when it has none.
-Dash0 matches a source map to a browser profile frame by the URL the script is served from, so pass
---base-url with the public URL of the directory, or --script-url with the full URL of a single script.
+In a directory, every .js, .mjs, and .cjs file with a source map is uploaded, outside node_modules.
+The source map is the file named by the //# sourceMappingURL= comment of the script, or <file>.map
+when it has none.
+
+Dash0 finds the source map of a frame in one of two ways:
+  - Node.js profiles: by a debug ID that the profiler reads from the end of the script. This is the
+    default. Scripts without a debug ID get one: the command writes it into the script and its source
+    map, so run it after the build and before you package or deploy the build output.
+  - Browser profiles: by the URL the script is served from. Pass --base-url with the public URL of the
+    directory, or --script-url with the full URL of a single script. No file is changed.
 Files that Dash0 already has are skipped; pass --force to replace them.` + internal.CONFIG_HINT,
-		Example: `  # Preview the source maps of a Vite build served from the site root
+		Example: `  # Add debug IDs to a Node.js build and upload its source maps
+  dash0 -X debuginfo upload --type source-map dist
+
+  # Preview the source maps of a Vite build served from the site root
+
   dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
 
   # Upload the source maps of a Next.js build
@@ -93,7 +103,7 @@ Files that Dash0 already has are skipped; pass --force to replace them.` + inter
 	cmd.Flags().StringVar(&flags.Endpoint, "endpoint", "", "URL of the Dash0 debuginfo gRPC service (default: the host of the OTLP URL on port 4317)")
 	cmd.Flags().StringVar(&flags.OtlpUrl, "otlp-url", "", "OTLP endpoint URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile); it must grant ingest:debuginfo")
-	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "List what would be uploaded without uploading")
+	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "List what would be uploaded without changing files or uploading")
 	cmd.Flags().BoolVar(&flags.Force, "force", false, "Upload even when Dash0 already has the debug information")
 	return cmd
 }
@@ -127,6 +137,11 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		}
 	}
 
+	var writes []fileWrite
+	for _, artifact := range artifacts {
+		writes = append(writes, artifact.writes...)
+	}
+
 	results := make([]uploadResult, 0, len(artifacts))
 	if flags.DryRun {
 		for _, artifact := range artifacts {
@@ -157,12 +172,35 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 	}
 	defer func() { _ = closeConnection() }()
 
+	// Credentials resolve first, so that a missing token fails before any file changes.
+	if err := checkWritable(writes); err != nil {
+		return err
+	}
+	for _, write := range writes {
+		if err := writeFileAtomically(write); err != nil {
+			return err
+		}
+	}
+	if injected := countInjected(artifacts); injected > 0 && !agentmode.Enabled {
+		fmt.Printf("Injected debug IDs into %s\n", pluralize(injected, "script"))
+	}
+
+	uploadedBy := map[string]string{}
 	for _, artifact := range artifacts {
+		if firstScript, seen := uploadedBy[artifact.BuildID]; seen {
+			result := uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped, Reason: "same source map as " + firstScript}
+			results = append(results, result)
+			if !agentmode.Enabled {
+				printResultLine(result)
+			}
+			continue
+		}
+		uploadedBy[artifact.BuildID] = artifact.Script
 		body, err := artifact.readBundle()
 		if err != nil {
 			return err
 		}
-		outcome, reason, err := debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, body)
+		outcome, reason, err := debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, artifact.buildIDType(), body)
 		if err != nil {
 			if agentmode.Enabled {
 				_ = printJSON(results)
@@ -191,9 +229,6 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 		if flags.ScriptURL != "" || flags.SourceMap != "" {
 			return nil, fmt.Errorf("--script-url and --source-map apply to a single script; use --base-url for a directory")
 		}
-		if flags.BaseURL == "" {
-			return nil, fmt.Errorf("--base-url is required when <path> is a directory")
-		}
 		artifacts, skipped, err := discoverSourceMaps(inputPath, flags.BaseURL)
 		if err != nil {
 			return nil, err
@@ -210,18 +245,14 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 		return artifacts, nil
 	}
 
-	if (flags.BaseURL == "") == (flags.ScriptURL == "") {
-		return nil, fmt.Errorf("pass exactly one of --base-url and --script-url for a single script")
+	if flags.BaseURL != "" && flags.ScriptURL != "" {
+		return nil, fmt.Errorf("pass only one of --base-url and --script-url for a single script")
 	}
 	scriptURL := flags.ScriptURL
-	if scriptURL == "" {
+	if flags.BaseURL != "" {
 		if scriptURL, err = joinBaseURL(flags.BaseURL, filepath.Base(inputPath)); err != nil {
 			return nil, err
 		}
-	}
-	buildID, err := sourceMapBuildID(scriptURL)
-	if err != nil {
-		return nil, err
 	}
 	mapPath := flags.SourceMap
 	if mapPath == "" {
@@ -234,7 +265,11 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 		}
 		mapPath = located
 	}
-	return []sourceMapArtifact{{BuildID: buildID, ScriptURL: scriptURL, Script: inputPath, SourceMap: mapPath}}, nil
+	artifact, err := newSourceMapArtifact(inputPath, mapPath, scriptURL)
+	if err != nil {
+		return nil, err
+	}
+	return []sourceMapArtifact{artifact}, nil
 }
 
 func printDryRun(results []uploadResult) error {
@@ -243,9 +278,23 @@ func printDryRun(results []uploadResult) error {
 	}
 	fmt.Printf("Dry run: %s found\n", pluralize(len(results), "source map"))
 	for _, result := range results {
-		fmt.Printf("  %s <- %s, %s\n", result.BuildID, result.Script, result.SourceMap)
+		note := ""
+		if result.Injected {
+			note = " (debug ID would be injected)"
+		}
+		fmt.Printf("  %s <- %s, %s%s\n", result.BuildID, result.Script, result.SourceMap, note)
 	}
 	return nil
+}
+
+func countInjected(artifacts []sourceMapArtifact) int {
+	count := 0
+	for _, artifact := range artifacts {
+		if artifact.Injected {
+			count++
+		}
+	}
+	return count
 }
 
 func printResultLine(result uploadResult) {

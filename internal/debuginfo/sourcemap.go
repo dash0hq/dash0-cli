@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
 )
 
 // Characters that the object store client of the Dash0 query path percent-encodes in a key, while the
@@ -58,9 +60,34 @@ func encodeSourceMapBundle(script, sourceMap []byte) []byte {
 
 type sourceMapArtifact struct {
 	BuildID   string `json:"buildId"`
-	ScriptURL string `json:"scriptUrl"`
+	ScriptURL string `json:"scriptUrl,omitempty"`
 	Script    string `json:"script"`
 	SourceMap string `json:"sourceMap"`
+	// Injected reports that the debug ID is written into the script or its source map; in a dry run, that it would be.
+	Injected bool `json:"injected,omitempty"`
+	writes   []fileWrite
+}
+
+// A source map is keyed by the URL of its script for browser frames, and by a debug ID for Node.js frames.
+func (a sourceMapArtifact) buildIDType() debuginfopb.BuildIDType {
+	if a.ScriptURL != "" {
+		// A script URL is not a hash, but the hash type keeps the service from asking public debuginfod servers about it.
+		return debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH
+	}
+	return debuginfopb.BuildIDType_BUILD_ID_TYPE_SOURCE_MAP_DEBUG_ID
+}
+
+// newSourceMapArtifact keys the pair by the script URL when scriptURL is set, and by a debug ID otherwise.
+func newSourceMapArtifact(scriptPath, sourceMapPath, scriptURL string) (sourceMapArtifact, error) {
+	artifact := sourceMapArtifact{ScriptURL: scriptURL, Script: scriptPath, SourceMap: sourceMapPath}
+	var err error
+	if scriptURL != "" {
+		artifact.BuildID, err = sourceMapBuildID(scriptURL)
+		return artifact, err
+	}
+	artifact.BuildID, artifact.writes, err = planDebugID(scriptPath, sourceMapPath)
+	artifact.Injected = len(artifact.writes) > 0
+	return artifact, err
 }
 
 func (a sourceMapArtifact) readBundle() ([]byte, error) {
@@ -141,14 +168,19 @@ func locateSourceMap(scriptPath string) (string, string, error) {
 	return mapPath, "", nil
 }
 
-// discoverSourceMaps walks dir and pairs every script with its source map (see locateSourceMap).
-// It returns the pairs, sorted by build ID, and the scripts it skipped.
+// discoverSourceMaps walks dir and pairs every script with its source map (see locateSourceMap), keyed by its URL
+// under baseURL, or by a debug ID when baseURL is empty. It returns the pairs, sorted by build ID, and the scripts
+// it skipped.
 func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScript, error) {
 	var artifacts []sourceMapArtifact
 	var skipped []skippedScript
 	err := filepath.WalkDir(dir, func(filePath string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		// Dependencies ship their own scripts and maps, and pnpm hard-links them from a store shared across projects.
+		if entry.IsDir() && entry.Name() == "node_modules" {
+			return filepath.SkipDir
 		}
 		if entry.IsDir() || !isScript(entry.Name()) {
 			return nil
@@ -161,19 +193,21 @@ func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScri
 			skipped = append(skipped, skippedScript{Script: filePath, Reason: skipReason})
 			return nil
 		}
-		relativePath, err := filepath.Rel(dir, filePath)
-		if err != nil {
-			return err
+		var scriptURL string
+		if baseURL != "" {
+			relativePath, err := filepath.Rel(dir, filePath)
+			if err != nil {
+				return err
+			}
+			if scriptURL, err = joinBaseURL(baseURL, filepath.ToSlash(relativePath)); err != nil {
+				return err
+			}
 		}
-		scriptURL, err := joinBaseURL(baseURL, filepath.ToSlash(relativePath))
-		if err != nil {
-			return err
-		}
-		buildID, err := sourceMapBuildID(scriptURL)
+		artifact, err := newSourceMapArtifact(filePath, mapPath, scriptURL)
 		if err != nil {
 			return fmt.Errorf("%s:\n  %w", filePath, err)
 		}
-		artifacts = append(artifacts, sourceMapArtifact{BuildID: buildID, ScriptURL: scriptURL, Script: filePath, SourceMap: mapPath})
+		artifacts = append(artifacts, artifact)
 		return nil
 	})
 	if err != nil {

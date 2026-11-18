@@ -2555,32 +2555,66 @@ Only `source-map` is supported yet; the other types fail with a "not supported y
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--type` | | Type of debug information (required) |
-| `--base-url` | | Public URL that `<path>` is served from |
+| `--base-url` | | Public URL that `<path>` is served from; keys source maps for browser profiles |
 | `--script-url` | | Public URL of the script, when `<path>` is a single script |
 | `--source-map` | the file the `sourceMappingURL` comment names, or `<path>.map` | Source map of the script, when `<path>` is a single script |
 | `--endpoint` | the host of the OTLP URL on port 4317 | URL of the Dash0 debuginfo gRPC service |
 | `--otlp-url` | | OTLP endpoint URL (overrides active profile) |
 | `--auth-token` | | Auth token (overrides active profile) |
-| `--dry-run` | `false` | List what would be uploaded without uploading |
+| `--dry-run` | `false` | List what would be uploaded without changing files or uploading |
 | `--force` | `false` | Upload even when Dash0 already has the debug information |
 
-Dash0 matches a source map to a browser profile frame by the URL the script is served from.
-The key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.
-A URL whose path contains a character Dash0 cannot look up, such as `%`, `~`, or `*`, fails before any upload.
+Dash0 finds the source map of a profile frame by one of two keys:
 
-When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file with a source map is uploaded, and its URL is `--base-url` plus its path relative to `<path>`.
+- Node.js profiles use a debug ID, a UUID that the profiler reads from the `//# debugId=<uuid>` comment at the end of the script.
+  This is the default, used when you pass neither `--base-url` nor `--script-url`.
+- Browser profiles use the URL the script is served from.
+  Pass `--base-url` or `--script-url` to key source maps this way.
+
+For Node.js, collect profiles with the Parca Agent v0.47.0 or later, or another profiler that reads the debug ID.
+A script and its source map that already carry the same debug ID are uploaded as they are, so debug IDs that a bundler or another upload tool already wrote are kept.
+Otherwise the command writes the debug ID into the files: the `debugId` field into the source map, and the comment as the last line of the script.
+The debug ID is computed from the source map, so the same build always gets the same one, and it matches the debug ID that `@polarsignals/sourcemap-cli` writes.
+Run the command after the build step and before you package or deploy the build output, because the deployed scripts must carry the comment.
+The command checks that every file is writable and that the credentials resolve before it changes any file.
+It fails when a script and its source map carry different debug IDs, or when a script has a debug ID comment the profiler cannot read, such as an indented one.
+
+For browser profiles, the key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.
+A URL whose path contains a character Dash0 cannot look up, such as `%`, `~`, or `*`, fails before any upload.
+No file is changed.
+
+When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file with a source map is uploaded, except files in `node_modules`.
+For browser profiles, the URL of each script is `--base-url` plus its path relative to `<path>`.
 The source map is the file named by the last `//# sourceMappingURL=` comment of the script, relative to the script, so builds that name the map differently from the script, such as Turbopack, work.
 A script without that comment uses `<file>.map`.
 Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
-When `<path>` is a single script, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory, and `--source-map` to name the map yourself.
+When `<path>` is a single script of a browser build, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory.
+Pass `--source-map` to name the map of a single script yourself.
 
 Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
 
-Source maps that Dash0 already has are skipped.
+Source maps that Dash0 already has are skipped, and so are copies of a script that share one debug ID.
 A step that fails with a temporary error, such as an unavailable service or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
 When the debuginfo service sends the upload to several destinations, the command uploads to each one and checks again until every destination has the file; a file that is still not delivered after `--max-retries` checks fails.
 With `--force`, the command does not check again, because forcing again can replace an upload in progress, and the file fails instead.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
+
+Add debug IDs to a Node.js build and upload its source maps:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map dist
+Injected debug IDs into 2 scripts
+Source map "10427d43-f372-51e7-a4b0-5d39b07f9c24" uploaded
+Source map "6b3ca909-8819-5a53-a52f-3f0decdb8b90" uploaded
+```
+
+Preview a Node.js build without changing it:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map dist --dry-run
+Dry run: 1 source map found
+  10427d43-f372-51e7-a4b0-5d39b07f9c24 <- dist/server.js, dist/server.js.map (debug ID would be injected)
+```
 
 Preview the source maps of a Vite build served from the site root:
 
@@ -2605,7 +2639,7 @@ Upload one script and its source map:
 dash0 -X debuginfo upload --type source-map dist/assets/app.js --script-url https://app.example.com/assets/app.js
 ```
 
-In agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl`, `script`, `sourceMap`, and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
+In agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl` (browser keys only), `script`, `sourceMap`, `injected` (present when the command wrote, or in a dry run would write, the debug ID), and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
 
 ## Daemon commands
 

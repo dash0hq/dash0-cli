@@ -175,7 +175,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |
-| `debuginfo` | Upload source maps so Dash0 can symbolize browser profiles (`debuginfo upload`, experimental) |
+| `debuginfo` | Upload source maps so Dash0 can symbolize Node.js and browser profiles (`debuginfo upload`, experimental) |
 | `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
 | `failed-checks` | Query active and historical alerting issues |
 | `login` | OAuth 2.0 login/logout and profile authentication states |

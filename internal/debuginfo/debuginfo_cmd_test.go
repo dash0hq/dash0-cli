@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -58,6 +59,7 @@ type fakeDebuginfoService struct {
 	pending        map[string][]byte
 	authorizations []string
 	types          []debuginfopb.DebuginfoType
+	buildIDTypes   map[string]debuginfopb.BuildIDType
 }
 
 func (service *fakeDebuginfoService) record(ctx context.Context, debuginfoType debuginfopb.DebuginfoType) {
@@ -88,6 +90,7 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 	}
 	service.mutex.Lock()
 	service.hashes = append(service.hashes, request.GetHash())
+	service.buildIDTypes[request.GetBuildId()] = request.GetBuildIdType()
 	defer service.mutex.Unlock()
 	if err := service.failBuildIDs[request.GetBuildId()]; err != nil {
 		return nil, err
@@ -170,7 +173,7 @@ func (service *fakeDebuginfoService) MarkUploadFinished(ctx context.Context, req
 
 func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstructions_UploadStrategy) (*fakeDebuginfoService, string) {
 	t.Helper()
-	service := &fakeDebuginfoService{strategy: strategy, stored: map[string][]byte{}, pending: map[string][]byte{}, calls: map[string]int{}}
+	service := &fakeDebuginfoService{strategy: strategy, stored: map[string][]byte{}, pending: map[string][]byte{}, calls: map[string]int{}, buildIDTypes: map[string]debuginfopb.BuildIDType{}}
 
 	signedURLServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, _ := io.ReadAll(request.Body)
@@ -677,4 +680,131 @@ func TestUpload_ForcedUploadIsNotNegotiatedAgain(t *testing.T) {
 	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
 	assert.Equal(t, []string{"token-a", "token-b"}, service.markedIDs)
 	assert.Equal(t, 1, service.calls["ShouldInitiateUpload"])
+}
+
+const (
+	nodeScript    = "console.log('server')\n//# sourceMappingURL=server.js.map\n"
+	nodeSourceMap = `{"version":3,"sources":["server.ts"],"mappings":""}`
+)
+
+func writeNodeBuildOutput(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, dir, "server.js", nodeScript)
+	writeFile(t, dir, "server.js.map", nodeSourceMap)
+	return dir
+}
+
+func readFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join(dir, name))
+	require.NoError(t, err)
+	return string(content)
+}
+
+func TestUpload_NodeBuildIsKeyedByAnInjectedDebugID(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := writeNodeBuildOutput(t)
+	debugID := debugIDOfSourceMap([]byte(nodeSourceMap))
+	args := []string{"--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken}
+
+	output, err := runDebuginfoCmd(t, args...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Injected debug IDs into 1 script")
+	assert.Contains(t, output, `Source map "`+debugID+`" uploaded`)
+	wantScript := nodeScript + "//# debugId=" + debugID + "\n"
+	wantSourceMap := `{"debugId":"` + debugID + `",` + nodeSourceMap[1:]
+	assert.Equal(t, wantScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, wantSourceMap, readFile(t, dir, "server.js.map"))
+	assert.Equal(t, encodeSourceMapBundle([]byte(wantScript), []byte(wantSourceMap)), service.stored[debugID])
+	assert.Equal(t, debuginfopb.BuildIDType_BUILD_ID_TYPE_SOURCE_MAP_DEBUG_ID, service.buildIDTypes[debugID])
+
+	output, err = runDebuginfoCmd(t, args...)
+
+	require.NoError(t, err)
+	assert.NotContains(t, output, "Injected")
+	assert.Contains(t, output, `Source map "`+debugID+`" skipped: Debuginfo already exists.`)
+	assert.Equal(t, wantScript, readFile(t, dir, "server.js"), "a second run changes nothing")
+}
+
+func TestUpload_BrowserBuildIsKeyedByURLAndNotChanged(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := writeNodeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+	assert.Equal(t, debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH, service.buildIDTypes["app.example.com/server.js"])
+}
+
+func TestUpload_DryRunListsTheDebugIDWithoutWriting(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, debugIDOfSourceMap([]byte(nodeSourceMap))+" <- "+filepath.Join(dir, "server.js"))
+	assert.Contains(t, output, "(debug ID would be injected)")
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+}
+
+func TestUpload_NothingIsWrittenWithoutCredentials(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir)
+
+	require.Error(t, err)
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+}
+
+func TestUpload_ReadOnlyFileFailsBeforeAnyWriteOrUpload(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := writeNodeBuildOutput(t)
+	writeFile(t, dir, "worker.js", "console.log('worker')\n")
+	writeFile(t, dir, "worker.js.map", `{"version":3}`)
+	require.NoError(t, os.Chmod(filepath.Join(dir, "worker.js"), 0o444))
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "worker.js is read-only")
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"), "no other file is written either")
+	assert.Zero(t, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_CopiesOfOneScriptAreUploadedOnce(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := t.TempDir()
+	for _, copyDir := range []string{"a", "b"} {
+		writeFile(t, dir, copyDir+"/server.js", nodeScript)
+		writeFile(t, dir, copyDir+"/server.js.map", nodeSourceMap)
+	}
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Injected debug IDs into 2 scripts")
+	assert.Contains(t, output, "skipped: same source map as "+filepath.Join(dir, "a/server.js"))
+	assert.Equal(t, 1, service.calls["ShouldInitiateUpload"])
+	assert.Equal(t, readFile(t, dir, "a/server.js"), readFile(t, dir, "b/server.js"))
+}
+
+func TestUpload_AgentModeReportsInjection(t *testing.T) {
+	previous := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = previous })
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeNodeBuildOutput(t), "--dry-run")
+
+	require.NoError(t, err)
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, true, results[0]["injected"])
+	assert.NotContains(t, results[0], "scriptUrl")
 }

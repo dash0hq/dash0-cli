@@ -7,7 +7,7 @@ change_type: new_component
 component: debuginfo
 
 # A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
-note: "`dash0 -X debuginfo upload --type source-map` uploads JavaScript source maps, so Dash0 can resolve browser profile frames to the original source."
+note: "`dash0 -X debuginfo upload --type source-map` uploads JavaScript source maps, so Dash0 can resolve Node.js and browser profile frames to the original source."
 
 # Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
 issues: [351]
@@ -16,7 +16,9 @@ issues: [351]
 # These lines will be padded with 2 spaces and then inserted directly into the document.
 # Use pipe (|) for multiline entries.
 subtext: |
-  Pass a build output directory and `--base-url`, the public URL it is served from, or one script and `--script-url`.
+  For Node.js, the command keys each source map by a debug ID, which it writes into the script and its source map when they have none.
+  The debug ID is the same one `@polarsignals/sourcemap-cli` computes, and a debug ID that the files already carry is reused.
+  For browser builds, pass a build output directory and `--base-url`, the public URL it is served from, or one script and `--script-url`; no file is changed.
   `--dry-run` lists the key of each source map without uploading, and source maps Dash0 already has are skipped unless you pass `--force`.
   The other debuginfo types (`debuginfo`, `executable`, `sources`) fail with a "not supported yet" error.
 

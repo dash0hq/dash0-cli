@@ -98,16 +98,12 @@ const (
 //
 // A service that fans out to several destinations returns one upload target per destination, and sets
 // retry_required while some destinations are unresolved. upload then negotiates again, up to u.maxRetries times.
-func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType debuginfopb.DebuginfoType, body []byte) (uploadOutcome, string, error) {
+func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType debuginfopb.DebuginfoType, buildIDType debuginfopb.BuildIDType, body []byte) (uploadOutcome, string, error) {
 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+u.authToken)
 	bodyHash, err := hash.Reader(bytes.NewReader(body))
 	if err != nil {
 		return "", "", err
 	}
-	// The build ID of a source map is a script URL, not a hash, but the hash type keeps the service
-	// from asking public debuginfod servers about it.
-	buildIDType := debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH
-
 	uploaded := false
 	for round := 0; ; round++ {
 		var should *debuginfopb.ShouldInitiateUploadResponse

@@ -790,11 +790,17 @@ dash0 -X api /api/organization/settings --dataset ""
 
 ### Debuginfo upload (experimental)
 
-The `debuginfo upload` command uploads source maps so Dash0 can resolve browser profile frames to the original source.
-Pass the build output directory and the public URL it is served from.
+The `debuginfo upload` command uploads source maps so Dash0 can resolve Node.js and browser profile frames to the original source.
+For Node.js, it writes a debug ID into each script and its source map, so run it before you package or deploy the build.
+For browser builds, pass the public URL the build output is served from.
 
 ```bash
-# Preview what would be uploaded
+# Add debug IDs to a Node.js build and upload its source maps
+dash0 -X debuginfo upload --type source-map dist
+```
+
+```bash
+# Preview what would be uploaded for a browser build
 dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
 ```
 
