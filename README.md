@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
+Supported asset types: `Dashboard`, `EphemeralDashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
 
 From a single file:
 
@@ -442,7 +442,13 @@ Delete by ID (use `--force` to skip the confirmation prompt):
 dash0 dashboards delete <id>
 ```
 
-`dashboards create` and `apply` also accept PersesDashboard CRD files; `check-rules create` and `apply` also accept PrometheusRule CRD files.
+`dashboards create` and `apply` also accept PersesDashboard CRD files and EphemeralDashboard documents; `check-rules create` and `apply` also accept PrometheusRule CRD files.
+
+Preview every dashboard in a directory as an ephemeral dashboard that Dash0 deletes after one day (experimental, requires `-X`):
+
+```bash
+dash0 -X dashboards preview -f dashboards/
+```
 See [docs/commands.md](docs/commands.md) for the full per-asset reference and the YAML formats.
 
 ### Time series aggregations

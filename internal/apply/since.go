@@ -174,7 +174,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	}
 
 	switch kind {
-	case "dashboard", "persesdashboard":
+	case "dashboard", "ephemeraldashboard", "persesdashboard":
 		identifier, err = dashboardDeleteKey(ctx, apiClient, dataset, d)
 		if err == nil {
 			err = apiClient.DeleteDashboard(ctx, identifier, dataset)

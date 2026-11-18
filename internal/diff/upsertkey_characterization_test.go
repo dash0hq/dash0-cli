@@ -113,7 +113,7 @@ func characterizationDocument(kind string, variant identifierVariant) string {
 	if hasOrigin {
 		labels = append(labels, "    dash0.com/origin: o")
 	}
-	idInLabel := kind != "dashboard" && kind != "checkrule"
+	idInLabel := kind != "dashboard" && kind != "ephemeraldashboard" && kind != "checkrule"
 	if hasID && idInLabel {
 		labels = append(labels, "    dash0.com/id: i")
 	}
@@ -123,10 +123,13 @@ func characterizationDocument(kind string, variant identifierVariant) string {
 	}
 
 	switch kind {
-	case "dashboard":
+	case "dashboard", "ephemeraldashboard":
 		extensions := ""
 		if hasID {
 			extensions = "  dash0Extensions:\n    id: i\n"
+		}
+		if kind == "ephemeraldashboard" {
+			return "kind: EphemeralDashboard\nmetadata:\n  name: n\n" + labelBlock + extensions + "spec:\n  ttl: 1d\n  display:\n    name: n\n"
 		}
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: n\n" + labelBlock + extensions + "spec:\n  display:\n    name: n\n"
 	case "persesdashboard":
@@ -213,6 +216,12 @@ func characterize(t *testing.T, kind string, variant identifierVariant) upsertKe
 func TestUpsertKey_Characterization(t *testing.T) {
 	want := map[string]map[identifierVariant]upsertKeyCharacterization{
 		"dashboard": {
+			withNeither: {"", "", ""},
+			withOrigin:  {"o", "o", "GetDashboard(o)"},
+			withID:      {"i", "i", "GetDashboard(i)"},
+			withBoth:    {"o", "o", `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("i") must be equal; set only metadata.labels["dash0.com/origin"], and move "i" to metadata.labels["dash0.com/id"] if it is the id of an existing dashboard`},
+		},
+		"ephemeraldashboard": {
 			withNeither: {"", "", ""},
 			withOrigin:  {"o", "o", "GetDashboard(o)"},
 			withID:      {"i", "i", "GetDashboard(i)"},
