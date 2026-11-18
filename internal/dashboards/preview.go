@@ -240,11 +240,11 @@ func printPreviewResults(f *output.Formatter, results []previewResult) error {
 	columns := []output.Column{
 		{Header: internal.HEADER_NAME, Width: 40, Value: func(item interface{}) string { return item.(previewResult).Name }},
 		{Header: internal.HEADER_ID, Width: 36, Value: func(item interface{}) string { return item.(previewResult).ID }},
-		{Header: "ACTION", Width: 8, Value: func(item interface{}) string { return item.(previewResult).Action }},
+		{Header: internal.HEADER_ACTION, Width: 8, Value: func(item interface{}) string { return item.(previewResult).Action }},
 		{Header: internal.HEADER_URL, Width: 70, Value: func(item interface{}) string { return item.(previewResult).URL }},
 	}
 	if f.Format() == output.FormatWide || f.Format() == output.FormatCSV {
-		columns = append(columns, output.Column{Header: "CURRENT", Width: 70, Value: func(item interface{}) string { return item.(previewResult).Current }})
+		columns = append(columns, output.Column{Header: internal.HEADER_CURRENT, Width: 70, Value: func(item interface{}) string { return item.(previewResult).Current }})
 	}
 	data := make([]interface{}, len(results))
 	for i, r := range results {
