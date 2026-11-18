@@ -2,7 +2,9 @@ package asset
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -19,14 +21,15 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 	if err := ValidateDashboard(dashboard); err != nil {
 		return ImportResult{}, err
 	}
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := planDashboard(ctx, apiClient, dashboard, dataset)
+	// A failed preflight does not block the write: the PUT reports the same
+	// error. A kind mismatch does, because the API rejects that write.
+	plan, err := planDashboard(ctx, apiClient, dashboard, dataset)
+	if _, ok := errors.AsType[*DashboardKindMismatchError](err); ok {
+		return ImportResult{}, err
+	}
 	id := plan.Key
 
-	var (
-		result *dash0api.DashboardDefinition
-		err    error
-	)
+	var result *dash0api.DashboardDefinition
 	if id != "" {
 		dash0api.ClearDashboardID(dashboard)
 		result, err = apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
@@ -83,8 +86,69 @@ func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 	if err != nil {
 		return plan, ignoreNotFound(err)
 	}
+	if err := CheckDashboardKind(lookupKey, existing, dashboard); err != nil {
+		return plan, err
+	}
 	plan.Key, plan.Action, plan.Before = lookupKey, actionForExisting(DashboardDeletedAt(existing)), existing
 	return plan, nil
+}
+
+// CheckDashboardKind returns a DashboardKindMismatchError when proposed would
+// change the stored dashboard at id between ephemeral and permanent. A deleted
+// dashboard can come back as either kind.
+func CheckDashboardKind(id string, stored, proposed *dash0api.DashboardDefinition) error {
+	if DashboardDeletedAt(stored) != nil || IsEphemeralDashboard(stored) == IsEphemeralDashboard(proposed) {
+		return nil
+	}
+	return &DashboardKindMismatchError{ID: id, Stored: DashboardDisplayKind(stored), Proposed: DashboardDisplayKind(proposed)}
+}
+
+// DashboardKindMismatchError reports a write that would change a dashboard
+// between ephemeral and permanent, which the API rejects.
+type DashboardKindMismatchError struct {
+	ID       string
+	Stored   string
+	Proposed string
+}
+
+func (e *DashboardKindMismatchError) Error() string {
+	return fmt.Sprintf("dashboard %q is stored as %s, and the API does not change the kind of an existing dashboard to %s; use another identifier, or delete the stored dashboard first", e.ID, strings.ToLower(e.Stored), strings.ToLower(e.Proposed))
+}
+
+// IsEphemeralDashboard reports whether dashboard is an EphemeralDashboard.
+func IsEphemeralDashboard(dashboard *dash0api.DashboardDefinition) bool {
+	return NormalizeKind(string(dashboard.Kind)) == "ephemeraldashboard"
+}
+
+// DashboardDisplayKind returns "Ephemeral dashboard" for an
+// EphemeralDashboard and "Dashboard" for any other dashboard.
+func DashboardDisplayKind(dashboard *dash0api.DashboardDefinition) string {
+	if IsEphemeralDashboard(dashboard) {
+		return KindDisplayName("ephemeraldashboard")
+	}
+	return KindDisplayName("dashboard")
+}
+
+// ValidateEphemeralDashboard rejects an EphemeralDashboard without spec.ttl
+// before any write. The API owns the duration format and its limits.
+func ValidateEphemeralDashboard(dashboard *dash0api.DashboardDefinition) error {
+	if !IsEphemeralDashboard(dashboard) {
+		return nil
+	}
+	if ttl, _ := dashboard.Spec["ttl"].(string); ttl == "" {
+		return fmt.Errorf("an EphemeralDashboard requires spec.ttl, a duration such as 1d or 12h")
+	}
+	return nil
+}
+
+// ToEphemeralDashboard turns dashboard into an EphemeralDashboard that the API
+// deletes once ttl has passed since its latest write.
+func ToEphemeralDashboard(dashboard *dash0api.DashboardDefinition, ttl string) {
+	dashboard.Kind = dash0api.DashboardKindEphemeralDashboard
+	if dashboard.Spec == nil {
+		dashboard.Spec = map[string]any{}
+	}
+	dashboard.Spec["ttl"] = ttl
 }
 
 // DashboardDeletedAt returns when the dashboard was deleted, or nil when it is

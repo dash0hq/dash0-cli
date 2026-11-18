@@ -41,7 +41,7 @@ type identifierProbe struct {
 // per the "Asset identifiers and idempotent upsert" table in the command
 // reference:
 //
-//   - Dashboard: dash0.com/origin, then metadata.dash0Extensions.id, then
+//   - Dashboard, EphemeralDashboard: dash0.com/origin, then metadata.dash0Extensions.id, then
 //     dash0.com/id
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
@@ -77,7 +77,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 	origin := probe.label("dash0.com/origin")
 
 	switch NormalizeKind(probe.Kind) {
-	case "dashboard":
+	case "dashboard", "ephemeraldashboard":
 		var dashboard dash0api.DashboardDefinition
 		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
@@ -110,7 +110,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 // DashboardAlias.
 func ExtractAlias(data []byte) (string, error) {
 	kind, err := dash0yaml.DetectKind(data)
-	if err != nil || NormalizeKind(kind) != "dashboard" {
+	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
 		return "", err
 	}
 	var dashboard dash0api.DashboardDefinition

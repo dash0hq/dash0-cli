@@ -169,6 +169,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `View`                      | View                 |
 | `PrometheusRule`            | PrometheusRule       |
 | `PersesDashboard`           | PersesDashboard      |
+| `EphemeralDashboard`        | Ephemeral dashboard  |
 | `Dash0NotificationChannel`  | Notification channel |
 | `Dash0Dataset`              | Dataset              |
 | `Dash0AuthToken`            | Auth token           |

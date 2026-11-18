@@ -52,6 +52,7 @@ var idOnlyDeleteWarnings = map[string]*idOnlyDeleteWarning{
 	"view":                             nil,
 	"prometheusrule":                   nil,
 	"persesdashboard":                  nil,
+	"ephemeraldashboard":               nil,
 	"notificationchannel":              nil,
 	"timeseriesaggregation":            nil,
 	"dataset":                          nil,
