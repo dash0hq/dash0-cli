@@ -9,6 +9,7 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	"github.com/dash0hq/dash0-cli/internal/output"
 )
 
 // dryRunRow is one asset --dry-run reports on: either being validated
@@ -145,16 +146,16 @@ func runDryRun(documents []assetDocument, fromDirectory bool, fileArg, since str
 func renderDryRunText(rowsByFile map[string][]dryRunRow, files []string, validatedFileSet map[string]bool, fromDirectory bool, documentCount int, since string, dp *deletionPlan) {
 	switch {
 	case dp == nil && fromDirectory:
-		fmt.Printf("Dry run: %s from %s validated\n", pluralize(documentCount, "document"), pluralize(len(validatedFileSet), "file"))
+		fmt.Printf("Dry run: %s from %s validated\n", output.Pluralize(documentCount, "document"), output.Pluralize(len(validatedFileSet), "file"))
 	case dp == nil:
-		fmt.Printf("Dry run: %s validated\n", pluralize(documentCount, "document"))
+		fmt.Printf("Dry run: %s validated\n", output.Pluralize(documentCount, "document"))
 	default:
 		deletionCount := len(dp.plan.ByIdentifier) + len(dp.plan.AlertsByName)
 		if deletionCount == 0 {
-			fmt.Printf("Dry run: %s%s validated; --since: no deletions\n", pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)))
+			fmt.Printf("Dry run: %s%s validated; --since: no deletions\n", output.Pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)))
 		} else {
 			fmt.Printf("Dry run: %s%s validated; %s pending due to --since '%s'\n",
-				pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)), pluralize(deletionCount, "deletion"), since)
+				output.Pluralize(documentCount, "document"), fileSuffix(fromDirectory, len(validatedFileSet)), output.Pluralize(deletionCount, "deletion"), since)
 		}
 	}
 
@@ -210,7 +211,7 @@ func fileSuffix(fromDirectory bool, fileCount int) string {
 	if !fromDirectory {
 		return ""
 	}
-	return " from " + pluralize(fileCount, "file")
+	return " from " + output.Pluralize(fileCount, "file")
 }
 
 // renderDryRunJSON emits the {path, changes} array agent mode expects. A

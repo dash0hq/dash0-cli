@@ -14,6 +14,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/dash0hq/dash0-cli/internal/version"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
 	"github.com/parca-dev/parca/pkg/hash"
@@ -33,10 +34,14 @@ const uploadChunkSize = 512 * 1024
 // ponytail: one timeout for the whole PUT; size it from the bundle if multi-hundred-MB maps show up.
 var signedURLClient = &http.Client{Timeout: 5 * time.Minute}
 
-// The backoff of a retry, see wait. Variables, so that tests can shorten them.
+// The backoff of a retry, see wait, and the deadline of one attempt of an RPC or of the upload stream, so that a
+// service that stops answering fails the attempt instead of hanging the command. Variables, so that tests can
+// shorten them.
 var (
-	retryBaseDelay = 500 * time.Millisecond
-	retryMaxDelay  = 5 * time.Second
+	retryBaseDelay       = 500 * time.Millisecond
+	retryMaxDelay        = 5 * time.Second
+	rpcAttemptTimeout    = 30 * time.Second
+	streamAttemptTimeout = 5 * time.Minute
 )
 
 // debuginfoTarget keeps the port of raw only when it came from --endpoint, because the port of an
@@ -107,7 +112,7 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 	uploaded := false
 	for round := 0; ; round++ {
 		var should *debuginfopb.ShouldInitiateUploadResponse
-		err := u.retry(ctx, "check whether to upload "+buildID, func() (err error) {
+		err := u.retry(ctx, rpcAttemptTimeout, "check whether to upload "+buildID, func(ctx context.Context) (err error) {
 			should, err = u.client.ShouldInitiateUpload(ctx, &debuginfopb.ShouldInitiateUploadRequest{
 				BuildId: buildID, Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
 			})
@@ -130,7 +135,9 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 		}
 
 		var initiated *debuginfopb.InitiateUploadResponse
-		err = u.retry(ctx, "start the upload of "+buildID, func() (err error) {
+		initiateAttempts := 0
+		err = u.retry(ctx, rpcAttemptTimeout, "start the upload of "+buildID, func(ctx context.Context) (err error) {
+			initiateAttempts++
 			initiated, err = u.client.InitiateUpload(ctx, &debuginfopb.InitiateUploadRequest{
 				BuildId: buildID, Size: int64(len(body)), Hash: bodyHash, Force: u.force, Type: debuginfoType, BuildIdType: buildIDType,
 				SupportsMultipleUploads: true,
@@ -139,6 +146,11 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 		})
 		if status.Code(err) == codes.AlreadyExists && !uploaded {
 			return outcomeSkipped, status.Convert(err).Message(), nil
+		}
+		// The service marks the upload as started before it answers, so when an answer is lost, the retry finds the
+		// upload in progress.
+		if initiateAttempts > 1 && status.Code(err) == codes.FailedPrecondition {
+			return "", "", fmt.Errorf("failed to start the upload: an earlier attempt may have started it before its answer was lost:\n  %s\nHint: run the command again with --force, or wait until the debuginfo service treats the upload as stale", status.Convert(err).Message())
 		}
 		if err != nil {
 			return "", "", rpcError("start the upload", err)
@@ -155,7 +167,7 @@ func (u *uploader) upload(ctx context.Context, buildID string, debuginfoType deb
 		var targetErrs []error
 		for index, target := range targets {
 			if err := u.uploadTarget(ctx, buildID, debuginfoType, target, body); err != nil {
-				targetErrs = append(targetErrs, fmt.Errorf("upload target %d of %d: %w", index+1, len(targets), err))
+				targetErrs = append(targetErrs, fmt.Errorf("upload target %d of %d:\n  %w", index+1, len(targets), err))
 			}
 		}
 		if err := errors.Join(targetErrs...); err != nil {
@@ -183,7 +195,7 @@ func (u *uploader) negotiateAgain(ctx context.Context, round int, buildID, reaso
 		return fmt.Errorf("delivery is incomplete: the forced upload of %q reached only some destinations, and a forced upload is not negotiated again: %s", buildID, reason)
 	}
 	if round >= u.maxRetries {
-		return fmt.Errorf("delivery is incomplete: the debuginfo service still asked to check again after %d attempts: %s", round+1, reason)
+		return fmt.Errorf("delivery is incomplete: the debuginfo service still asked to check again after %s: %s", output.Pluralize(round+1, "attempt"), reason)
 	}
 	return u.wait(ctx, round, "check "+buildID+" again", reason)
 }
@@ -193,9 +205,10 @@ func (u *uploader) uploadTarget(ctx context.Context, buildID string, debuginfoTy
 	var err error
 	switch target.GetUploadStrategy() {
 	case debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL:
-		err = u.retry(ctx, "upload "+buildID, func() error { return putSignedURL(ctx, target.GetSignedUrl(), body) })
+		// The HTTP client has its own timeout, which putSignedURL retries; an attempt deadline would read as cancelled.
+		err = u.retry(ctx, 0, "upload "+buildID, func(ctx context.Context) error { return putSignedURL(ctx, target.GetSignedUrl(), body) })
 	case debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC:
-		err = u.retry(ctx, "upload "+buildID, func() error { return u.stream(ctx, target, body) })
+		err = u.retry(ctx, streamAttemptTimeout, "upload "+buildID, func(ctx context.Context) error { return u.stream(ctx, target, body) })
 		if err != nil {
 			err = rpcError("stream the upload", err)
 		}
@@ -207,7 +220,7 @@ func (u *uploader) uploadTarget(ctx context.Context, buildID string, debuginfoTy
 	}
 
 	// Repeating MarkUploadFinished is safe: the service checks the upload ID and sets the state to uploaded again.
-	err = u.retry(ctx, "finish the upload of "+buildID, func() error {
+	err = u.retry(ctx, rpcAttemptTimeout, "finish the upload of "+buildID, func(ctx context.Context) error {
 		_, err := u.client.MarkUploadFinished(ctx, &debuginfopb.MarkUploadFinishedRequest{
 			BuildId: buildID, UploadId: target.GetUploadId(), Type: debuginfoType,
 		})
@@ -219,10 +232,11 @@ func (u *uploader) uploadTarget(ctx context.Context, buildID string, debuginfoTy
 	return nil
 }
 
-// retry calls call until it succeeds, fails with an error that a retry cannot fix, or used up u.maxRetries.
-func (u *uploader) retry(ctx context.Context, what string, call func() error) error {
+// retry calls call until it succeeds, fails with an error that a retry cannot fix, or used up u.maxRetries. Each
+// attempt gets a context that ends after timeout, unless timeout is 0.
+func (u *uploader) retry(ctx context.Context, timeout time.Duration, what string, call func(context.Context) error) error {
 	for attempt := 0; ; attempt++ {
-		err := call()
+		err := callWithTimeout(ctx, timeout, call)
 		if err == nil || attempt >= u.maxRetries || !isRetryable(err) {
 			return err
 		}
@@ -230,6 +244,15 @@ func (u *uploader) retry(ctx context.Context, what string, call func() error) er
 			return err
 		}
 	}
+}
+
+func callWithTimeout(ctx context.Context, timeout time.Duration, call func(context.Context) error) error {
+	if timeout == 0 {
+		return call(ctx)
+	}
+	attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return call(attemptCtx)
 }
 
 // wait prints the retry on stderr and sleeps the backoff before retry n (from 0): a random duration in [d/2, d],
@@ -280,6 +303,11 @@ func putSignedURL(ctx context.Context, signedURL string, body []byte) error {
 	}
 	response, err := signedURLClient.Do(request)
 	if err != nil {
+		// The error names the URL, and its query is the upload credential, so keep only the host.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = fmt.Errorf("%s to %s: %w", urlErr.Op, request.URL.Host, urlErr.Err)
+		}
 		if ctx.Err() != nil {
 			return err
 		}

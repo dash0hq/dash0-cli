@@ -103,6 +103,44 @@ func TestDiscoverSourceMaps_FollowsSourceMappingURLComment(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "maps/nested.js.map"), artifacts[1].SourceMap)
 }
 
+func TestDiscoverSourceMaps_SkipsSourceMapsOutsideTheDirectory(t *testing.T) {
+	parent := t.TempDir()
+	writeFile(t, parent, "shared.js.map", "{}")
+	dir := filepath.Join(parent, "build")
+	writeFile(t, dir, "app.js", "x\n//# sourceMappingURL=../shared.js.map\n")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "")
+
+	require.NoError(t, err)
+	assert.Empty(t, artifacts)
+	require.Len(t, skipped, 1)
+	assert.Contains(t, skipped[0].Reason, "is outside "+dir)
+	content, err := os.ReadFile(filepath.Join(parent, "shared.js.map"))
+	require.NoError(t, err)
+	assert.Equal(t, "{}", string(content), "the map outside the directory is not planned for a write")
+}
+
+func TestDiscoverSourceMaps_FollowsASymlinkedDirectoryAndReportsNestedOnes(t *testing.T) {
+	parent := t.TempDir()
+	writeFile(t, parent, "real/app.js", "x")
+	writeFile(t, parent, "real/app.js.map", "{}")
+	writeFile(t, parent, "other/lib.js", "x")
+	writeFile(t, parent, "other/lib.js.map", "{}")
+	require.NoError(t, os.Symlink(filepath.Join(parent, "real"), filepath.Join(parent, "dist")))
+	require.NoError(t, os.Symlink(filepath.Join(parent, "other"), filepath.Join(parent, "real", "linked")))
+	dir := filepath.Join(parent, "dist")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "https://app.example.com/")
+
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "app.example.com/app.js", artifacts[0].BuildID)
+	assert.Equal(t, filepath.Join(dir, "app.js"), artifacts[0].Script)
+	require.Len(t, skipped, 1)
+	assert.Equal(t, filepath.Join(dir, "linked"), skipped[0].Script)
+	assert.Contains(t, skipped[0].Reason, "symbolic link to a directory")
+}
+
 func TestDiscoverSourceMaps_FollowsCommentWithCRLFLineEndings(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "app.js", "x\r\n//# sourceMappingURL=other.js.map\r\n")

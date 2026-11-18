@@ -2576,8 +2576,9 @@ A script and its source map that already carry the same debug ID are uploaded as
 Otherwise the command writes the debug ID into the files: the `debugId` field into the source map, and the comment as the last line of the script.
 The debug ID is computed from the source map, so the same build always gets the same one, and it matches the debug ID that `@polarsignals/sourcemap-cli` writes.
 Run the command after the build step and before you package or deploy the build output, because the deployed scripts must carry the comment.
-The command checks that every file is writable and that the credentials resolve before it changes any file.
+The command checks that every file and its directory are writable, and that the credentials resolve, before it changes any file.
 It fails when a script and its source map carry different debug IDs, or when a script has a debug ID comment the profiler cannot read, such as an indented one.
+It also fails when two scripts share one source map but would get different debug IDs, and names the line to add or the build to redo.
 
 For browser profiles, the key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.
 A URL whose path contains a character Dash0 cannot look up, such as `%`, `~`, or `*`, fails before any upload.
@@ -2587,14 +2588,17 @@ When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file with a source
 For browser profiles, the URL of each script is `--base-url` plus its path relative to `<path>`.
 The source map is the file named by the last `//# sourceMappingURL=` comment of the script, relative to the script, so builds that name the map differently from the script, such as Turbopack, work.
 A script without that comment uses `<file>.map`.
-Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
+Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist or is outside `<path>`, are skipped and listed on stderr with the reason.
+When `<path>` is a symbolic link to a directory, the command follows it.
+A symbolic link to a directory inside `<path>` is not followed, and is listed on stderr.
 When `<path>` is a single script of a browser build, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory.
 Pass `--source-map` to name the map of a single script yourself.
 
 Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
 
 Source maps that Dash0 already has are skipped, and so are copies of a script that share one debug ID.
-A step that fails with a temporary error, such as an unavailable service or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
+A step that fails with a temporary error, such as an unavailable service, a call that gets no answer, or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
+When the answer to the request that starts an upload is lost, the service can treat the upload as in progress, and the retry fails with a hint to run the command again with `--force`.
 When the debuginfo service sends the upload to several destinations, the command uploads to each one and checks again until every destination has the file; a file that is still not delivered after `--max-retries` checks fails.
 With `--force`, the command does not check again, because forcing again can replace an upload in progress, and the file fails instead.
 A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.

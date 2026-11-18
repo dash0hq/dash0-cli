@@ -130,9 +130,9 @@ func TestPlanDebugID_WritesWhatTheProfilerReads(t *testing.T) {
 func TestInsertDebugIDField(t *testing.T) {
 	cases := map[string]string{
 		`{"version":3,"names":["aé"]}`: `{"debugId":"` + idA + `","version":3,"names":["aé"]}`,
-		"{\n  \"version\": 3\n}\n":          "{\"debugId\":\"" + idA + "\",\n  \"version\": 3\n}\n",
-		`{}`:                                `{"debugId":"` + idA + `"}`,
-		"{ \n }":                            `{"debugId":"` + idA + "\" \n }",
+		"{\n  \"version\": 3\n}\n":     "{\"debugId\":\"" + idA + "\",\n  \"version\": 3\n}\n",
+		`{}`:                           `{"debugId":"` + idA + `"}`,
+		"{ \n }":                       `{"debugId":"` + idA + "\" \n }",
 	}
 	for sourceMap, want := range cases {
 		got, err := insertDebugIDField("app.js.map", []byte(sourceMap), idA)

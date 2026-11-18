@@ -18,6 +18,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
+	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -345,7 +346,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			if confirmErr != nil || !confirmed {
 				skipped := len(deletionPlan.plan.ByIdentifier) + len(deletionPlan.plan.AlertsByName)
 				fmt.Fprintf(os.Stderr, "--since's deletion phase skipped; the rest of the run already completed\n")
-				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", pluralize(skipped, "asset"))
+				return fmt.Errorf("%s not confirmed for deletion (--since ref is not an ancestor of HEAD)", output.Pluralize(skipped, "asset"))
 			}
 		}
 		declined, err := applyDeletions(ctx, apiClient, dataset, deletionPlan, flags.Force)
@@ -353,7 +354,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 			return err
 		}
 		if declined > 0 {
-			return fmt.Errorf("%s declined; the rest of the --since run completed", pluralize(declined, "deletion"))
+			return fmt.Errorf("%s declined; the rest of the --since run completed", output.Pluralize(declined, "deletion"))
 		}
 	}
 
@@ -493,18 +494,7 @@ func checkRulesWithID(doc assetDocument) []*dash0api.PrometheusAlertRule {
 // validationError formats one or more validation issues into a consistent
 // "validation failed with N error/errors:" message.
 func validationError(issues ...string) error {
-	return fmt.Errorf("validation failed with %s:\n  %s", pluralize(len(issues), "error"), strings.Join(issues, "\n  "))
-}
-
-// pluralize returns "1 thing" or "N things" depending on count.
-// This logic is currently naive and assumes all plurals are formed by adding "s".
-// This happens to work for all our asset kinds, errors, documents and other situations
-// we use this logic.
-func pluralize(count int, singular string) string {
-	if count == 1 {
-		return fmt.Sprintf("%d %s", count, singular)
-	}
-	return fmt.Sprintf("%d %ss", count, singular)
+	return fmt.Errorf("validation failed with %s:\n  %s", output.Pluralize(len(issues), "error"), strings.Join(issues, "\n  "))
 }
 
 // formatNameAndId returns a display string with name and optional ID.

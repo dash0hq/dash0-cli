@@ -47,6 +47,7 @@ type fakeDebuginfoService struct {
 	// shouldAnswer and initiateAnswer, when set and returning non-nil, replace the answer to the nth call (from 1).
 	shouldAnswer   func(call int) *debuginfopb.ShouldInitiateUploadResponse
 	initiateAnswer func(call int) *debuginfopb.InitiateUploadResponse
+	stallShould int
 
 	mutex          sync.Mutex
 	calls          map[string]int
@@ -87,6 +88,13 @@ func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, r
 	service.record(ctx, request.GetType())
 	if err := service.step("ShouldInitiateUpload"); err != nil {
 		return nil, err
+	}
+	service.mutex.Lock()
+	stall := service.calls["ShouldInitiateUpload"] <= service.stallShould
+	service.mutex.Unlock()
+	if stall {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	service.mutex.Lock()
 	service.hashes = append(service.hashes, request.GetHash())
@@ -476,7 +484,7 @@ func TestRetry_StopsWhenContextIsCancelledDuringBackoff(t *testing.T) {
 	calls := 0
 
 	started := time.Now()
-	err := (&uploader{maxRetries: 3}).retry(ctx, "test", func() error {
+	err := (&uploader{maxRetries: 3}).retry(ctx, 0, "test", func(context.Context) error {
 		calls++
 		return status.Error(codes.Unavailable, "down")
 	})
@@ -495,6 +503,73 @@ func TestUpload_SendsTheXXHashOfTheBundle(t *testing.T) {
 	bundle := encodeSourceMapBundle([]byte("console.log('app')"), []byte(`{"version":3,"sources":["app.ts"],"mappings":""}`))
 	want := fmt.Sprintf("%016x", xxhash.Sum64(bundle))
 	assert.Equal(t, []string{want, want}, service.hashes)
+}
+
+func TestUpload_RetriesAStalledRPC(t *testing.T) {
+	previous := rpcAttemptTimeout
+	rpcAttemptTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { rpcAttemptTimeout = previous })
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stallShould = 1
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_LostInitiateAnswerHintsAtForce(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stepErrors = map[string][]error{"InitiateUpload": {
+		status.Error(codes.DeadlineExceeded, "answer lost"),
+		status.Error(codes.FailedPrecondition, "A previous upload is still in-progress"),
+	}}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "an earlier attempt may have started it")
+	assert.Contains(t, err.Error(), "--force")
+}
+
+func TestPutSignedURL_ErrorDoesNotContainTheSignedQuery(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	address := listener.Addr().String()
+	require.NoError(t, listener.Close())
+
+	err = putSignedURL(context.Background(), "http://"+address+"/bucket/app.js?X-Amz-Signature=secret-signature", []byte("body"))
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "secret-signature")
+	assert.Contains(t, err.Error(), address)
+	assert.True(t, isRetryable(err), "a connection failure stays retryable")
+}
+
+func TestDebuginfoTarget(t *testing.T) {
+	cases := []struct {
+		raw              string
+		explicitEndpoint bool
+		want             string
+		secure           bool
+	}{
+		{"https://ingress.eu-west-1.aws.dash0.com:4318", false, "ingress.eu-west-1.aws.dash0.com:4317", true},
+		{"https://ingress.eu-west-1.aws.dash0.com", false, "ingress.eu-west-1.aws.dash0.com:4317", true},
+		{"https://debuginfo.example.com:9443", true, "debuginfo.example.com:9443", true},
+		{"https://debuginfo.example.com", true, "debuginfo.example.com:4317", true},
+		{"http://localhost:7070", true, "localhost:7070", false},
+	}
+	for _, testCase := range cases {
+		target, transport, err := debuginfoTarget(testCase.raw, testCase.explicitEndpoint)
+		require.NoError(t, err, testCase.raw)
+		assert.Equal(t, testCase.want, target, testCase.raw)
+		assert.Equal(t, testCase.secure, transport.Info().SecurityProtocol == "tls", testCase.raw)
+	}
+	for _, raw := range []string{"ftp://ingress.example.com", "not a url", "https://"} {
+		_, _, err := debuginfoTarget(raw, true)
+		assert.Error(t, err, raw)
+	}
 }
 
 const testBuildID = "app.example.com/assets/app.js"
@@ -775,6 +850,42 @@ func TestUpload_ReadOnlyFileFailsBeforeAnyWriteOrUpload(t *testing.T) {
 	assert.Contains(t, err.Error(), "worker.js is read-only")
 	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"), "no other file is written either")
 	assert.Zero(t, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_ReadOnlyDirectoryFailsBeforeAnyWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write into a read-only directory")
+	}
+	dir := t.TempDir()
+	writeFile(t, dir, "a/server.js", nodeScript)
+	writeFile(t, dir, "a/server.js.map", nodeSourceMap)
+	writeFile(t, dir, "b/worker.js", "console.log('worker')\n")
+	writeFile(t, dir, "b/worker.js.map", `{"version":3}`)
+	require.NoError(t, os.Chmod(filepath.Join(dir, "b"), 0o555))
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "b"), 0o755) })
+	_, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not writable")
+	assert.Equal(t, nodeScript, readFile(t, dir, "a/server.js"), "no file in another directory is written either")
+}
+
+func TestUpload_SharedSourceMapWithConflictingDebugIDsFailsBeforeAnyWrite(t *testing.T) {
+	dir := t.TempDir()
+	existingID := "11111111-2222-4333-8444-555555555555"
+	firstScript := "console.log('a')\n//# sourceMappingURL=shared.js.map\n//# debugId=" + existingID + "\n"
+	writeFile(t, dir, "a.js", firstScript)
+	writeFile(t, dir, "b.js", "console.log('b')\n//# sourceMappingURL=shared.js.map\n")
+	writeFile(t, dir, "shared.js.map", nodeSourceMap)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "share the source map")
+	assert.Contains(t, err.Error(), "//# debugId="+existingID)
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "shared.js.map"))
 }
 
 func TestUpload_CopiesOfOneScriptAreUploadedOnce(t *testing.T) {

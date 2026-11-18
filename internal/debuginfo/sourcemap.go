@@ -169,18 +169,26 @@ func locateSourceMap(scriptPath string) (string, string, error) {
 }
 
 // discoverSourceMaps walks dir and pairs every script with its source map (see locateSourceMap), keyed by its URL
-// under baseURL, or by a debug ID when baseURL is empty. It returns the pairs, sorted by build ID, and the scripts
+// under baseURL, or by a debug ID when baseURL is empty. It returns the pairs, sorted by build ID, and the paths
 // it skipped.
 func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScript, error) {
 	var artifacts []sourceMapArtifact
 	var skipped []skippedScript
-	err := filepath.WalkDir(dir, func(filePath string, entry fs.DirEntry, err error) error {
+	// The trailing separator makes WalkDir follow a symlinked dir; without it, WalkDir reports dir as one file.
+	err := filepath.WalkDir(dir+string(filepath.Separator), func(filePath string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		// Dependencies ship their own scripts and maps, and pnpm hard-links them from a store shared across projects.
 		if entry.IsDir() && entry.Name() == "node_modules" {
 			return filepath.SkipDir
+		}
+		// ponytail: nested symlinked directories are reported, not followed, so a link cycle cannot loop the walk.
+		if entry.Type()&fs.ModeSymlink != 0 {
+			if info, err := os.Stat(filePath); err == nil && info.IsDir() {
+				skipped = append(skipped, skippedScript{Script: filePath, Reason: "it is a symbolic link to a directory, which is not followed; pass it as <path> to upload its source maps"})
+				return nil
+			}
 		}
 		if entry.IsDir() || !isScript(entry.Name()) {
 			return nil
@@ -191,6 +199,11 @@ func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScri
 		}
 		if skipReason != "" {
 			skipped = append(skipped, skippedScript{Script: filePath, Reason: skipReason})
+			return nil
+		}
+		// A sourceMappingURL with "../" can name a file outside dir, which a Node.js upload would write into.
+		if relativeMap, err := filepath.Rel(dir, mapPath); err != nil || relativeMap == ".." || strings.HasPrefix(relativeMap, ".."+string(filepath.Separator)) {
+			skipped = append(skipped, skippedScript{Script: filePath, Reason: fmt.Sprintf("its source map %s is outside %s; pass the script and --source-map to upload it", mapPath, dir)})
 			return nil
 		}
 		var scriptURL string

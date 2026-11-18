@@ -144,9 +144,43 @@ func insertDebugIDField(sourceMapPath string, sourceMap []byte, debugID string) 
 	return append(result, sourceMap[start+1:]...), nil
 }
 
+// checkSharedSourceMaps fails when scripts that share one source map would get different debug IDs. That happens
+// when one of them already has an ID that the map does not carry: the others would write their own ID into the
+// map, and the next run would fail because the first script and the map disagree.
+func checkSharedSourceMaps(artifacts []sourceMapArtifact) error {
+	firstBySourceMap := map[string]sourceMapArtifact{}
+	for _, artifact := range artifacts {
+		if artifact.ScriptURL != "" {
+			continue
+		}
+		sourceMapPath := filepath.Clean(artifact.SourceMap)
+		first, seen := firstBySourceMap[sourceMapPath]
+		if !seen {
+			firstBySourceMap[sourceMapPath] = artifact
+			continue
+		}
+		if first.BuildID == artifact.BuildID {
+			continue
+		}
+		// The script that keeps its ID is the one the command would not write into.
+		kept, other := first, artifact
+		if kept.Injected {
+			kept, other = other, kept
+		}
+		message := fmt.Sprintf("%s and %s share the source map %s, but have the debug IDs %s and %s", kept.Script, other.Script, artifact.SourceMap, kept.BuildID, other.BuildID)
+		if !kept.Injected && other.Injected {
+			return fmt.Errorf("%s; add the line \"//# debugId=%s\" to the end of %s, or rebuild both", message, kept.BuildID, other.Script)
+		}
+		return fmt.Errorf("%s; rebuild both", message)
+	}
+	return nil
+}
+
 // checkWritable fails before the first write when any file cannot be written, so that a read-only build
-// output does not end up half injected.
+// output does not end up half injected. A file is replaced through a temporary file next to it, so its
+// directory must be writable too.
 func checkWritable(writes []fileWrite) error {
+	checkedDirs := map[string]bool{}
 	for _, write := range writes {
 		target, err := filepath.EvalSymlinks(write.Path)
 		if err != nil {
@@ -159,6 +193,17 @@ func checkWritable(writes []fileWrite) error {
 		if info.Mode().Perm()&0o200 == 0 {
 			return fmt.Errorf("%s is read-only, and the debug ID must be written into it; copy the build output to a writable directory first", write.Path)
 		}
+		dir := filepath.Dir(target)
+		if checkedDirs[dir] {
+			continue
+		}
+		checkedDirs[dir] = true
+		probe, err := os.CreateTemp(dir, ".dash0-write-check-*")
+		if err != nil {
+			return fmt.Errorf("the directory of %s is not writable, and the debug ID must be written into it; copy the build output to a writable directory first:\n  %w", write.Path, err)
+		}
+		_ = probe.Close()
+		_ = os.Remove(probe.Name())
 	}
 	return nil
 }

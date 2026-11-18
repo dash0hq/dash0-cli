@@ -76,7 +76,6 @@ Files that Dash0 already has are skipped; pass --force to replace them.` + inter
   dash0 -X debuginfo upload --type source-map dist
 
   # Preview the source maps of a Vite build served from the site root
-
   dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
 
   # Upload the source maps of a Next.js build
@@ -127,6 +126,10 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 
 	artifacts, err := resolveSourceMaps(inputPath, flags)
 	if err != nil {
+		return err
+	}
+
+	if err := checkSharedSourceMaps(artifacts); err != nil {
 		return err
 	}
 
@@ -182,7 +185,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		}
 	}
 	if injected := countInjected(artifacts); injected > 0 && !agentmode.Enabled {
-		fmt.Printf("Injected debug IDs into %s\n", pluralize(injected, "script"))
+		fmt.Printf("Injected debug IDs into %s\n", output.Pluralize(injected, "script"))
 	}
 
 	uploadedBy := map[string]string{}
@@ -237,7 +240,7 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 			fmt.Fprintf(os.Stderr, "Skipped %s: %s\n", script.Script, script.Reason)
 		}
 		if len(skipped) > 0 {
-			fmt.Fprintf(os.Stderr, "Skipped %s without a source map to upload\n", pluralize(len(skipped), "script"))
+			fmt.Fprintf(os.Stderr, "Skipped %s\n", output.Pluralize(len(skipped), "path"))
 		}
 		if len(artifacts) == 0 {
 			return nil, fmt.Errorf("no script with a source map found in %s", inputPath)
@@ -276,7 +279,7 @@ func printDryRun(results []uploadResult) error {
 	if agentmode.Enabled {
 		return printJSON(results)
 	}
-	fmt.Printf("Dry run: %s found\n", pluralize(len(results), "source map"))
+	fmt.Printf("Dry run: %s found\n", output.Pluralize(len(results), "source map"))
 	for _, result := range results {
 		note := ""
 		if result.Injected {
@@ -307,11 +310,4 @@ func printResultLine(result uploadResult) {
 
 func printJSON(results []uploadResult) error {
 	return output.NewFormatter(output.FormatJSON, os.Stdout).PrintJSON(results)
-}
-
-func pluralize(count int, noun string) string {
-	if count == 1 {
-		return "1 " + noun
-	}
-	return fmt.Sprintf("%d %ss", count, noun)
 }
