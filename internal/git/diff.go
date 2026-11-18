@@ -22,6 +22,10 @@ type Deletion struct {
 	// dashboard that apply updated at this id has no origin, and the delete
 	// must fall back to the id.
 	Alias string
+	// InferredOriginName is the metadata.name of a dashboard that named only
+	// a dash0.com/id. apply created it by its inferred origin when the id was
+	// not found, so the delete falls back to that origin.
+	InferredOriginName string
 	// IdentifiedByIDOnly reports that the deleted document carried only
 	// dash0.com/id, for a kind where that needs a warning; see
 	// asset.IdentifiedByIDOnly.
@@ -85,6 +89,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			Identifier:         key.Identifier,
 			Path:               path,
 			Alias:              before.Aliases[key],
+			InferredOriginName: before.InferredOriginNames[key],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
 		}
 		if key.Kind == "prometheusrule" {

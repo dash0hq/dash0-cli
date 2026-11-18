@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
@@ -2985,6 +2986,76 @@ func TestApply_Since_DashboardWithOriginAndIDDeletesWhereApplyWrote(t *testing.T
 				Validator:  testutil.RequireHeaders,
 			})
 			for _, path := range []string{originPath, idPath} {
+				server.On(http.MethodDelete, path, testutil.MockResponse{
+					StatusCode: http.StatusOK,
+					Body:       map[string]any{},
+					Validator:  testutil.RequireHeaders,
+				})
+			}
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.NoError(t, cmdErr)
+			var deletes []string
+			for _, request := range server.Requests() {
+				if request.Method == http.MethodDelete {
+					deletes = append(deletes, request.Path)
+				}
+			}
+			assert.Equal(t, []string{tt.wantDeleted}, deletes)
+		})
+	}
+}
+
+// A dashboard file with only a dash0.com/id was created by its inferred origin
+// when the id was not found. Removing the file must delete it there.
+func TestApply_Since_DashboardWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
+	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	idPath := apiPathDashboards + "/" + id
+	inferredPath := apiPathDashboards + "/" + asset.InferOrigin("Dashboard", "checkout", "default")
+	for _, tt := range []struct {
+		name        string
+		idStatus    int
+		idBody      string
+		wantDeleted string
+	}{
+		{"id not found deletes at the inferred origin", http.StatusNotFound, testutil.FixtureDashboardsNotFound, inferredPath},
+		{"id found deletes at the id", http.StatusOK, testutil.FixtureDashboardsImportSuccess, idPath},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "dashboard.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: "+id+"\nspec:\n  display:\n    name: Checkout\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboard")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, idPath, testutil.MockResponse{
+				StatusCode: tt.idStatus,
+				BodyFile:   tt.idBody,
+				Validator:  testutil.RequireHeaders,
+			})
+			for _, path := range []string{idPath, inferredPath} {
 				server.On(http.MethodDelete, path, testutil.MockResponse{
 					StatusCode: http.StatusOK,
 					Body:       map[string]any{},

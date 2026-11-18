@@ -47,7 +47,7 @@ The command is also available under the shorter alias `tsa`, so `dash0 tsa list`
 
 Every time series aggregation endpoint requires the organization admin role, which is stricter than any other asset type. A non-admin token gets a 403 naming the role.
 
-`metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key. `create` and `apply` both PUT to that origin, so they are create-or-replace; a document without the label fails before any API call. A `dash0.com/id` in a document body is ignored, which is what makes an exported definition reapply cleanly.
+`create` and `apply` follow the routing rule: `dash0.com/id` first, then `metadata.labels["dash0.com/origin"]`. A document without an origin gets an inferred `dash0-cli_` origin, so applying it again updates the same aggregation. The CLI never POSTs, and the body never carries the origin, because the API reads it from the path.
 
 Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document therefore cannot be applied to two datasets the way it can for every other asset kind — the second dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.
 

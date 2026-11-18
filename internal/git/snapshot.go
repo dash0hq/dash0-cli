@@ -89,6 +89,10 @@ type Snapshot struct {
 	// (see asset.ExtractAlias), so an asset still declared under either one
 	// is not a deletion.
 	Aliases map[IdentifierKey]string
+
+	// InferredOriginNames maps the identifier of a dashboard that names only
+	// a dash0.com/id to its metadata.name (see asset.ExtractInferredOriginName).
+	InferredOriginNames map[IdentifierKey]string
 }
 
 func newSnapshot() Snapshot {
@@ -101,6 +105,7 @@ func newSnapshot() Snapshot {
 		Paths:                               map[string]bool{},
 		RawContent:                          map[string][]byte{},
 		Aliases:                             map[IdentifierKey]string{},
+		InferredOriginNames:                 map[IdentifierKey]string{},
 	}
 }
 
@@ -284,6 +289,13 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		}
 		if alias != "" {
 			snap.Aliases[key] = alias
+		}
+		inferredOriginName, err := asset.ExtractInferredOriginName(docBytes)
+		if err != nil {
+			return fmt.Errorf("failed to extract metadata.name: %w", err)
+		}
+		if inferredOriginName != "" {
+			snap.InferredOriginNames[key] = inferredOriginName
 		}
 
 		if normalizedKind == "prometheusrule" {

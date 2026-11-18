@@ -120,6 +120,24 @@ func ExtractAlias(data []byte) (string, error) {
 	return DashboardAlias(&dashboard), nil
 }
 
+// ExtractInferredOriginName returns the metadata.name of a dashboard that
+// names only a dash0.com/id, or "". apply creates such a dashboard by its
+// inferred origin when the id is not found, so --since must delete it there.
+func ExtractInferredOriginName(data []byte) (string, error) {
+	kind, err := dash0yaml.DetectKind(data)
+	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
+		return "", err
+	}
+	var dashboard dash0api.DashboardDefinition
+	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+		return "", fmt.Errorf("failed to extract metadata.name: %w", err)
+	}
+	if identity := DashboardIdentity(&dashboard, nil); identity.ID == "" || identity.Origin != "" {
+		return "", nil
+	}
+	return dashboard.Metadata.Name, nil
+}
+
 // label returns the string value of a metadata label, or "" when it is absent
 // or not a string.
 func (p identifierProbe) label(key string) string {

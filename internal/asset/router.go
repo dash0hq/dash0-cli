@@ -113,13 +113,15 @@ func identityOf(kind, name, dataset string, asset routedAsset) Identity {
 }
 
 // CheckInferredOriginCollisions fails documents that would get the same
-// inferred origin, because the second would replace the first.
+// inferred origin, because the second would replace the first. A document
+// with only an id counts too: the router creates it by the inferred origin
+// when the id is not found, and that is not known before the run.
 func CheckInferredOriginCollisions(documents []Document, dataset *string) []string {
 	var origins []string
 	locations := make(map[string][]string)
 	for _, doc := range documents {
 		identity, ok := documentIdentity(doc, dataset)
-		if !ok || identity.ID != "" || identity.Origin != "" {
+		if !ok || identity.Origin != "" {
 			continue
 		}
 		if _, seen := locations[identity.Inferred]; !seen {
@@ -132,7 +134,7 @@ func CheckInferredOriginCollisions(documents []Document, dataset *string) []stri
 	for _, origin := range origins {
 		if uses := locations[origin]; len(uses) > 1 {
 			collisions = append(collisions, fmt.Sprintf(
-				"%s documents have no identifier and the same kind, metadata.name, and dataset, so they would all get origin %q and only the last one would be kept:\n    %s",
+				"%s documents have no dash0.com/origin and the same kind, metadata.name, and dataset, so any of them created by inferred origin %q would replace the others; set dash0.com/origin on each:\n    %s",
 				fmt.Sprint(len(uses)), origin, strings.Join(uses, "\n    ")))
 		}
 	}

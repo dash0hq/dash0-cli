@@ -183,4 +183,10 @@ func TestCheckInferredOriginCollisions(t *testing.T) {
 	assert.Contains(t, collisions[0], "a.yaml")
 	assert.Contains(t, collisions[0], "b.yaml")
 	assert.Contains(t, collisions[0], InferOrigin("Dashboard", "checkout", "default"))
+
+	// An id that is not found falls back to the inferred origin.
+	withID := func(id string) string {
+		return "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec: {}\n"
+	}
+	assert.Len(t, CheckInferredOriginCollisions([]Document{doc("a.yaml", withID("i1")), doc("b.yaml", withID("i2"))}, nil), 1)
 }

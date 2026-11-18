@@ -96,6 +96,19 @@ var routedKinds = map[string]routedKind{
 	},
 }
 
+// routedVariants are other schema versions of a routed kind that apply imports
+// through their own code path, keyed by the kind they belong to.
+var routedVariants = map[string]map[string]routedKind{
+	"spamfilter": {
+		"v1alpha2": {
+			path: "/api/spam-filters", fixture: "spamfilters/get_success_v1alpha2.json",
+			document: func(labels string) string {
+				return "apiVersion: v1alpha2\nkind: Dash0SpamFilter\nmetadata:\n  name: checkout\n" + labels + "spec:\n  context: log\n  filter: []\n"
+			},
+		},
+	},
+}
+
 // routerCase is one row of the routing rule every kind follows.
 type routerCase struct {
 	name   string
@@ -155,6 +168,13 @@ func TestRouter_EveryKindFollowsTheSameOrder(t *testing.T) {
 				t.Run(tc.name, func(t *testing.T) {
 					runRouterCase(t, kind, spec, tc)
 				})
+			}
+			for version, variant := range routedVariants[kind] {
+				for _, tc := range routerCases {
+					t.Run(version+"/"+tc.name, func(t *testing.T) {
+						runRouterCase(t, kind, variant, tc)
+					})
+				}
 			}
 		})
 	}
