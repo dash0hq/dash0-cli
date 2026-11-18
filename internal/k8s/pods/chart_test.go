@@ -124,3 +124,30 @@ func TestFlattensCountsDotRows(t *testing.T) {
 		t.Error("a line flat to the dot kept on the shared axis")
 	}
 }
+
+// Cards in a row end up equally tall: one axis, small multiples that split their rows, and a card that can't grow
+func TestFillMatchesHeights(t *testing.T) {
+	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
+	times := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}
+	big, small, tiny := []*float64{f(1200), f(1300), f(1250)}, []*float64{f(1), f(3), f(2)}, []*float64{f(0.004), f(0.006), f(0.005)}
+	card := func(ss []series, multiples bool) func(int) ditt0.Block {
+		return func(rows int) ditt0.Block {
+			return ditt0.Border(chart(ss, times, "seconds", 40, rows, multiples), 44, 1, ditt0.DimStyle)
+		}
+	}
+	fixed := func(int) ditt0.Block {
+		return ditt0.Border(ditt0.Block{ditt0.Text("loading", ditt0.DimStyle)}, 44, 1, ditt0.DimStyle)
+	}
+	for _, rows := range []int{5, 8, 12} {
+		got := fill(rows,
+			card([]series{{Name: "requests", Values: big}, {Name: "errors", Values: small}}, true),
+			card([]series{{Values: small}}, false),
+			card([]series{{Name: "p99", Values: big}, {Name: "p95", Values: small}, {Name: "p50", Values: tiny}}, true),
+			fixed)
+		for i, b := range got {
+			if len(b) != len(got[0]) {
+				t.Errorf("rows %d: card %d is %d lines, card 0 %d", rows, i, len(b), len(got[0]))
+			}
+		}
+	}
+}

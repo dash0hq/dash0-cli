@@ -76,11 +76,52 @@ func flattens(ss []series, rows int) bool {
 // axis, headed by its name and unit. CPU and memory keep usage on its request's and limit's axis, where reading one
 // against the other is the point
 func chart(ss []series, times []time.Time, unit string, width, rows int, multiples bool) ditt0.Block {
-	return ditt0.Timeseries(ditt0.TimeseriesProps{
+	b := ditt0.Timeseries(ditt0.TimeseriesProps{
 		Series: ss, Times: times, Unit: unit, Width: width, Rows: rows,
 		OneAxis:  !(multiples && len(ss) > 1 && flattens(ss, rows)),
 		LineType: ditt0.LineTypeBraille,
 	})
+	// A lone unnamed series needs no legend, its card's title names it: Ditt0 draws the legend as the last line
+	if len(ss) == 1 && ss[0].Name == "" && len(b) > 0 {
+		b = b[:len(b)-1]
+	}
+	return b
+}
+
+// Cards in a row, each chart grown until its card is as tall as the tallest, so the row's edges line up. One more row
+// is one more line on one axis, and on small multiples too once every panel is past its fewest rows, where Ditt0 gives
+// the row to a panel; below that a card stays as tall, so it takes a few more. A card that still can't match (one
+// that says it is loading, say) gets blank lines inside its border
+func fill(rows int, cards ...func(rows int) ditt0.Block) []ditt0.Block {
+	out := make([]ditt0.Block, len(cards))
+	h := 0
+	for i, c := range cards {
+		out[i] = c(rows)
+		h = max(h, len(out[i]))
+	}
+	for i, c := range cards {
+		// Each try adds a row, so h more is always enough for a card that grows
+		for r := rows + 1; len(out[i]) < h && r <= rows+2*h; r++ {
+			if b := c(r); len(b) <= h {
+				out[i] = b
+			}
+		}
+		out[i] = padCard(out[i], h)
+	}
+	return out
+}
+
+// A bordered card made h lines tall with blank lines above its bottom border
+func padCard(b ditt0.Block, h int) ditt0.Block {
+	if len(b) >= h || len(b) < 2 {
+		return b
+	}
+	blank := ditt0.Line{{Text: "│", Style: ditt0.DimStyle}, {Text: strings.Repeat(" ", b.Width()-2)}, {Text: "│", Style: ditt0.DimStyle}}
+	out := append(ditt0.Block{}, b[:len(b)-1]...)
+	for len(out) < h-1 {
+		out = append(out, blank)
+	}
+	return append(out, b[len(b)-1])
 }
 
 // Ditt0's Stat for a range: ▲ or ▼ since the range's first value. ink: a status colour the value reached, or "" for

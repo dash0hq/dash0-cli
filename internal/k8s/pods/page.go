@@ -386,7 +386,7 @@ func (p *page) render(w, h int) (ditt0.Block, int) {
 
 	var red, logs ditt0.Block
 	if p.data != nil {
-		red = p.redSection(cardW, side, rows)
+		red = p.redSection(inner, side, rows)
 		logs = p.logsSection(inner, rows)
 	}
 

@@ -137,3 +137,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
+
+replace github.com/dash0hq/ditt0-cli-design-system/go => github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261118190408-6bc637b77c67

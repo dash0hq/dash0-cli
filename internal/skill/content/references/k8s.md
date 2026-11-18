@@ -131,6 +131,7 @@ When the pods are in more than one cluster and `--cluster` is not set, each pod'
 The request rate follows the aggregation.
 The errors line shows only under `total` and `max`: a pod that served no failed request has no error series, so an average or minimum would leave it out and read too high.
 The error rate, the percentage of all the workload's requests that failed, and the duration percentiles always cover the whole workload.
+The Errors chart, next to Requests and Duration as in Dash0's service catalog, shows that error rate over the range.
 
 #### JSON output
 
