@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/cli/browser v1.3.0
 	github.com/dash0hq/dash0-api-client-go v1.35.0
-	github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261118114335-6b4131998435
+	github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261118120426-0e895345ced6
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
