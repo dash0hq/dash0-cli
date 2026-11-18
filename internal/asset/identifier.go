@@ -53,7 +53,9 @@ type identifierProbe struct {
 //     Dash0AwsMetricScrapeConfig):
 //     dash0.com/id
 //
-// Each kind reads only the field its Import helper actually upserts by. A
+// Dashboards, ephemeral dashboards, teams, notification channels, time series
+// aggregations, and spam filters keep this order even though apply reads their
+// dash0.com/id first (see RouteDocument). For the other kinds, a
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
@@ -107,9 +109,9 @@ func ExtractIdentifier(data []byte) (string, error) {
 
 // ExtractDashboardFallbacks returns, for a dashboard, a second identifier
 // that names the same asset as the one ExtractIdentifier returns (see
-// DashboardAlias), and the metadata.name of a dashboard that names only a
-// dash0.com/id. apply creates such a dashboard by its inferred origin when the
-// id is not found, so --since must delete it there. Both are "" for other kinds.
+// DashboardAlias), and the metadata.name of a dashboard without an origin.
+// apply writes such a dashboard at its inferred origin when it has no id or
+// the id is not found, so --since must delete it there. Both are "" for other kinds.
 func ExtractDashboardFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
 	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
@@ -119,7 +121,7 @@ func ExtractDashboardFallbacks(data []byte) (alias, inferredOriginName string, e
 	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
 		return "", "", err
 	}
-	if identity := DashboardIdentity(&dashboard, nil); identity.ID != "" && identity.Origin == "" {
+	if DashboardIdentity(&dashboard, nil).Origin == "" {
 		inferredOriginName = dashboard.Metadata.Name
 	}
 	return DashboardAlias(&dashboard), inferredOriginName, nil

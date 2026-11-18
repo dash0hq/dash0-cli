@@ -93,6 +93,11 @@ type Snapshot struct {
 	// InferredOriginNames maps the identifier of a dashboard that names only
 	// a dash0.com/id to its metadata.name (see asset.ExtractDashboardFallbacks).
 	InferredOriginNames map[IdentifierKey]string
+
+	// UnidentifiedDashboards holds the kind and metadata.name of every
+	// dashboard with neither an id nor an origin, which apply writes at its
+	// inferred origin.
+	UnidentifiedDashboards map[IdentifierKey]bool
 }
 
 func newSnapshot() Snapshot {
@@ -106,6 +111,7 @@ func newSnapshot() Snapshot {
 		RawContent:                          map[string][]byte{},
 		Aliases:                             map[IdentifierKey]string{},
 		InferredOriginNames:                 map[IdentifierKey]string{},
+		UnidentifiedDashboards:              map[IdentifierKey]bool{},
 	}
 }
 
@@ -276,17 +282,20 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		}
 
 		normalizedKind := asset.NormalizeKind(kind)
+		alias, inferredOriginName, err := asset.ExtractDashboardFallbacks(docBytes)
+		if err != nil {
+			return fmt.Errorf("failed to read dashboard identifiers: %w", err)
+		}
 		if identifier == "" {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
+			if inferredOriginName != "" {
+				snap.UnidentifiedDashboards[IdentifierKey{Kind: normalizedKind, Identifier: inferredOriginName}] = true
+			}
 			continue
 		}
 		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
 		snap.Identifiers[key] = docPath
 
-		alias, inferredOriginName, err := asset.ExtractDashboardFallbacks(docBytes)
-		if err != nil {
-			return fmt.Errorf("failed to read dashboard identifiers: %w", err)
-		}
 		if alias != "" {
 			snap.Aliases[key] = alias
 		}

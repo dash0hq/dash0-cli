@@ -26,6 +26,10 @@ type Deletion struct {
 	// a dash0.com/id. apply created it by its inferred origin when the id was
 	// not found, so the delete falls back to that origin.
 	InferredOriginName string
+	// InferredOriginKept reports that the current input has a document of the
+	// same kind and name with no id and no origin. apply writes that document
+	// at the same inferred origin, so the delete must not fall back to it.
+	InferredOriginKept bool
 	// IdentifiedByIDOnly reports that the deleted document carried only
 	// dash0.com/id, for a kind where that needs a warning; see
 	// asset.IdentifiedByIDOnly.
@@ -90,6 +94,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			Path:               path,
 			Alias:              before.Aliases[key],
 			InferredOriginName: before.InferredOriginNames[key],
+			InferredOriginKept: after.UnidentifiedDashboards[IdentifierKey{Kind: key.Kind, Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
 		}
 		if key.Kind == "prometheusrule" {

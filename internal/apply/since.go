@@ -460,15 +460,17 @@ func (index checkRuleNameIndex) resolve(name string) (string, error) {
 // deleting at the wrong key would report a deletion that never happened.
 func dashboardDeleteKey(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (string, error) {
 	fallback := d.Alias
-	if fallback == "" && d.InferredOriginName != "" {
+	if fallback == "" && d.InferredOriginName != "" && !d.InferredOriginKept {
 		fallback = asset.InferOrigin(d.Kind, d.InferredOriginName, asset.DatasetName(dataset))
 	}
-	if fallback == "" {
+	if fallback == "" && !d.InferredOriginKept {
 		return d.Identifier, nil
 	}
 	_, err := apiClient.GetDashboard(ctx, d.Identifier, dataset)
-	if dash0api.IsNotFound(err) {
+	if dash0api.IsNotFound(err) && fallback != "" {
 		return fallback, nil
 	}
+	// With the inferred origin kept, a missing id leaves nothing to delete, and
+	// the 404 reports the dashboard as already deleted.
 	return d.Identifier, err
 }

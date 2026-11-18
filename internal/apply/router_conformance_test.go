@@ -130,6 +130,12 @@ var routerCases = []routerCase{
 		want:   []string{"GET o", "PUT o"},
 	},
 	{
+		name:   "origin only, stored",
+		labels: map[string]string{"dash0.com/origin": "o"},
+		stored: map[string]string{"o": "o"},
+		want:   []string{"GET o", "PUT o"},
+	},
+	{
 		name:   "id hit",
 		labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
 		stored: map[string]string{"i": "o"},
@@ -138,6 +144,12 @@ var routerCases = []routerCase{
 	{
 		name:   "id not found",
 		labels: map[string]string{"dash0.com/id": "i"},
+		want:   []string{"GET i", "GET " + inferredKey, "PUT " + inferredKey},
+	},
+	{
+		name:   "id not found, inferred origin stored",
+		labels: map[string]string{"dash0.com/id": "i"},
+		stored: map[string]string{inferredKey: inferredKey},
 		want:   []string{"GET i", "GET " + inferredKey, "PUT " + inferredKey},
 	},
 	{

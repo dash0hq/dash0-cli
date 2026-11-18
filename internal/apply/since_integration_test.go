@@ -3085,3 +3085,81 @@ func TestApply_Since_DashboardWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 		})
 	}
 }
+
+// A dashboard file that drops its dash0.com/id but keeps its name is applied at
+// the inferred origin, so --since must not delete that dashboard.
+func TestApply_Since_DashboardThatDropsItsIDKeepsTheInferredOrigin(t *testing.T) {
+	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	idPath := apiPathDashboards + "/" + id
+	inferredPath := apiPathDashboards + "/" + asset.InferOrigin("Dashboard", "checkout", "default")
+	for _, tt := range []struct {
+		name        string
+		idStatus    int
+		idBody      string
+		wantDeletes []string
+	}{
+		{"id not found deletes nothing", http.StatusNotFound, testutil.FixtureDashboardsNotFound, nil},
+		{"id found deletes at the id", http.StatusOK, testutil.FixtureDashboardsImportSuccess, []string{idPath}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			const withoutID = "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n"
+			writeFileFixture(t, dir, "dashboard.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: "+id+"\nspec:\n  display:\n    name: Checkout\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			writeFileFixture(t, dir, "dashboard.yaml", withoutID)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "drop the id")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, idPath, testutil.MockResponse{
+				StatusCode: tt.idStatus,
+				BodyFile:   tt.idBody,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.On(http.MethodGet, inferredPath, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureDashboardsImportSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+			for _, path := range []string{idPath, inferredPath} {
+				server.On(http.MethodDelete, path, testutil.MockResponse{
+					StatusCode: http.StatusOK,
+					Body:       map[string]any{},
+					Validator:  testutil.RequireHeaders,
+				})
+			}
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.NoError(t, cmdErr)
+			require.NotNil(t, findRequest(server.Requests(), http.MethodPut, inferredPath), "apply must write the dashboard at its inferred origin")
+			var deletes []string
+			for _, request := range server.Requests() {
+				if request.Method == http.MethodDelete {
+					deletes = append(deletes, request.Path)
+				}
+			}
+			assert.Equal(t, tt.wantDeletes, deletes)
+		})
+	}
+}
