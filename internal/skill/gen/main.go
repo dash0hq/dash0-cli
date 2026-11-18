@@ -59,6 +59,14 @@ var topics = []topicSpec{
 		},
 	},
 	{
+		name:            "aws-log-group-policies",
+		includeQuickRef: true,
+		sections: []string{
+			"aws-log-group-policies get", "aws-log-group-policies update", "aws-log-group-policies delete",
+		},
+		assetYAMLLabels: []string{"AWS log-group policy ("},
+	},
+	{
 		name:            "aws-metric-scrape-configs",
 		includeQuickRef: true,
 		sections: []string{

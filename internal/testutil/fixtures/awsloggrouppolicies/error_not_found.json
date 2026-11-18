@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 404,
+    "message": "AWS log-group instrumentation policy not found",
+    "traceId": "ddb701fbe941e637739b3be3735897e9"
+  }
+}

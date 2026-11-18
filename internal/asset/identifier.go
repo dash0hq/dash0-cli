@@ -50,7 +50,7 @@ type identifierProbe struct {
 //     Dash0SignalToMetrics, Dash0Sampling:
 //     dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
-//     Dash0AwsMetricScrapeConfig):
+//     Dash0AwsMetricScrapeConfig, Dash0AwsLogGroupInstrumentationPolicy):
 //     dash0.com/id
 //
 // Each kind reads only the field its Import helper actually upserts by. A

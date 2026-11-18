@@ -50,6 +50,10 @@ func (c *keyRecordingClient) GetAwsMetricScrapeConfig(_ context.Context, key str
 	return nil, c.notFound("GetAwsMetricScrapeConfig", key)
 }
 
+func (c *keyRecordingClient) GetAwsLogGroupInstrumentationPolicy(_ context.Context, key string) (*dash0api.AwsLogGroupInstrumentationPolicy, error) {
+	return nil, c.notFound("GetAwsLogGroupInstrumentationPolicy", key)
+}
+
 func (c *keyRecordingClient) GetView(_ context.Context, key string, _ *string) (*dash0api.ViewDefinition, error) {
 	return nil, c.notFound("GetView", key)
 }
@@ -171,6 +175,8 @@ func characterizationDocument(kind string, variant identifierVariant) string {
 			"spec:\n  display:\n    name: n\n  enabled: false\n  conditions:\n    kind: error\n    spec: {}\n"
 	case "awsmetricscrapeconfig":
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + labelBlock + "spec:\n  namespaces: []\n"
+	case "awsloggroupinstrumentationpolicy":
+		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsLogGroupInstrumentationPolicy\nmetadata:\n" + labelBlock + "spec:\n  rules: []\n"
 	}
 	panic("no characterization document for kind " + kind)
 }
@@ -295,6 +301,12 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withOrigin:  {"", "", "GetAwsMetricScrapeConfig() error: AWS integration not found (status: 404)"},
 			withID:      {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
 			withBoth:    {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
+		},
+		"awsloggroupinstrumentationpolicy": {
+			withNeither: {"", "", "GetAwsLogGroupInstrumentationPolicy()"},
+			withOrigin:  {"", "", "GetAwsLogGroupInstrumentationPolicy()"},
+			withID:      {"i", "i", "GetAwsLogGroupInstrumentationPolicy(i)"},
+			withBoth:    {"i", "i", "GetAwsLogGroupInstrumentationPolicy(i)"},
 		},
 		"generativeaievaluation": {
 			withNeither: {"", "", ""},

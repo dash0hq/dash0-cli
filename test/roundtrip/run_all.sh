@@ -96,6 +96,7 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_dataset_roundtrip.sh"
   "${SCRIPT_DIR}/test_auth_token_roundtrip.sh"
   "${SCRIPT_DIR}/test_aws_metric_scrape_config_roundtrip.sh"
+  "${SCRIPT_DIR}/test_aws_log_group_policy_roundtrip.sh"
   "${SCRIPT_DIR}/test_apply_since_roundtrip.sh"
   "${SCRIPT_DIR}/test_apply_since_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_since_ref_edge_cases.sh"

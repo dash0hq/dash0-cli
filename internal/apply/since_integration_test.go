@@ -2683,6 +2683,46 @@ func TestApply_Since_RemovedAwsMetricScrapeConfigIsCleared(t *testing.T) {
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathAwsScrapeConfig))
 }
 
+// Removing the file never removes forwarding: --since deletes with keep.
+func TestApply_Since_RemovedAwsLogGroupPolicyIsDeletedWithKeep(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "policy.yaml", awsLogGroupPolicyDoc)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add policy")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "policy.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove policy")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodDelete, apiPathAwsLogGroupPolicy, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "awsloggrouppolicies/get_deleted.json", Validator: testutil.RequireHeaders})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "deleted")
+	del := findRequest(server.Requests(), http.MethodDelete, apiPathAwsLogGroupPolicy)
+	require.NotNil(t, del)
+	assert.Equal(t, "disposition=keep", del.Query)
+}
+
 func TestApply_Since_DeletesRemovedEval(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

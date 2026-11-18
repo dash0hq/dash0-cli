@@ -358,7 +358,7 @@ See the [agent mode specification](docs/commands.md#agent-mode) for the full pri
 
 Apply asset definitions from a file, directory, or stdin.
 The input may contain multiple YAML documents separated by `---`.
-Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, and `Dash0GenerativeAiEvaluation`.
+Supported asset types: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule` (alerting and recording rules), `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0AwsLogGroupInstrumentationPolicy`, and `Dash0GenerativeAiEvaluation`.
 
 From a single file:
 
@@ -806,6 +806,23 @@ dash0 -X aws-metric-scrape-configs update -f scrape-config.yaml
 ```bash
 # Clear the config: Dash0 stops scraping CloudWatch metrics, and the integration is kept
 dash0 -X aws-metric-scrape-configs delete <integration-id>
+```
+
+### AWS log-group policies (experimental)
+
+```bash
+# Export the log-group instrumentation policy of an AWS integration
+dash0 -X aws-log-group-policies get <integration-id> -o yaml > policy.yaml
+```
+
+```bash
+# Create or replace the policy from a file (the integration id comes from the file's dash0.com/id label)
+dash0 -X aws-log-group-policies update -f policy.yaml
+```
+
+```bash
+# Delete the policy; its log groups keep forwarding unless --remove-forwarding is given
+dash0 -X aws-log-group-policies delete <integration-id>
 ```
 
 ### Teams (experimental)

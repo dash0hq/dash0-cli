@@ -23,7 +23,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0AwsLogGroupInstrumentationPolicy`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -134,6 +134,22 @@ These checks run during the validation phase, before any document in the run is 
 The CLI does not send `dash0.com/origin`, so it never claims ownership of a config.
 Dash0 keeps the origin of the first writer until the config is cleared.
 `apply` prints `created` when the integration had no config before, and a diff otherwise.
+
+`Dash0AwsLogGroupInstrumentationPolicy` documents create or replace the log-group instrumentation policy of the AWS integration named by `metadata.labels["dash0.com/id"]`.
+They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
+These checks run during the validation phase, before any document in the run is applied:
+
+- A document without `dash0.com/id`, or with one that is not a UUID, fails.
+- A missing or `null` `spec.rules` fails, because the API would read it as `[]` and match no log group.
+  Write `rules: []` for that on purpose.
+- An unknown field under `spec`, an unsupported operator, or an `onNoLongerMatching` other than `keep` or `remove` fails.
+- A label or annotation that the API ignores prints a warning.
+  The labels and annotations that `aws-log-group-policies get -o yaml` exports are not warned about.
+
+The CLI sends no metadata.
+Without `dash0.com/version` the write is not fenced by revision, so the file replaces whatever is stored, including changes made in the UI since the file was exported.
+Without `dash0.com/origin` the CLI never conflicts with the origin that owns the policy.
+`apply` prints `created` when the integration had no policy or a deleted one, and a diff otherwise.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -309,6 +325,9 @@ A dataset that is already gone counts as deleted, and a removed dataset document
 
 A `Dash0AwsMetricScrapeConfig` document removed since `<ref>` clears the integration's scrape config, with the same API call as `aws-metric-scrape-configs delete`.
 Dash0 stops scraping CloudWatch metrics for that integration, and the integration itself is kept.
+
+A `Dash0AwsLogGroupInstrumentationPolicy` document removed since `<ref>` deletes the integration's policy with the `keep` disposition: the log groups it forwards keep forwarding.
+Removing forwarding needs explicit consent, which only [`aws-log-group-policies delete --remove-forwarding`](#aws-log-group-policies-delete-experimental) gives.
 
 A `Dash0SignalToMetrics` document removed since `<ref>` deletes the rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `signal-to-metrics-rules delete`.
 Deleting by `dash0.com/id` alone prints a warning: if the document was first applied to an organization without that ID, the live rule has a different, server-assigned ID, and the delete can miss it.
