@@ -66,34 +66,9 @@ type Snapshot struct {
 	// as one server-side resource, not one per record.
 	PrometheusRecordingRoleByIdentifier map[string]bool
 
-	// SpamFilterUsesOriginByIdentifier maps a spam filter's identifier to
-	// whether it carries a dash0.com/origin label (per
-	// asset.SpamFilterUsesOrigin). Diff carries this into Deletion so --since
-	// can warn when deleting an ID-only spam filter, whose id may have been
-	// reassigned server-side since this identifier was recorded.
-	SpamFilterUsesOriginByIdentifier map[string]bool
-
-	// SLOUsesOriginByIdentifier is the same signal for SLOs (per
-	// asset.SLOUsesOrigin): SLO ids are server-assigned, so an ID-only
-	// document whose first apply took the POST fallback left the live SLO at
-	// an id the document never learned.
-	SLOUsesOriginByIdentifier map[string]bool
-
-	// GenerativeAiEvaluationUsesOriginByIdentifier is the same signal for
-	// evals (per asset.GenerativeAiEvaluationUsesOrigin).
-	GenerativeAiEvaluationUsesOriginByIdentifier map[string]bool
-	// SignalToMetricsRuleUsesOriginByIdentifier is the same signal for
-	// signal-to-metrics rules (per asset.SignalToMetricsRuleUsesOrigin), whose
-	// ids are also server-assigned.
-	SignalToMetricsRuleUsesOriginByIdentifier map[string]bool
-	// SamplingRuleUsesOriginByIdentifier is the same signal for sampling
-	// rules (per asset.SamplingRuleUsesOrigin). Their ids are unique across
-	// organizations, so an id-only document applied to a second organization
-	// gets a new, server-assigned id there.
-	SamplingRuleUsesOriginByIdentifier map[string]bool
-	// TeamUsesOriginByIdentifier is the same signal for teams (per
-	// asset.TeamUsesOrigin).
-	TeamUsesOriginByIdentifier map[string]bool
+	// IdentifiedByIDOnly records the identifiers whose document asset.IdentifiedByIDOnly
+	// reports, so --since can warn before it deletes one.
+	IdentifiedByIDOnly map[IdentifierKey]bool
 
 	// Paths is the set of every file path scanned, regardless of whether it
 	// parsed into a recognized kind. Used to check whether a NoIdentifier
@@ -118,19 +93,14 @@ type Snapshot struct {
 
 func newSnapshot() Snapshot {
 	return Snapshot{
-		Identifiers:                                  map[IdentifierKey]string{},
-		NoIdentifier:                                 map[string]NoIdentifierDoc{},
-		PrometheusAlertsByIdentifier:                 map[string][]asset.PrometheusAlertName{},
-		PrometheusRecordingRoleByIdentifier:          map[string]bool{},
-		SpamFilterUsesOriginByIdentifier:             map[string]bool{},
-		SLOUsesOriginByIdentifier:                    map[string]bool{},
-		GenerativeAiEvaluationUsesOriginByIdentifier: map[string]bool{},
-		SignalToMetricsRuleUsesOriginByIdentifier:    map[string]bool{},
-		SamplingRuleUsesOriginByIdentifier:           map[string]bool{},
-		TeamUsesOriginByIdentifier:                   map[string]bool{},
-		Paths:                                        map[string]bool{},
-		RawContent:                                   map[string][]byte{},
-		Aliases:                                      map[IdentifierKey]string{},
+		Identifiers:                         map[IdentifierKey]string{},
+		NoIdentifier:                        map[string]NoIdentifierDoc{},
+		PrometheusAlertsByIdentifier:        map[string][]asset.PrometheusAlertName{},
+		PrometheusRecordingRoleByIdentifier: map[string]bool{},
+		IdentifiedByIDOnly:                  map[IdentifierKey]bool{},
+		Paths:                               map[string]bool{},
+		RawContent:                          map[string][]byte{},
+		Aliases:                             map[IdentifierKey]string{},
 	}
 }
 
@@ -337,53 +307,11 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 			snap.PrometheusRecordingRoleByIdentifier[identifier] = hasRecordingRule
 		}
 
-		if normalizedKind == "spamfilter" {
-			usesOrigin, err := asset.SpamFilterUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine spam filter identifier source: %w", err)
-			}
-			snap.SpamFilterUsesOriginByIdentifier[identifier] = usesOrigin
+		idOnly, err := asset.IdentifiedByIDOnly(normalizedKind, docBytes)
+		if err != nil {
+			return err
 		}
-
-		if normalizedKind == "slo" {
-			usesOrigin, err := asset.SLOUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine SLO identifier source: %w", err)
-			}
-			snap.SLOUsesOriginByIdentifier[identifier] = usesOrigin
-		}
-
-		if normalizedKind == "generativeaievaluation" {
-			usesOrigin, err := asset.GenerativeAiEvaluationUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine eval identifier source: %w", err)
-			}
-			snap.GenerativeAiEvaluationUsesOriginByIdentifier[identifier] = usesOrigin
-		}
-
-		if normalizedKind == "signaltometrics" {
-			usesOrigin, err := asset.SignalToMetricsRuleUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine signal-to-metrics rule identifier source: %w", err)
-			}
-			snap.SignalToMetricsRuleUsesOriginByIdentifier[identifier] = usesOrigin
-		}
-
-		if normalizedKind == "sampling" {
-			usesOrigin, err := asset.SamplingRuleUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine sampling rule identifier source: %w", err)
-			}
-			snap.SamplingRuleUsesOriginByIdentifier[identifier] = usesOrigin
-		}
-
-		if normalizedKind == "team" {
-			usesOrigin, err := asset.TeamUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine team identifier source: %w", err)
-			}
-			snap.TeamUsesOriginByIdentifier[identifier] = usesOrigin
-		}
+		snap.IdentifiedByIDOnly[key] = idOnly
 	}
 	return nil
 }
