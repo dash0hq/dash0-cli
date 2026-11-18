@@ -120,7 +120,46 @@ if ! "$DASH0" dashboards get "$PREVIEW_ID" -o yaml | grep -q "^kind: EphemeralDa
   exit 1
 fi
 
-echo "--- Step 6: Delete removes the ephemeral dashboard ---"
+echo "--- Step 6: The kind of an existing dashboard does not change ---"
+cat > "${TMPDIR}/kind-change.yaml" << YAML
+kind: EphemeralDashboard
+metadata:
+  name: preview-test
+  dash0Extensions:
+    id: $DASHBOARD_ID
+spec:
+  ttl: 1h
+  display:
+    name: Preview Test Dashboard
+  layouts: []
+  panels: {}
+YAML
+if APPLY7=$("$DASH0" apply -f "${TMPDIR}/kind-change.yaml" 2>&1); then
+  echo "FAIL: expected apply of an EphemeralDashboard over the Dashboard '${DASHBOARD_ID}' to fail"
+  echo "$APPLY7"
+  exit 1
+fi
+if ! echo "$APPLY7" | grep -q "is stored as dashboard"; then
+  echo "FAIL: expected the kind mismatch error, got:"
+  echo "$APPLY7"
+  exit 1
+fi
+# The CLI stops before the write, so send the same PUT directly to check that the API rejects it too.
+cat > "${TMPDIR}/kind-change.json" << JSON
+{"kind": "EphemeralDashboard", "metadata": {"name": "preview-test"}, "spec": {"ttl": "1h", "display": {"name": "Preview Test Dashboard"}, "layouts": [], "panels": {}}}
+JSON
+if PUT7=$("$DASH0" -X api PUT "/api/dashboards/${DASHBOARD_ID}" -f "${TMPDIR}/kind-change.json" 2>&1); then
+  echo "FAIL: expected the API to reject an EphemeralDashboard over the Dashboard '${DASHBOARD_ID}'"
+  echo "$PUT7"
+  exit 1
+fi
+echo "$PUT7"
+if ! "$DASH0" dashboards get "$DASHBOARD_ID" -o yaml | grep -q "^kind: Dashboard"; then
+  echo "FAIL: expected '${DASHBOARD_ID}' to stay a permanent Dashboard"
+  exit 1
+fi
+
+echo "--- Step 7: Delete removes the ephemeral dashboard ---"
 "$DASH0" dashboards delete "$EPHEMERAL_ID" --force
 # get also returns a deleted dashboard, so check that list no longer has it.
 if ! LIST_JSON=$("$DASH0" dashboards list --all -o json); then
