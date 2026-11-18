@@ -13,59 +13,58 @@ type idOnlyDeleteWarning struct {
 	format string
 }
 
-// idOnlyDeleteWarningOf returns the kind's warning, if it needs one. decided is
-// false for a kind with no case, so a test can require a case for every kind.
-func idOnlyDeleteWarningOf(kind string) (warning idOnlyDeleteWarning, needed, decided bool) {
-	switch NormalizeKind(kind) {
-	case "slo":
-		return idOnlyDeleteWarning{
-			noun:       "SLO",
-			usesOrigin: SLOUsesOrigin,
-			format:     "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
-		}, true, true
-	case "generativeaievaluation":
-		return idOnlyDeleteWarning{
-			noun:       "eval",
-			usesOrigin: GenerativeAiEvaluationUsesOrigin,
-			format:     "warning: eval %s was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
-		}, true, true
-	case "signaltometrics":
-		return idOnlyDeleteWarning{
-			noun:       "signal-to-metrics rule",
-			usesOrigin: SignalToMetricsRuleUsesOrigin,
-			format:     "warning: signal-to-metrics rule %s was identified by dash0.com/id alone; rule ids are server-assigned, so if this document was first applied to an organization without that id the live rule now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
-		}, true, true
-	case "sampling":
-		return idOnlyDeleteWarning{
-			noun:       "sampling rule",
-			usesOrigin: SamplingRuleUsesOrigin,
-			format:     "warning: sampling rule %s was identified by dash0.com/id alone; if this document was first applied to an organization without that id, the live rule got a new id from the server (see docs/commands.md's asset-identifiers section) and this delete may miss it",
-		}, true, true
-	case "team":
-		return idOnlyDeleteWarning{
-			noun:       "team",
-			usesOrigin: TeamUsesOrigin,
-			format:     "warning: team %s was identified by dash0.com/id alone; team ids are server-assigned, so if this document was first applied to an organization without that id the live team now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
-		}, true, true
-	case "spamfilter":
-		return idOnlyDeleteWarning{
-			noun:       "spam filter",
-			usesOrigin: SpamFilterUsesOrigin,
-			format:     "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter",
-		}, true, true
-	case "dashboard", "checkrule", "syntheticcheck", "view", "prometheusrule", "persesdashboard",
-		"notificationchannel", "timeseriesaggregation", "dataset", "skill", "awsmetricscrapeconfig":
-		return idOnlyDeleteWarning{}, false, true
-	}
-	return idOnlyDeleteWarning{}, false, false
+// idOnlyDeleteWarnings maps every normalized kind to its warning, or to nil
+// when the kind needs none. A test requires a key for every kind in ValidKinds.
+var idOnlyDeleteWarnings = map[string]*idOnlyDeleteWarning{
+	"slo": {
+		noun:       "SLO",
+		usesOrigin: SLOUsesOrigin,
+		format:     "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+	},
+	"generativeaievaluation": {
+		noun:       "eval",
+		usesOrigin: GenerativeAiEvaluationUsesOrigin,
+		format:     "warning: eval %s was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+	},
+	"signaltometrics": {
+		noun:       "signal-to-metrics rule",
+		usesOrigin: SignalToMetricsRuleUsesOrigin,
+		format:     "warning: signal-to-metrics rule %s was identified by dash0.com/id alone; rule ids are server-assigned, so if this document was first applied to an organization without that id the live rule now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+	},
+	"sampling": {
+		noun:       "sampling rule",
+		usesOrigin: SamplingRuleUsesOrigin,
+		format:     "warning: sampling rule %s was identified by dash0.com/id alone; if this document was first applied to an organization without that id, the live rule got a new id from the server (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+	},
+	"team": {
+		noun:       "team",
+		usesOrigin: TeamUsesOrigin,
+		format:     "warning: team %s was identified by dash0.com/id alone; team ids are server-assigned, so if this document was first applied to an organization without that id the live team now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+	},
+	"spamfilter": {
+		noun:       "spam filter",
+		usesOrigin: SpamFilterUsesOrigin,
+		format:     "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter",
+	},
+	"dashboard":             nil,
+	"checkrule":             nil,
+	"syntheticcheck":        nil,
+	"view":                  nil,
+	"prometheusrule":        nil,
+	"persesdashboard":       nil,
+	"notificationchannel":   nil,
+	"timeseriesaggregation": nil,
+	"dataset":               nil,
+	"skill":                 nil,
+	"awsmetricscrapeconfig": nil,
 }
 
 // IdentifiedByIDOnly reports whether a document of a kind that needs the
 // id-only delete warning carries no dash0.com/origin label. It is false for
 // every other kind.
 func IdentifiedByIDOnly(kind string, data []byte) (bool, error) {
-	warning, needed, _ := idOnlyDeleteWarningOf(kind)
-	if !needed {
+	warning := idOnlyDeleteWarnings[NormalizeKind(kind)]
+	if warning == nil {
 		return false, nil
 	}
 	usesOrigin, err := warning.usesOrigin(data)
@@ -79,8 +78,8 @@ func IdentifiedByIDOnly(kind string, data []byte) (bool, error) {
 // deletes an asset that IdentifiedByIDOnly reported. display is the asset's
 // name and id.
 func IDOnlyDeleteWarning(kind, display string) string {
-	warning, needed, _ := idOnlyDeleteWarningOf(kind)
-	if !needed {
+	warning := idOnlyDeleteWarnings[NormalizeKind(kind)]
+	if warning == nil {
 		return ""
 	}
 	return fmt.Sprintf(warning.format, display)

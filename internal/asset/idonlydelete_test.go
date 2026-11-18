@@ -11,9 +11,9 @@ import (
 func TestIDOnlyDeleteWarning_EveryValidKindDecides(t *testing.T) {
 	var warningKinds []string
 	for _, kind := range ValidKinds {
-		_, needed, decided := idOnlyDeleteWarningOf(kind)
-		assert.Truef(t, decided, "kind %q has no case in idOnlyDeleteWarningOf", kind)
-		if needed {
+		warning, decided := idOnlyDeleteWarnings[NormalizeKind(kind)]
+		assert.Truef(t, decided, "kind %q has no key in idOnlyDeleteWarnings", kind)
+		if warning != nil {
 			warningKinds = append(warningKinds, kind)
 			assert.NotEmptyf(t, IDOnlyDeleteWarning(kind, `"name" (id)`), "kind %q", kind)
 		}
