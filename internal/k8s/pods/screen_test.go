@@ -2,6 +2,7 @@ package pods
 
 import (
 	"fmt"
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"testing"
 	"time"
 )
@@ -33,7 +34,7 @@ func TestRenderTinyTerminals(t *testing.T) {
 	values := []*float64{f(0.1), f(0.2), nil, f(0.4)}
 	end := time.Unix(1_800_000_000, 0)
 	for _, withData := range []bool{false, true} {
-		p := &page{target: target{namespace: "ns", kind: "pod", name: "pod"}, theme: dark, apiURL: "https://api.example.com"}
+		p := &page{target: target{namespace: "ns", kind: "pod", name: "pod"}, theme: ditt0.Dark, apiURL: "https://api.example.com"}
 		if withData {
 			p.win = window{end.Add(-3 * time.Minute), end, time.Minute}
 			p.at = end
@@ -51,8 +52,8 @@ func TestRenderTinyTerminals(t *testing.T) {
 }
 
 func TestPlainHasNoEscapes(t *testing.T) {
-	l := line{{"a", style{fg: "#ffffff", bold: true, link: "https://example.com"}}, {"b", dimStyle}}
-	if got := l.plain(); got != "ab" {
+	l := ditt0.Line{{Text: "a", Style: ditt0.Style{Fg: "#ffffff", Bold: true, Link: "https://example.com"}}, {Text: "b", Style: ditt0.DimStyle}}
+	if got := plain(l); got != "ab" {
 		t.Errorf("plain() = %q", got)
 	}
 }
