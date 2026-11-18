@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"io"
 	"net/http"
 	"os"
@@ -93,7 +94,7 @@ The pod is matched on the k8s.namespace.name and k8s.pod.name resource attribute
 		long = `Draw the CPU and memory of a ` + kind + `'s pods from Dash0 in the terminal, plus their requests, errors, duration and log counts when they have spans and logs.
 The page refreshes every 30 seconds.
 In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pods' metrics, traces and logs in Dash0, and q or Esc quits.
-a switches between the total of the pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a line for each of the 8 busiest pods.
+a switches between the total of the pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a ditt0.Line for each of the 8 busiest pods.
 For CPU and memory, the busiest pods are those nearest their limits; for requests and duration, those with the highest mean.
 
 The ` + kind + ` is matched on the k8s.namespace.name and k8s.` + kind + `.name resource attributes.`
@@ -103,7 +104,7 @@ The ` + kind + ` is matched on the k8s.namespace.name and k8s.` + kind + `.name 
   # Watch the maximum across its pods at each step
   dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> --aggregate max
 
-  # Watch it with a line per pod
+  # Watch it with a ditt0.Line per pod
   dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> --per-pod
 
   # Print its series and Dash0 links as JSON
@@ -132,7 +133,7 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 
 	if workload {
 		cmd.Flags().StringVar(&flags.agg, "aggregate", "total", "How the pods add up: "+strings.Join(aggs, ", "))
-		cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open on a line per pod")
+		cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open on a ditt0.Line per pod")
 	}
 	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "The "+kind+"'s namespace (required)")
 	cmd.Flags().StringVar(&flags.cluster, "cluster", os.Getenv(envCluster), "Dash0's k8s.cluster.name; empty matches the "+kind+" in any cluster (env: DASH0_CLUSTER)")
@@ -183,12 +184,12 @@ func runWatch(cmd *cobra.Command, kind, name string, flags *watchFlags) error {
 		target:   target{cluster: flags.cluster, namespace: flags.namespace, kind: kind, name: name, context: flags.kubeContext, profile: profileName(ctx, flags), agg: agg},
 		rangeIdx: rangeIdx,
 		perPod:   flags.perPod,
-		theme:    dark,
+		theme:    ditt0.Dark,
 		apiURL:   client.ResolveApiUrl(ctx, flags.apiURL),
 		dataset:  client.ResolveDataset(ctx, flags.dataset),
 	}
 	if flags.light {
-		p.theme = light
+		p.theme = ditt0.Light
 	}
 
 	// Resolved before every refresh, so an OAuth access token is renewed while the page stays open
@@ -246,9 +247,9 @@ func runWatch(cmd *cobra.Command, kind, name string, flags *watchFlags) error {
 		frame, _ := p.render(w, h)
 		for _, l := range frame {
 			if color.NoColor {
-				fmt.Println(l.plain())
+				fmt.Println(plain(l))
 			} else {
-				fmt.Println(l.ansi())
+				fmt.Println(l.ANSI())
 			}
 		}
 		return p.allFailed()
@@ -361,13 +362,13 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 		var sb strings.Builder
 		sb.WriteString("\x1b[H")
 		for i := 0; i < body; i++ {
-			var l line
+			var l ditt0.Line
 			if p.scroll+i < len(frame) {
 				l = frame[p.scroll+i]
 			}
-			sb.WriteString(l.cut(w).ansi() + "\x1b[K\r\n")
+			sb.WriteString(l.Cut(w).ANSI() + "\x1b[K\r\n")
 		}
-		sb.WriteString(line{{" " + hints, dimStyle}}.cut(w).ansi() + "\x1b[K")
+		sb.WriteString(ditt0.Line{{Text: " " + hints, Style: ditt0.DimStyle}}.Cut(w).ANSI() + "\x1b[K")
 		fmt.Print(sb.String())
 		return columns
 	}
