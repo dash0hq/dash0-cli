@@ -133,7 +133,7 @@ The command also runs as a k9s plugin; see the k9s plugin section of the README.
 
 	if workload {
 		cmd.Flags().StringVar(&flags.agg, "aggregate", "total", "How the pods add up: "+strings.Join(aggs, ", "))
-		cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open on a ditt0.Line per pod")
+		cmd.Flags().BoolVar(&flags.perPod, "per-pod", false, "Open on a line per pod")
 	}
 	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "The "+kind+"'s namespace (required)")
 	cmd.Flags().StringVar(&flags.cluster, "cluster", os.Getenv(envCluster), "Dash0's k8s.cluster.name; empty matches the "+kind+" in any cluster (env: DASH0_CLUSTER)")

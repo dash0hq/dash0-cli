@@ -16,7 +16,7 @@ func (p *page) aggNote() string {
 	return " · " + p.target.agg + " across pods"
 }
 
-// Pods drawn in a per-pod chart. Folding the rest into one ditt0.Line would dwarf them: a deployment that rolled churns
+// Pods drawn in a per-pod chart. Folding the rest into one line would dwarf them: a deployment that rolled churns
 // through dozens of pods in an hour
 const maxPods = 8
 
@@ -131,7 +131,7 @@ func sum(values []*float64) float64 {
 	return total
 }
 
-// The section's heading, bold over a dim ditt0.Line saying what it counts (Heading, level 'heading')
+// The section's heading, bold over a dim line saying what it counts (Heading, level 'heading')
 func heading(title, note string) ditt0.Block {
 	return ditt0.Block{ditt0.Line{{Text: title, Style: ditt0.Style{Bold: true}}, {Text: "  " + note, Style: ditt0.DimStyle}}}
 }

@@ -140,7 +140,7 @@ func (p *page) fetch(ctx context.Context, c promClient, columns int) {
 	p.win, p.at = win, time.Now()
 }
 
-// What the freshness ditt0.Line says (live-parts.jsx freshnessOf)
+// What the freshness line says (live-parts.jsx freshnessOf)
 func (p *page) freshness() ditt0.Line {
 	if p.at.IsZero() {
 		if len(p.failed) > 0 {
@@ -199,7 +199,7 @@ func (p *page) toggles() ditt0.Block {
 		}
 		parts = append(parts, ditt0.Border(ditt0.Block{ditt0.Text(r.label, label)}, len(r.label)+4, 1, st))
 	}
-	// A workload's views: how its pods add up, then a ditt0.Line per pod
+	// A workload's views: how its pods add up, then a line per pod
 	if !p.target.isPod() {
 		toggle := func(m string, on bool) {
 			st, label := ditt0.Style{Fg: p.theme.Selected}, ditt0.Style{}
@@ -281,7 +281,7 @@ func (p *page) against(usage, request, limit, util []*float64, unit string) (str
 	return strings.Join(parts, " · "), ink
 }
 
-// The chart's series: usage first, so where it crosses a request or limit ditt0.Line its own stroke stays whole
+// The chart's series: usage first, so where it crosses a request or limit line its own stroke stays whole
 func (p *page) chartSeries(keys [3]string) []series {
 	names := [3]string{"usage", "request", "limit"}
 	var out []series

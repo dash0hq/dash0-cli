@@ -79,7 +79,7 @@ func TestZeroLimitIsNoLimit(t *testing.T) {
 	}
 }
 
-// avg and min of errors would skip the pods that served no ERROR span, so they leave the errors ditt0.Line out
+// avg and min of errors would skip the pods that served no ERROR span, so they leave the errors line out
 func TestErrorsOnlyUnderTotalAndMax(t *testing.T) {
 	for agg, want := range map[string]bool{"total": true, "max": true, "avg": false, "min": false} {
 		got := false
