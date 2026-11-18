@@ -94,7 +94,7 @@ The pod is matched on the k8s.namespace.name and k8s.pod.name resource attribute
 		long = `Draw the CPU and memory of a ` + kind + `'s pods from Dash0 in the terminal, plus their requests, errors, duration and log counts when they have spans and logs.
 The page refreshes every 30 seconds.
 In the page, 1 to 4 pick 15m, 1h, 6h or 24h, r refreshes, o, t and l open the pods' metrics, traces and logs in Dash0, and q or Esc quits.
-a switches between the total of the pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a ditt0.Line for each of the 8 busiest pods.
+a switches between the total of the pods and their average, minimum or maximum at each step, taken for usage, requests and limits apart, and p draws a line for each of the 8 busiest pods.
 For CPU and memory, the busiest pods are those nearest their limits; for requests and duration, those with the highest mean.
 
 The ` + kind + ` is matched on the k8s.namespace.name and k8s.` + kind + `.name resource attributes.`
@@ -104,7 +104,7 @@ The ` + kind + ` is matched on the k8s.namespace.name and k8s.` + kind + `.name 
   # Watch the maximum across its pods at each step
   dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> --aggregate max
 
-  # Watch it with a ditt0.Line per pod
+  # Watch it with a line per pod
   dash0 -X k8s ` + plural + ` watch <` + kind + `> -n <namespace> --per-pod
 
   # Print its series and Dash0 links as JSON
