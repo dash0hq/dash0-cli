@@ -134,8 +134,8 @@ func CheckInferredOriginCollisions(documents []Document, dataset *string) []stri
 	for _, origin := range origins {
 		if uses := locations[origin]; len(uses) > 1 {
 			collisions = append(collisions, fmt.Sprintf(
-				"%s documents have no dash0.com/origin and the same kind, metadata.name, and dataset, so any of them created by inferred origin %q would replace the others; set dash0.com/origin on each:\n    %s",
-				fmt.Sprint(len(uses)), origin, strings.Join(uses, "\n    ")))
+				"%d documents have no dash0.com/origin and the same kind, metadata.name, and dataset, so any of them created by inferred origin %q would replace the others; set dash0.com/origin on each:\n    %s",
+				len(uses), origin, strings.Join(uses, "\n    ")))
 		}
 	}
 	return collisions
@@ -176,7 +176,7 @@ func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
 			return Identity{}, false
 		}
-		return SpamFilterIdentity(&filter, filter.Metadata.Name, dataset), true
+		return SpamFilterIdentity(&filter, dataset), true
 	}
 	return Identity{}, false
 }

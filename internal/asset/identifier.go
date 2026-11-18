@@ -105,37 +105,24 @@ func ExtractIdentifier(data []byte) (string, error) {
 	}
 }
 
-// ExtractAlias returns a second identifier that names the same asset as the
-// one ExtractIdentifier returns, or "". Only dashboards have one: see
-// DashboardAlias.
-func ExtractAlias(data []byte) (string, error) {
+// ExtractDashboardFallbacks returns, for a dashboard, a second identifier
+// that names the same asset as the one ExtractIdentifier returns (see
+// DashboardAlias), and the metadata.name of a dashboard that names only a
+// dash0.com/id. apply creates such a dashboard by its inferred origin when the
+// id is not found, so --since must delete it there. Both are "" for other kinds.
+func ExtractDashboardFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
 	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
-		return "", err
+		return "", "", err
 	}
 	var dashboard dash0api.DashboardDefinition
 	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
-		return "", fmt.Errorf("failed to extract alias: %w", err)
+		return "", "", err
 	}
-	return DashboardAlias(&dashboard), nil
-}
-
-// ExtractInferredOriginName returns the metadata.name of a dashboard that
-// names only a dash0.com/id, or "". apply creates such a dashboard by its
-// inferred origin when the id is not found, so --since must delete it there.
-func ExtractInferredOriginName(data []byte) (string, error) {
-	kind, err := dash0yaml.DetectKind(data)
-	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
-		return "", err
+	if identity := DashboardIdentity(&dashboard, nil); identity.ID != "" && identity.Origin == "" {
+		inferredOriginName = dashboard.Metadata.Name
 	}
-	var dashboard dash0api.DashboardDefinition
-	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
-		return "", fmt.Errorf("failed to extract metadata.name: %w", err)
-	}
-	if identity := DashboardIdentity(&dashboard, nil); identity.ID == "" || identity.Origin != "" {
-		return "", nil
-	}
-	return dashboard.Metadata.Name, nil
+	return DashboardAlias(&dashboard), inferredOriginName, nil
 }
 
 // label returns the string value of a metadata label, or "" when it is absent

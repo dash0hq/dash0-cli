@@ -105,7 +105,7 @@ func ImportSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *da
 // empty Key means the write has no target.
 func PlanSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilter, dataset *string) (ImportPlan, error) {
 	// The strip clears the dash0.com/id label, so read it first.
-	identity := SpamFilterIdentity(filter, filter.Metadata.Name, dataset)
+	identity := SpamFilterIdentity(filter, dataset)
 	dash0api.StripSpamFilterServerFields(filter)
 	return planSpamFilter(ctx, apiClient, identity, &filter.Metadata, filter, dataset)
 }
@@ -130,7 +130,7 @@ func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, fi
 // PlanSpamFilterV1Alpha2 reads the stored spam filter that
 // ImportSpamFilterV1Alpha2 would write. See PlanSpamFilter.
 func PlanSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilterV1Alpha2, dataset *string) (ImportPlan, error) {
-	identity := SpamFilterIdentity(filter, filter.Metadata.Name, dataset)
+	identity := SpamFilterIdentity(filter, dataset)
 	dash0api.StripSpamFilterV1Alpha2ServerFields(filter)
 	return planSpamFilter(ctx, apiClient, identity, &filter.Metadata, filter, dataset)
 }
@@ -152,8 +152,11 @@ func planSpamFilter(ctx context.Context, apiClient dash0api.Client, identity Ide
 
 // SpamFilterIdentity returns what RouteDocument routes a spam filter of either
 // apiVersion by.
-func SpamFilterIdentity(filter routedAsset, name string, dataset *string) Identity {
-	return identityOf("spamfilter", name, DatasetName(dataset), filter)
+func SpamFilterIdentity(filter interface {
+	routedAsset
+	GetName() string
+}, dataset *string) Identity {
+	return identityOf("spamfilter", filter.GetName(), DatasetName(dataset), filter)
 }
 
 func spamFilterOrigin(filter dash0api.SpamFilterObject) string {

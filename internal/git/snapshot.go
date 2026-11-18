@@ -86,12 +86,12 @@ type Snapshot struct {
 	RawContent map[string][]byte
 
 	// Aliases maps an identifier to a second identifier of the same asset
-	// (see asset.ExtractAlias), so an asset still declared under either one
+	// (see asset.ExtractDashboardFallbacks), so an asset still declared under either one
 	// is not a deletion.
 	Aliases map[IdentifierKey]string
 
 	// InferredOriginNames maps the identifier of a dashboard that names only
-	// a dash0.com/id to its metadata.name (see asset.ExtractInferredOriginName).
+	// a dash0.com/id to its metadata.name (see asset.ExtractDashboardFallbacks).
 	InferredOriginNames map[IdentifierKey]string
 }
 
@@ -283,16 +283,12 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
 		snap.Identifiers[key] = docPath
 
-		alias, err := asset.ExtractAlias(docBytes)
+		alias, inferredOriginName, err := asset.ExtractDashboardFallbacks(docBytes)
 		if err != nil {
-			return fmt.Errorf("failed to extract alias: %w", err)
+			return fmt.Errorf("failed to read dashboard identifiers: %w", err)
 		}
 		if alias != "" {
 			snap.Aliases[key] = alias
-		}
-		inferredOriginName, err := asset.ExtractInferredOriginName(docBytes)
-		if err != nil {
-			return fmt.Errorf("failed to extract metadata.name: %w", err)
 		}
 		if inferredOriginName != "" {
 			snap.InferredOriginNames[key] = inferredOriginName
