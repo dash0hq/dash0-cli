@@ -80,7 +80,20 @@ trap restore EXIT
 sed -e "s|__ID__|${ID}|" -e "s|__MARKER__|${MARKER}|" "${FIXTURES}/aws-log-group-policy.yaml" > "$FIXTURE"
 
 echo "--- Step 1: Replace the policy from the fixture ---"
-"$DASH0" -X aws-log-group-policies update -f "$FIXTURE"
+if ! UPDATE_OUTPUT=$("$DASH0" -X aws-log-group-policies update -f "$FIXTURE" 2>&1); then
+  echo "$UPDATE_OUTPUT"
+  # The API refuses policies until the integration's CloudFormation stack
+  # reports log-group support, which no CLI change can provide.
+  if echo "$UPDATE_OUTPUT" | grep -q "has not reported log-group instrumentation support"; then
+    trap - EXIT
+    rm -rf "$TMPDIR"
+    echo "=== SKIP: integration $ID has not reported log-group instrumentation support ==="
+    echo "Point DASH0_AWS_INTEGRATION_ID at an integration whose stack enables log-group instrumentation to run this test."
+    exit 0
+  fi
+  exit 1
+fi
+echo "$UPDATE_OUTPUT"
 ACTUAL=$(spec_of | jq -r '.rules[0].conditions[0].value')
 if [ "$ACTUAL" != "$MARKER" ]; then
   echo "FAIL: expected the first condition value $MARKER, got $ACTUAL"
