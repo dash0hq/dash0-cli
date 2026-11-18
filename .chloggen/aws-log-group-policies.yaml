@@ -1,0 +1,7 @@
+change_type: new_component
+component: aws-log-group-policies
+note: "`dash0 -X aws-log-group-policies get|update|delete` manages the tag-based log-group instrumentation policy of an AWS integration, and `apply` accepts `Dash0AwsLogGroupInstrumentationPolicy` documents."
+issues: [416]
+subtext: |
+  `delete` keeps forwarding the matched log groups unless `--remove-forwarding` is given, and `apply --since` always keeps them.
+change_logs: [user]

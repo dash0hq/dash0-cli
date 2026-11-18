@@ -217,6 +217,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// Clears the integration's scrape config and keeps the integration,
 		// the same call as `aws-metric-scrape-configs delete`.
 		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
+	case "awsloggroupinstrumentationpolicy":
+		// Always keep forwarding: removing subscription filters needs explicit
+		// consent, which only `aws-log-group-policies delete --remove-forwarding` gives.
+		_, err = apiClient.DeleteAwsLogGroupInstrumentationPolicy(ctx, identifier, dash0api.AwsLogGroupPolicyDispositionKeep, nil)
 	case "signaltometrics":
 		err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
 		// Not "already gone": the rule exists in another dataset.
