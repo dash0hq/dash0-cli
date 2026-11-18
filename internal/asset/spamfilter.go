@@ -81,98 +81,96 @@ func SpamFilterUsesOrigin(data []byte) (bool, error) {
 	return filter.Metadata.Labels != nil && filter.Metadata.Labels.Dash0Comorigin != nil && *filter.Metadata.Labels.Dash0Comorigin != "", nil
 }
 
-// ImportSpamFilter creates or updates a v1alpha1 spam filter via the standard
-// CRUD APIs.
-//
-// Upsert key selection — important quirk of the spam filter API:
-//
-//   - If the input has a user-defined origin (label `dash0.com/origin`),
-//     the origin is used as the upsert key. PUT to /spam-filters/{origin}
-//     creates the asset on first call and updates it on subsequent calls.
-//     This is the only reliable path to idempotent `apply`.
-//   - If the input has a user-defined ID (label `dash0.com/id`) but no
-//     origin, the ID is used as the upsert key. The server only honors
-//     this when a record already exists at that ID — a PUT to a brand-new
-//     ID generates a fresh server-side ID, so user-defined-id-only flows
-//     do not get true idempotency.
-//   - Otherwise, CREATE is used and the server assigns an ID.
-//
-// dash0.com/id is captured before StripSpamFilterServerFields runs because
-// that helper clears the id label along with the server source label.
+// ImportSpamFilter creates or updates a v1alpha1 spam filter through
+// RouteDocument. An id that is not found is never PUT, because the server
+// would assign a fresh id and a repeated apply would create another filter.
 func ImportSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilter, dataset *string) (ImportResult, error) {
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := PlanSpamFilter(ctx, apiClient, filter, dataset)
-
-	var (
-		result *dash0api.SpamFilter
-		err    error
-	)
-	if plan.Key != "" {
-		result, err = apiClient.UpdateSpamFilter(ctx, plan.Key, filter, dataset)
-	} else {
-		result, err = apiClient.CreateSpamFilter(ctx, filter, dataset)
+	plan, err := PlanSpamFilter(ctx, apiClient, filter, dataset)
+	// A failed origin read does not block the write: the PUT reports the same error.
+	if plan.Key == "" {
+		return ImportResult{}, err
 	}
+	if plan.Action != ActionCreated {
+		setSpamFilterOrigin(&filter.Metadata, "")
+	}
+	result, err := apiClient.UpdateSpamFilter(ctx, plan.Key, filter, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
-
-	resultID := dash0api.GetSpamFilterID(result)
-	return ImportResult{Name: dash0api.GetSpamFilterName(result), ID: resultID, Action: plan.Action, Before: plan.Before, After: result}, nil
+	return ImportResult{Name: dash0api.GetSpamFilterName(result), ID: dash0api.GetSpamFilterID(result), Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
 // PlanSpamFilter reads the stored v1alpha1 spam filter that ImportSpamFilter
-// would write. Origin wins over id. It returns any preflight error other than
-// "not found".
+// would write. It returns any preflight error other than "not found"; an
+// empty Key means the write has no target.
 func PlanSpamFilter(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilter, dataset *string) (ImportPlan, error) {
-	// StripSpamFilterServerFields clears the dash0.com/id label, so read it first.
-	key := PreferredKey(filter)
+	// The strip clears the dash0.com/id label, so read it first.
+	identity := SpamFilterIdentity(filter, filter.Metadata.Name, dataset)
 	dash0api.StripSpamFilterServerFields(filter)
-	return planSpamFilterByKey(ctx, apiClient, key, filter, dataset)
+	return planSpamFilter(ctx, apiClient, identity, &filter.Metadata, filter, dataset)
 }
 
-// ImportSpamFilterV1Alpha2 mirrors ImportSpamFilter for the v1alpha2 schema.
-// The v1alpha2 type carries spec.context (scalar) instead of spec.contexts
-// (array); the rest of the lifecycle — upsert-key selection (origin first,
-// ID fallback), existence check via GetSpamFilter, create-vs-update routing —
-// is identical. See ImportSpamFilter for the rationale.
+// ImportSpamFilterV1Alpha2 mirrors ImportSpamFilter for the v1alpha2 schema,
+// which carries spec.context (scalar) instead of spec.contexts (array).
 func ImportSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilterV1Alpha2, dataset *string) (ImportResult, error) {
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := PlanSpamFilterV1Alpha2(ctx, apiClient, filter, dataset)
-
-	var (
-		result *dash0api.SpamFilterV1Alpha2
-		err    error
-	)
-	if plan.Key != "" {
-		result, err = apiClient.UpdateSpamFilterV1Alpha2(ctx, plan.Key, filter, dataset)
-	} else {
-		result, err = apiClient.CreateSpamFilterV1Alpha2(ctx, filter, dataset)
+	plan, err := PlanSpamFilterV1Alpha2(ctx, apiClient, filter, dataset)
+	if plan.Key == "" {
+		return ImportResult{}, err
 	}
+	if plan.Action != ActionCreated {
+		setSpamFilterOrigin(&filter.Metadata, "")
+	}
+	result, err := apiClient.UpdateSpamFilterV1Alpha2(ctx, plan.Key, filter, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
-
 	return ImportResult{Name: result.Metadata.Name, ID: SpamFilterV1Alpha2ID(result), Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
 // PlanSpamFilterV1Alpha2 reads the stored spam filter that
-// ImportSpamFilterV1Alpha2 would write. Origin wins over id. It returns any
-// preflight error other than "not found".
+// ImportSpamFilterV1Alpha2 would write. See PlanSpamFilter.
 func PlanSpamFilterV1Alpha2(ctx context.Context, apiClient dash0api.Client, filter *dash0api.SpamFilterV1Alpha2, dataset *string) (ImportPlan, error) {
-	return planSpamFilterByKey(ctx, apiClient, PreferredKey(filter), filter, dataset)
+	identity := SpamFilterIdentity(filter, filter.Metadata.Name, dataset)
+	dash0api.StripSpamFilterV1Alpha2ServerFields(filter)
+	return planSpamFilter(ctx, apiClient, identity, &filter.Metadata, filter, dataset)
 }
 
-func planSpamFilterByKey(ctx context.Context, apiClient dash0api.Client, key string, proposed any, dataset *string) (ImportPlan, error) {
-	plan := ImportPlan{Key: key, Action: ActionCreated, Proposed: proposed}
-	if key == "" {
-		return plan, nil
+func planSpamFilter(ctx context.Context, apiClient dash0api.Client, identity Identity, metadata *dash0api.SpamFilterMetadata, proposed any, dataset *string) (ImportPlan, error) {
+	get := func(ctx context.Context, key string) (dash0api.SpamFilterObject, error) {
+		return apiClient.GetSpamFilter(ctx, key, dataset)
 	}
-	existing, err := apiClient.GetSpamFilter(ctx, key, dataset)
-	if err != nil {
-		return plan, ignoreNotFound(err)
+	route, err := RouteDocument(ctx, identity, get, spamFilterOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: proposed}
+	if route.Key == "" || route.Create {
+		setSpamFilterOrigin(metadata, route.Key)
+		return plan, err
 	}
-	plan.Action, plan.Before = ActionUpdated, existing
-	return plan, nil
+	setSpamFilterOrigin(metadata, spamFilterOrigin(route.Stored))
+	plan.Action, plan.Before = ActionUpdated, route.Stored
+	return plan, err
+}
+
+// SpamFilterIdentity returns what RouteDocument routes a spam filter of either
+// apiVersion by.
+func SpamFilterIdentity(filter routedAsset, name string, dataset *string) Identity {
+	return identityOf("spamfilter", name, DatasetName(dataset), filter)
+}
+
+func spamFilterOrigin(filter dash0api.SpamFilterObject) string {
+	if asset, ok := filter.(routedAsset); ok {
+		return asset.GetOrigin()
+	}
+	return ""
+}
+
+func setSpamFilterOrigin(metadata *dash0api.SpamFilterMetadata, origin string) {
+	if metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		metadata.Labels = &dash0api.SpamFilterLabels{}
+	}
+	metadata.Labels.Dash0Comorigin = optionalString(origin)
 }
 
 // SpamFilterV1Alpha2ID extracts the dash0.com/id label from a v1alpha2 filter. Kept here

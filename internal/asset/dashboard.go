@@ -8,40 +8,33 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/google/uuid"
 )
 
-// ImportDashboard creates or updates a dashboard via the standard CRUD APIs.
-// When the input has a user-defined ID, UPDATE is always used — PUT has
-// create-or-replace semantics, so this is idempotent regardless of whether the
-// dashboard already exists.
-// When the input has no ID, CREATE is used and the server assigns an ID.
-// A PUT to the ID of a deleted dashboard brings it back, which is reported as
-// ActionRestored.
+// ImportDashboard creates or updates a dashboard through RouteDocument. A PUT
+// to a deleted dashboard brings it back, which is reported as ActionRestored.
 func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
 	if err := ValidateDashboard(dashboard); err != nil {
 		return ImportResult{}, err
 	}
-	// A failed preflight does not block the write: the PUT reports the same
-	// error. A kind mismatch does, because the API rejects that write.
 	plan, err := planDashboard(ctx, apiClient, dashboard, dataset)
-	if _, ok := errors.AsType[*DashboardKindMismatchError](err); ok {
+	// A failed origin read does not block the write: the PUT reports the same
+	// error. A kind mismatch does, because the API rejects that write.
+	if _, ok := errors.AsType[*DashboardKindMismatchError](err); ok || plan.Key == "" {
 		return ImportResult{}, err
 	}
 	id := plan.Key
 
-	var result *dash0api.DashboardDefinition
-	if id != "" {
-		dash0api.ClearDashboardID(dashboard)
-		result, err = apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
-	} else {
-		result, err = apiClient.CreateDashboard(ctx, dashboard, dataset)
+	dash0api.ClearDashboardID(dashboard)
+	if plan.Action != ActionCreated {
+		setDashboardOrigin(dashboard, "")
 	}
+	result, err := apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
 
-	resultID := DashboardKey(result)
-	if resultID != "" {
+	if resultID := DashboardKey(result); resultID != "" {
 		id = resultID
 	}
 
@@ -65,32 +58,57 @@ func PlanDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 }
 
 func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportPlan, error) {
-	// Read the keys first: the strip clears the dash0.com/id label.
-	key := DashboardKey(dashboard)
-	alias := DashboardAlias(dashboard)
+	// Read the identity first: the strip clears the dash0.com/id label.
+	identity := DashboardIdentity(dashboard, dataset)
 	dash0api.StripDashboardServerFields(dashboard)
-	plan := ImportPlan{Key: key, Action: ActionCreated, Proposed: dashboard}
-	if key == "" {
-		return plan, nil
+	get := func(ctx context.Context, key string) (*dash0api.DashboardDefinition, error) {
+		return apiClient.GetDashboard(ctx, key, dataset)
 	}
-	lookupKey := key
-	existing, err := apiClient.GetDashboard(ctx, lookupKey, dataset)
-	// An exported dashboard that gains an origin still names its server id in
-	// dash0.com/id, so updating at that id keeps it from becoming a second
-	// dashboard. The API ignores the origin on an update, so the dashboard
-	// keeps no origin, and apply --since deletes it at the id.
-	if dash0api.IsNotFound(err) && alias != "" {
-		lookupKey = alias
-		existing, err = apiClient.GetDashboard(ctx, lookupKey, dataset)
-	}
-	if err != nil {
-		return plan, ignoreNotFound(err)
-	}
-	if err := CheckDashboardKind(lookupKey, existing, dashboard); err != nil {
+	route, err := RouteDocument(ctx, identity, get, (*dash0api.DashboardDefinition).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: dashboard}
+	if route.Key == "" {
 		return plan, err
 	}
-	plan.Key, plan.Action, plan.Before = lookupKey, actionForExisting(DashboardDeletedAt(existing)), existing
+	if route.Create {
+		// The API stores a UUID key as the dashboard's id, not its origin.
+		if _, notUUID := uuid.Parse(route.Key); notUUID != nil {
+			setDashboardOrigin(dashboard, route.Key)
+		}
+		return plan, err
+	}
+	if err := CheckDashboardKind(route.Key, route.Stored, dashboard); err != nil {
+		return plan, err
+	}
+	setDashboardOrigin(dashboard, route.Stored.GetOrigin())
+	plan.Action, plan.Before = actionForExisting(DashboardDeletedAt(route.Stored)), route.Stored
 	return plan, nil
+}
+
+// DashboardIdentity returns what RouteDocument routes a dashboard by. The id is
+// the dash0.com/id label; metadata.dash0Extensions.id names the origin, which
+// ValidateDashboard keeps equal to the dash0.com/origin label.
+func DashboardIdentity(dashboard *dash0api.DashboardDefinition, dataset *string) Identity {
+	identity := Identity{
+		Origin:   dashboard.GetOrigin(),
+		Inferred: InferOrigin(string(dashboard.Kind), dashboard.Metadata.Name, DatasetName(dataset)),
+	}
+	if identity.Origin == "" {
+		identity.Origin = dashboardExtensionsID(dashboard)
+	}
+	if labels := dashboard.Metadata.Labels; labels != nil && labels.Dash0Comid != nil {
+		identity.ID = *labels.Dash0Comid
+	}
+	return identity
+}
+
+func setDashboardOrigin(dashboard *dash0api.DashboardDefinition, origin string) {
+	if dashboard.Metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		dashboard.Metadata.Labels = &dash0api.DashboardLabels{}
+	}
+	dashboard.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }
 
 // CheckDashboardKind returns a DashboardKindMismatchError when proposed would

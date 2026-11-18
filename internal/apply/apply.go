@@ -169,7 +169,9 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return asset.FormatValidationError("no documents found in input")
 	}
 
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
+	validationErrors = append(validationErrors, asset.CheckInferredOriginCollisions(documents, dataset)...)
 	if len(validationErrors) > 0 {
 		return asset.FormatValidationError(validationErrors...)
 	}
@@ -222,8 +224,6 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	if err != nil {
 		return err
 	}
-
-	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
 	// Apply each document
 	var applied []string

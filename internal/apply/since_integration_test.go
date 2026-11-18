@@ -1261,7 +1261,7 @@ func TestApply_Since_NonAncestorRef_DeclinedDeletionDoesNotBlockCreates(t *testi
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 	// No DELETE route registered for views: the decline must prevent any
 	// delete call from ever being attempted.
 
@@ -1284,7 +1284,7 @@ func TestApply_Since_NonAncestorRef_DeclinedDeletionDoesNotBlockCreates(t *testi
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created", "the unrelated create must succeed despite the declined deletion confirmation")
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/")
 	require.NotNil(t, createReq, "expected the unrelated dashboard to still be created")
 	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathViews), "no delete call must be attempted once the ref confirmation is declined")
 }
@@ -1303,7 +1303,7 @@ func TestApply_Since_NonAncestorRef_NoTerminalDoesNotBlockCreates(t *testing.T) 
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	restore := confirmation.SetReaderForTest(strings.NewReader(""))
 	defer restore()
@@ -1341,7 +1341,7 @@ func TestApply_Since_NonAncestorRef_ForceDeletesAndWarnsOnce(t *testing.T) {
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		Body:       map[string]any{},
@@ -1390,7 +1390,7 @@ func TestApply_Since_AcceptNonAncestorRefWithoutForceStillPromptsPerAsset(t *tes
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		Body:       map[string]any{},

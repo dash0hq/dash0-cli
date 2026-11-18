@@ -22,14 +22,14 @@ func newCreateCmd() *cobra.Command {
 		Long: `Create a time series aggregation from a YAML or JSON definition file. Use
 '-f -' to read from stdin.
 
-The document must carry a 'dash0.com/origin' label under metadata.labels. The
-Dash0 API rejects an aggregation without an origin, and the origin is the key
-this command upserts by: repeated runs of the same file update the same
-aggregation instead of creating duplicates.
+The CLI reads dash0.com/id first and updates the aggregation at the id when it
+exists. Otherwise it writes by dash0.com/origin, or by an origin it infers from
+the kind, metadata.name, and dataset, so repeated runs of the same file update
+the same aggregation instead of creating duplicates.
 
 Origins are unique per organization, while each aggregation belongs to exactly
-one dataset. The same document therefore cannot be applied to two datasets —
-use a distinct origin per dataset.` + internal.CONFIG_HINT,
+one dataset. A document with an explicit origin therefore cannot be applied to
+two datasets: use a distinct origin per dataset.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 tsa create -f aggregation.yaml
 
@@ -56,12 +56,6 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	aggregation, err := decode(raw)
 	if err != nil {
 		return err
-	}
-
-	// Checked before the dry-run exit so --dry-run catches the same problem a
-	// real create would, rather than reporting a valid document.
-	if origin(aggregation) == "" {
-		return asset.ErrTimeSeriesAggregationMissingOrigin
 	}
 
 	if flags.DryRun {

@@ -103,7 +103,6 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 		return fmt.Errorf("failed to read team definition: %w", err)
 	}
 
-	// Origin wins over id, mirroring asset.ImportTeam's routing.
 	addressor, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
 		Noun:   "team",
 		Upsert: &team,

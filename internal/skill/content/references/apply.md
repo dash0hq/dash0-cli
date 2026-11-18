@@ -41,7 +41,7 @@ Two check rules in one run that resolve to the same ID fail validation up front,
 This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
-The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
+They follow the [routing rule](#routing-rule), so a document without an identifier is created by its inferred origin, and the next apply updates the same channel.
 `spec.routing.assets` is API-managed: the API populates it as a back-reference when a check rule or synthetic check binds to the channel, and ignores any value supplied on write.
 Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
@@ -80,16 +80,14 @@ The `admin` grant the server adds to every skill is left out of the request and 
 A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-Upsert key selection: `dash0.com/origin` wins when present and PUTs at that origin.
-When the document also carries `dash0.com/id` and the origin is not found, the CLI reads the team by its id, and on hit it PUTs at the id.
-This keeps an exported SSO/SCIM-provisioned team, whose `saml://...` origin the teams endpoint cannot resolve, from being created a second time.
-When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
-A document with neither label creates a new team on every apply.
+They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
+An exported SSO/SCIM-provisioned team keeps its `dash0.com/id`, so it updates at the id, even though the teams endpoint cannot resolve its `saml://...` origin.
+A team exported from another organization has an id that is not found there, so the team is created by its origin.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
 
 `Dash0TimeSeriesAggregation` documents are dispatched to the dataset-scoped time series aggregations endpoint.
-`metadata.labels["dash0.com/origin"]` is mandatory: a document without it fails during the validation phase, before any document in the run is applied.
+They follow the [routing rule](#routing-rule), so a document without `dash0.com/origin` is created by its inferred origin.
 Every call requires the organization admin role.
 The CLI does not check the role before it starts, so a non-admin token fails partway through the apply instead of during validation.
 In a directory that holds an aggregation next to other kinds, the run stops at the aggregation.

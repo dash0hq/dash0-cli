@@ -807,7 +807,7 @@ Aliases: `remove`
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`). The `dash0.com/enabled` annotation turns a filter off; see [Spam filters](#spam-filters) |
-| Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
+| Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `dash0.com/id` is read first, then `dash0.com/origin`; without an origin, the CLI infers one |
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `metadata.labels["dash0.com/origin"]` is the upsert key. Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
 | Sampling rules | `dash0 sampling-rules <subcommand>` | Dataset-scoped. `kind: Dash0Sampling`; `metadata.labels["dash0.com/origin"]` is the upsert key. Writes require the organization admin role. The first enabled rule in a dataset turns sampling on; see [Sampling rules](#sampling-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
@@ -819,24 +819,45 @@ Aliases: `remove`
 
 Every asset type accepts a user-defined identifier in its YAML/JSON document.
 When the identifier is present, both `create` and `apply` perform an **upsert** (PUT) against that identifier: the asset is created on the first call and replaced on every subsequent call.
-When the identifier is absent, both commands perform a plain create (POST) and the server assigns a fresh ID on each invocation — repeated runs produce duplicate assets.
 
-Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent, which is what GitOps and CI/CD workflows need.
+#### Routing rule
+
+Dashboards, ephemeral dashboards, spam filters, time series aggregations, notification channels, and teams follow one routing rule in `create` and `apply`:
+
+1. When the document has a `dash0.com/id`, the CLI reads the asset by that id, and updates it at the id when it exists.
+   If the stored asset has a `dash0.com/origin` other than the one in the document, the write fails, because the CLI never changes a stored origin.
+2. When the id is not found, or the document has no id, the CLI writes by the document's `dash0.com/origin`, or else by the origin it infers.
+   A PUT to an origin that does not exist yet creates the asset with that origin.
+
+These kinds are never created by POST, so applying the same document again updates the same asset.
+The CLI sends `dash0.com/origin` only when it creates an asset, never on an update.
+
+For a document without `dash0.com/origin`, the CLI infers `dash0-cli_` followed by a hash of the kind, `metadata.name`, and the dataset.
+The same document gets the same origin from every checkout, and a different one in every dataset.
+Renaming `metadata.name` changes the inferred origin, so the next apply creates a new asset.
+Set `dash0.com/origin` to keep the asset across a rename.
+Two documents in one run that would get the same inferred origin fail validation before anything is written.
+
+The other kinds follow the per-kind rules in the table below.
+For those kinds, a document without an identifier is created by POST, and the server assigns a fresh ID on each invocation, so repeated runs produce duplicate assets.
+Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent for them, which is what GitOps and CI/CD workflows need.
 
 If the CLI reports an invalid API response after a create or update, the server may already have applied the write.
 Check the asset in Dash0 before retrying: a document without an identifier can create a second asset even though the first invocation reported an error.
 The error identifies the asset type and endpoint, includes decoding details when available, and warns about this possibility for POST and PUT responses.
 
-For dashboards, check rules, views, synthetic checks, recording rules, spam filters, notification channels, and teams addressed by origin, a preliminary GET supplies the existing state for reporting; a failed GET still allows the PUT to proceed.
+For the kinds that follow the routing rule, a failed read by id stops the write, because that read decides where the write goes.
+A failed read by origin still allows the PUT, because the origin is the target either way.
+For check rules, views, synthetic checks, and recording rules, a failed preliminary GET also still allows the PUT.
 This lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
-Existing stricter preflights remain in effect: SLO and sampling rule preflights stop on errors other than 404, and reads that determine whether to POST or PUT (such as teams addressed by ID and datasets) also stop on non-404 errors.
+SLO and sampling rule preflights stop on errors other than 404, and so do the reads that decide between POST and PUT, such as the dataset read.
 
 The identifier field location varies by asset kind:
 
 | Kind | Identifier field | Notes |
 |------|------------------|-------|
-| `Dashboard` | `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` | `dash0.com/origin` is the recommended key, and a Kubernetes custom resource keeps it, while Kubernetes drops the unknown `dash0Extensions` field. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from. When the document carries both `dash0.com/origin` and `dash0.com/id` and the origin is not found, the CLI updates the dashboard at the id. The API does not set the origin on an update, so keep `dash0.com/id` in the file: without it, the next apply creates a new dashboard at the origin. `apply --since` deletes such a dashboard at the id |
-| `EphemeralDashboard` | Same as `Dashboard` | Shares its identifiers with `Dashboard` and `PersesDashboard`, and the API does not change the kind of an existing dashboard |
+| `Dashboard` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` or `metadata.dash0Extensions.id` | Follows the [routing rule](#routing-rule). `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from. `metadata.dash0Extensions.id` names the origin too, but Kubernetes drops this unknown field from a custom resource, so prefer `dash0.com/origin`. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. An origin that is a UUID is stored as the dashboard's id. `apply --since` deletes a dashboard whose origin is not found at its `dash0.com/id` |
+| `EphemeralDashboard` | Same as `Dashboard` | Shares its identifiers with `Dashboard` and `PersesDashboard`, and the API does not change the kind of an existing dashboard. Its inferred origin differs from that of a `Dashboard` with the same name |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
 | `CheckRule` | top-level `id` | |
 | `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
@@ -845,25 +866,25 @@ The identifier field location varies by asset kind:
 | `SLO` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | OpenSLO v1 document (`apiVersion: openslo.com/v1`). SLO IDs are server-assigned (`slo_<ulid>`), so `dash0.com/origin` is the only client-settable upsert key and the recommended one. `dash0.com/origin` is preferred and upserts by that origin (PUT). When only `dash0.com/id` is present the CLI preflights `GET /api/slos/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other errors surface. That POST fallback is not idempotent: the server assigns a new ID that the document does not carry, so each further apply POSTs again and creates another SLO — pin `dash0.com/origin` for any SLO applied more than once. A document with neither label creates a new SLO on every apply |
 | `View` | `metadata.labels["dash0.com/id"]` | |
 | `Dash0GenerativeAiEvaluation` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Eval (experimental). Eval IDs are server-assigned, so `dash0.com/origin` is the recommended key. `PUT /api/generative-ai-evaluations/{origin}` creates the eval when the origin is new, replaces it otherwise, and restores it when it was deleted. When only `dash0.com/id` is present the CLI preflights `GET /api/generative-ai-evaluations/{id}`: on hit it PUTs, on 404 it falls back to POST (a one-way create, like SLOs), and other errors surface. A document with neither label creates a new eval on every apply |
-| `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]` | `metadata.labels["dash0.com/origin"]` is preferred over the ID when both are present; an ID-only filter is not fully idempotent because the server reassigns the ID on the first PUT. This also affects `apply --since`: since the id recorded in git history may no longer match the live filter's reassigned id, deleting an ID-only spam filter by that stale id can miss the real live filter — `apply --since` prints a warning before deleting an ID-only spam filter for this reason. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
-| `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]` | Mandatory. The API rejects an aggregation that has no origin, so there is no server-assigned id to fall back to. A `dash0.com/id` in the document body is ignored, because the server reads the origin from the URL path, so an exported definition reapplies cleanly. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document to two datasets. See [`apply`](#apply) |
+| `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). `apply --since` prints a warning before it deletes a spam filter identified by `dash0.com/id` alone, because the live filter can have a different id. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
+| `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). The body never carries the origin, because the API reads it from the URL path. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document with an explicit origin to two datasets. See [`apply`](#apply) |
 | `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Signal-to-metrics rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/signal-to-metrics/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/signal-to-metrics/{id}`: on hit it PUTs, on 404 it POSTs without the ID, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply. As for time series aggregations, origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document to two datasets |
 | `Dash0Sampling` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Sampling rule IDs are server-assigned, so `dash0.com/origin` is the key to pin. `PUT /api/sampling-rules/{origin}` creates the rule when the origin is new and replaces it otherwise. When only `dash0.com/id` is present the CLI preflights `GET /api/sampling-rules/{id}`: on hit it PUTs, on 404 it POSTs without the ID, because IDs are unique across organizations, so a definition exported from another organization applies as a new rule. That fallback is not idempotent: a further apply POSTs again. A document with neither label creates a new rule on every apply. Origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document to two datasets |
-| `Dash0NotificationChannel` | `metadata.labels["dash0.com/origin"]` | There is no user-settable ID field for notification channels — the origin label is the upsert key. A document without it creates a new channel on every apply |
+| `Dash0NotificationChannel` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level. Follows the [routing rule](#routing-rule) |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level Agent0 custom skill. `dash0.com/origin` is the upsert key: `PUT /api/agent0/custom-skills/{origin}` creates the skill when the origin is new and replaces it otherwise. Use a `dash0-cli_` prefix so Dash0 shows the skill as managed by the CLI. When only `dash0.com/id` is present the CLI preflights `GET /api/agent0/custom-skills/{id}`: on hit it PUTs, on 404 it fails instead of creating, because the id is server-assigned. A document with neither label creates the skill with POST; the skill name, from the `SKILL.md` frontmatter, is unique per organization, so a second apply fails with a name collision instead of creating a duplicate |
-| `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) | Organization-level. `dash0.com/origin` is preferred and upserts by that origin (PUT). When the document carries both labels and the origin is not found but the id is, the CLI updates the team at the id, so an exported SSO/SCIM team (origin `saml://...`) does not become a second team. When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST so cross-org apply stays idempotent, and other errors surface. A document with neither label creates a new team on every apply. `spec.members` accepts email addresses or internal member ids interchangeably |
+| `Dash0Team` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level. Follows the [routing rule](#routing-rule). An exported SSO/SCIM team keeps its `dash0.com/id`, so it updates at the id even though the teams endpoint cannot resolve its `saml://...` origin. `spec.members` accepts email addresses or internal member ids interchangeably |
 
 The `dash0.com/id` label is the user-defined external identifier and is distinct from `dash0.com/origin`, which records the system of record (`dash0-cli`, `terraform`, `ui`, `operator`).
 Which of the two is the upsert key depends on the asset kind, and the split is not an exception list — it follows the shape of the underlying API.
 
-For the kinds whose API is built around API-managed resources — notification channels, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, teams, and Agent0 skills — `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/notification-channels/{origin}`, `PUT /api/spam-filters/{origin}`, `PUT /api/slos/{origin}`, `PUT /api/generative-ai-evaluations/{origin}`, `PUT /api/signal-to-metrics/{origin}`, `PUT /api/sampling-rules/{origin}`, `PUT /api/teams/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
-Notification channels have no user-settable ID field at all, and for SLOs origin is not merely accepted but the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
+For SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills, `dash0.com/origin` *is* the upsert key: the CLI reads the origin label off the document and uses it in the request path (`PUT /api/slos/{origin}`, `PUT /api/generative-ai-evaluations/{origin}`, `PUT /api/signal-to-metrics/{origin}`, `PUT /api/sampling-rules/{origin}`, `PUT /api/agent0/custom-skills/{origin}`).
+For SLOs, origin is the recommended key: the server assigns SLO IDs (`slo_<ulid>`), so a hand-written document can only be made idempotent through `dash0.com/origin`.
 
 For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
 Stripping origin keeps an `apply` from claiming ownership of an asset that Terraform or the Kubernetes operator manages.
-Dashboards upsert by `dash0.com/origin` too, and also accept `metadata.dash0Extensions.id`, which names the same identifier.
+The kinds that follow the [routing rule](#routing-rule) read `dash0.com/id` first and `dash0.com/origin` second.
 The deprecated `metadata.dash0Extensions.origin` field is never used as a key.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so the export-edit-reapply workflow round-trips through the identifier automatically.
@@ -1096,7 +1117,7 @@ Two check rules in one run that resolve to the same ID fail validation up front,
 This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
-The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
+They follow the [routing rule](#routing-rule), so a document without an identifier is created by its inferred origin, and the next apply updates the same channel.
 `spec.routing.assets` is API-managed: the API populates it as a back-reference when a check rule or synthetic check binds to the channel, and ignores any value supplied on write.
 Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
@@ -1135,16 +1156,14 @@ The `admin` grant the server adds to every skill is left out of the request and 
 A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-Upsert key selection: `dash0.com/origin` wins when present and PUTs at that origin.
-When the document also carries `dash0.com/id` and the origin is not found, the CLI reads the team by its id, and on hit it PUTs at the id.
-This keeps an exported SSO/SCIM-provisioned team, whose `saml://...` origin the teams endpoint cannot resolve, from being created a second time.
-When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
-A document with neither label creates a new team on every apply.
+They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
+An exported SSO/SCIM-provisioned team keeps its `dash0.com/id`, so it updates at the id, even though the teams endpoint cannot resolve its `saml://...` origin.
+A team exported from another organization has an id that is not found there, so the team is created by its origin.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
 
 `Dash0TimeSeriesAggregation` documents are dispatched to the dataset-scoped time series aggregations endpoint.
-`metadata.labels["dash0.com/origin"]` is mandatory: a document without it fails during the validation phase, before any document in the run is applied.
+They follow the [routing rule](#routing-rule), so a document without `dash0.com/origin` is created by its inferred origin.
 Every call requires the organization admin role.
 The CLI does not check the role before it starts, so a non-admin token fails partway through the apply instead of during validation.
 In a directory that holds an aggregation next to other kinds, the run stops at the aggregation.
@@ -1939,7 +1958,7 @@ spec:
     interval: 5m
 ```
 
-`dash0.com/origin` is mandatory and is the only upsert key.
+`dash0.com/origin` is optional: without it, the CLI infers one (see [Routing rule](#routing-rule)).
 The three names are independent: setting `metadata.name`, `spec.display.name`, or the origin does not change either of the others.
 
 The document has no `apiVersion`, because the time series aggregation schema does not define one.
@@ -2399,7 +2418,7 @@ dash0 --experimental dashboards preview -f <file|directory> [--ttl <duration>] [
 Each preview gets its own identifier, a UUIDv5 derived from the dashboard's identifier.
 So a preview never replaces the dashboard it comes from, and `apply` of that dashboard still works while the preview exists.
 A second run updates the same previews and starts their ttl again.
-A dashboard without an identifier gets a new preview on every run.
+A dashboard without an identifier gets a preview at an origin inferred from its name, so a second run updates that preview too.
 If a write fails, `preview` still prints the previews it wrote before the error, then fails.
 With `--prefix`, the prefix is part of the derived identifier, so previews with different prefixes, such as one per pull request, do not replace each other.
 
@@ -3982,8 +4001,8 @@ spec:
 ### `notification-channels create` (experimental)
 
 Create a notification channel from a YAML or JSON definition file.
-If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
-Otherwise, a new channel is created (POST) and the server assigns an ID.
+The channel is created or replaced by PUT, following the [routing rule](#routing-rule).
+A definition without `dash0.com/origin` gets an inferred origin, so creating it again updates the same channel.
 A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write, and existing bindings are unaffected.
 Bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`.
 Exported definitions never carry the field — `get` and `list` omit `spec.routing.assets` from `-o yaml` and `-o json` output — so get → edit → apply/update roundtrips stay warning-free.
@@ -4642,10 +4661,8 @@ Members: 2
 Create a team. Two modes are supported.
 
 **Declarative** — read a `TeamDefinitionV1Alpha1` YAML/JSON document.
-Origin wins over id when both labels are present, and `dash0.com/origin` upserts via PUT (create-or-replace).
-When the origin is not found but the id is, the team is updated at the id.
-When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST (cross-org apply spawns a fresh team with a server-assigned id), and any other error surfaces.
-A document with neither label is created via POST and the server assigns id and origin.
+The team follows the [routing rule](#routing-rule): the CLI reads `dash0.com/id` first and updates the team at the id when it exists.
+Otherwise it writes by `dash0.com/origin`, or by the origin it infers when the document has none, so creating the same document again updates the same team.
 See the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section for the full rationale.
 
 ```bash

@@ -94,7 +94,9 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 		return asset.FormatValidationError("no documents found in input")
 	}
 
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
+	validationErrors = append(validationErrors, asset.CheckInferredOriginCollisions(documents, dataset)...)
 	if len(validationErrors) > 0 {
 		return asset.FormatValidationError(validationErrors...)
 	}
@@ -123,7 +125,6 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 	if err != nil {
 		return err
 	}
-	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
 	// Every document is read before anything is printed, so a failed read
 	// aborts the whole preview instead of printing a partial one.

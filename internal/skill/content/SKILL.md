@@ -46,32 +46,33 @@ All twelve asset types (`dashboards`, `check-rules`, `synthetic-checks`, `slos`,
 
 ### Asset identifiers and idempotent upsert
 
-Every asset type accepts a user-defined identifier in its YAML/JSON document. When present, both `create` and `apply` perform an **upsert** (PUT) against that identifier — the asset is created on the first call and replaced on every subsequent call, which is what makes GitOps/CI workflows idempotent. When absent, both perform a plain create (POST) and the server assigns a fresh ID on each invocation, so repeated runs produce duplicates. The identifier field location varies by kind:
+Every asset type accepts a user-defined identifier in its YAML/JSON document. When present, both `create` and `apply` perform an **upsert** (PUT) against that identifier — the asset is created on the first call and replaced on every subsequent call, which is what makes GitOps/CI workflows idempotent. When absent, the kinds below that follow the routing rule are created by an inferred origin, and the other kinds by a plain create (POST), where the server assigns a fresh ID on each invocation, so repeated runs produce duplicates. The identifier field location varies by kind:
 
 | Kind | Identifier field |
 |------|------------------|
-| `Dashboard` | `metadata.labels["dash0.com/origin"]`, then `metadata.dash0Extensions.id`, then `metadata.labels["dash0.com/id"]` |
+| `Dashboard`, `EphemeralDashboard` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` (or `metadata.dash0Extensions.id`, which must equal it when both are set) |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]` |
 | `CheckRule` | top-level `id` |
 | `PrometheusRule` (alerting or recording) | `metadata.labels["dash0.com/id"]` (a CRD with 2+ alerting rules derives a distinct id per alert instead: `<label>--<slug of "<group> - <alert>">`) |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` |
 | `View` | `metadata.labels["dash0.com/id"]` |
 | `SLO` | `metadata.labels["dash0.com/origin"]` — SLO IDs are server-assigned (`slo_<ulid>`), so origin is the only client-settable key; `metadata.labels["dash0.com/id"]` is used only when origin is absent |
-| `Dash0SpamFilter` | `metadata.labels["dash0.com/id"]` (`dash0.com/origin` takes precedence when both are present) |
-| `Dash0NotificationChannel` | no ID field — `metadata.labels["dash0.com/origin"]` is the upsert key |
+| `Dash0SpamFilter` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
+| `Dash0NotificationChannel` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug — required and immutable; `spec.slug` wins when both are set); `dash0.com/origin` is optional |
-| `Dash0Team` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent) |
+| `Dash0Team` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]`, the AWS integration id — **required**. One config per integration; `apply` replaces it (PUT), there is no create. `spec.namespaces` is required (`[]` stops all scraping). `dash0.com/origin` is never sent |
 | `Dash0Skill` | `metadata.labels["dash0.com/origin"]`; `metadata.labels["dash0.com/id"]` only updates an existing skill when origin is absent |
 | `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent). Rule IDs are server-assigned, so pin origin. An id-only document updates the rule with that ID, or creates a new rule when no rule has it, which is not idempotent. Origins are unique per organization while each rule belongs to one dataset, so one document cannot serve two datasets |
 | `Dash0Sampling` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent). Rule IDs are server-assigned, so pin origin. An id-only document updates the rule with that ID, or creates a new rule when no rule has it, which is not idempotent. Origins are unique per organization while each rule belongs to one dataset, so one document cannot serve two datasets |
-| `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/origin"]`, and it is **mandatory** — the API rejects an aggregation without one, so there is no POST fallback. A `dash0.com/id` in the body is ignored. Origins are unique per organization while each aggregation belongs to one dataset, so one document cannot serve two datasets |
+| `Dash0TimeSeriesAggregation` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. Origins are unique per organization while each aggregation belongs to one dataset, so one document with an explicit origin cannot serve two datasets |
 
 **Origin vs ID — do not conflate them.** *ID* is the user-defined external identifier described above. *Origin* (`dash0.com/origin` label) records which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`, `operator`). Which of the two is the upsert key depends on the kind, and the split follows the shape of the underlying API rather than being a list of exceptions:
 
-- **Origin is the upsert key** for the kinds whose API is built around API-managed resources: notification channels, spam filters, SLOs, teams, time series aggregations, signal-to-metrics rules, sampling rules, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). Notification channels have no user-settable ID at all. For SLOs origin is not just accepted but recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent. For time series aggregations it is mandatory: the API rejects a document without one.
+- **The routing rule** serves dashboards, ephemeral dashboards, spam filters, time series aggregations, notification channels, and teams. With `dash0.com/id`, the CLI reads the asset by id and updates it there; it fails when the stored origin differs from an explicit origin in the file. When the id is not found, or there is none, it PUTs by `dash0.com/origin`, or by an inferred origin: `dash0-cli_` plus a hash of the kind, `metadata.name`, and the dataset. These kinds are never created by POST, and the origin is sent only on create. Renaming `metadata.name` without an explicit origin creates a new asset. Two documents with the same inferred origin fail validation.
+- **Origin is the upsert key** for SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). For SLOs origin is recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent.
 - **ID is the upsert key, and origin is provenance only** for views, check rules, recording rules, and synthetic checks. The CLI strips `dash0.com/origin` before sending these documents, so an `apply` never claims ownership of an asset managed by Terraform or the Kubernetes operator.
-- **Dashboards** upsert by `dash0.com/origin`, which is the recommended key. `metadata.dash0Extensions.id` names the same identifier, so when both are set they must be equal. When no dashboard has the origin, the CLI updates the dashboard named by the `dash0.com/id` label, so an exported dashboard that gains an origin is not created a second time. Never use the deprecated `metadata.dash0Extensions.origin` field.
+- **Dashboards** follow the routing rule. Never use the deprecated `metadata.dash0Extensions.origin` field.
 
 When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assigned ID is rendered into the correct field, so an export → edit → `apply` (or `update`) round-trips through the identifier automatically.
 

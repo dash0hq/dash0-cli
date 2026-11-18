@@ -11,17 +11,6 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
-// ErrTimeSeriesAggregationMissingOrigin is returned when a time series
-// aggregation document carries no dash0.com/origin label.
-//
-// Origin is mandatory for this kind, so there is no create path to fall back
-// to. Failing during validation stops a multi-document apply from writing half
-// its documents first.
-var ErrTimeSeriesAggregationMissingOrigin = fmt.Errorf(
-	"Dash0TimeSeriesAggregation requires %s: the Dash0 API rejects a time series aggregation without an origin, and the origin is the key `apply` upserts by",
-	OriginLabel,
-)
-
 // GetTimeSeriesAggregationOrigin extracts the dash0.com/origin label. The API
 // client ships accessors for the id, name, and dataset labels, but not this one.
 func GetTimeSeriesAggregationOrigin(aggregation *dash0api.TimeSeriesAggregationDefinition) string {
@@ -31,21 +20,10 @@ func GetTimeSeriesAggregationOrigin(aggregation *dash0api.TimeSeriesAggregationD
 	return *aggregation.Metadata.Labels.Dash0Comorigin
 }
 
-// ImportTimeSeriesAggregation upserts a time series aggregation by its
-// dash0.com/origin label.
-//
-// Unlike the other Import helpers, this never sends a POST. Origin is
-// mandatory on create and POST rejects an origin that already exists, so
-// PUT /{origin} is the only idempotent path.
-//
-// Read the origin before StripTimeSeriesAggregationServerFields, which clears
-// the label. Reading it after would yield "" on every apply.
-//
-// The body's dash0.com/id is left alone. The server ignores it and uses the
-// path's origin, so an exported document reapplies safely.
-//
-// A PUT to the origin of a deleted aggregation brings it back, which is
-// reported as ActionRestored.
+// ImportTimeSeriesAggregation creates or updates a time series aggregation
+// through RouteDocument. The path carries the origin, so the body never does.
+// A PUT to a deleted aggregation brings it back, which is reported as
+// ActionRestored.
 func ImportTimeSeriesAggregation(
 	ctx context.Context,
 	apiClient dash0api.Client,
@@ -74,28 +52,34 @@ func ImportTimeSeriesAggregation(
 	}, nil
 }
 
-// PlanTimeSeriesAggregation reads the stored aggregation that
-// ImportTimeSeriesAggregation would write, keyed by its mandatory origin.
+// PlanTimeSeriesAggregation routes the aggregation with RouteDocument and reads
+// the stored aggregation that ImportTimeSeriesAggregation would write.
 //
-// Any preflight error other than "not found" is returned, because whether the
-// aggregation exists is then unknown. The PUT would fail the same way, so
-// stopping here only avoids a write against unknown state and keeps Action
-// honest. A 403 is the common case, since every endpoint for this kind needs
-// the admin role.
+// Any preflight error other than "not found" is returned, because the PUT
+// would fail the same way. A 403 is the common case, since every endpoint for
+// this kind needs the admin role.
 func PlanTimeSeriesAggregation(ctx context.Context, apiClient dash0api.Client, aggregation *dash0api.TimeSeriesAggregationDefinition, dataset *string) (ImportPlan, error) {
-	origin := GetTimeSeriesAggregationOrigin(aggregation)
-	if origin == "" {
-		return ImportPlan{}, ErrTimeSeriesAggregationMissingOrigin
-	}
+	// The strip clears the origin label, so read it first.
+	identity := TimeSeriesAggregationIdentity(aggregation, dataset)
 	dash0api.StripTimeSeriesAggregationServerFields(aggregation)
-
-	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: aggregation}
-	existing, err := apiClient.GetTimeSeriesAggregation(ctx, origin, dataset)
-	if err != nil {
-		return plan, wrapIfWrongDataset(ignoreNotFound(err), origin)
+	get := func(ctx context.Context, key string) (*dash0api.TimeSeriesAggregationDefinition, error) {
+		return apiClient.GetTimeSeriesAggregation(ctx, key, dataset)
 	}
-	plan.Action, plan.Before = actionForExisting(TimeSeriesAggregationDeletedAt(existing)), existing
+	route, err := RouteDocument(ctx, identity, get, (*dash0api.TimeSeriesAggregationDefinition).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: aggregation}
+	if err != nil {
+		return plan, wrapIfWrongDataset(err, identity.CreateOrigin())
+	}
+	if !route.Create {
+		plan.Action, plan.Before = actionForExisting(TimeSeriesAggregationDeletedAt(route.Stored)), route.Stored
+	}
 	return plan, nil
+}
+
+// TimeSeriesAggregationIdentity returns what RouteDocument routes a time series
+// aggregation by.
+func TimeSeriesAggregationIdentity(aggregation *dash0api.TimeSeriesAggregationDefinition, dataset *string) Identity {
+	return identityOf("timeseriesaggregation", aggregation.Metadata.Name, DatasetName(dataset), aggregation)
 }
 
 // TimeSeriesAggregationDeletedAt returns when the aggregation was deleted, or
