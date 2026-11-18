@@ -189,7 +189,7 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $NAME]
   dash0-container-metrics:
     shortCut: Shift-D
     description: Dash0 metrics
@@ -198,7 +198,7 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $POD]
   dash0-workload-metrics:
     shortCut: Shift-D
     description: Dash0 metrics
@@ -212,11 +212,54 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
 
 k9s passes the workload's resource as `$RESOURCE_NAME`, such as `deployments`, which names its command group.
 
 `-o page` keeps the page when k9s runs inside an AI agent's environment, where agent mode would default to JSON.
-To query a cluster with its own profile or match it by cluster name, put a copy of the plugin in k9s' per-context `clusters/<cluster>/<context>/plugins.yaml` with `--profile <profile>` before `k8s`, or `--cluster <name>` after `watch`.
-k9s' `$CONTEXT` is a kubeconfig name, not Dash0's cluster name, so it is shown in the header but not used as a filter.
+
+The example uses `$CONTEXT` as the cluster filter.
+Your kubeconfig context name must exactly match the `k8s.cluster.name` value reported to Dash0.
+
+`--context` only sets the context shown in the header; it does not filter metrics.
+Without `--cluster`, the page includes matching pods across clusters, which can combine metrics from workloads with the same name and namespace.
+
+Use these commands to compare your kubeconfig context names with the cluster names in Dash0:
+
+```bash
+kubectl config get-contexts -o name
+```
+
+```bash
+dash0 metrics instant --promql 'count by (k8s_cluster_name) ({otel_metric_name="k8s.pod.phase"})' --column k8s_cluster_name
+```
+
+##### When context and cluster names differ
+
+If your context name differs from the cluster name in Dash0 (for example, an EKS context named `arn:aws:eks:...`), you can read the cluster name from the Dash0 operator configuration.
+Replace the `command` and `args` fields of `dash0-workload-metrics` with:
+
+```yaml
+    command: bash
+    args:
+      - -c
+      - exec dash0 -X k8s "$1" watch -o page --pause-on-error --context "$2" -n "$3" "$4" --cluster "$(kubectl --context "$2" get dash0operatorconfigurations -o jsonpath='{.items[0].spec.clusterName}' 2>/dev/null)"
+      - dash0
+      - $RESOURCE_NAME
+      - $CONTEXT
+      - $NAMESPACE
+      - $NAME
+```
+
+For `dash0-pod-metrics`, replace `$RESOURCE_NAME` with `pods`.
+For `dash0-container-metrics`, replace `$RESOURCE_NAME` with `pods` and `$NAME` with `$POD`.
+
+This configuration requires `bash`, `kubectl`, and permission to read `dash0operatorconfigurations` in the selected cluster.
+
+> [!WARNING]
+> If the lookup fails or returns an empty cluster name, no cluster filter is applied.
+> The page may then combine metrics from matching workloads across clusters.
+
+Alternatively, copy the plugin into k9s' per-context `clusters/<cluster>/<context>/plugins.yaml` and replace `$CONTEXT` after `--cluster` with the cluster name reported to Dash0.
+To use a specific Dash0 profile for that context, add `--profile <profile>` before `k8s`.

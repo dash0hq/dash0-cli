@@ -937,7 +937,7 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $NAME]
   dash0-container-metrics:
     shortCut: Shift-D
     description: Dash0 metrics
@@ -946,7 +946,7 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $POD]
+    args: [-X, k8s, pods, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $POD]
   dash0-workload-metrics:
     shortCut: Shift-D
     description: Dash0 metrics
@@ -960,8 +960,12 @@ plugins:
     command: dash0
     background: false
     confirm: false
-    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+    args: [-X, k8s, $RESOURCE_NAME, watch, -o, page, --pause-on-error, --context, $CONTEXT, --cluster, $CONTEXT, -n, $NAMESPACE, $NAME]
 ```
+
+This example requires your kubeconfig context name to exactly match the cluster name reported to Dash0 (`k8s.cluster.name`).
+If the names differ, see the [k9s plugin documentation](docs/commands.md#k9s-plugin) for alternative configurations.
+Without `--cluster`, the page may combine metrics from matching workloads across clusters.
 
 See [docs/commands.md](docs/commands.md#k8s-pods-watch-experimental) for all the flags, how the aggregations work, and the metric details.
 
