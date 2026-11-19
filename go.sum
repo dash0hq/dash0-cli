@@ -164,8 +164,8 @@ github.com/shirou/gopsutil/v4 v4.26.6 h1:Mzr/npDtQC/xpeEuQKHZt8Zo9CmPvhTj8nkR8w5
 github.com/shirou/gopsutil/v4 v4.26.6/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
 github.com/sirupsen/logrus v1.10.2 h1:G2SED73/qrAu6YwbdxOD6peLkCBI3z7L+ykJFTXJBBo=
 github.com/sirupsen/logrus v1.10.2/go.mod h1:SLEg8TqYulVKKfIGHldVp2K2aYz2DKSVBq4g/H5bR7Q=
-github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261118190408-6bc637b77c67 h1:LzRziGJhBr5R8P0Ti/eENveCVyzjil+mE67LeG//sKk=
-github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261118190408-6bc637b77c67/go.mod h1:eZIkk5Hluk1XMEe223b1BdWL98GnPZ/xr3qrEUDO4TI=
+github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261119120230-0243c001c9d4 h1:MmBLOw2v71b3mB7R3TY0GIfXQoZz/caEnIk3BLhv7Rc=
+github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261119120230-0243c001c9d4/go.mod h1:eZIkk5Hluk1XMEe223b1BdWL98GnPZ/xr3qrEUDO4TI=
 github.com/spf13/cobra v1.10.2 h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=
 github.com/spf13/cobra v1.10.2/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiTUUS4=
 github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=

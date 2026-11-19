@@ -138,4 +138,4 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-replace github.com/dash0hq/ditt0-cli-design-system/go => github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261118190408-6bc637b77c67
+replace github.com/dash0hq/ditt0-cli-design-system/go => github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261119120230-0243c001c9d4

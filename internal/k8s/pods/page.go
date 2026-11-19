@@ -296,12 +296,11 @@ func (p *page) chartSeries(keys [3]string) []series {
 }
 
 func (p *page) card(title, unit string, ss []series, width, rows int) ditt0.Block {
-	return p.cardOf(title, unit, ss, width, rows, false)
+	return p.cardOf(title, unit, ss, width, rows, oneAxis)
 }
 
 // multiples: series that would flatten on one axis draw as small multiples (chart)
-func (p *page) cardOf(title, unit string, ss []series, width, rows int, multiples bool) ditt0.Block {
-	head := ditt0.Text(title, ditt0.Style{Bold: true})
+func (p *page) cardOf(title, unit string, ss []series, width, rows int, a axes) ditt0.Block {
 	var body ditt0.Block
 	switch {
 	case p.data == nil && len(p.failed) > 0:
@@ -311,9 +310,14 @@ func (p *page) cardOf(title, unit string, ss []series, width, rows int, multiple
 	case len(ss) == 0:
 		body = ditt0.Block{ditt0.Text("No data in this time range.", ditt0.DimStyle)}
 	default:
-		body = chart(ss, p.win.times(), unit, width-4, rows, multiples)
+		body = chart(ss, p.win.times(), unit, width-4, rows, a)
 	}
-	return ditt0.Border(ditt0.Column(1, ditt0.Block{head}, body), width, 1, ditt0.DimStyle)
+	return box(title, body, width)
+}
+
+// A card: its title in bold over its body, in a dim border width cells wide
+func box(title string, body ditt0.Block, width int) ditt0.Block {
+	return ditt0.Border(ditt0.Column(1, ditt0.Block{ditt0.Text(title, ditt0.Style{Bold: true})}, body), width, 1, ditt0.DimStyle)
 }
 
 // layout: the page for a terminal w × h, and the plot columns its charts get
@@ -391,6 +395,11 @@ func (p *page) render(w, h int) (ditt0.Block, int) {
 	}
 
 	page := ditt0.Column(1, header, toggles, stats, charts, red, logs)
-	plotColumns := cardW - 4 - 8 - rightGap
+	// The window's samples fit the narrowest chart: side by side, the Requests row's third of the page
+	chartW := cardW
+	if side {
+		chartW = (inner - 2) / 3
+	}
+	plotColumns := chartW - 4 - 8 - rightGap
 	return ditt0.Indent(1, page), plotColumns
 }

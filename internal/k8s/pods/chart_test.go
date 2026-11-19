@@ -34,14 +34,14 @@ func TestFormatValue(t *testing.T) {
 func TestTimeseriesDrawsAxisAndLegend(t *testing.T) {
 	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
 	times := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}
-	out := chart([]series{{Name: "usage", Values: []*float64{f(1), f(2), f(3)}, Color: "#828aff"}}, times, "cores", 40, 5, false)
+	out := chart([]series{{Name: "usage", Values: []*float64{f(1), f(2), f(3)}, Color: "#828aff"}}, times, "cores", 40, 5, oneAxis)
 	joined := out.String()
 	for _, want := range []string{"cores", "┤", "└┬", "━ usage", "┄"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("chart lacks %q:\n%s", want, joined)
 		}
 	}
-	if empty := chart([]series{{Name: "usage", Color: "#828aff"}}, nil, "", 40, 5, false); !strings.Contains(empty.String(), "No data") {
+	if empty := chart([]series{{Name: "usage", Color: "#828aff"}}, nil, "", 40, 5, oneAxis); !strings.Contains(empty.String(), "No data") {
 		t.Errorf("an empty series says so")
 	}
 }
@@ -64,7 +64,7 @@ func TestChartDrawsBrailleAndKeepsGaps(t *testing.T) {
 			values[i] = f(float64(i % 7))
 		}
 	}
-	out := chart([]series{{Name: "usage", Values: values, Color: "#828aff"}}, times, "cores", 60, 5, false)
+	out := chart([]series{{Name: "usage", Values: values, Color: "#828aff"}}, times, "cores", 60, 5, oneAxis)
 	dots, gap := 0, 0
 	for _, l := range out {
 		col := 0
@@ -97,17 +97,17 @@ func TestChartSplitsOnlyWhenASeriesFlattens(t *testing.T) {
 		{Name: "UNKNOWN", Values: []*float64{f(30000), f(31000), f(29000)}, Color: "#939396"},
 		{Name: "ERROR", Values: []*float64{f(900), f(905), f(910)}, Color: "#e33238"},
 	}
-	if out := chart(ss, times, "/s", 60, 8, true).String(); !strings.Contains(out, "━ ERROR · /s") {
+	if out := chart(ss, times, "/s", 60, 8, multiples).String(); !strings.Contains(out, "━ ERROR · /s") {
 		t.Errorf("a flat series gets a panel of its own:\n%s", out)
 	}
-	if out := chart(ss, times, "/s", 60, 8, false).String(); strings.Contains(out, "━ ERROR · /s") || !strings.Contains(out, "━ UNKNOWN") {
+	if out := chart(ss, times, "/s", 60, 8, oneAxis).String(); strings.Contains(out, "━ ERROR · /s") || !strings.Contains(out, "━ UNKNOWN") {
 		t.Errorf("one axis when the page asks for it:\n%s", out)
 	}
 	five := []series{}
 	for i, name := range []string{"pod-a", "pod-b", "pod-c", "pod-d", "pod-e"} {
 		five = append(five, series{Name: name, Values: []*float64{f(float64(i)), f(float64(5 - i)), f(float64(i))}, Color: ditt0.Dark.ManagedSeriesColor(i)})
 	}
-	if out := chart(five, times, "cores", 60, 8, true).String(); strings.Contains(out, " · cores") || !strings.Contains(out, "━ pod-e") {
+	if out := chart(five, times, "cores", 60, 8, multiples).String(); strings.Contains(out, " · cores") || !strings.Contains(out, "━ pod-e") {
 		t.Errorf("five pods that move stay on one axis:\n%s", out)
 	}
 }
@@ -125,14 +125,15 @@ func TestFlattensCountsDotRows(t *testing.T) {
 	}
 }
 
-// Cards in a row end up equally tall: one axis, small multiples that split their rows, and a card that can't grow
+// Cards in a row end up equally tall: one axis, small multiples that split their rows, and a card that can't grow.
+// The charts grow to that height themselves, with no blank lines padded under them
 func TestFillMatchesHeights(t *testing.T) {
 	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
 	times := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}
 	big, small, tiny := []*float64{f(1200), f(1300), f(1250)}, []*float64{f(1), f(3), f(2)}, []*float64{f(0.004), f(0.006), f(0.005)}
-	card := func(ss []series, multiples bool) func(int) ditt0.Block {
+	card := func(ss []series, a axes) func(int) ditt0.Block {
 		return func(rows int) ditt0.Block {
-			return ditt0.Border(chart(ss, times, "seconds", 40, rows, multiples), 44, 1, ditt0.DimStyle)
+			return ditt0.Border(chart(ss, times, "seconds", 40, rows, a), 44, 1, ditt0.DimStyle)
 		}
 	}
 	fixed := func(int) ditt0.Block {
@@ -140,13 +141,16 @@ func TestFillMatchesHeights(t *testing.T) {
 	}
 	for _, rows := range []int{5, 8, 12} {
 		got := fill(rows,
-			card([]series{{Name: "requests", Values: big}, {Name: "errors", Values: small}}, true),
-			card([]series{{Values: small}}, false),
-			card([]series{{Name: "p99", Values: big}, {Name: "p95", Values: small}, {Name: "p50", Values: tiny}}, true),
+			card([]series{{Name: "requests", Values: big}, {Name: "errors", Values: small}}, fitMultiples),
+			card([]series{{Values: small}}, oneAxis),
+			card([]series{{Name: "p99", Values: big}, {Name: "p95", Values: small}, {Name: "p50", Values: tiny}}, fitMultiples),
 			fixed)
 		for i, b := range got {
 			if len(b) != len(got[0]) {
 				t.Errorf("rows %d: card %d is %d lines, card 0 %d", rows, i, len(b), len(got[0]))
+			}
+			if last := strings.Trim(plain(b[len(b)-2]), "│ "); i < 3 && last == "" {
+				t.Errorf("rows %d: chart card %d padded with blank lines instead of growing", rows, i)
 			}
 		}
 	}

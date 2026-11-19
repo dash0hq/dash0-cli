@@ -71,21 +71,29 @@ func flattens(ss []series, rows int) bool {
 	return false
 }
 
+// How a chart lays out its series
+type axes int
+
+const (
+	// One axis: CPU and memory keep usage on its request's and limit's axis, where reading one against the other is
+	// the point
+	oneAxis axes = iota
+	// Series that would flatten on one axis draw as small multiples instead, a short panel each with its own axis,
+	// headed by its name and unit, each Ditt0's 5 rows
+	multiples
+	// Small multiples that share the chart's rows between them, so a card beside others keeps their height
+	fitMultiples
+)
+
 // The chart, width cells wide, its plot rows high, as Ditt0's Timeseries in its Dots line type. times: one per sample
-// multiples: series that would flatten on one axis draw as small multiples instead, a short panel each with its own
-// axis, headed by its name and unit. CPU and memory keep usage on its request's and limit's axis, where reading one
-// against the other is the point
-func chart(ss []series, times []time.Time, unit string, width, rows int, multiples bool) ditt0.Block {
-	b := ditt0.Timeseries(ditt0.TimeseriesProps{
-		Series: ss, Times: times, Unit: unit, Width: width, Rows: rows,
-		OneAxis:  !(multiples && len(ss) > 1 && flattens(ss, rows)),
-		LineType: ditt0.LineTypeBraille,
-	})
-	// A lone unnamed series needs no legend, its card's title names it: Ditt0 draws the legend as the last line
-	if len(ss) == 1 && ss[0].Name == "" && len(b) > 0 {
-		b = b[:len(b)-1]
+func chart(ss []series, times []time.Time, unit string, width, rows int, a axes) ditt0.Block {
+	one := a == oneAxis || len(ss) < 2 || !flattens(ss, rows)
+	if !one && a == multiples {
+		rows = 0
 	}
-	return b
+	return ditt0.Timeseries(ditt0.TimeseriesProps{
+		Series: ss, Times: times, Unit: unit, Width: width, Rows: rows, OneAxis: one, LineType: ditt0.LineTypeBraille,
+	})
 }
 
 // Cards in a row, each chart grown until its card is as tall as the tallest, so the row's edges line up. One more row
@@ -100,9 +108,10 @@ func fill(rows int, cards ...func(rows int) ditt0.Block) []ditt0.Block {
 		h = max(h, len(out[i]))
 	}
 	for i, c := range cards {
-		// Each try adds a row, so h more is always enough for a card that grows
+		// More rows can make a chart switch between one axis and small multiples, so heights don't climb one line a
+		// row: keep the tallest that fits, and try up to 2h rows more
 		for r := rows + 1; len(out[i]) < h && r <= rows+2*h; r++ {
-			if b := c(r); len(b) <= h {
+			if b := c(r); len(b) <= h && len(b) > len(out[i]) {
 				out[i] = b
 			}
 		}

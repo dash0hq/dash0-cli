@@ -7,5 +7,5 @@ note: "`k8s pods watch` and the workload variants show an Errors chart next to R
 issues: [419]
 
 subtext: |
-  The Errors chart shows the percentage of requests that failed over the range.
-  On a wide terminal the three cards sit side by side at the same height, and charts split into panels share the card's height evenly.
+  The Errors chart shows the percentage of requests that failed over the range, and says so when none failed.
+  On a wide terminal the three charts sit side by side at the same height.
