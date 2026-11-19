@@ -41,7 +41,8 @@ When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file with a source
 For browser profiles, the URL of each script is `--base-url` plus its path relative to `<path>`.
 The source map is the file named by the last `//# sourceMappingURL=` comment of the script, relative to the script, so builds that name the map differently from the script, such as Turbopack, work.
 A script without that comment uses `<file>.map`.
-Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist or is outside `<path>`, are skipped and listed on stderr with the reason.
+Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
+For Node.js, a source map outside `<path>` is skipped too, because the command would write the debug ID into it.
 When `<path>` is a symbolic link to a directory, the command follows it.
 A symbolic link to a directory inside `<path>` is not followed, and is listed on stderr.
 When `<path>` is a single script of a browser build, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory.

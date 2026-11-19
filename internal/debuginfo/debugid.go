@@ -35,11 +35,14 @@ func debugIDOfSourceMap(sourceMap []byte) string {
 	return uuid.NewSHA1(debugIDNamespace, []byte(hex.EncodeToString(digest[:]))).String()
 }
 
-// scriptDebugID returns the lowercase debug ID that the profiler reads from the script, or "" when it has none.
 func scriptDebugID(scriptPath string, script []byte) (string, error) {
 	tail := script[max(0, len(script)-profilerDebugIDTailSize):]
 	if matches := profilerDebugIDComment.FindAllSubmatch(tail, -1); len(matches) > 0 {
 		return strings.ToLower(string(matches[len(matches)-1][1])), nil
+	}
+	// The contains check keeps the line-anchored pattern off the whole script in the common case.
+	if !bytes.Contains(script, []byte("debugId=")) {
+		return "", nil
 	}
 	if comment := anyDebugIDComment.Find(script); comment != nil {
 		return "", fmt.Errorf("%s has the debug ID comment %q, which the profiler cannot read: it reads only a line \"//# debugId=<uuid>\" with no spaces or carriage return, in the last %d bytes of the script", scriptPath, strings.TrimSpace(string(comment)), profilerDebugIDTailSize)
@@ -78,18 +81,7 @@ type fileWrite struct {
 
 // planDebugID decides the debug ID of a script and its source map, and the writes that put it into both.
 // An ID that is already in the script wins, because a script that is already deployed carries it.
-func planDebugID(scriptPath, sourceMapPath string) (string, []fileWrite, error) {
-	script, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read script:\n  %w", err)
-	}
-	if len(script) == 0 {
-		return "", nil, fmt.Errorf("script %s is empty", scriptPath)
-	}
-	sourceMap, err := os.ReadFile(sourceMapPath)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read source map:\n  %w", err)
-	}
+func planDebugID(scriptPath string, script []byte, sourceMapPath string, sourceMap []byte) (string, []fileWrite, error) {
 	inScript, err := scriptDebugID(scriptPath, script)
 	if err != nil {
 		return "", nil, err
@@ -120,11 +112,13 @@ func planDebugID(scriptPath, sourceMapPath string) (string, []fileWrite, error) 
 // appendDebugIDComment adds the comment as the last line, where the profiler looks for it. The line ends
 // with LF even in a CRLF file, because the profiler's pattern does not match a carriage return.
 func appendDebugIDComment(script []byte, debugID string) []byte {
-	result := bytes.Clone(script)
+	comment := "//# debugId=" + debugID + "\n"
+	result := make([]byte, 0, len(script)+1+len(comment))
+	result = append(result, script...)
 	if !bytes.HasSuffix(result, []byte("\n")) {
 		result = append(result, '\n')
 	}
-	return append(result, "//# debugId="+debugID+"\n"...)
+	return append(result, comment...)
 }
 
 // insertDebugIDField adds the field right after the opening brace instead of encoding the map again, so the
@@ -153,25 +147,23 @@ func checkSharedSourceMaps(artifacts []sourceMapArtifact) error {
 		if artifact.ScriptURL != "" {
 			continue
 		}
-		sourceMapPath := filepath.Clean(artifact.SourceMap)
-		first, seen := firstBySourceMap[sourceMapPath]
+		first, seen := firstBySourceMap[artifact.SourceMap]
 		if !seen {
-			firstBySourceMap[sourceMapPath] = artifact
+			firstBySourceMap[artifact.SourceMap] = artifact
 			continue
 		}
 		if first.BuildID == artifact.BuildID {
 			continue
+		}
+		if first.Injected == artifact.Injected {
+			return fmt.Errorf("%s and %s share the source map %s, but have the debug IDs %s and %s; rebuild both", first.Script, artifact.Script, artifact.SourceMap, first.BuildID, artifact.BuildID)
 		}
 		// The script that keeps its ID is the one the command would not write into.
 		kept, other := first, artifact
 		if kept.Injected {
 			kept, other = other, kept
 		}
-		message := fmt.Sprintf("%s and %s share the source map %s, but have the debug IDs %s and %s", kept.Script, other.Script, artifact.SourceMap, kept.BuildID, other.BuildID)
-		if !kept.Injected && other.Injected {
-			return fmt.Errorf("%s; add the line \"//# debugId=%s\" to the end of %s, or rebuild both", message, kept.BuildID, other.Script)
-		}
-		return fmt.Errorf("%s; rebuild both", message)
+		return fmt.Errorf("%s and %s share the source map %s, but have the debug IDs %s and %s; add the line \"//# debugId=%s\" to the end of %s, or rebuild both", kept.Script, other.Script, artifact.SourceMap, kept.BuildID, other.BuildID, kept.BuildID, other.Script)
 	}
 	return nil
 }
@@ -182,15 +174,11 @@ func checkSharedSourceMaps(artifacts []sourceMapArtifact) error {
 func checkWritable(writes []fileWrite) error {
 	checkedDirs := map[string]bool{}
 	for _, write := range writes {
-		target, err := filepath.EvalSymlinks(write.Path)
+		target, perm, err := resolveTarget(write.Path)
 		if err != nil {
-			return fmt.Errorf("failed to resolve %s:\n  %w", write.Path, err)
+			return err
 		}
-		info, err := os.Stat(target)
-		if err != nil {
-			return fmt.Errorf("failed to read %s:\n  %w", write.Path, err)
-		}
-		if info.Mode().Perm()&0o200 == 0 {
+		if perm&0o200 == 0 {
 			return fmt.Errorf("%s is read-only, and the debug ID must be written into it; copy the build output to a writable directory first", write.Path)
 		}
 		dir := filepath.Dir(target)
@@ -211,13 +199,9 @@ func checkWritable(writes []fileWrite) error {
 // writeFileAtomically replaces the file a path resolves to, keeping its permissions, so that a crash never
 // leaves a truncated script or source map behind.
 func writeFileAtomically(write fileWrite) error {
-	target, err := filepath.EvalSymlinks(write.Path)
+	target, perm, err := resolveTarget(write.Path)
 	if err != nil {
-		return fmt.Errorf("failed to resolve %s:\n  %w", write.Path, err)
-	}
-	info, err := os.Stat(target)
-	if err != nil {
-		return fmt.Errorf("failed to read %s:\n  %w", write.Path, err)
+		return err
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".*")
 	if err != nil {
@@ -226,7 +210,7 @@ func writeFileAtomically(write fileWrite) error {
 	defer func() { _ = os.Remove(temporary.Name()) }()
 	_, err = temporary.Write(write.Content)
 	if err == nil {
-		err = temporary.Chmod(info.Mode().Perm())
+		err = temporary.Chmod(perm)
 	}
 	if closeErr := temporary.Close(); err == nil {
 		err = closeErr
@@ -238,4 +222,17 @@ func writeFileAtomically(write fileWrite) error {
 		return fmt.Errorf("failed to write %s:\n  %w", write.Path, err)
 	}
 	return nil
+}
+
+// resolveTarget returns the file a path resolves to, because a write replaces the target and keeps the link.
+func resolveTarget(path string) (string, os.FileMode, error) {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to resolve %s:\n  %w", path, err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to read %s:\n  %w", path, err)
+	}
+	return target, info.Mode().Perm(), nil
 }

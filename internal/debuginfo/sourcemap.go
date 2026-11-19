@@ -63,9 +63,10 @@ type sourceMapArtifact struct {
 	ScriptURL string `json:"scriptUrl,omitempty"`
 	Script    string `json:"script"`
 	SourceMap string `json:"sourceMap"`
-	// Injected reports that the debug ID is written into the script or its source map; in a dry run, that it would be.
-	Injected bool `json:"injected,omitempty"`
-	writes   []fileWrite
+	Injected  bool   `json:"injected,omitempty"`
+	// ponytail: holds the new content of every injected file until the run ends; plan offsets and build the content
+	// at write time if builds with GBs of source maps run out of memory.
+	writes []fileWrite
 }
 
 // A source map is keyed by the URL of its script for browser frames, and by a debug ID for Node.js frames.
@@ -77,33 +78,45 @@ func (a sourceMapArtifact) buildIDType() debuginfopb.BuildIDType {
 	return debuginfopb.BuildIDType_BUILD_ID_TYPE_SOURCE_MAP_DEBUG_ID
 }
 
-// newSourceMapArtifact keys the pair by the script URL when scriptURL is set, and by a debug ID otherwise.
+// newSourceMapArtifact checks the pair before anything is written or uploaded, so a broken map fails the dry run
+// and not a real run halfway through.
 func newSourceMapArtifact(scriptPath, sourceMapPath, scriptURL string) (sourceMapArtifact, error) {
 	artifact := sourceMapArtifact{ScriptURL: scriptURL, Script: scriptPath, SourceMap: sourceMapPath}
-	var err error
+	script, sourceMap, err := readScriptAndSourceMap(scriptPath, sourceMapPath)
+	if err != nil {
+		return artifact, err
+	}
 	if scriptURL != "" {
+		if !json.Valid(sourceMap) {
+			return artifact, fmt.Errorf("source map %s is not valid JSON", sourceMapPath)
+		}
 		artifact.BuildID, err = sourceMapBuildID(scriptURL)
 		return artifact, err
 	}
-	artifact.BuildID, artifact.writes, err = planDebugID(scriptPath, sourceMapPath)
+	artifact.BuildID, artifact.writes, err = planDebugID(scriptPath, script, sourceMapPath, sourceMap)
 	artifact.Injected = len(artifact.writes) > 0
 	return artifact, err
 }
 
-func (a sourceMapArtifact) readBundle() ([]byte, error) {
-	script, err := os.ReadFile(a.Script)
+func readScriptAndSourceMap(scriptPath, sourceMapPath string) ([]byte, []byte, error) {
+	script, err := os.ReadFile(scriptPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read script:\n  %w", err)
+		return nil, nil, fmt.Errorf("failed to read script:\n  %w", err)
 	}
 	if len(script) == 0 {
-		return nil, fmt.Errorf("script %s is empty", a.Script)
+		return nil, nil, fmt.Errorf("script %s is empty", scriptPath)
 	}
-	sourceMap, err := os.ReadFile(a.SourceMap)
+	sourceMap, err := os.ReadFile(sourceMapPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read source map:\n  %w", err)
+		return nil, nil, fmt.Errorf("failed to read source map:\n  %w", err)
 	}
-	if !json.Valid(sourceMap) {
-		return nil, fmt.Errorf("source map %s is not valid JSON", a.SourceMap)
+	return script, sourceMap, nil
+}
+
+func (a sourceMapArtifact) readBundle() ([]byte, error) {
+	script, sourceMap, err := readScriptAndSourceMap(a.Script, a.SourceMap)
+	if err != nil {
+		return nil, err
 	}
 	return encodeSourceMapBundle(script, sourceMap), nil
 }
@@ -168,9 +181,7 @@ func locateSourceMap(scriptPath string) (string, string, error) {
 	return mapPath, "", nil
 }
 
-// discoverSourceMaps walks dir and pairs every script with its source map (see locateSourceMap), keyed by its URL
-// under baseURL, or by a debug ID when baseURL is empty. It returns the pairs, sorted by build ID, and the paths
-// it skipped.
+// discoverSourceMaps keys each script by its URL under baseURL, or by a debug ID when baseURL is empty.
 func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScript, error) {
 	var artifacts []sourceMapArtifact
 	var skipped []skippedScript
@@ -202,7 +213,7 @@ func discoverSourceMaps(dir, baseURL string) ([]sourceMapArtifact, []skippedScri
 			return nil
 		}
 		// A sourceMappingURL with "../" can name a file outside dir, which a Node.js upload would write into.
-		if relativeMap, err := filepath.Rel(dir, mapPath); err != nil || relativeMap == ".." || strings.HasPrefix(relativeMap, ".."+string(filepath.Separator)) {
+		if relativeMap, err := filepath.Rel(dir, mapPath); baseURL == "" && (err != nil || relativeMap == ".." || strings.HasPrefix(relativeMap, ".."+string(filepath.Separator))) {
 			skipped = append(skipped, skippedScript{Script: filePath, Reason: fmt.Sprintf("its source map %s is outside %s; pass the script and --source-map to upload it", mapPath, dir)})
 			return nil
 		}

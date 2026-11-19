@@ -17,38 +17,6 @@ func TestDebugIDOfSourceMap_MatchesPolarSignals(t *testing.T) {
 	assert.Equal(t, "10427d43-f372-51e7-a4b0-5d39b07f9c24", debugIDOfSourceMap([]byte(`{"version":3,"sources":["app.ts"],"mappings":""}`)))
 }
 
-// The cases of TestScriptURLBuildID in the Great Lakes exporter (dash0 components/collector/exporter/
-// dash0greatlakesexporter/internal/profiles/otlp_test.go), where "" means the exporter keys no frame.
-// A source map the CLI accepts under a key the exporter never produces would never resolve a frame.
-func TestSourceMapBuildID_MatchesTheExporter(t *testing.T) {
-	for scriptURL, want := range map[string]string{
-		"https://app.example.com/assets/app.js":          "app.example.com/assets/app.js",
-		"http://app.example.com/assets/app.js":           "app.example.com/assets/app.js",
-		"https://app.example.com:8443/app.js":            "app.example.com:8443/app.js",
-		"https://app.example.com/assets/app.js?v=3#main": "app.example.com/assets/app.js",
-		"https://user:secret@app.example.com/app.js":     "app.example.com/app.js",
-		"https://app.example.com/":                       "",
-		"https://app.example.com":                        "",
-		"https://app.example.com//app.js":                "",
-		"https://app.example.com/a/../app.js":            "",
-		"https://app.example.com/my%20app.js":            "",
-		"https://app.example.com/~team/app.js":           "",
-		"file:///home/me/app.js":                         "",
-		"webpack:///src/app.ts":                          "",
-		"/assets/app.js":                                 "",
-		"app.js":                                         "",
-		"":                                               "",
-	} {
-		got, err := sourceMapBuildID(scriptURL)
-		if want == "" {
-			assert.Error(t, err, scriptURL)
-			continue
-		}
-		require.NoError(t, err, scriptURL)
-		assert.Equal(t, want, got, scriptURL)
-	}
-}
-
 const (
 	idA = "aaaaaaaa-1111-5222-8333-444444444444"
 	idB = "bbbbbbbb-1111-5222-8333-444444444444"
@@ -83,7 +51,8 @@ func TestPlanDebugID(t *testing.T) {
 			writeFile(t, dir, "app.js", tc.script)
 			writeFile(t, dir, "app.js.map", tc.sourceMap)
 
-			debugID, writes, err := planDebugID(filepath.Join(dir, "app.js"), filepath.Join(dir, "app.js.map"))
+			artifact, err := newSourceMapArtifact(filepath.Join(dir, "app.js"), filepath.Join(dir, "app.js.map"), "")
+			debugID, writes := artifact.BuildID, artifact.writes
 
 			if tc.wantErr != "" {
 				require.Error(t, err)
@@ -113,7 +82,8 @@ func TestPlanDebugID_WritesWhatTheProfilerReads(t *testing.T) {
 			writeFile(t, dir, "app.js", script)
 			writeFile(t, dir, "app.js.map", `{"version":3}`)
 
-			debugID, writes, err := planDebugID(filepath.Join(dir, "app.js"), filepath.Join(dir, "app.js.map"))
+			artifact, err := newSourceMapArtifact(filepath.Join(dir, "app.js"), filepath.Join(dir, "app.js.map"), "")
+			debugID, writes := artifact.BuildID, artifact.writes
 			require.NoError(t, err)
 			require.Len(t, writes, 2)
 
@@ -164,20 +134,4 @@ func TestWriteFileAtomically_KeepsModeAndFollowsSymlinks(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(dir, "real"))
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "no temporary file is left behind")
-}
-
-func TestDiscoverSourceMaps_KeysByDebugIDAndSkipsNodeModules(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, dir, "server.js", "x\n//# debugId="+idA+"\n")
-	writeFile(t, dir, "server.js.map", "{}")
-	writeFile(t, dir, "node_modules/dep/index.js", "y")
-	writeFile(t, dir, "node_modules/dep/index.js.map", "{}")
-
-	artifacts, skipped, err := discoverSourceMaps(dir, "")
-
-	require.NoError(t, err)
-	assert.Empty(t, skipped)
-	require.Len(t, artifacts, 1)
-	assert.Equal(t, idA, artifacts[0].BuildID)
-	assert.Empty(t, artifacts[0].ScriptURL)
 }

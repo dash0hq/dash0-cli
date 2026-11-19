@@ -47,7 +47,7 @@ type fakeDebuginfoService struct {
 	// shouldAnswer and initiateAnswer, when set and returning non-nil, replace the answer to the nth call (from 1).
 	shouldAnswer   func(call int) *debuginfopb.ShouldInitiateUploadResponse
 	initiateAnswer func(call int) *debuginfopb.InitiateUploadResponse
-	stallShould int
+	stallShould    int
 
 	mutex          sync.Mutex
 	calls          map[string]int
@@ -361,9 +361,7 @@ func TestUpload_AlreadyExistsOnInitiateIsSkipped(t *testing.T) {
 }
 
 func TestUpload_AgentModePrintsResultsUploadedBeforeAFailure(t *testing.T) {
-	previous := agentmode.Enabled
-	agentmode.Enabled = true
-	t.Cleanup(func() { agentmode.Enabled = previous })
+	withAgentMode(t)
 	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
 	service.failBuildIDs = map[string]error{"app.example.com/assets/later.js": status.Error(codes.Unavailable, "down")}
 	dir := writeBuildOutput(t)
@@ -378,6 +376,13 @@ func TestUpload_AgentModePrintsResultsUploadedBeforeAFailure(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, "app.example.com/assets/app.js", results[0].BuildID)
 	assert.Equal(t, outcomeUploaded, results[0].Status)
+}
+
+func withAgentMode(t *testing.T) {
+	t.Helper()
+	previous := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = previous })
 }
 
 func uploadArgs(endpoint string) []string {
@@ -770,6 +775,16 @@ func writeNodeBuildOutput(t *testing.T) string {
 	return dir
 }
 
+func nodeUploadArgs(endpoint, dir string) []string {
+	return []string{"--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken}
+}
+
+func assertNodeBuildUnchanged(t *testing.T, dir string) {
+	t.Helper()
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+}
+
 func readFile(t *testing.T, dir, name string) string {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join(dir, name))
@@ -781,7 +796,7 @@ func TestUpload_NodeBuildIsKeyedByAnInjectedDebugID(t *testing.T) {
 	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
 	dir := writeNodeBuildOutput(t)
 	debugID := debugIDOfSourceMap([]byte(nodeSourceMap))
-	args := []string{"--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken}
+	args := nodeUploadArgs(endpoint, dir)
 
 	output, err := runDebuginfoCmd(t, args...)
 
@@ -810,8 +825,7 @@ func TestUpload_BrowserBuildIsKeyedByURLAndNotChanged(t *testing.T) {
 	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
-	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
-	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+	assertNodeBuildUnchanged(t, dir)
 	assert.Equal(t, debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH, service.buildIDTypes["app.example.com/server.js"])
 }
 
@@ -823,8 +837,7 @@ func TestUpload_DryRunListsTheDebugIDWithoutWriting(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, debugIDOfSourceMap([]byte(nodeSourceMap))+" <- "+filepath.Join(dir, "server.js"))
 	assert.Contains(t, output, "(debug ID would be injected)")
-	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
-	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+	assertNodeBuildUnchanged(t, dir)
 }
 
 func TestUpload_NothingIsWrittenWithoutCredentials(t *testing.T) {
@@ -833,8 +846,7 @@ func TestUpload_NothingIsWrittenWithoutCredentials(t *testing.T) {
 	_, err := runDebuginfoCmd(t, "--type", "source-map", dir)
 
 	require.Error(t, err)
-	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
-	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+	assertNodeBuildUnchanged(t, dir)
 }
 
 func TestUpload_ReadOnlyFileFailsBeforeAnyWriteOrUpload(t *testing.T) {
@@ -844,7 +856,7 @@ func TestUpload_ReadOnlyFileFailsBeforeAnyWriteOrUpload(t *testing.T) {
 	writeFile(t, dir, "worker.js.map", `{"version":3}`)
 	require.NoError(t, os.Chmod(filepath.Join(dir, "worker.js"), 0o444))
 
-	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken)
+	_, err := runDebuginfoCmd(t, nodeUploadArgs(endpoint, dir)...)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "worker.js is read-only")
@@ -865,7 +877,7 @@ func TestUpload_ReadOnlyDirectoryFailsBeforeAnyWrite(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "b"), 0o755) })
 	_, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
 
-	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken)
+	_, err := runDebuginfoCmd(t, nodeUploadArgs(endpoint, dir)...)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not writable")
@@ -896,7 +908,7 @@ func TestUpload_CopiesOfOneScriptAreUploadedOnce(t *testing.T) {
 		writeFile(t, dir, copyDir+"/server.js.map", nodeSourceMap)
 	}
 
-	output, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken)
+	output, err := runDebuginfoCmd(t, nodeUploadArgs(endpoint, dir)...)
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "Injected debug IDs into 2 scripts")
@@ -906,9 +918,7 @@ func TestUpload_CopiesOfOneScriptAreUploadedOnce(t *testing.T) {
 }
 
 func TestUpload_AgentModeReportsInjection(t *testing.T) {
-	previous := agentmode.Enabled
-	agentmode.Enabled = true
-	t.Cleanup(func() { agentmode.Enabled = previous })
+	withAgentMode(t)
 
 	output, err := runDebuginfoCmd(t, "--type", "source-map", writeNodeBuildOutput(t), "--dry-run")
 

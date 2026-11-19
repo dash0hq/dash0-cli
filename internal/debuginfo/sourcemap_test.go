@@ -41,6 +41,38 @@ func TestSourceMapBuildID(t *testing.T) {
 	}
 }
 
+// The cases of TestScriptURLBuildID in the Great Lakes exporter (dash0 components/collector/exporter/
+// dash0greatlakesexporter/internal/profiles/otlp_test.go), where "" means the exporter keys no frame.
+// A source map the CLI accepts under a key the exporter never produces would never resolve a frame.
+func TestSourceMapBuildID_MatchesTheExporter(t *testing.T) {
+	for scriptURL, want := range map[string]string{
+		"https://app.example.com/assets/app.js":          "app.example.com/assets/app.js",
+		"http://app.example.com/assets/app.js":           "app.example.com/assets/app.js",
+		"https://app.example.com:8443/app.js":            "app.example.com:8443/app.js",
+		"https://app.example.com/assets/app.js?v=3#main": "app.example.com/assets/app.js",
+		"https://user:secret@app.example.com/app.js":     "app.example.com/app.js",
+		"https://app.example.com/":                       "",
+		"https://app.example.com":                        "",
+		"https://app.example.com//app.js":                "",
+		"https://app.example.com/a/../app.js":            "",
+		"https://app.example.com/my%20app.js":            "",
+		"https://app.example.com/~team/app.js":           "",
+		"file:///home/me/app.js":                         "",
+		"webpack:///src/app.ts":                          "",
+		"/assets/app.js":                                 "",
+		"app.js":                                         "",
+		"":                                               "",
+	} {
+		got, err := sourceMapBuildID(scriptURL)
+		if want == "" {
+			assert.Error(t, err, scriptURL)
+			continue
+		}
+		require.NoError(t, err, scriptURL)
+		assert.Equal(t, want, got, scriptURL)
+	}
+}
+
 func TestEncodeSourceMapBundle(t *testing.T) {
 	script := []byte("console.log(1)")
 	sourceMap := []byte(`{"version":3}`)
@@ -115,9 +147,7 @@ func TestDiscoverSourceMaps_SkipsSourceMapsOutsideTheDirectory(t *testing.T) {
 	assert.Empty(t, artifacts)
 	require.Len(t, skipped, 1)
 	assert.Contains(t, skipped[0].Reason, "is outside "+dir)
-	content, err := os.ReadFile(filepath.Join(parent, "shared.js.map"))
-	require.NoError(t, err)
-	assert.Equal(t, "{}", string(content), "the map outside the directory is not planned for a write")
+	assert.Equal(t, "{}", readFile(t, parent, "shared.js.map"), "the map outside the directory is not planned for a write")
 }
 
 func TestDiscoverSourceMaps_FollowsASymlinkedDirectoryAndReportsNestedOnes(t *testing.T) {
@@ -190,4 +220,34 @@ func writeFile(t *testing.T, dir, name, content string) {
 	fullPath := filepath.Join(dir, name)
 	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
 	require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
+}
+
+func TestDiscoverSourceMaps_BrowserBuildKeepsSourceMapsOutsideTheDirectory(t *testing.T) {
+	parent := t.TempDir()
+	writeFile(t, parent, "maps/app.js.map", "{}")
+	dir := filepath.Join(parent, "build")
+	writeFile(t, dir, "app.js", "x\n//# sourceMappingURL=../maps/app.js.map\n")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "https://app.example.com/")
+
+	require.NoError(t, err)
+	assert.Empty(t, skipped)
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, filepath.Join(parent, "maps/app.js.map"), artifacts[0].SourceMap)
+}
+
+func TestDiscoverSourceMaps_KeysByDebugIDAndSkipsNodeModules(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "server.js", "x\n//# debugId="+idA+"\n")
+	writeFile(t, dir, "server.js.map", "{}")
+	writeFile(t, dir, "node_modules/dep/index.js", "y")
+	writeFile(t, dir, "node_modules/dep/index.js.map", "{}")
+
+	artifacts, skipped, err := discoverSourceMaps(dir, "")
+
+	require.NoError(t, err)
+	assert.Empty(t, skipped)
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, idA, artifacts[0].BuildID)
+	assert.Empty(t, artifacts[0].ScriptURL)
 }

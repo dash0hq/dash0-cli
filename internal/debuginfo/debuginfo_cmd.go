@@ -133,18 +133,6 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		return err
 	}
 
-	// Check every bundle first, so a broken map fails the dry run and not a real run halfway through.
-	for _, artifact := range artifacts {
-		if _, err := artifact.readBundle(); err != nil {
-			return err
-		}
-	}
-
-	var writes []fileWrite
-	for _, artifact := range artifacts {
-		writes = append(writes, artifact.writes...)
-	}
-
 	results := make([]uploadResult, 0, len(artifacts))
 	if flags.DryRun {
 		for _, artifact := range artifacts {
@@ -175,6 +163,14 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 	}
 	defer func() { _ = closeConnection() }()
 
+	var writes []fileWrite
+	injected := 0
+	for _, artifact := range artifacts {
+		writes = append(writes, artifact.writes...)
+		if artifact.Injected {
+			injected++
+		}
+	}
 	// Credentials resolve first, so that a missing token fails before any file changes.
 	if err := checkWritable(writes); err != nil {
 		return err
@@ -184,33 +180,29 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 			return err
 		}
 	}
-	if injected := countInjected(artifacts); injected > 0 && !agentmode.Enabled {
+	if injected > 0 && !agentmode.Enabled {
 		fmt.Printf("Injected debug IDs into %s\n", output.Pluralize(injected, "script"))
 	}
 
 	uploadedBy := map[string]string{}
 	for _, artifact := range artifacts {
+		result := uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped}
 		if firstScript, seen := uploadedBy[artifact.BuildID]; seen {
-			result := uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped, Reason: "same source map as " + firstScript}
-			results = append(results, result)
-			if !agentmode.Enabled {
-				printResultLine(result)
+			result.Reason = "same source map as " + firstScript
+		} else {
+			uploadedBy[artifact.BuildID] = artifact.Script
+			body, err := artifact.readBundle()
+			if err != nil {
+				return err
 			}
-			continue
-		}
-		uploadedBy[artifact.BuildID] = artifact.Script
-		body, err := artifact.readBundle()
-		if err != nil {
-			return err
-		}
-		outcome, reason, err := debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, artifact.buildIDType(), body)
-		if err != nil {
-			if agentmode.Enabled {
-				_ = printJSON(results)
+			result.Status, result.Reason, err = debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, artifact.buildIDType(), body)
+			if err != nil {
+				if agentmode.Enabled {
+					_ = printJSON(results)
+				}
+				return fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
 			}
-			return fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
 		}
-		result := uploadResult{sourceMapArtifact: artifact, Status: outcome, Reason: reason}
 		results = append(results, result)
 		if !agentmode.Enabled {
 			printResultLine(result)
@@ -288,16 +280,6 @@ func printDryRun(results []uploadResult) error {
 		fmt.Printf("  %s <- %s, %s%s\n", result.BuildID, result.Script, result.SourceMap, note)
 	}
 	return nil
-}
-
-func countInjected(artifacts []sourceMapArtifact) int {
-	count := 0
-	for _, artifact := range artifacts {
-		if artifact.Injected {
-			count++
-		}
-	}
-	return count
 }
 
 func printResultLine(result uploadResult) {
