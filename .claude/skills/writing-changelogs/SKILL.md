@@ -1,6 +1,8 @@
 ---
 name: writing-changelogs
 description: Writes and reviews user-facing changelog entries and release notes for the Dash0 CLI. Use when creating or editing .chloggen YAML files, reviewing release-note wording in a pull request, or turning a code change into a changelog entry.
+metadata:
+  internal: true
 ---
 
 # Writing Dash0 CLI changelogs
