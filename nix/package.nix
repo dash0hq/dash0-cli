@@ -50,7 +50,7 @@ buildGo127Module (finalAttrs: {
   # replaced with the real hash: build once, then copy the `got: sha256-...`
   # value from the resulting hash-mismatch error into this field. Re-run after
   # any change to go.mod / go.sum. See the README's "Install with Nix" section.
-  vendorHash = "sha256-w35KICxDKB49kiZzqGMpqjwwT22GmvJfClYv70Fk93E=";
+  vendorHash = "sha256-b7KDfnpsKo4uUy4TVFcBmo5iZvUFD1XnE2zs2bhY4U0=";
 
   # Only the CLI entrypoint is a `main` package; building it explicitly avoids
   # compiling test-only helpers into the output.
