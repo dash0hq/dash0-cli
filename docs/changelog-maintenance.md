@@ -2,6 +2,7 @@
 
 This project uses [chloggen](https://github.com/open-telemetry/opentelemetry-go-build-tools/tree/main/chloggen) to manage changelog entries.
 Each user-facing change gets its own YAML file in `.chloggen/`.
+Write the entry for someone using the CLI, not someone reviewing the code: the [writing-changelogs](../.claude/skills/writing-changelogs/SKILL.md) skill, which AI agents in this repository load automatically, has the rules and an example.
 
 ## Creating a Changelog Entry
 1. Run `make chlog-new` — this creates `.chloggen/<branch-name>.yaml` from the template
