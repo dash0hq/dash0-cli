@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/cli/browser v1.3.0
 	github.com/dash0hq/dash0-api-client-go v1.35.0
-	github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261118141218-defb95d70d29
+	github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261119130541-a4154f2d775c
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/pmezard/go-difflib v1.0.0
@@ -137,5 +137,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/dash0hq/ditt0-cli-design-system/go => github.com/smitthakkar96/ditt0-cli-design-system/go v0.0.0-20261119120230-0243c001c9d4
