@@ -949,3 +949,33 @@ func TestUpload_UnknownOutputFormatFailsBeforeAnyWork(t *testing.T) {
 	assert.Contains(t, err.Error(), `unknown --output "yaml"`)
 	assertNodeBuildUnchanged(t, dir)
 }
+
+func TestUpload_DryRunFailsOnAReadOnlyFile(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+	require.NoError(t, os.Chmod(filepath.Join(dir, "server.js"), 0o444))
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server.js is read-only")
+}
+
+func TestUpload_WarnsWhenADebugIDUploadLooksLikeABrowserBuild(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+	writeFile(t, dir, "index.html", "<html></html>")
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		_, err = runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "looks like a browser build")
+
+	stderr = testutil.CaptureStderr(t, func() {
+		_, err = runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run", "--base-url", "https://app.example.com/")
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, stderr, "looks like a browser build")
+}

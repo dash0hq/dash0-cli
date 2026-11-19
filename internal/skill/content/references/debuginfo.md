@@ -23,14 +23,16 @@ Dash0 finds the source map of a profile frame by one of two keys:
   This is the default, used when you pass neither `--base-url` nor `--script-url`.
 - Browser profiles use the URL the script is served from.
   Pass `--base-url` or `--script-url` to key source maps this way.
+  When a directory has an `index.html` and you pass neither, the command warns on stderr, because a browser build uploaded by debug ID cannot be found.
 
 For Node.js, collect profiles with the Parca Agent v0.47.0 or later, or another profiler that reads the debug ID.
 A script and its source map that already carry the same debug ID are uploaded as they are, so debug IDs that a bundler or another upload tool already wrote are kept.
 Otherwise the command writes the debug ID into the files: the `debugId` field into the source map, and the comment as the last line of the script.
 The debug ID is computed from the source map, so the same build always gets the same one, and it matches the debug ID that `@polarsignals/sourcemap-cli` writes.
 Run the command after the build step and before you package or deploy the build output, because the deployed scripts must carry the comment.
-The command checks that every file and its directory are writable, and that the credentials resolve, before it changes any file.
-It fails when a script and its source map carry different debug IDs, or when a script has a debug ID comment the profiler cannot read, such as an indented one.
+The command checks that every file and its directory are writable, and that the credentials resolve, before it changes any file; `--dry-run` checks that the files are writable too.
+Like the profiler, the command reads only the first debug ID comment in the last 1024 bytes of a script.
+It fails when a script and its source map carry different debug IDs, or when the last 1024 bytes of a script hold a debug ID comment the profiler cannot read, such as an indented one.
 It also fails when two scripts share one source map but would get different debug IDs, and names the line to add or the build to redo.
 
 For browser profiles, the key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.

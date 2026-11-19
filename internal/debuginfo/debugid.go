@@ -37,14 +37,11 @@ func debugIDOfSourceMap(sourceMap []byte) string {
 
 func scriptDebugID(scriptPath string, script []byte) (string, error) {
 	tail := script[max(0, len(script)-profilerDebugIDTailSize):]
-	if matches := profilerDebugIDComment.FindAllSubmatch(tail, -1); len(matches) > 0 {
-		return strings.ToLower(string(matches[len(matches)-1][1])), nil
+	// The profiler takes the first match in the tail, and ignores anything before the tail.
+	if matches := profilerDebugIDComment.FindSubmatch(tail); matches != nil {
+		return strings.ToLower(string(matches[1])), nil
 	}
-	// The contains check keeps the line-anchored pattern off the whole script in the common case.
-	if !bytes.Contains(script, []byte("debugId=")) {
-		return "", nil
-	}
-	if comment := anyDebugIDComment.Find(script); comment != nil {
+	if comment := anyDebugIDComment.Find(tail); comment != nil {
 		return "", fmt.Errorf("%s has the debug ID comment %q, which the profiler cannot read: it reads only a line \"//# debugId=<uuid>\" with no spaces or carriage return, in the last %d bytes of the script", scriptPath, strings.TrimSpace(string(comment)), profilerDebugIDTailSize)
 	}
 	return "", nil

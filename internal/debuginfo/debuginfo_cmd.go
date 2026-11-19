@@ -142,8 +142,21 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		return err
 	}
 
+	var writes []fileWrite
+	injected := 0
+	for _, artifact := range artifacts {
+		writes = append(writes, artifact.writes...)
+		if artifact.Injected {
+			injected++
+		}
+	}
+
 	results := make([]uploadResult, 0, len(artifacts))
 	if flags.DryRun {
+		// The dry run fails on a read-only build output, like the real run.
+		if err := checkWritable(writes); err != nil {
+			return err
+		}
 		for _, artifact := range artifacts {
 			results = append(results, uploadResult{sourceMapArtifact: artifact, Status: outcomePending})
 		}
@@ -172,14 +185,6 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 	}
 	defer func() { _ = closeConnection() }()
 
-	var writes []fileWrite
-	injected := 0
-	for _, artifact := range artifacts {
-		writes = append(writes, artifact.writes...)
-		if artifact.Injected {
-			injected++
-		}
-	}
 	// Credentials resolve first, so that a missing token fails before any file changes.
 	if err := checkWritable(writes); err != nil {
 		return err
@@ -232,6 +237,11 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 	if info.IsDir() {
 		if flags.ScriptURL != "" || flags.SourceMap != "" {
 			return nil, fmt.Errorf("--script-url and --source-map apply to a single script; use --base-url for a directory")
+		}
+		if flags.BaseURL == "" {
+			if _, err := os.Stat(filepath.Join(inputPath, "index.html")); err == nil {
+				fmt.Fprintf(os.Stderr, "Warning: %s has an index.html, so it looks like a browser build. Browser profiles find source maps by URL, so pass --base-url; without it, debug IDs are written into the scripts for Node.js profiles.\n", inputPath)
+			}
 		}
 		artifacts, skipped, err := discoverSourceMaps(inputPath, flags.BaseURL)
 		if err != nil {

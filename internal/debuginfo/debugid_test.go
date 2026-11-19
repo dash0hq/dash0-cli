@@ -43,7 +43,9 @@ func TestPlanDebugID(t *testing.T) {
 		"indented comment":          {script: "x\n  //# debugId=" + idA + "\n", sourceMap: sourceMap, wantErr: "the profiler cannot read"},
 		"legacy //@ comment":        {script: "x\n//@ debugId=" + idA + "\n", sourceMap: sourceMap, wantErr: "the profiler cannot read"},
 		"comment ends with CR":      {script: "x\r\n//# debugId=" + idA + "\r\n", sourceMap: sourceMap, wantErr: "the profiler cannot read"},
-		"comment not near the end":  {script: "//# debugId=" + idA + "\n" + strings.Repeat("x", 2000) + "\n", sourceMap: sourceMap, wantErr: "the profiler cannot read"},
+		"comment not near the end":  {script: "//# debugId=" + idA + "\n" + strings.Repeat("x", 2000) + "\n", sourceMap: sourceMap, wantID: computed, wantWrites: []string{"app.js.map", "app.js"}},
+		"bad comment not near end":  {script: "  //# debugId=" + idA + "\n" + strings.Repeat("x", 2000) + "\n", sourceMap: sourceMap, wantID: computed, wantWrites: []string{"app.js.map", "app.js"}},
+		"two comments, first wins":  {script: "x\n//# debugId=" + idA + "\n//# debugId=" + idB + "\n", sourceMap: sourceMap, wantID: idA},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
