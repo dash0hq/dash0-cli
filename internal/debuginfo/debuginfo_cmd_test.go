@@ -929,3 +929,23 @@ func TestUpload_AgentModeReportsInjection(t *testing.T) {
 	assert.Equal(t, true, results[0]["injected"])
 	assert.NotContains(t, results[0], "scriptUrl")
 }
+
+func TestUpload_OutputJSONWithoutAgentMode(t *testing.T) {
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeNodeBuildOutput(t), "--dry-run", "-o", "json")
+
+	require.NoError(t, err)
+	var results []uploadResult
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, outcomePending, results[0].Status)
+}
+
+func TestUpload_UnknownOutputFormatFailsBeforeAnyWork(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "-o", "yaml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown --output "yaml"`)
+	assertNodeBuildUnchanged(t, dir)
+}

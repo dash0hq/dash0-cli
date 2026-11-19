@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
@@ -47,6 +48,7 @@ type uploadFlags struct {
 	Endpoint  string
 	OtlpUrl   string
 	AuthToken string
+	Output    string
 	DryRun    bool
 	Force     bool
 }
@@ -103,6 +105,7 @@ Files that Dash0 already has are skipped; pass --force to replace them.` + inter
 	cmd.Flags().StringVar(&flags.Endpoint, "endpoint", "", "URL of the Dash0 debuginfo gRPC service (default: the host of the OTLP URL on port 4317)")
 	cmd.Flags().StringVar(&flags.OtlpUrl, "otlp-url", "", "OTLP endpoint URL (overrides active profile)")
 	cmd.Flags().StringVar(&flags.AuthToken, "auth-token", "", "Auth token (overrides active profile); it must grant ingest:debuginfo")
+	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, json (default: table; json in agent mode)")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "List what would be uploaded without changing files or uploading")
 	cmd.Flags().BoolVar(&flags.Force, "force", false, "Upload even when Dash0 already has the debug information")
 	return cmd
@@ -125,6 +128,11 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		return fmt.Errorf("--type %s is not supported yet; only source-map can be uploaded", flags.Type)
 	}
 
+	jsonOutput, err := parseOutputFormat(flags.Output)
+	if err != nil {
+		return err
+	}
+
 	artifacts, err := resolveSourceMaps(inputPath, flags)
 	if err != nil {
 		return err
@@ -139,7 +147,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		for _, artifact := range artifacts {
 			results = append(results, uploadResult{sourceMapArtifact: artifact, Status: outcomePending})
 		}
-		return printDryRun(results)
+		return printDryRun(results, jsonOutput)
 	}
 
 	otlpURLOverride := flags.OtlpUrl
@@ -181,7 +189,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 			return err
 		}
 	}
-	if injected > 0 && !agentmode.Enabled {
+	if injected > 0 && !jsonOutput {
 		fmt.Printf("Injected debug IDs into %s\n", asset.Pluralize(injected, "script"))
 	}
 
@@ -198,18 +206,18 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 			}
 			result.Status, result.Reason, err = debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, artifact.buildIDType(), body)
 			if err != nil {
-				if agentmode.Enabled {
+				if jsonOutput {
 					_ = printJSON(results)
 				}
 				return fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
 			}
 		}
 		results = append(results, result)
-		if !agentmode.Enabled {
+		if !jsonOutput {
 			printResultLine(result)
 		}
 	}
-	if agentmode.Enabled {
+	if jsonOutput {
 		return printJSON(results)
 	}
 	return nil
@@ -268,8 +276,8 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 	return []sourceMapArtifact{artifact}, nil
 }
 
-func printDryRun(results []uploadResult) error {
-	if agentmode.Enabled {
+func printDryRun(results []uploadResult, jsonOutput bool) error {
+	if jsonOutput {
 		return printJSON(results)
 	}
 	fmt.Printf("Dry run: %s found\n", asset.Pluralize(len(results), "source map"))
@@ -281,6 +289,19 @@ func printDryRun(results []uploadResult) error {
 		fmt.Printf("  %s <- %s, %s%s\n", result.BuildID, result.Script, result.SourceMap, note)
 	}
 	return nil
+}
+
+// parseOutputFormat reports whether results print as JSON.
+func parseOutputFormat(format string) (bool, error) {
+	switch strings.ToLower(format) {
+	case "":
+		return agentmode.Enabled, nil
+	case "table":
+		return false, nil
+	case "json":
+		return true, nil
+	}
+	return false, fmt.Errorf("unknown --output %q; one of: table, json", format)
 }
 
 func printResultLine(result uploadResult) {

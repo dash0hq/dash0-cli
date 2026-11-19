@@ -97,4 +97,4 @@ Upload one script and its source map:
 dash0 -X debuginfo upload --type source-map dist/assets/app.js --script-url https://app.example.com/assets/app.js
 ```
 
-In agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl` (browser keys only), `script`, `sourceMap`, `injected` (present when the command wrote, or in a dry run would write, the debug ID), and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
+With `-o json`, the default in agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl` (browser keys only), `script`, `sourceMap`, `injected` (present when the command wrote, or in a dry run would write, the debug ID), and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).

@@ -36,8 +36,8 @@ The experimental `diff` command previews what `apply` would do, fetching each do
 They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
 Output formats are `table`, `json`, and `csv`.
 
-**Send commands** transmit telemetry data to Dash0 via OTLP.
-They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
+**Send commands** transmit data to Dash0 and require `otlp-url` (not `api-url`).
+`logs send` and `spans send` send telemetry via OTLP and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag); `debuginfo upload` uploads debug information to the Dash0 debuginfo gRPC service instead.
 
 **Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills, AWS metric scrape configs) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
@@ -76,7 +76,7 @@ Passing `--profile ""` or `DASH0_PROFILE=""` is treated as "not set" and falls t
 If the selected profile does not exist, the command fails before making any API call with a message listing the available profile names.
 
 Commands that read from the API (asset CRUD, `logs query`, `spans query`, `traces get`, `metrics instant`) require `api-url` and `auth-token`.
-Commands that write via OTLP (`logs send`, `spans send`) require `otlp-url` and `auth-token`.
+Commands that write via OTLP (`logs send`, `spans send`) and `debuginfo upload` require `otlp-url` and `auth-token`.
 
 ### Read the auth token from a file
 
@@ -3073,11 +3073,13 @@ The `dataset` parameter is omitted when the resolved dataset is `default`, since
 
 ## Send commands
 
-Send commands transmit telemetry data to Dash0 via OTLP.
-They share a common set of characteristics:
-- Require `otlp-url` and `auth-token` (not `api-url`).
+Send commands transmit data to Dash0.
+They all require `otlp-url` and `auth-token` (not `api-url`).
+`logs send` and `spans send` send telemetry via OTLP and share these flags:
 - Repeatable attribute flags: `--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag.
 - OTLP scope flags: `--scope-name` (default: `dash0-cli`), `--scope-version` (default: CLI version).
+
+`debuginfo upload` uploads to the Dash0 debuginfo gRPC service, on the host of the OTLP URL, and has none of these flags.
 
 > [!IMPORTANT]
 > The Dash0 OTLP ingress does not accept OAuth access tokens — it only honors static `auth_*` tokens.
@@ -3239,6 +3241,7 @@ Only `source-map` is supported yet; the other types fail with a "not supported y
 | `--endpoint` | the host of the OTLP URL on port 4317 | URL of the Dash0 debuginfo gRPC service |
 | `--otlp-url` | | OTLP endpoint URL (overrides active profile) |
 | `--auth-token` | | Auth token (overrides active profile) |
+| `--output` | `table` (`json` in agent mode) | Output format: `table` or `json` |
 | `--dry-run` | `false` | List what would be uploaded without changing files or uploading |
 | `--force` | `false` | Upload even when Dash0 already has the debug information |
 
@@ -3322,7 +3325,7 @@ Upload one script and its source map:
 dash0 -X debuginfo upload --type source-map dist/assets/app.js --script-url https://app.example.com/assets/app.js
 ```
 
-In agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl` (browser keys only), `script`, `sourceMap`, `injected` (present when the command wrote, or in a dry run would write, the debug ID), and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
+With `-o json`, the default in agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl` (browser keys only), `script`, `sourceMap`, `injected` (present when the command wrote, or in a dry run would write, the debug ID), and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
 
 ## Daemon commands
 
