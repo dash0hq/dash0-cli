@@ -7,14 +7,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type fakeKeys struct {
+	origin, id     string
+	byOrigin, byID bool
+}
+
+func (k fakeKeys) GetOrigin() string                 { return k.origin }
+func (k fakeKeys) GetID() string                     { return k.id }
+func (k fakeKeys) GetName() string                   { return "" }
+func (k fakeKeys) UpsertKeys() (byOrigin, byID bool) { return k.byOrigin, k.byID }
+
 // Every branch is covered here, mismatch errors included, because a wrong
 // answer PUTs one document's contents onto a different asset.
 func TestResolveUpdateKey(t *testing.T) {
 	originKeyed := func(origin, id string) UpdateKey {
-		return UpdateKey{Noun: "spam filter", UsesOrigin: true, Origin: origin, ID: id}
+		return UpdateKey{Noun: "spam filter", Upsert: fakeKeys{origin, id, true, true}}
+	}
+	originOnly := func(origin, id string) UpdateKey {
+		return UpdateKey{Noun: "notification channel", Upsert: fakeKeys{origin, id, true, false}}
 	}
 	idOnly := func(id string) UpdateKey {
-		return UpdateKey{Noun: "dashboard", ID: id}
+		return UpdateKey{Noun: "dashboard", Upsert: fakeKeys{"o", id, false, true}}
 	}
 
 	tests := []struct {
@@ -103,6 +116,36 @@ func TestResolveUpdateKey(t *testing.T) {
 			args:    []string{"x"},
 			key:     idOnly("i9"),
 			wantErr: `argument "x" does not match the file's id ("i9")`,
+		},
+		{
+			name:    "origin-only kind, no arg and id-only file",
+			key:     originOnly("", "i11"),
+			wantErr: `no notification channel origin or id given`,
+		},
+		{
+			name:    "origin-only kind, no arg, file has both",
+			key:     originOnly("o12", "i12"),
+			wantKey: "o12",
+		},
+		{
+			// An exported document carries the server-assigned id, and the API path accepts it.
+			name:    "origin-only kind, arg matches the id of an exported file",
+			args:    []string{"i13"},
+			key:     originOnly("o13", "i13"),
+			wantKey: "i13",
+		},
+		{
+			name:    "origin-only kind, arg names another asset",
+			args:    []string{"other"},
+			key:     originOnly("o14", ""),
+			wantErr: `argument "other" does not match the file's origin ("o14")`,
+		},
+		{
+			// The origin is provenance only for this kind, so it is never a key.
+			name:    "id-only kind, arg matches only the origin label",
+			args:    []string{"o"},
+			key:     idOnly("i15"),
+			wantErr: `argument "o" does not match the file's id ("i15")`,
 		},
 		{
 			// A second positional argument is rejected by cobra's Args

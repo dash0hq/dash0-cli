@@ -253,14 +253,20 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamTable(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
+		err = streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
-		return collectAndRenderJSON(iter, totalLimit)
+		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
+	return nil
 }
 
 func resolveSpanQueryColumns(columns []string) ([]query.ColumnDef, error) {
@@ -371,7 +377,7 @@ func countSpans(resourceSpans []dash0api.ResourceSpans) int64 {
 	return count
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamTable(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	total, err := iterateSpans(iter, totalLimit, func(r flatSpanRecord) {
@@ -385,9 +391,6 @@ func streamTable(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, 
 		fmt.Println("No spans found.")
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
-	}
-	if explorerURL != "" {
-		fmt.Printf("\nOpen this query in Dash0:\n    %s\n", explorerURL)
 	}
 	return nil
 }
@@ -414,7 +417,7 @@ func streamCSV(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, sk
 	return nil
 }
 
-func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64) error {
+func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimit int64, explorerURL string) error {
 	var allResourceSpans []dash0api.ResourceSpans
 	var totalSpans int64
 
@@ -436,9 +439,9 @@ func collectAndRenderJSON(iter *dash0api.Iter[dash0api.ResourceSpans], totalLimi
 	if allResourceSpans == nil {
 		allResourceSpans = []dash0api.ResourceSpans{}
 	}
-	wrapper := map[string]any{
+	wrapper := query.AddExplorerURL(map[string]any{
 		"resourceSpans": allResourceSpans,
-	}
+	}, explorerURL)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(wrapper)

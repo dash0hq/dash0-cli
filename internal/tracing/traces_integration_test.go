@@ -199,3 +199,62 @@ func TestGetTrace_BackwardCompatWithExperimentalFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "GET /api/users")
 }
+
+func TestGetTrace_ExplorerURLGoesToStderrInTableOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTracesCmd()
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
+		"--api-url", server.URL, "--auth-token", testTracesAuthToken})
+
+	var err error
+	var stdout string
+	stderr := testutil.CaptureStderr(t, func() {
+		stdout = testutil.CaptureStdout(t, func() {
+			err = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "Open this trace in Dash0:",
+		"traces get says 'trace', not 'query'")
+	assert.NotContains(t, stdout, "Open this trace in Dash0:")
+}
+
+func TestGetTrace_ExplorerURLIsEmbeddedInJSONOutput(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPost, apiPathSpans, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newExperimentalTracesCmd()
+	cmd.SetArgs([]string{"traces", "get", "0af7651916cd43dd8448eb211c80319c",
+		"-o", "json", "--api-url", server.URL, "--auth-token", testTracesAuthToken})
+
+	var err error
+	output := testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+
+	require.NoError(t, err)
+
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(output), &payload))
+	assert.Contains(t, payload, "dash0ExplorerUrl")
+
+	var explorerURL string
+	require.NoError(t, json.Unmarshal(payload["dash0ExplorerUrl"], &explorerURL))
+	assert.Contains(t, explorerURL, "trace_id=0af7651916cd43dd8448eb211c80319c",
+		"the link must carry the trace that was requested")
+}

@@ -18,7 +18,7 @@ It detects an existing active profile via `dash0 config show -o json`'s `.profil
 When modifying `apply --since`'s ref-resolution error semantics (the all-zeros SHA sentinel, empty-string handling, non-ancestor warning, or the `--dry-run --agent-mode` JSON shape), ensure the [sync-assets](../.github/actions/sync-assets/action.yaml) GitHub Action's own preflight logic stays in sync:
 
 - The `Resolve --since comparison ref` step's all-zeros sentinel constant and its resolvability/ancestry `git` checks mirror `dash0 apply --since`'s own classification (`internal/git/ref.go`'s `ClassifyRef`) — a change to which values `dash0` treats as "no prior state" needs the equivalent change here.
-- The `Compute pending plan` step parses `dash0 apply --dry-run --agent-mode`'s JSON output (`[{path, changes: [{op, kind, name, originOrId, since}]}]`) with `jq`. A change to that JSON shape (see `internal/apply/dryrun.go`'s `dryRunChangeJSON`) needs the equivalent change to this step's `jq` filters, and to the `deletions`/`modifications` output shape documented in the action's README.
+- The `Compute pending plan` step parses `dash0 apply --dry-run --agent-mode`'s JSON output (`[{path, changes: [{op, kind, name, originOrId, since}]}]`) with `jq`. A change to that JSON shape (see `internal/preview/preview.go`'s `changeJSON`, shared with `dash0 diff --agent-mode`) needs the equivalent change to this step's `jq` filters, and to the `deletions`/`modifications` output shape documented in the action's README.
 
 ## Testing the setup action
 

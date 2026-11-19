@@ -85,27 +85,15 @@ func CarryRecordingRuleVersion(src, dst *dash0api.RecordingRule) {
 // A PUT to the ID of a deleted recording rule brings it back, which is reported
 // as ActionRestored.
 func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.RecordingRule, dataset *string) (ImportResult, error) {
-	// Capture the user-defined ID before stripping; StripRecordingRuleServerFields
-	// clears the dash0.com/id label, so a later read would always return "".
-	id := dash0api.GetRecordingRuleID(rule)
-	dash0api.StripRecordingRuleServerFields(rule)
-
-	action := ActionCreated
-	var before any
-	if id != "" {
-		existing, err := apiClient.GetRecordingRule(ctx, id, dataset)
-		if err == nil {
-			action, before = actionForExisting(RecordingRuleDeletedAt(existing)), existing
-			CarryRecordingRuleVersion(existing, rule)
-		}
-	}
+	// A failed preflight does not block the write: the PUT reports the same error.
+	plan, _ := PlanRecordingRule(ctx, apiClient, rule, dataset)
 
 	var (
 		result *dash0api.RecordingRule
 		err    error
 	)
-	if id != "" {
-		result, err = apiClient.UpdateRecordingRule(ctx, id, rule, dataset)
+	if plan.Key != "" {
+		result, err = apiClient.UpdateRecordingRule(ctx, plan.Key, rule, dataset)
 	} else {
 		result, err = apiClient.CreateRecordingRule(ctx, rule, dataset)
 	}
@@ -117,7 +105,27 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	if err := RequireNotDeleted("Recording rule", dash0api.GetRecordingRuleName(result), resultID, RecordingRuleDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: dash0api.GetRecordingRuleName(result), ID: resultID, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: dash0api.GetRecordingRuleName(result), ID: resultID, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanRecordingRule reads the stored recording rule that ImportRecordingRule
+// would write, and carries its version onto rule. It returns any preflight
+// error other than "not found".
+func PlanRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.RecordingRule, dataset *string) (ImportPlan, error) {
+	// StripRecordingRuleServerFields clears the dash0.com/id label, so read it first.
+	id := dash0api.GetRecordingRuleID(rule)
+	dash0api.StripRecordingRuleServerFields(rule)
+	plan := ImportPlan{Key: id, Action: ActionCreated, Proposed: rule}
+	if id == "" {
+		return plan, nil
+	}
+	existing, err := apiClient.GetRecordingRule(ctx, id, dataset)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Action, plan.Before = actionForExisting(RecordingRuleDeletedAt(existing)), existing
+	CarryRecordingRuleVersion(existing, rule)
+	return plan, nil
 }
 
 // RecordingRuleDeletedAt returns when the recording rule was deleted, or nil

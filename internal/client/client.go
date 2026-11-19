@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -32,15 +33,15 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 			return nil, translateConfigError(ctx, err)
 		}
 		cfg = resolved
-		apiUrl = resolved.ApiUrl
-		authToken = resolved.AuthToken
+		apiUrl = resolved.ApiUrl()
+		authToken = resolved.Token()
 	} else {
 		// Apply flag overrides on top of context configuration
 		if apiUrl == "" {
-			apiUrl = cfg.ApiUrl
+			apiUrl = cfg.ApiUrl()
 		}
 		if authToken == "" {
-			authToken = cfg.AuthToken
+			authToken = cfg.Token()
 		}
 	}
 
@@ -53,12 +54,18 @@ func NewClientFromContext(ctx context.Context, apiUrl, authToken string) (dash0a
 		return nil, err
 	}
 
+	tokenOption, err := authTokenOption(ctx, cfg, authToken)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := dash0api.NewClient(
 		dash0api.WithApiUrl(apiUrl),
-		authTokenOption(cfg, authToken),
+		tokenOption,
 		dash0api.WithUserAgent(version.UserAgent()),
 		dash0api.WithMaxRetries(maxRetries),
 		dash0api.WithRetryOnConflict(),
+		dash0api.WithHTTPClient(&http.Client{Transport: &assetResponseTransport{base: http.DefaultTransport}}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API client: %w", err)
@@ -81,9 +88,14 @@ func NewOtlpClientFromContext(ctx context.Context, otlpUrl, authToken string) (d
 		return nil, err
 	}
 
+	tokenOption, err := authTokenOption(ctx, cfg, finalAuthToken)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := dash0api.NewClient(
 		dash0api.WithOtlpEndpoint(dash0api.OtlpEncodingJson, finalOtlpUrl),
-		authTokenOption(cfg, finalAuthToken),
+		tokenOption,
 		dash0api.WithUserAgent(version.UserAgent()),
 		dash0api.WithMaxRetries(maxRetries),
 	)
@@ -102,8 +114,8 @@ func ResolveOtlpCredentials(ctx context.Context, otlpUrl, authToken string) (str
 
 	var finalOtlpUrl, finalAuthToken string
 	if cfg != nil {
-		finalOtlpUrl = cfg.OtlpUrl
-		finalAuthToken = cfg.AuthToken
+		finalOtlpUrl = cfg.OtlpUrl()
+		finalAuthToken = cfg.Token()
 	}
 
 	// Apply flag overrides
@@ -138,8 +150,8 @@ func ResolveApiUrl(ctx context.Context, flagApiUrl string) string {
 	if flagApiUrl != "" {
 		return flagApiUrl
 	}
-	if cfg := profiles.FromContext(ctx); cfg != nil && cfg.ApiUrl != "" {
-		return cfg.ApiUrl
+	if cfg := profiles.FromContext(ctx); cfg != nil && cfg.ApiUrl() != "" {
+		return cfg.ApiUrl()
 	}
 	return ""
 }
@@ -229,8 +241,8 @@ func profileNameForUpdate(_ context.Context, displayName string) string {
 //
 // TODO(dash0-api-client-go #39): once Configuration records each field's source,
 // this and both inline copies collapse into one check.
-func oauthShadowed(cfg *profiles.Configuration, resolvedAuthToken string) bool {
-	if cfg == nil || cfg.OAuth == nil {
+func oauthShadowed(cfg *profiles.ResolvedConfiguration, resolvedAuthToken string) bool {
+	if cfg == nil || cfg.OAuth() == nil {
 		return false
 	}
 	if os.Getenv(profiles.EnvAuthToken) != "" {
@@ -238,15 +250,15 @@ func oauthShadowed(cfg *profiles.Configuration, resolvedAuthToken string) bool {
 	}
 	// The resolved token differs from what the profile would have supplied, so
 	// it came from a flag override.
-	return resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken
+	return resolvedAuthToken != "" && cfg.Token() != resolvedAuthToken
 }
 
 // useProfileProvider reports whether the auth token must come from the
 // profile's provider: only an OAuth profile that no static token shadows.
 // Anything else uses the resolved token as-is, so a flag override is never
 // replaced by the profile's own token.
-func useProfileProvider(cfg *profiles.Configuration, resolvedAuthToken string) bool {
-	return cfg != nil && cfg.OAuth != nil && !oauthShadowed(cfg, resolvedAuthToken)
+func useProfileProvider(cfg *profiles.ResolvedConfiguration, resolvedAuthToken string) bool {
+	return cfg != nil && cfg.OAuth() != nil && !oauthShadowed(cfg, resolvedAuthToken)
 }
 
 // authTokenOption picks how the API client authenticates.
@@ -256,11 +268,19 @@ func useProfileProvider(cfg *profiles.Configuration, resolvedAuthToken string) b
 // so a token frozen at construction breaks any command that outlives it.
 // Anything else authenticates with the resolved token directly, because a
 // static auth_* token does not expire.
-func authTokenOption(cfg *profiles.Configuration, resolvedAuthToken string) dash0api.ClientOption {
-	if useProfileProvider(cfg, resolvedAuthToken) {
-		return dash0api.WithAuthTokenProvider(cfg.AuthTokenProvider())
+//
+// The profile lookup does not refresh the token, so the provider is asked for
+// one here: a rejected refresh token then fails with the re-authentication
+// hint before any request, and the client reuses the token it cached.
+func authTokenOption(ctx context.Context, cfg *profiles.ResolvedConfiguration, resolvedAuthToken string) (dash0api.ClientOption, error) {
+	if !useProfileProvider(cfg, resolvedAuthToken) {
+		return dash0api.WithAuthToken(resolvedAuthToken), nil
 	}
-	return dash0api.WithAuthToken(resolvedAuthToken)
+	provider := cfg.AuthTokenProvider()
+	if _, err := provider.AuthToken(ctx); err != nil {
+		return nil, translateConfigError(ctx, err)
+	}
+	return dash0api.WithAuthTokenProvider(provider), nil
 }
 
 // checkOAuthEmpty surfaces a friendly "not authenticated" error when the
@@ -268,11 +288,11 @@ func authTokenOption(cfg *profiles.Configuration, resolvedAuthToken string) dash
 // has run `dash0 login` against it yet, or the user has just logged out).
 // It returns nil when the profile is fine or when an env-var auth token is
 // shadowing the OAuth state.
-func checkOAuthEmpty(ctx context.Context, cfg *profiles.Configuration, resolvedAuthToken string) error {
-	if cfg == nil || cfg.OAuth == nil {
+func checkOAuthEmpty(ctx context.Context, cfg *profiles.ResolvedConfiguration, resolvedAuthToken string) error {
+	if cfg == nil || cfg.OAuth() == nil {
 		return nil
 	}
-	if cfg.OAuth.RefreshToken != "" {
+	if cfg.OAuth().RefreshToken != "" {
 		return nil
 	}
 	// If the user has shadowed the OAuth profile with an explicit
@@ -281,7 +301,7 @@ func checkOAuthEmpty(ctx context.Context, cfg *profiles.Configuration, resolvedA
 	if os.Getenv(profiles.EnvAuthToken) != "" {
 		return nil
 	}
-	if resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken {
+	if resolvedAuthToken != "" && cfg.Token() != resolvedAuthToken {
 		// resolvedAuthToken came from a flag override; trust it.
 		return nil
 	}
@@ -325,8 +345,8 @@ func checkOAuthEmpty(ctx context.Context, cfg *profiles.Configuration, resolvedA
 // shadows the OAuth state and is trusted as-is. That keeps the
 // "set DASH0_AUTH_TOKEN to a static auth_* token" workaround working
 // without forcing the user to convert the whole profile.
-func checkOAuthOnOtlp(ctx context.Context, cfg *profiles.Configuration, resolvedAuthToken string) error {
-	if cfg == nil || cfg.OAuth == nil {
+func checkOAuthOnOtlp(ctx context.Context, cfg *profiles.ResolvedConfiguration, resolvedAuthToken string) error {
+	if cfg == nil || cfg.OAuth() == nil {
 		return nil // not an OAuth profile
 	}
 	// Env-var override: trust the static token shadow.
@@ -335,7 +355,7 @@ func checkOAuthOnOtlp(ctx context.Context, cfg *profiles.Configuration, resolved
 	}
 	// Flag override: the resolved token differs from what the profile
 	// would have supplied, so the user passed --auth-token explicitly.
-	if resolvedAuthToken != "" && cfg.AuthToken != resolvedAuthToken {
+	if resolvedAuthToken != "" && cfg.Token() != resolvedAuthToken {
 		return nil
 	}
 
@@ -525,4 +545,3 @@ func capitalizeFirst(s string) string {
 	runes[0] = unicode.ToUpper(runes[0])
 	return string(runes)
 }
-

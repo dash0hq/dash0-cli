@@ -7,6 +7,7 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
 	"github.com/dash0hq/dash0-cli/internal/output"
@@ -181,7 +182,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		}
 	}
 	if injected > 0 && !agentmode.Enabled {
-		fmt.Printf("Injected debug IDs into %s\n", output.Pluralize(injected, "script"))
+		fmt.Printf("Injected debug IDs into %s\n", asset.Pluralize(injected, "script"))
 	}
 
 	uploadedBy := map[string]string{}
@@ -232,7 +233,7 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 			fmt.Fprintf(os.Stderr, "Skipped %s: %s\n", script.Script, script.Reason)
 		}
 		if len(skipped) > 0 {
-			fmt.Fprintf(os.Stderr, "Skipped %s\n", output.Pluralize(len(skipped), "path"))
+			fmt.Fprintf(os.Stderr, "Skipped %s\n", asset.Pluralize(len(skipped), "path"))
 		}
 		if len(artifacts) == 0 {
 			return nil, fmt.Errorf("no script with a source map found in %s", inputPath)
@@ -271,7 +272,7 @@ func printDryRun(results []uploadResult) error {
 	if agentmode.Enabled {
 		return printJSON(results)
 	}
-	fmt.Printf("Dry run: %s found\n", output.Pluralize(len(results), "source map"))
+	fmt.Printf("Dry run: %s found\n", asset.Pluralize(len(results), "source map"))
 	for _, result := range results {
 		note := ""
 		if result.Injected {

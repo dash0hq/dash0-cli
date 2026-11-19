@@ -6,6 +6,205 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.22.1
+
+
+### Bug Fixes
+
+
+- `release`: Windows binaries build again, so the release publishes every platform (#407)
+  v1.22.0 was tagged but never published, because the Windows build failed.
+  This release contains everything listed under v1.22.0.
+  
+
+## 1.22.0
+
+
+### New Components
+
+
+- `sampling-rules`: Manage sampling rules with `sampling-rules` and `apply`. (#364)
+  `apply` accepts the `Dash0Sampling` kind and upserts by `dash0.com/origin`, and `apply --since` deletes a rule removed from git.
+  `create`, `update`, `apply`, and `diff` warn when a write enables the first rule of a dataset, which turns sampling on.
+  Deletes are permanent, so in agent mode `sampling-rules delete` and an `apply --since` run that deletes a sampling rule require `--force`.
+  
+
+- `k8s`: Add the experimental `dash0 -X k8s pods watch` command, a terminal page with a pod's CPU, memory, requests and logs from Dash0 (#381, #399)
+  Ports the dash0-k9s-plugin into the CLI. The page runs as a k9s plugin on `Shift-D`; see the README for the `plugins.yaml` snippet.
+  Unlike the plugin, it works with OAuth profiles and renews the access token while the page stays open.
+  `-o json` (the default in agent mode) prints the pod's series and Dash0 links.
+  `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, and `k8s cronjobs watch` show all the pods of a workload: their total, or their average, minimum, or maximum at each step (`--aggregate`, or `a` in the page), or a line per pod (`--per-pod`, or `p`).
+  
+
+
+### Enhancements
+
+
+- `dashboards, apply`: Dashboards upsert by the `dash0.com/origin` label, so a dashboard kept as a Kubernetes custom resource no longer becomes a new dashboard on every apply. (#380)
+  The CLI reads the identifier from `dash0.com/origin`, then `metadata.dash0Extensions.id`, then `dash0.com/id`.
+  A file exported with `dashboards get -o yaml` updates the dashboard it came from, also after you add a `dash0.com/origin` label to it.
+  The API does not set the origin on an update, so keep the `dash0.com/id` label in that file. `apply --since` deletes such a dashboard at the id.
+  A file whose `dash0.com/origin` and `dash0Extensions.id` differ fails validation before anything is written.
+  The API already rejected such a file, so no file that worked before fails now.
+  A file with only the `dash0.com/id` label updates that dashboard instead of creating a new one.
+  Commands that use an OAuth profile now resolve the access token when they start, so a rejected refresh shows the `dash0 login` hint before any request, as before v1.34.0 of the API client.
+  
+
+- `spam-filters`: `spam-filters list` shows an `ENABLED` column and `spam-filters get` an `Enabled:` line, read from the `dash0.com/enabled` annotation (#386)
+  A filter without the annotation is shown as enabled, because that is how Dash0 reads it.
+  
+
+- `spam-filters`: `spam-filters list`, `get`, `create`, `update`, and `delete` no longer require `--experimental` (#386)
+  `apply` already accepted `Dash0SpamFilter` documents without the flag.
+  Passing `-X` still works, so existing scripts keep running.
+  
+
+- `metrics`: `metrics instant` prints a link that opens the PromQL in the Dash0 query builder (#405)
+  The link goes to stderr in `table` and `csv` output, and into the `dash0ExplorerUrl` field in `json` output.
+  With `--from`, the chart shows the hour that ends at the evaluation time.
+  
+
+
+### Bug Fixes
+
+
+- `notification-channels`: `notification-channels update -f` without an argument now addresses the channel by its `dash0.com/origin` label, like `apply`; a file without an origin fails instead of addressing its id (#366)
+
+- `time-series-aggregations`: `time-series-aggregations update -f` without an argument now fails for a file without a `dash0.com/origin` label, like `apply`, instead of addressing its id (#367)
+
+- `datasets`: `datasets update -f` without an argument now addresses the dataset by its slug, like `apply`, when the file also has a `dash0.com/origin` label (#368)
+  Before, such a file failed with a "not found" or mismatch error when the origin was not on that dataset. A file with only an origin now fails, as in `apply`; pass the origin as an argument instead.
+
+- `slos`: `slos update -f` without an argument now addresses the SLO by its `dash0.com/origin` label when the file also has a `dash0.com/id`, like `apply` (#370)
+
+- `apply`: `apply --since` now warns before it deletes a team that its removed document identified by `dash0.com/id` alone, as it already does for SLOs. (#392)
+  Team ids are assigned by the server, so the live team can sit at a different id and the delete can miss it.
+  Use `dash0.com/origin` for teams you manage with `--since`.
+  
+
+- `k8s`: `dash0 -X k8s pods watch` counts each container once in a pod's CPU and memory, and in its requests and limits (#397)
+  Dash0 starts a new series for a container when its resource attributes change, for example when it restarts or the Dash0 operator is upgraded.
+  The page added the old and new series while they overlapped, so a pod's 8.05-core CPU request could read as 32.2 cores.
+  The request rate, errors, duration, and log counts were not affected.
+  
+
+- `logs, spans, failed-checks`: The Dash0 link that `logs query`, `spans query`, and `failed-checks query` print opens when `--from` or `--to` is an absolute timestamp without milliseconds (#404)
+  Before, a value such as `2026-11-15T09:00:00Z` went into the link as typed, and Dash0 answered "URL Not Found".
+  
+
+## 1.21.0
+
+
+### New Components
+
+
+- `signal-to-metrics-rules`: Manage signal-to-metrics rules with `signal-to-metrics-rules` (alias `s2m`) and `apply`. (#354)
+  `apply` accepts the `Dash0SignalToMetrics` kind and upserts by `dash0.com/origin`, and `apply --since` deletes a rule removed from git.
+  `s2m test -f <file>` validates a rule and counts the logs or spans it matches over a time window, without creating it.
+  
+
+- `evals`: `dash0 -X evals list|get|create|update|delete` and `apply` manage the generative AI evaluations (evals) of a dataset. (#360)
+  `apply` accepts `kind: Dash0GenerativeAiEvaluation` documents and upserts them by `dash0.com/origin`, with `dash0.com/id` as the fallback.
+  The CLI never sends `dash0.com/version`, so a write overwrites the stored eval unconditionally.
+  A change to `metadata.name` or to the judge output kind fails with an error that names the field and the fix.
+  `apply --since` deletes an eval whose document was removed from git.
+  
+
+- `diff`: Add the experimental `dash0 diff` command, which previews what `apply` would do (creates, updates, and, with `--since`, deletions) without ever mutating anything. (#232)
+  `diff` fetches each document's current state from Dash0 first, so it can accurately distinguish a create from
+  an update, unlike `apply --dry-run`, which is local-only and cannot tell the two apart. It uses a three-way
+  exit code (0 clean, 1 differences pending, 2 error), modeled on `kubectl diff`.
+  The comparison (also used by every `<kind> update` diff) is semantic, not textual: key order, duration-string
+  formatting, int-vs-float representation, and API-populated defaults never produce a spurious "changed" result.
+  `apply --since --dry-run` no longer lists the deletion of a check rule that `-f` still declares, because the real
+  run skips that deletion.
+  `apply --since --dry-run` lists a removed PrometheusRule with two or more alerts as one check rule deletion per
+  alert, at the id the run deletes, instead of one PrometheusRule row.
+  `apply` and `teams create -f` update a team at its `dash0.com/id` when its `dash0.com/origin` is not found, so a
+  re-applied export of an SSO/SCIM-provisioned team no longer creates a second team.
+  
+
+
+### Enhancements
+
+
+- `logs, spans, traces, failed-checks`: The Dash0 explorer deep link of a query is now available in every output format, not just `table`. (#348)
+  `logs query`, `spans query`, `failed-checks query`, and `traces get` carry the link in `json` output as a top-level `dash0ExplorerUrl` field, next to the payload, so it is available in agent mode, where `json` is the default.
+  In `table` and `csv` output the link now goes to stderr instead of stdout, so redirecting or piping the results no longer picks up a stray line.
+  The field is omitted when no link can be built, for example when the `api-url` host is `localhost`.
+  Consumers that parse the OTLP/JSON of `logs query`, `spans query`, or `traces get` with a strict OpenTelemetry protobuf-JSON parser need to discard unknown fields, or strip the field with `jq 'del(.dash0ExplorerUrl)'`.
+  
+
+
+### Bug Fixes
+
+
+- `client`: Report malformed asset API responses with the asset type, endpoint, and decoding details, and warn when a write may already have been applied. (#220)
+
+- `apply`: `apply --since` no longer deletes a dashboard whose file was re-authored between the `PersesDashboard` and `Dashboard` kinds under the same identifier. (#270)
+  `--since` now treats both kinds as one identity, matching how `apply` upserts them.
+  
+
+- `github-actions`: The `setup` action resolves the latest **published** CLI release instead of the newest git tag, so it no longer fails with a 404 while a release is still building. (#352)
+  The release tag is pushed before GoReleaser uploads the assets, leaving a window
+  (about 7 minutes for v1.20.0) in which the newest tag names a version whose download
+  URL 404s. Resolving `/releases/latest` only ever yields a release whose assets exist.
+  
+
+- `deeplinks`: The CLI no longer prints a deep link to a nonexistent host when the API URL is an IP address. (#359)
+  With an API URL such as `http://127.0.0.1:8080`, the `URL` column, the `URL:` line, and the explorer link of query commands showed a host such as `app.0.1`. They are now omitted.
+  An API URL with a trailing dot, such as `https://api.dash0.com.`, now links to `app.dash0.com` instead of `app.com`.
+  
+
+- `views`: `views create`, `update`, `get`, and `apply` keep the `spec.frameFilters`, `spec.profileType`, `spec.stackFilters`, and `spec.sumBy` fields of profile views. (#359)
+  Before, the CLI dropped these fields without a warning, so a profile view did not round-trip through `get -o yaml` and `apply`.
+  
+
+## 1.20.0
+
+
+### New Components
+
+
+- `auth-tokens`: `dash0 -X auth-tokens list|get|create|update|delete` manages the auth tokens of your organization. (#329)
+  `create` prints the new token's secret once on an interactive terminal, or writes it to a new file with `--secret-file`.
+  In CI, in a pipe, or in agent mode, `create` fails before it creates anything unless `--secret-file` is set.
+  No other command or output format shows the secret.
+  Granting the `*` action needs `--allow-all-actions`.
+  `apply` does not support auth tokens yet.
+  
+
+- `aws-metric-scrape-configs`: `dash0 -X aws-metric-scrape-configs get|update|delete` manages which CloudWatch metrics Dash0 scrapes for an AWS integration, and `apply` accepts `Dash0AwsMetricScrapeConfig` documents. (#340)
+  Each AWS integration has one scrape config, addressed by the integration id.
+  `update` and `apply` replace the whole config, and `delete` clears it while keeping the integration.
+  A config exported with `get -o yaml` applies back without a diff.
+  A document without `spec.namespaces`, or with an unknown field under `spec`, fails before any API call.
+  
+
+- `agent0`: `dash0 -X agent0 skills list|get|create|update|delete` and `apply` manage the Agent0 custom skills of your organization. (#347)
+  `apply` accepts `kind: Dash0Skill` documents and upserts them by `dash0.com/origin`; without an origin, `dash0.com/id` updates an existing skill only.
+  `spec.permissions`, `defaultEnabled` included, round-trips through `agent0 skills get -o yaml` and `apply`.
+  `spec.source` and the per-user `dash0.com/enabled` annotation are never sent.
+  `apply --since` deletes a skill whose document was removed from git.
+  
+
+
+### Enhancements
+
+
+- `members`: Display organization roles in members list output. (#69)
+  The members list table displays full role values and leaves missing roles blank.
+
+
+### Bug Fixes
+
+
+- `homebrew`: The Homebrew cask uses `postflight_steps` instead of the deprecated `postflight`, so Homebrew no longer warns about it. (#330)
+
+- `github-actions`: The `setup`, `send-log-event` and `sync-assets` actions no longer trigger the Node.js 20 deprecation warning. (#336)
+  `actions/cache/restore` and `actions/cache/save` move from v4.3.0 (Node.js 20) to v6.1.0 (Node.js 24).
+  
+
 ## 1.19.0
 
 

@@ -93,9 +93,10 @@ var topics = []topicSpec{
 	{
 		name:            "dashboards",
 		includeQuickRef: true,
-		assetYAMLLabels: []string{"Dashboard:", "PersesDashboard"},
+		sections:        []string{"ephemeral dashboards"},
+		assetYAMLLabels: []string{"Dashboard:", "PersesDashboard", "EphemeralDashboard"},
 		extraNote: "`dashboards create` also accepts PersesDashboard CRD files (`perses.dev/v1alpha1` and " +
-			"`perses.dev/v1alpha2`).\n\n" +
+			"`perses.dev/v1alpha2`) and EphemeralDashboard documents.\n\n" +
 			deletedAssetNote("dashboards", "dashboard", "dashboards", "ID"),
 	},
 	{
@@ -115,6 +116,7 @@ var topics = []topicSpec{
 		assetYAMLLabels: []string{"Dataset ("},
 	},
 	{name: "debuginfo", sections: []string{"debuginfo upload"}},
+	{name: "diff", sections: []string{"diff"}},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},
 	{name: "logs", sections: []string{"logs query", "logs send"}},
@@ -131,6 +133,7 @@ var topics = []topicSpec{
 		},
 	},
 	{name: "otlp", sections: []string{"otlp proxy"}},
+	{name: "k8s", sections: []string{"k8s pods watch"}},
 	{
 		name:            "recording-rules",
 		includeQuickRef: true,
@@ -139,6 +142,41 @@ var topics = []topicSpec{
 			"rules is dispatched to both the check-rule and recording-rule endpoints in a single `apply` — see the " +
 			"\"Mixed PrometheusRule\" example above.\n\n" +
 			deletedAssetNote("recording-rules", "recording rule", "recording rules", "ID"),
+	},
+	{
+		name:            "evals",
+		includeQuickRef: true,
+		sections:        []string{"eval documents"},
+		assetYAMLLabels: []string{"Eval (generative AI evaluation"},
+		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
+	},
+	{
+		name:            "sampling-rules",
+		includeQuickRef: true,
+		sections:        []string{"sampling rules"},
+		assetYAMLLabels: []string{"Sampling rule ("},
+		extraNote: "`metadata.labels[\"dash0.com/origin\"]` is the upsert key: `create` and `apply` PUT to that origin, " +
+			"which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only " +
+			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
+			"apply; pin `dash0.com/origin` instead.",
+	},
+	{
+		name:            "signal-to-metrics-rules",
+		includeQuickRef: true,
+		sections:        []string{"signal-to-metrics rules"},
+		assetYAMLLabels: []string{"Signal-to-metrics rule ("},
+		extraNote: "The command is also available under the shorter alias `s2m`, so `dash0 s2m list` and " +
+			"`dash0 signal-to-metrics-rules list` are the same command.\n\n" +
+			"`metadata.labels[\"dash0.com/origin\"]` is the upsert key: `create` and `apply` PUT to that origin, " +
+			"which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only " +
+			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
+			"apply; pin `dash0.com/origin` instead.\n\n" +
+			"Origins are unique per organization while each rule belongs to one dataset, so applying the same " +
+			"document to a second dataset fails, and so does `diff`: the error names the dataset the rule belongs " +
+			"to. Use a distinct origin per dataset.\n\n" +
+			"Run `dash0 s2m test -f <file>` before `create` or `apply` to validate a definition and see how many " +
+			"logs or spans it matches; it creates nothing.\n\n" +
+			deletedAssetNote("signal-to-metrics-rules", "signal-to-metrics rule", "signal-to-metrics rules", "origin"),
 	},
 	{
 		name:            "slos",
@@ -153,10 +191,10 @@ var topics = []topicSpec{
 	{
 		name:            "spam-filters",
 		includeQuickRef: true,
+		sections:        []string{"spam filters"},
 		assetYAMLLabels: []string{"Spam filter (v1alpha1", "Spam filter (v1alpha2"},
 		extraNote: "The `apiVersion` field on the document selects the schema (`v1alpha1` or `v1alpha2`); a " +
-			"missing value defaults to `v1alpha1`. The `list` endpoint returns v1alpha1 definitions only; use " +
-			"`spam-filters get <id>` to retrieve a filter in its native apiVersion.",
+			"missing value defaults to `v1alpha1`.",
 	},
 	{name: "spans", sections: []string{"spans query", "spans send"}},
 	{
@@ -187,6 +225,9 @@ var topics = []topicSpec{
 			"Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document " +
 			"therefore cannot be applied to two datasets the way it can for every other asset kind — the second " +
 			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.\n\n" +
+			"The document has no `apiVersion`; the CLI ignores one if a file sets it. `spec.priority` is an integer " +
+			"from 0 to 4 and defaults to 2, and the API rejects any other value. When more than one aggregation " +
+			"matches a metric, only the one with the lowest priority applies.\n\n" +
 			deletedAssetNote("time-series-aggregations", "time series aggregation", "time series aggregations", "origin"),
 	},
 	{name: "traces", sections: []string{"traces get"}},
@@ -425,6 +466,7 @@ var alwaysRewriteAnchors = map[string]string{
 // (e.g. metrics.md carries its own `#### Filter syntax`) keep the fast
 // in-file link.
 var intraDocAnchorRewrites = map[string]string{
+	"explorer-deep-links":              "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#explorer-deep-links",
 	"filter-syntax":                    "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#filter-syntax",
 	"precision-mode-adaptive-sampling": "https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#precision-mode-adaptive-sampling",
 }

@@ -15,18 +15,9 @@ import (
 // A PUT to the ID of a deleted view brings it back, which is reported as
 // ActionRestored.
 func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.ViewDefinition, dataset *string) (ImportResult, error) {
-	dash0api.StripViewServerFields(view)
-
-	action := ActionCreated
-	var before any
-	id := ""
-	if view.Metadata.Labels != nil && view.Metadata.Labels.Dash0Comid != nil && *view.Metadata.Labels.Dash0Comid != "" {
-		id = *view.Metadata.Labels.Dash0Comid
-		existing, err := apiClient.GetView(ctx, id, dataset)
-		if err == nil {
-			action, before = actionForExisting(ViewDeletedAt(existing)), existing
-		}
-	}
+	// A failed preflight does not block the write: the PUT reports the same error.
+	plan, _ := PlanView(ctx, apiClient, view, dataset)
+	id := plan.Key
 
 	var (
 		result *dash0api.ViewDefinition
@@ -47,7 +38,24 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 	if err := RequireNotDeleted("View", dash0api.GetViewName(result), id, ViewDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: dash0api.GetViewName(result), ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: dash0api.GetViewName(result), ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanView reads the stored view that ImportView would write.
+// It returns any preflight error other than "not found".
+func PlanView(ctx context.Context, apiClient dash0api.Client, view *dash0api.ViewDefinition, dataset *string) (ImportPlan, error) {
+	dash0api.StripViewServerFields(view)
+	plan := ImportPlan{Action: ActionCreated, Proposed: view}
+	if view.Metadata.Labels == nil || view.Metadata.Labels.Dash0Comid == nil || *view.Metadata.Labels.Dash0Comid == "" {
+		return plan, nil
+	}
+	plan.Key = *view.Metadata.Labels.Dash0Comid
+	existing, err := apiClient.GetView(ctx, plan.Key, dataset)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Action, plan.Before = actionForExisting(ViewDeletedAt(existing)), existing
+	return plan, nil
 }
 
 // ViewDeletedAt returns when the view was deleted, or nil when it is not

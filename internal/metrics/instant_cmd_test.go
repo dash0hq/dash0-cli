@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,13 +24,13 @@ func newTestInstantResponse() QueryInstantResponse {
 			ResultType string `json:"resultType"`
 			Result     []struct {
 				Metric map[string]string `json:"metric"`
-				Value  []any     `json:"value"`
+				Value  []any             `json:"value"`
 			} `json:"result"`
 		}{
 			ResultType: "vector",
 			Result: []struct {
 				Metric map[string]string `json:"metric"`
-				Value  []any     `json:"value"`
+				Value  []any             `json:"value"`
 			}{
 				{
 					Metric: map[string]string{
@@ -170,7 +171,7 @@ func TestInstantCmdCSVOutput(t *testing.T) {
 	output := string(out)
 
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	require.GreaterOrEqual(t, len(lines), 2) // header + at least 1 row
+	require.GreaterOrEqual(t, len(lines), 2)  // header + at least 1 row
 	assert.Contains(t, lines[0], "timestamp") // CSV header uses canonical keys
 	assert.Contains(t, lines[0], "value")
 }
@@ -195,7 +196,7 @@ func TestInstantCmdCSVSkipHeader(t *testing.T) {
 	output := string(out)
 
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	assert.Len(t, lines, 1)                    // only data, no header
+	assert.Len(t, lines, 1)                     // only data, no header
 	assert.NotContains(t, lines[0], "__name__") // no header keys
 }
 
@@ -334,16 +335,17 @@ func TestInstantCmdHonorsProfileFromContext(t *testing.T) {
 	}))
 	t.Cleanup(contextServer.Close)
 
+	// Resolve the profile before setting the env vars, which a Store layers on top.
+	ctx := profiles.WithConfiguration(context.Background(), testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
+		ApiUrl:    contextServer.URL,
+		AuthToken: "auth_context_token",
+		Dataset:   "context-dataset",
+	}))
+
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
 	t.Setenv("DASH0_API_URL", envServer.URL)
 	t.Setenv("DASH0_AUTH_TOKEN", "auth_env_token")
 	t.Setenv("DASH0_DATASET", "env-dataset")
-
-	ctx := profiles.WithConfiguration(context.Background(), &profiles.Configuration{
-		ApiUrl:    contextServer.URL,
-		AuthToken: "auth_context_token",
-		Dataset:   "context-dataset",
-	})
 
 	cmd := newInstantCmd()
 	cmd.SetContext(ctx)
@@ -372,11 +374,11 @@ func TestInstantCmdDatasetFlagOverridesContextProfile(t *testing.T) {
 
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
 
-	ctx := profiles.WithConfiguration(context.Background(), &profiles.Configuration{
+	ctx := profiles.WithConfiguration(context.Background(), testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
 		ApiUrl:    server.URL,
 		AuthToken: "auth_context_token",
 		Dataset:   "context-dataset",
-	})
+	}))
 
 	cmd := newInstantCmd()
 	cmd.SetContext(ctx)

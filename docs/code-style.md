@@ -14,6 +14,7 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 |--------|---------|
 | `github.com/cli/browser` | Cross-platform default-browser opener for the OAuth login flow |
 | `github.com/dash0hq/dash0-api-client-go` | API and OTLP client for the Dash0 backend (outbound for `otlp proxy`, all asset CRUD, send and query commands) |
+| `github.com/dash0hq/ditt0-cli-design-system/go` | Ditt0, Dash0's design system for terminal UIs: the colours, stats, charts and layout of the `k8s pods watch` page |
 | `github.com/google/uuid` | UUID generation for asset imports and the `otlp proxy` `service.instance.id` |
 | `github.com/muesli/termenv` | Semantic coloring of terminal output (severity levels, diffs, errors) |
 | `github.com/parca-dev/parca` | Generated gRPC client for the Parca-compatible Dash0 debuginfo service (`debuginfo upload`) |
@@ -169,7 +170,7 @@ A hardcoded `"table"` default bakes in the wrong value — `ParseFormat` then se
 Destructive operations (delete, remove) must call `confirmation.ConfirmDestructiveOperation(prompt, force)` instead of inlining the `!force && !agentmode.Enabled` check.
 This helper skips the prompt when `--force` is set or agent mode is active, and handles stdin reading and y/yes/n parsing.
 Operations that cannot be undone, or that end a session, must not ride on that auto-confirmation: call `confirmation.RequireForceInAgentMode(force, what, hint)` first, so agent mode demands an explicit `--force`.
-`logout`, `datasets delete`, `auth-tokens delete`, and `apply --since` do this.
+`logout`, `datasets delete`, `auth-tokens delete`, `sampling-rules delete`, and `apply --since` do this.
 
 ### Errors
 

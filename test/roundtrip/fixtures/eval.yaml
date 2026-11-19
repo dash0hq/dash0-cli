@@ -1,0 +1,22 @@
+kind: Dash0GenerativeAiEvaluation
+metadata:
+  name: __NAME__
+  labels:
+    dash0.com/origin: __ORIGIN__
+spec:
+  display:
+    name: __NAME__
+    description: Round-trip test eval created by the dash0 CLI test suite.
+  enabled: false
+  judge:
+    model: light
+    output:
+      kind: boolean
+    systemPrompt: You judge whether an answer is relevant to the question.
+    userPrompt: "Question: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}"
+  match:
+    filters:
+      - key: gen_ai.operation.name
+        operator: is_set
+  sample:
+    rate: __RATE__

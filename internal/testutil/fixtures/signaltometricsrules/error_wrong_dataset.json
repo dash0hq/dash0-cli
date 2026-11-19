@@ -1,0 +1,5 @@
+{
+  "code": 400,
+  "message": "Bad Request: A signal-to-metrics configuration with this origin exists, but it is associated with a different dataset.",
+  "traceId": "2bbfa037d2f209e44cdd2597ad51541a"
+}

@@ -48,8 +48,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun: "synthetic check",
-		ID:   dash0api.GetSyntheticCheckID(&check),
+		Noun:   "synthetic check",
+		Upsert: &check,
 	})
 	if err != nil {
 		return err

@@ -24,6 +24,8 @@ At least one of `--promql` or `--filter` must be specified.
 
 The `--query` flag (alias for `--promql`) and `--time` flag (alias for `--from`) are deprecated but still accepted for backwards compatibility.
 
+A link that opens the same PromQL in the Dash0 query builder is emitted alongside the results; see [explorer deep links](https://github.com/dash0hq/dash0-cli/blob/main/docs/commands.md#explorer-deep-links).
+
 #### Output formats
 
 The default `table` output uses a verbose label-per-line format showing all labels for each metric result.

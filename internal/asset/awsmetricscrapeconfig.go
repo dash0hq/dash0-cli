@@ -134,7 +134,7 @@ func ImportAwsMetricScrapeConfig(
 	cfg *dash0api.AwsMetricScrapeConfigDefinition,
 	integrationID string,
 ) (ImportResult, error) {
-	before, err := apiClient.GetAwsMetricScrapeConfig(ctx, integrationID)
+	plan, err := PlanAwsMetricScrapeConfig(ctx, apiClient, cfg, integrationID)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -146,16 +146,33 @@ func ImportAwsMetricScrapeConfig(
 		return ImportResult{}, err
 	}
 
-	importResult := ImportResult{
+	return ImportResult{
 		Name:   dash0api.GetAwsMetricScrapeConfigName(result),
 		ID:     integrationID,
-		Action: ActionCreated,
+		Action: plan.Action,
+		Before: plan.Before,
 		After:  result,
+	}, nil
+}
+
+// PlanAwsMetricScrapeConfig reads the stored config that
+// ImportAwsMetricScrapeConfig would replace. An integration that never had a
+// config, or had it cleared, makes the write a create.
+func PlanAwsMetricScrapeConfig(
+	ctx context.Context,
+	apiClient dash0api.Client,
+	cfg *dash0api.AwsMetricScrapeConfigDefinition,
+	integrationID string,
+) (ImportPlan, error) {
+	plan := ImportPlan{Key: integrationID, Action: ActionCreated, Proposed: cfg}
+	before, err := apiClient.GetAwsMetricScrapeConfig(ctx, integrationID)
+	if err != nil {
+		return plan, err
 	}
 	if AwsMetricScrapeConfigIsSet(before) {
-		importResult.Action, importResult.Before = ActionUpdated, before
+		plan.Action, plan.Before = ActionUpdated, before
 	}
-	return importResult, nil
+	return plan, nil
 }
 
 // normalizeAwsMetricScrapeConfigForDiff keeps only what the CLI writes: the

@@ -17,18 +17,15 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
-	// SpamFilterUsesOrigin records whether the deleted spam filter carried a
-	// dash0.com/origin label, when Kind is "spamfilter" (meaningless for
-	// every other kind). false means the filter was identified by
-	// dash0.com/id alone — its live id may have been reassigned server-side
-	// since this identifier was recorded, so the delete dispatch warns
-	// rather than deleting silently.
-	SpamFilterUsesOrigin bool
-	// SLOUsesOrigin is the same signal for Kind "slo" (meaningless for every
-	// other kind). false means the SLO was identified by dash0.com/id alone,
-	// which for a server-assigned id may name no live SLO at all — see
-	// asset.SLOUsesOrigin.
-	SLOUsesOrigin bool
+	// Alias is the dash0.com/id label of a dashboard keyed by its origin (see
+	// asset.DashboardAlias). The API ignores the origin on an update, so a
+	// dashboard that apply updated at this id has no origin, and the delete
+	// must fall back to the id.
+	Alias string
+	// IdentifiedByIDOnly reports that the deleted document carried only
+	// dash0.com/id, for a kind where that needs a warning; see
+	// asset.IdentifiedByIDOnly.
+	IdentifiedByIDOnly bool
 	// PrometheusAlerts carries every alerting rule the CRD had at the
 	// "before" snapshot, when Kind is "prometheusrule" (nil for every other
 	// kind, and for a CRD with zero or one alert). A CRD with two or more
@@ -38,6 +35,10 @@ type Deletion struct {
 	// those derived ids individually, since Identifier alone only ever
 	// named a check rule for a single-alert CRD.
 	PrometheusAlerts []asset.PrometheusAlertName
+	// PrometheusHadRecordingRule reports that the CRD had a recording rule at
+	// the "before" snapshot, when Kind is "prometheusrule". The preview needs
+	// it to list that deletion once it lists a multi-alert CRD per alert.
+	PrometheusHadRecordingRule bool
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -76,18 +77,19 @@ func Diff(before, after Snapshot) DeletionPlan {
 	var plan DeletionPlan
 
 	for key, path := range before.Identifiers {
-		if _, stillPresent := after.Identifiers[key]; stillPresent {
+		if survives(before, after, key) {
 			continue
 		}
 		deletion := Deletion{
-			Kind:                 key.Kind,
-			Identifier:           key.Identifier,
-			Path:                 path,
-			SpamFilterUsesOrigin: before.SpamFilterUsesOriginByIdentifier[key.Identifier],
-			SLOUsesOrigin:        before.SLOUsesOriginByIdentifier[key.Identifier],
+			Kind:               key.Kind,
+			Identifier:         key.Identifier,
+			Path:               path,
+			Alias:              before.Aliases[key],
+			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
+			deletion.PrometheusHadRecordingRule = before.PrometheusRecordingRoleByIdentifier[key.Identifier]
 		}
 		plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 	}
@@ -203,3 +205,49 @@ func Diff(before, after Snapshot) DeletionPlan {
 
 	return plan
 }
+
+// survives reports whether the asset behind key is still declared in after,
+// under its identifier or its alias, in either snapshot. A dashboard file
+// that gains an origin keeps its server id as the alias, and apply updates the
+// same dashboard, so the old id is not a deletion.
+//
+// apply upserts Dashboard, EphemeralDashboard, and PersesDashboard documents
+// through the same dashboard import (see applyDocument in internal/apply), and
+// the API keeps all three under one identifier, so a file re-authored from one
+// of these kinds to another under the same identifier is still the same live
+// dashboard, not a deletion. The key keeps its own
+// kind, so a real deletion is still reported under the spelling it had.
+func survives(before, after Snapshot, key IdentifierKey) bool {
+	names := []string{key.Identifier}
+	if alias := before.Aliases[key]; alias != "" {
+		names = append(names, alias)
+	}
+	kinds := []string{key.Kind}
+	if slices.Contains(dashboardKinds, key.Kind) {
+		kinds = dashboardKinds
+	}
+	for _, kind := range kinds {
+		for _, name := range names {
+			if declares(after, IdentifierKey{Kind: kind, Identifier: name}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// declares reports whether snapshot names key as an identifier or an alias.
+// ponytail: linear scan of aliases per lookup, fine for a repo's asset count.
+func declares(snapshot Snapshot, key IdentifierKey) bool {
+	if _, ok := snapshot.Identifiers[key]; ok {
+		return true
+	}
+	for aliasOf, alias := range snapshot.Aliases {
+		if aliasOf.Kind == key.Kind && alias == key.Identifier {
+			return true
+		}
+	}
+	return false
+}
+
+var dashboardKinds = []string{"dashboard", "ephemeraldashboard", "persesdashboard"}

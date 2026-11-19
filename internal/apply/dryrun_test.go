@@ -14,28 +14,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestStripScope is a table test for the deletion-path/validated-document
-// path basis mismatch under a subdirectory -f target: gitutil.Deletion.Path
-// is repo-root-relative, assetDocument.filePath is -f-target-relative, and
-// scope (the -f target's own repo-root-relative path) is what bridges them.
-func TestStripScope(t *testing.T) {
-	cases := []struct {
-		path  string
-		scope string
-		want  string
-	}{
-		{"keep.yaml", "", "keep.yaml"},
-		{"dashboards/keep.yaml", "dashboards", "keep.yaml"},
-		{"dashboards/nested/keep.yaml", "dashboards", "nested/keep.yaml"},
-		// No prefix match: leave the path untouched rather than guessing.
-		{"other/keep.yaml", "dashboards", "other/keep.yaml"},
-		// A directory name that merely starts with scope's name, without the
-		// separator, must not be treated as a match.
-		{"dashboards2/keep.yaml", "dashboards", "dashboards2/keep.yaml"},
-	}
-	for _, c := range cases {
-		assert.Equal(t, c.want, stripScope(c.path, c.scope), "path %q scope %q", c.path, c.scope)
-	}
+
+// dryRunFileJSON and dryRunChangeJSON decode --dry-run --agent-mode output, the
+// JSON contract the sync-assets action parses.
+type dryRunFileJSON struct {
+	Path    string             `json:"path"`
+	Changes []dryRunChangeJSON `json:"changes"`
+}
+
+type dryRunChangeJSON struct {
+	Op         string `json:"op"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	OriginOrID string `json:"originOrId"`
+	Since      string `json:"since,omitempty"`
 }
 
 func withAgentMode(t *testing.T, enabled bool) {
@@ -51,8 +43,8 @@ func withAgentMode(t *testing.T, enabled bool) {
 func TestRunDryRun_JSON_PlainNoSince(t *testing.T) {
 	withAgentMode(t, true)
 
-	documents := []assetDocument{
-		{kind: "dashboard", name: "Kept Dashboard", id: "11111111-1111-1111-1111-111111111111", filePath: "dashboard.yaml"},
+	documents := []asset.Document{
+		{Kind: "dashboard", Name: "Kept Dashboard", ID: "11111111-1111-1111-1111-111111111111", FilePath: "dashboard.yaml"},
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -74,16 +66,16 @@ func TestRunDryRun_JSON_PlainNoSince(t *testing.T) {
 func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 	withAgentMode(t, true)
 
-	documents := []assetDocument{
-		{kind: "view", name: "error-logs-view", id: "33333333-3333-3333-3333-333333333333", filePath: "assets.yaml"},
+	documents := []asset.Document{
+		{Kind: "view", Name: "error-logs-view", ID: "33333333-3333-3333-3333-333333333333", FilePath: "assets.yaml"},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "checkrule", Identifier: "44444444-4444-4444-4444-444444444444", Path: "assets.yaml#1"},
 			},
 		},
-		names: map[string]string{"assets.yaml#1": "High Error Rate"},
+		Names: map[string]string{"assets.yaml#1": "High Error Rate"},
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -99,6 +91,27 @@ func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 	assert.Equal(t, dryRunChangeJSON{Op: "delete", Kind: "Check rule", Name: "High Error Rate", OriginOrID: "44444444-4444-4444-4444-444444444444", Since: "abc123"}, out[0].Changes[1])
 }
 
+// apply --since skips deleting a check rule that -f still declares, so the
+// dry run must not list that deletion, and its count must leave it out.
+func TestRunDryRun_DeclaredCheckRuleIsNotListed(t *testing.T) {
+	documents := []asset.Document{
+		{Kind: "CheckRule", Name: "High Error Rate", ID: "still-declared", FilePath: "rules.yaml"},
+	}
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
+			ByIdentifier: []gitutil.Deletion{{Kind: "checkrule", Identifier: "still-declared", Path: "old.yaml"}},
+		},
+		DeclaredCheckRuleIDs: map[string]bool{"still-declared": true},
+	}
+
+	stdout := testutil.CaptureStdout(t, func() {
+		require.NoError(t, runDryRun(documents, true, "dir", "HEAD~1", dp))
+	})
+
+	assert.Contains(t, stdout, "--since: no deletions")
+	assert.NotContains(t, stdout, "Delete")
+}
+
 // TestRunDryRun_JSON_DeletionIncludesKindAndSinceRef is a regression test
 // for a bug where agent mode's --dry-run JSON gave an approving agent less
 // context than a human reading the text output: the text renderer's
@@ -111,13 +124,13 @@ func TestRunDryRun_JSON_MergedWithDeletions(t *testing.T) {
 func TestRunDryRun_JSON_DeletionIncludesKindAndSinceRef(t *testing.T) {
 	withAgentMode(t, true)
 
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "view", Identifier: "team-logs", Path: "dashboards.yaml"},
 			},
 		},
-		names: map[string]string{"dashboards.yaml": "Team Logs"},
+		Names: map[string]string{"dashboards.yaml": "Team Logs"},
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -135,26 +148,26 @@ func TestRunDryRun_JSON_DeletionIncludesKindAndSinceRef(t *testing.T) {
 // test for a bug where a -f target that is a subdirectory of the repo (not
 // the repo root) grouped a file's surviving and deleted assets under two
 // different keys: gitutil.Deletion.Path is always repo-root-relative (from
-// git ls-tree), while assetDocument.filePath is always relative to the -f
+// git ls-tree), while asset.Document.filePath is always relative to the -f
 // target itself -- so "dashboards/removed.yaml" (deletion) and
 // "removed.yaml" (had it survived) would never merge, and the deletion
 // would render as a separate, inconsistently-prefixed file entry instead of
-// joining its file's other row. dp.scope must be stripped from the
+// joining its file's other row. dp.Scope must be stripped from the
 // deletion's path before grouping.
 func TestRunDryRun_JSON_MergedWithDeletions_SubdirectoryScope(t *testing.T) {
 	withAgentMode(t, true)
 
-	documents := []assetDocument{
-		{kind: "dashboard", name: "Kept Dashboard", id: "11111111-1111-1111-1111-111111111111", filePath: "keep.yaml"},
+	documents := []asset.Document{
+		{Kind: "dashboard", Name: "Kept Dashboard", ID: "11111111-1111-1111-1111-111111111111", FilePath: "keep.yaml"},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "dashboard", Identifier: "22222222-2222-2222-2222-222222222222", Path: "dashboards/removed.yaml"},
 			},
 		},
-		names: map[string]string{"dashboards/removed.yaml": "Old Dashboard"},
-		scope: "dashboards",
+		Names: map[string]string{"dashboards/removed.yaml": "Old Dashboard"},
+		Scope: "dashboards",
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -165,27 +178,27 @@ func TestRunDryRun_JSON_MergedWithDeletions_SubdirectoryScope(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
 	require.Len(t, out, 2)
 	paths := []string{out[0].Path, out[1].Path}
-	assert.ElementsMatch(t, []string{"keep.yaml", "removed.yaml"}, paths, "deletion path must have dp.scope stripped, matching validated documents' basis")
+	assert.ElementsMatch(t, []string{"keep.yaml", "removed.yaml"}, paths, "deletion path must have dp.Scope stripped, matching validated documents' basis")
 }
 
 // TestRunDryRun_JSON_MergedWithDeletions_SameFileSubdirectoryScope covers
 // the actual merge case under a subdirectory -f target: a multi-document
 // file with one surviving and one deleted asset must still land in a single
-// {path, changes} entry, not two, once dp.scope is accounted for.
+// {path, changes} entry, not two, once dp.Scope is accounted for.
 func TestRunDryRun_JSON_MergedWithDeletions_SameFileSubdirectoryScope(t *testing.T) {
 	withAgentMode(t, true)
 
-	documents := []assetDocument{
-		{kind: "view", name: "error-logs-view", id: "33333333-3333-3333-3333-333333333333", filePath: "assets.yaml"},
+	documents := []asset.Document{
+		{Kind: "view", Name: "error-logs-view", ID: "33333333-3333-3333-3333-333333333333", FilePath: "assets.yaml"},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			ByIdentifier: []gitutil.Deletion{
 				{Kind: "checkrule", Identifier: "44444444-4444-4444-4444-444444444444", Path: "dashboards/assets.yaml#1"},
 			},
 		},
-		names: map[string]string{"dashboards/assets.yaml#1": "High Error Rate"},
-		scope: "dashboards",
+		Names: map[string]string{"dashboards/assets.yaml#1": "High Error Rate"},
+		Scope: "dashboards",
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -205,8 +218,8 @@ func TestRunDryRun_JSON_MergedWithDeletions_SameFileSubdirectoryScope(t *testing
 func TestRunDryRun_JSON_SingleFileTarget(t *testing.T) {
 	withAgentMode(t, true)
 
-	documents := []assetDocument{
-		{kind: "dashboard", name: "Solo Dashboard", id: "id-1"},
+	documents := []asset.Document{
+		{Kind: "dashboard", Name: "Solo Dashboard", ID: "id-1"},
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -227,8 +240,8 @@ func TestRunDryRun_JSON_SingleFileTarget(t *testing.T) {
 func TestRunDryRun_TextMode_Unaffected(t *testing.T) {
 	withAgentMode(t, false)
 
-	documents := []assetDocument{
-		{kind: "dashboard", name: "Kept Dashboard", id: "11111111-1111-1111-1111-111111111111", filePath: "dashboard.yaml"},
+	documents := []asset.Document{
+		{Kind: "dashboard", Name: "Kept Dashboard", ID: "11111111-1111-1111-1111-111111111111", FilePath: "dashboard.yaml"},
 	}
 
 	stdout := testutil.CaptureStdout(t, func() {
@@ -241,7 +254,7 @@ func TestRunDryRun_TextMode_Unaffected(t *testing.T) {
 }
 
 // prometheusRuleCRDForDryRun is a two-alert CRD whose dash0.com/id label is
-// what buildDryRunRows keys crdFileByIdentifier on, so an alert deletion
+// what preview.Plan.AddDeletions keys crdFileByIdentifier on, so an alert deletion
 // (which carries only its surviving CRD's identifier, never a file path)
 // lands under the same file entry as the CRD's own "apply" row.
 const prometheusRuleCRDForDryRun = `apiVersion: monitoring.coreos.com/v1
@@ -268,11 +281,11 @@ spec:
 func TestRunDryRun_TextMode_PrometheusRuleAlertPartialDeletion(t *testing.T) {
 	withAgentMode(t, false)
 
-	documents := []assetDocument{
-		{kind: "PrometheusRule", name: "test-rules", filePath: "rules.yaml", raw: []byte(prometheusRuleCRDForDryRun)},
+	documents := []asset.Document{
+		{Kind: "PrometheusRule", Name: "test-rules", FilePath: "rules.yaml", Raw: []byte(prometheusRuleCRDForDryRun)},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			AlertsByName: []gitutil.AlertDeletion{
 				{
 					CRDIdentifier:       "shared-id",
@@ -302,11 +315,11 @@ func TestRunDryRun_TextMode_PrometheusRuleAlertPartialDeletion(t *testing.T) {
 func TestRunDryRun_JSON_PrometheusRuleAlertPartialDeletion(t *testing.T) {
 	withAgentMode(t, true)
 
-	documents := []assetDocument{
-		{kind: "PrometheusRule", name: "test-rules", filePath: "rules.yaml", raw: []byte(prometheusRuleCRDForDryRun)},
+	documents := []asset.Document{
+		{Kind: "PrometheusRule", Name: "test-rules", FilePath: "rules.yaml", Raw: []byte(prometheusRuleCRDForDryRun)},
 	}
-	dp := &deletionPlan{
-		plan: gitutil.DeletionPlan{
+	dp := &gitutil.SincePlan{
+		Plan: gitutil.DeletionPlan{
 			AlertsByName: []gitutil.AlertDeletion{
 				{
 					CRDIdentifier:       "shared-id",

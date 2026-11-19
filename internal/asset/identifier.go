@@ -2,7 +2,6 @@ package asset
 
 import (
 	"fmt"
-	"strings"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
@@ -31,10 +30,9 @@ type identifierProbe struct {
 	Kind     string `json:"kind"`
 	ID       string `json:"id"`
 	Metadata struct {
-		Labels          map[string]string `json:"labels"`
-		Dash0Extensions struct {
-			ID string `json:"id"`
-		} `json:"dash0Extensions"`
+		// Values are not all strings: sampling rules nest custom labels
+		// under labels.custom, so only string values are read.
+		Labels map[string]any `json:"labels"`
 	} `json:"metadata"`
 }
 
@@ -43,11 +41,14 @@ type identifierProbe struct {
 // per the "Asset identifiers and idempotent upsert" table in the command
 // reference:
 //
-//   - Dashboard: metadata.dash0Extensions.id
+//   - Dashboard, EphemeralDashboard: dash0.com/origin, then metadata.dash0Extensions.id, then
+//     dash0.com/id
 //   - CheckRule: top-level id
 //   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill: dash0.com/origin, then dash0.com/id
+//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0GenerativeAiEvaluation,
+//     Dash0SignalToMetrics, Dash0Sampling:
+//     dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
 //     Dash0AwsMetricScrapeConfig):
 //     dash0.com/id
@@ -56,18 +57,32 @@ type identifierProbe struct {
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only SLOs, teams, spam filters, and Agent0 skills genuinely accept either field.
+// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, evals,
+// signal-to-metrics rules, and sampling rules genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
 		return "", fmt.Errorf("failed to extract identifier: %w", err)
 	}
+	// Labels decode leniently for labels.custom, so an identifier label that
+	// is not a string must fail here instead of reading as "no identifier".
+	for _, key := range []string{"dash0.com/id", "dash0.com/origin"} {
+		if value, ok := probe.Metadata.Labels[key]; ok && value != nil {
+			if _, isString := value.(string); !isString {
+				return "", fmt.Errorf("failed to extract identifier: metadata.labels[%q] must be a string, not %v; quote it in YAML", key, value)
+			}
+		}
+	}
 
-	origin := probe.Metadata.Labels["dash0.com/origin"]
+	origin := probe.label("dash0.com/origin")
 
-	switch normalizeKindForIdentifier(probe.Kind) {
-	case "dashboard":
-		return probe.Metadata.Dash0Extensions.ID, nil
+	switch NormalizeKind(probe.Kind) {
+	case "dashboard", "ephemeraldashboard":
+		var dashboard dash0api.DashboardDefinition
+		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+			return "", fmt.Errorf("failed to extract identifier: %w", err)
+		}
+		return DashboardKey(&dashboard), nil
 	case "checkrule":
 		return probe.ID, nil
 	case "notificationchannel", "timeseriesaggregation":
@@ -80,18 +95,34 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill":
+	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics", "sampling":
 		if origin != "" {
 			return origin, nil
 		}
-		return probe.Metadata.Labels["dash0.com/id"], nil
+		return probe.label("dash0.com/id"), nil
 	default:
-		return probe.Metadata.Labels["dash0.com/id"], nil
+		return probe.label("dash0.com/id"), nil
 	}
 }
 
-func normalizeKindForIdentifier(kind string) string {
-	k := strings.ToLower(strings.ReplaceAll(kind, "-", ""))
-	k = strings.ReplaceAll(k, "_", "")
-	return strings.TrimPrefix(k, "dash0")
+// ExtractAlias returns a second identifier that names the same asset as the
+// one ExtractIdentifier returns, or "". Only dashboards have one: see
+// DashboardAlias.
+func ExtractAlias(data []byte) (string, error) {
+	kind, err := dash0yaml.DetectKind(data)
+	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
+		return "", err
+	}
+	var dashboard dash0api.DashboardDefinition
+	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+		return "", fmt.Errorf("failed to extract alias: %w", err)
+	}
+	return DashboardAlias(&dashboard), nil
+}
+
+// label returns the string value of a metadata label, or "" when it is absent
+// or not a string.
+func (p identifierProbe) label(key string) string {
+	s, _ := p.Metadata.Labels[key].(string)
+	return s
 }

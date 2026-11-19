@@ -222,14 +222,20 @@ func runQuery(cmd *cobra.Command, flags *queryFlags) error {
 
 	switch format {
 	case queryFormatTable:
-		return streamTable(iter, totalLimit, flags.SkipHeader, cols, explorerURL)
+		err = streamTable(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatCSV:
-		return streamCSV(iter, totalLimit, flags.SkipHeader, cols)
+		err = streamCSV(iter, totalLimit, flags.SkipHeader, cols)
 	case queryFormatJSON:
-		return collectAndRenderJSON(iter, totalLimit)
+		return collectAndRenderJSON(iter, totalLimit, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelQuery, explorerURL)
+	return nil
 }
 
 func resolveColumns(columns []string) ([]query.ColumnDef, error) {
@@ -363,7 +369,7 @@ func iterateIssues(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, emit f
 	return total, iter.Err()
 }
 
-func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	total, err := iterateIssues(iter, totalLimit, func(f flatIssue) {
@@ -377,9 +383,6 @@ func streamTable(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHead
 		fmt.Println("No failed checks found.")
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
-	}
-	if explorerURL != "" {
-		fmt.Printf("\nOpen this query in Dash0:\n    %s\n", explorerURL)
 	}
 	return nil
 }
@@ -406,7 +409,7 @@ func streamCSV(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, skipHeader
 	return nil
 }
 
-func collectAndRenderJSON(iter *dash0api.Iter[dash0api.Issue], totalLimit int64) error {
+func collectAndRenderJSON(iter *dash0api.Iter[dash0api.Issue], totalLimit int64, explorerURL string) error {
 	var issues []dash0api.Issue
 	var total int64
 	for iter.Next() {
@@ -423,9 +426,9 @@ func collectAndRenderJSON(iter *dash0api.Iter[dash0api.Issue], totalLimit int64)
 	if issues == nil {
 		issues = []dash0api.Issue{}
 	}
-	wrapper := map[string]any{
+	wrapper := query.AddExplorerURL(map[string]any{
 		"issues": issues,
-	}
+	}, explorerURL)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(wrapper)

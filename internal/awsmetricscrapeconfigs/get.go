@@ -12,7 +12,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/client"
 	"github.com/dash0hq/dash0-cli/internal/experimental"
-	"github.com/dash0hq/dash0-cli/internal/output"
 	"github.com/spf13/cobra"
 	sigsyaml "sigs.k8s.io/yaml"
 )
@@ -125,7 +124,7 @@ func printSummary(cfg *dash0api.AwsMetricScrapeConfigDefinition) {
 			if ns.Filter != nil && len(*ns.Filter) > 0 {
 				filtered = ", filtered"
 			}
-			fmt.Printf("  %s (%s%s)\n", ns.Namespace, output.Pluralize(len(ns.Metrics), "metric"), filtered)
+			fmt.Printf("  %s (%s%s)\n", ns.Namespace, pluralize(len(ns.Metrics), "metric"), filtered)
 		}
 	}
 	if annotations := cfg.Metadata.Annotations; annotations != nil {
@@ -136,4 +135,11 @@ func printSummary(cfg *dash0api.AwsMetricScrapeConfigDefinition) {
 			fmt.Printf("Updated: %s\n", annotations.Dash0ComupdatedAt.Format("2006-01-02 15:04:05"))
 		}
 	}
+}
+
+func pluralize(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }

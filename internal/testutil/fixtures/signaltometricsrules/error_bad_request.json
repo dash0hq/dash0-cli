@@ -1,0 +1,5 @@
+{
+  "code": 400,
+  "message": "Bad Request: spec.output.name: must be a valid metric name; spec.match.filters: must not be empty",
+  "traceId": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+}

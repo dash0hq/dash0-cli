@@ -31,6 +31,8 @@ type QueryInstantResponse struct {
 	} `json:"data"`
 	Error     string `json:"error,omitempty"`
 	ErrorType string `json:"errorType,omitempty"`
+	// Set by the CLI, not by the API: the query builder link for -o json.
+	Dash0ExplorerURL string `json:"dash0ExplorerUrl,omitempty"`
 }
 
 // QueryRangeResponse represents the response from the Prometheus range query API.
@@ -274,8 +276,10 @@ func renderInstantCSV(response *QueryInstantResponse, cols []query.ColumnDef, sk
 	}
 }
 
-// renderInstantJSON renders an instant query response as JSON.
-func renderInstantJSON(response *QueryInstantResponse) error {
+// renderInstantJSON renders an instant query response as JSON, with the
+// query builder link next to the Prometheus payload.
+func renderInstantJSON(response *QueryInstantResponse, explorerURL string) error {
+	response.Dash0ExplorerURL = explorerURL
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(response)

@@ -139,6 +139,10 @@ func fetchFullDashboards(
 	for i, item := range listItems {
 		progress.Update(i + 1)
 		dashboard, err := apiClient.GetDashboard(ctx, item.Id, dataset)
+		if dash0api.IsNotFound(err) {
+			// Deleted after the list, for example an ephemeral dashboard whose ttl ran out.
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch dashboard %q: %w", item.Id, err)
 		}

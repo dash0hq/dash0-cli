@@ -1,0 +1,44 @@
+{
+  "kind": "Dash0GenerativeAiEvaluation",
+  "metadata": {
+    "name": "answer-relevance",
+    "labels": {
+      "dash0.com/id": "eval_01k9z3d4q5r6s7t8u9v0w1x2y3",
+      "dash0.com/origin": "dash0-cli_answer-relevance",
+      "dash0.com/version": "1",
+      "dash0.com/source": "dash0-cli",
+      "dash0.com/dataset": "default"
+    },
+    "annotations": {
+      "dash0.com/created-at": "2026-11-01T09:00:00Z",
+      "dash0.com/updated-at": "2026-11-01T09:00:00Z",
+      "dash0.com/folder-path": "/checkout"
+    }
+  },
+  "spec": {
+    "display": {
+      "name": "Answer relevance",
+      "description": "Judges whether the answer addresses the question."
+    },
+    "enabled": true,
+    "judge": {
+      "model": "standard",
+      "output": {
+        "kind": "boolean"
+      },
+      "systemPrompt": "You judge whether an answer is relevant to the question.",
+      "userPrompt": "Question: {{ gen_ai.input.messages }}\nAnswer: {{ gen_ai.output.messages }}"
+    },
+    "match": {
+      "filters": [
+        {
+          "key": "gen_ai.operation.name",
+          "operator": "is_set"
+        }
+      ]
+    },
+    "sample": {
+      "rate": 0.25
+    }
+  }
+}

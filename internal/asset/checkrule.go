@@ -15,22 +15,9 @@ import (
 // A PUT to the ID of a deleted check rule brings it back, which is reported as
 // ActionRestored.
 func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
-	dash0api.StripCheckRuleServerFields(rule)
-
-	action := ActionCreated
-	var before any
-	id := ""
-	if rule.Id != nil && *rule.Id != "" {
-		id = *rule.Id
-		existing, err := apiClient.GetCheckRule(ctx, id, dataset)
-		if err == nil {
-			action = ActionUpdated
-			if CheckRuleDeletedAt(existing) != nil {
-				action = ActionRestored
-			}
-			before = existing
-		}
-	}
+	// A failed preflight does not block the write: the PUT reports the same error.
+	plan, _ := PlanCheckRule(ctx, apiClient, rule, dataset)
+	id := plan.Key
 
 	var (
 		result *dash0api.PrometheusAlertRule
@@ -50,7 +37,24 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 	if err := RequireNotDeleted("Check rule", result.Name, id, CheckRuleDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: result.Name, ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: result.Name, ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanCheckRule reads the stored check rule that ImportCheckRule would write.
+// It returns any preflight error other than "not found".
+func PlanCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportPlan, error) {
+	dash0api.StripCheckRuleServerFields(rule)
+	plan := ImportPlan{Action: ActionCreated, Proposed: rule}
+	if rule.Id == nil || *rule.Id == "" {
+		return plan, nil
+	}
+	plan.Key = *rule.Id
+	existing, err := apiClient.GetCheckRule(ctx, plan.Key, dataset)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Action, plan.Before = actionForExisting(CheckRuleDeletedAt(existing)), existing
+	return plan, nil
 }
 
 // CheckRuleDeletedAt returns when the check rule was deleted, or nil when it is

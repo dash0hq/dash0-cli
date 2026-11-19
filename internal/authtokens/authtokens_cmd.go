@@ -81,3 +81,12 @@ func actionsOf(token *dash0api.AuthTokenResponseDefinition) string {
 	}
 	return strings.Join(actions, ",")
 }
+
+// tokenKeys lets update resolve an auth token's key with the shared rule: the
+// client gives AuthTokenDefinition no UpsertKeys.
+type tokenKeys struct{ origin, id string }
+
+func (k tokenKeys) GetOrigin() string                 { return k.origin }
+func (k tokenKeys) GetID() string                     { return k.id }
+func (k tokenKeys) GetName() string                   { return "" }
+func (k tokenKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }

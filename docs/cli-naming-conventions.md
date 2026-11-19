@@ -5,12 +5,12 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `auth-tokens`, `aws-metric-scrape-configs`
-- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `auth-tokens`, `aws-metric-scrape-configs`
+- Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0, `k8s pods`, `k8s deployments`, and the other kinds for Kubernetes workloads
 
 ## Standard CRUD Subcommands for Assets
-All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
+All asset commands (`dashboards`, `check-rules`, `views`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`), along with the organization-level `teams`, `datasets`, `auth-tokens`, and `agent0 skills` commands, use these subcommands:
 
 | Subcommand | Alias    | Description                          |
 |------------|----------|--------------------------------------|
@@ -48,6 +48,16 @@ The API has no list endpoint and no create, so `aws-metric-scrape-configs` has o
 
 `update` doubles as create, because a PUT replaces the config whether or not one exists, so there is no `create` alias to keep in sync.
 Success messages say `cleared`, not `deleted`, because the integration survives.
+## Signal-to-metrics Rules Subcommands
+`signal-to-metrics-rules` (alias `s2m`) has the standard CRUD subcommands plus one more:
+
+| Subcommand | Alias | Description                                                          |
+|------------|-------|----------------------------------------------------------------------|
+| `test`     | -     | Validate a rule from a file and count the signals it matches; changes nothing |
+
+Use `test` as the name for a subcommand that asks the API to evaluate a definition without saving it.
+It takes the same `-f <file>` input as `create`, so a definition can be tested and then created unchanged.
+
 ## Agent0 Subcommands (experimental)
 The `agent0` command groups what configures Agent0, the Dash0 AI agent.
 Its only child is `skills`, which manages Agent0 custom skills with the standard CRUD subcommands above.
@@ -77,6 +87,18 @@ The `teams` command manages organizational teams (not assets — no dataset, no 
 | `list-members`   | -        | List members of a team                          |
 | `add-members`    | -        | Add members to a team                           |
 | `remove-members` | -        | Remove members from a team                      |
+
+## Kubernetes Subcommands (experimental)
+The `k8s` command groups what shows Dash0 telemetry for Kubernetes workloads, with one command group per kind, as in `kubectl get <kind>`.
+`k8s pods` shows the telemetry of one pod, and `k8s deployments`, `k8s statefulsets`, `k8s daemonsets`, `k8s replicasets`, `k8s jobs`, and `k8s cronjobs` that of all a workload's pods (not assets: no YAML input, no `apply`).
+Each group is named by the plural resource name that k9s passes as `$RESOURCE_NAME`, and takes kubectl's singular and short names as aliases: `pod` and `po`, `deployment` and `deploy`, `statefulset` and `sts`, `daemonset` and `ds`, `replicaset` and `rs`, `job`, and `cronjob` and `cj`.
+Each group has one subcommand:
+
+| Subcommand | Alias | Description                                                               |
+|------------|-------|---------------------------------------------------------------------------|
+| `watch`    | -     | Full-screen page of a pod's or a workload's pods' CPU, memory, requests, and logs; refreshes on a timer |
+
+Use `watch` for a subcommand that keeps a page open and refreshes it until the user quits.
 
 ## Members Subcommands (experimental)
 The `members` command manages organization membership:
@@ -135,13 +157,17 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `View`                      | View                 |
 | `PrometheusRule`            | PrometheusRule       |
 | `PersesDashboard`           | PersesDashboard      |
+| `EphemeralDashboard`        | Ephemeral dashboard  |
 | `Dash0NotificationChannel`  | Notification channel |
 | `Dash0Dataset`              | Dataset              |
 | `Dash0AuthToken`            | Auth token           |
 | `Dash0Skill`                | Agent0 skill         |
 | `Dash0SpamFilter`           | Spam filter          |
 | `Dash0TimeSeriesAggregation`| Time series aggregation |
+| `Dash0SignalToMetrics`      | Signal-to-metrics rule |
+| `Dash0Sampling`             | Sampling rule        |
 | `Dash0AwsMetricScrapeConfig`| AWS metric scrape config |
+| `Dash0GenerativeAiEvaluation`| Eval |
 
 For example: `Check rule "High Error Rate" created`, not `CheckRule "High Error Rate" created`.
 

@@ -15,18 +15,9 @@ import (
 // A PUT to the ID of a deleted synthetic check brings it back, which is
 // reported as ActionRestored.
 func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportResult, error) {
-	dash0api.StripSyntheticCheckServerFields(check)
-
-	action := ActionCreated
-	var before any
-	id := ""
-	if check.Metadata.Labels != nil && check.Metadata.Labels.Dash0Comid != nil && *check.Metadata.Labels.Dash0Comid != "" {
-		id = *check.Metadata.Labels.Dash0Comid
-		existing, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
-		if err == nil {
-			action, before = actionForExisting(SyntheticCheckDeletedAt(existing)), existing
-		}
-	}
+	// A failed preflight does not block the write: the PUT reports the same error.
+	plan, _ := PlanSyntheticCheck(ctx, apiClient, check, dataset)
+	id := plan.Key
 
 	var (
 		result *dash0api.SyntheticCheckDefinition
@@ -47,7 +38,24 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 	if err := RequireNotDeleted("Synthetic check", dash0api.GetSyntheticCheckName(result), id, SyntheticCheckDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
-	return ImportResult{Name: dash0api.GetSyntheticCheckName(result), ID: id, Action: action, Before: before, After: result}, nil
+	return ImportResult{Name: dash0api.GetSyntheticCheckName(result), ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
+}
+
+// PlanSyntheticCheck reads the stored synthetic check that ImportSyntheticCheck
+// would write. It returns any preflight error other than "not found".
+func PlanSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportPlan, error) {
+	dash0api.StripSyntheticCheckServerFields(check)
+	plan := ImportPlan{Action: ActionCreated, Proposed: check}
+	if check.Metadata.Labels == nil || check.Metadata.Labels.Dash0Comid == nil || *check.Metadata.Labels.Dash0Comid == "" {
+		return plan, nil
+	}
+	plan.Key = *check.Metadata.Labels.Dash0Comid
+	existing, err := apiClient.GetSyntheticCheck(ctx, plan.Key, dataset)
+	if err != nil {
+		return plan, ignoreNotFound(err)
+	}
+	plan.Action, plan.Before = actionForExisting(SyntheticCheckDeletedAt(existing)), existing
+	return plan, nil
 }
 
 // SyntheticCheckDeletedAt returns when the synthetic check was deleted, or nil

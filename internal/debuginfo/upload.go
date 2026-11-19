@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dash0hq/dash0-cli/internal/output"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/version"
 	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
 	"github.com/parca-dev/parca/pkg/hash"
@@ -195,7 +195,7 @@ func (u *uploader) negotiateAgain(ctx context.Context, round int, buildID, reaso
 		return fmt.Errorf("delivery is incomplete: the forced upload of %q reached only some destinations, and a forced upload is not negotiated again: %s", buildID, reason)
 	}
 	if round >= u.maxRetries {
-		return fmt.Errorf("delivery is incomplete: the debuginfo service still asked to check again after %s: %s", output.Pluralize(round+1, "attempt"), reason)
+		return fmt.Errorf("delivery is incomplete: the debuginfo service still asked to check again after %s: %s", asset.Pluralize(round+1, "attempt"), reason)
 	}
 	return u.wait(ctx, round, "check "+buildID+" again", reason)
 }

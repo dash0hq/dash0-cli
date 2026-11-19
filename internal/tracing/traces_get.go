@@ -256,14 +256,20 @@ func runGet(cmd *cobra.Command, traceID string, flags *getFlags) error {
 
 	switch format {
 	case getFormatTable:
-		return renderTable(results, flags.SkipHeader, cols, explorerURL)
+		err = renderTable(results, flags.SkipHeader, cols)
 	case getFormatCSV:
-		return renderCSV(results, flags.SkipHeader, cols)
+		err = renderCSV(results, flags.SkipHeader, cols)
 	case getFormatJSON:
-		return renderJSON(results)
+		return renderJSON(results, explorerURL)
 	default:
 		return fmt.Errorf("unknown format: %s", format)
 	}
+	if err != nil {
+		return err
+	}
+	// Off stdout, so piped table and csv results stay clean.
+	query.PrintExplorerURL(os.Stderr, query.ExplorerLabelTrace, explorerURL)
+	return nil
 }
 
 func resolveTraceColumns(columns []string) ([]query.ColumnDef, error) {
@@ -442,7 +448,7 @@ func buildTree(spans []flatTraceSpan) []flatTraceSpan {
 	return result
 }
 
-func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef, explorerURL string) error {
+func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef) error {
 	var rows []map[string]string
 
 	for _, tr := range results {
@@ -457,9 +463,6 @@ func renderTable(results []traceGroup, skipHeader bool, cols []query.ColumnDef, 
 		fmt.Println("No spans found for this trace.")
 	} else {
 		query.RenderTable(os.Stdout, cols, rows, skipHeader)
-	}
-	if explorerURL != "" {
-		fmt.Printf("\nOpen this trace in Dash0:\n    %s\n", explorerURL)
 	}
 	return nil
 }
@@ -487,7 +490,7 @@ func renderCSV(results []traceGroup, skipHeader bool, cols []query.ColumnDef) er
 	return nil
 }
 
-func renderJSON(results []traceGroup) error {
+func renderJSON(results []traceGroup, explorerURL string) error {
 	var all []dash0api.ResourceSpans
 	for _, tr := range results {
 		all = append(all, tr.resourceSpans...)
@@ -495,9 +498,9 @@ func renderJSON(results []traceGroup) error {
 	if all == nil {
 		all = []dash0api.ResourceSpans{}
 	}
-	wrapper := map[string]any{
+	wrapper := query.AddExplorerURL(map[string]any{
 		"resourceSpans": all,
-	}
+	}, explorerURL)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(wrapper)

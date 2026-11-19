@@ -1,0 +1,92 @@
+{
+  "signalToMetrics": [
+    {
+      "kind": "Dash0SignalToMetrics",
+      "metadata": {
+        "annotations": {
+          "dash0.com/created-at": "2026-10-20T09:14:02.118842Z",
+          "dash0.com/updated-at": "2026-10-20T09:14:02.118842Z"
+        },
+        "labels": {
+          "dash0.com/dataset": "default",
+          "dash0.com/id": "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t",
+          "dash0.com/origin": "dash0-cli_checkout-errors",
+          "dash0.com/source": "dash0-cli",
+          "dash0.com/version": "1"
+        },
+        "name": "checkout-errors"
+      },
+      "spec": {
+        "display": {
+          "name": "Checkout error logs"
+        },
+        "enabled": true,
+        "match": {
+          "signal": "logs",
+          "filters": [
+            {
+              "key": "service.name",
+              "operator": "is",
+              "value": "checkout"
+            },
+            {
+              "key": "otel.log.severity.range",
+              "operator": "is",
+              "value": "ERROR"
+            }
+          ]
+        },
+        "output": {
+          "name": "checkout.error_logs",
+          "description": "Error log records emitted by the checkout service",
+          "interval": "1m",
+          "keepResourceAttributes": [
+            {
+              "operator": "is",
+              "value": "service.name"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "Dash0SignalToMetrics",
+      "metadata": {
+        "annotations": {
+          "dash0.com/created-at": "2026-10-20T09:14:02.118842Z",
+          "dash0.com/updated-at": "2026-10-20T09:14:02.118842Z"
+        },
+        "labels": {
+          "dash0.com/dataset": "default",
+          "dash0.com/id": "signal_to_metrics_01kq3mb7w5x3y1z9a7b5c3d1e9",
+          "dash0.com/origin": "api-0d4f2c9e",
+          "dash0.com/source": "api",
+          "dash0.com/version": "1"
+        },
+        "name": "frontend-request-duration"
+      },
+      "spec": {
+        "display": {
+          "name": "Frontend request duration"
+        },
+        "enabled": false,
+        "match": {
+          "signal": "spans",
+          "filters": [
+            {
+              "key": "service.name",
+              "operator": "is",
+              "value": "frontend"
+            }
+          ]
+        },
+        "output": {
+          "name": "frontend.request.duration",
+          "interval": "1m",
+          "type": "exponential-histogram",
+          "value": "span.duration_ms"
+        }
+      }
+    }
+  ]
+}

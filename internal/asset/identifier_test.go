@@ -7,6 +7,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Labels decode leniently so sampling rules can nest labels.custom, but an
+// identifier label that is not a string must still fail, not read as a
+// document without an identifier.
+func TestExtractIdentifier_NonStringIdentifierLabelFails(t *testing.T) {
+	for _, doc := range []string{
+		"kind: View\nmetadata:\n  labels:\n    dash0.com/id: 12345\n",
+		"kind: SLO\nmetadata:\n  labels:\n    dash0.com/origin: 12345\n",
+	} {
+		_, err := ExtractIdentifier([]byte(doc))
+		require.Error(t, err, doc)
+		assert.Contains(t, err.Error(), "must be a string")
+	}
+
+	id, err := ExtractIdentifier([]byte("kind: View\nmetadata:\n  labels:\n    dash0.com/id: \"12345\"\n    team: 7\n"))
+	require.NoError(t, err, "a quoted identifier and a non-identifier label are fine")
+	assert.Equal(t, "12345", id)
+}
+
 // TestExtractIdentifier_ReadsOnlyTheKindsUpsertField is a regression test for
 // silent no-op deletions. ExtractIdentifier used to fall back across fields,
 // so a View carrying only dash0.com/origin reported that origin as its
@@ -27,7 +45,10 @@ func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 		{"SyntheticCheck ignores origin", "kind: SyntheticCheck\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
 		{"PersesDashboard ignores origin", "kind: PersesDashboard\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
 		{"PrometheusRule ignores origin", "kind: PrometheusRule\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
-		{"Dashboard ignores the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: i\n", ""},
+		{"Dashboard falls back to the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
+		{"Dashboard reads origin", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
+		{"Dashboard prefers dash0Extensions.id over the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: uuid\n  dash0Extensions:\n    id: i\n", "i"},
+		{"Dashboard prefers origin over the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: uuid\n    dash0.com/origin: o\n", "o"},
 		{"CheckRule ignores the id label", "kind: CheckRule\nmetadata:\n  labels:\n    dash0.com/id: i\n", ""},
 		{"Dash0NotificationChannel ignores id", "kind: Dash0NotificationChannel\nmetadata:\n  labels:\n    dash0.com/id: i\n", ""},
 
@@ -36,6 +57,8 @@ func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 		{"Dash0Team prefers origin", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "o"},
 		{"Dash0Skill falls back to id", "kind: Dash0Skill\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dash0Skill prefers origin", "kind: Dash0Skill\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "o"},
+		{"Dash0GenerativeAiEvaluation falls back to id", "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
+		{"Dash0GenerativeAiEvaluation prefers origin", "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "o"},
 
 		// SLO ids are server-assigned, so an origin-only document is the
 		// recommended and most common hand-authored form -- reading only the id

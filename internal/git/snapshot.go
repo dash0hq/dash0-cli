@@ -66,18 +66,9 @@ type Snapshot struct {
 	// as one server-side resource, not one per record.
 	PrometheusRecordingRoleByIdentifier map[string]bool
 
-	// SpamFilterUsesOriginByIdentifier maps a spam filter's identifier to
-	// whether it carries a dash0.com/origin label (per
-	// asset.SpamFilterUsesOrigin). Diff carries this into Deletion so --since
-	// can warn when deleting an ID-only spam filter, whose id may have been
-	// reassigned server-side since this identifier was recorded.
-	SpamFilterUsesOriginByIdentifier map[string]bool
-
-	// SLOUsesOriginByIdentifier is the same signal for SLOs (per
-	// asset.SLOUsesOrigin): SLO ids are server-assigned, so an ID-only
-	// document whose first apply took the POST fallback left the live SLO at
-	// an id the document never learned.
-	SLOUsesOriginByIdentifier map[string]bool
+	// IdentifiedByIDOnly records the identifiers whose document asset.IdentifiedByIDOnly
+	// reports, so --since can warn before it deletes one.
+	IdentifiedByIDOnly map[IdentifierKey]bool
 
 	// Paths is the set of every file path scanned, regardless of whether it
 	// parsed into a recognized kind. Used to check whether a NoIdentifier
@@ -93,6 +84,11 @@ type Snapshot struct {
 	// resolveDeletionNames in internal/apply/since.go) from memory instead
 	// of shelling out to `git cat-file` a second time for the same blob.
 	RawContent map[string][]byte
+
+	// Aliases maps an identifier to a second identifier of the same asset
+	// (see asset.ExtractAlias), so an asset still declared under either one
+	// is not a deletion.
+	Aliases map[IdentifierKey]string
 }
 
 func newSnapshot() Snapshot {
@@ -101,10 +97,10 @@ func newSnapshot() Snapshot {
 		NoIdentifier:                        map[string]NoIdentifierDoc{},
 		PrometheusAlertsByIdentifier:        map[string][]asset.PrometheusAlertName{},
 		PrometheusRecordingRoleByIdentifier: map[string]bool{},
-		SpamFilterUsesOriginByIdentifier:    map[string]bool{},
-		SLOUsesOriginByIdentifier:           map[string]bool{},
+		IdentifiedByIDOnly:                  map[IdentifierKey]bool{},
 		Paths:                               map[string]bool{},
 		RawContent:                          map[string][]byte{},
+		Aliases:                             map[IdentifierKey]string{},
 	}
 }
 
@@ -279,7 +275,16 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
 			continue
 		}
-		snap.Identifiers[IdentifierKey{Kind: normalizedKind, Identifier: identifier}] = docPath
+		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
+		snap.Identifiers[key] = docPath
+
+		alias, err := asset.ExtractAlias(docBytes)
+		if err != nil {
+			return fmt.Errorf("failed to extract alias: %w", err)
+		}
+		if alias != "" {
+			snap.Aliases[key] = alias
+		}
 
 		if normalizedKind == "prometheusrule" {
 			// asset.ExtractPrometheusAlertNames, not
@@ -302,21 +307,11 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 			snap.PrometheusRecordingRoleByIdentifier[identifier] = hasRecordingRule
 		}
 
-		if normalizedKind == "spamfilter" {
-			usesOrigin, err := asset.SpamFilterUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine spam filter identifier source: %w", err)
-			}
-			snap.SpamFilterUsesOriginByIdentifier[identifier] = usesOrigin
+		idOnly, err := asset.IdentifiedByIDOnly(normalizedKind, docBytes)
+		if err != nil {
+			return err
 		}
-
-		if normalizedKind == "slo" {
-			usesOrigin, err := asset.SLOUsesOrigin(docBytes)
-			if err != nil {
-				return fmt.Errorf("failed to determine SLO identifier source: %w", err)
-			}
-			snap.SLOUsesOriginByIdentifier[identifier] = usesOrigin
-		}
+		snap.IdentifiedByIDOnly[key] = idOnly
 	}
 	return nil
 }

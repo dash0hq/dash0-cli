@@ -101,7 +101,13 @@ The --config-dir flag or the DASH0_CONFIG_DIR environment variable changes the c
 				if err != nil {
 					return err
 				}
-				config = resolved
+				config = &profiles.Configuration{
+					ApiUrl:    resolved.ApiUrl(),
+					AuthToken: resolved.Token(),
+					OtlpUrl:   resolved.OtlpUrl(),
+					Dataset:   resolved.Dataset(),
+					OAuth:     resolved.OAuth(),
+				}
 			} else {
 				store, err := profiles.NewStore()
 				if err != nil {

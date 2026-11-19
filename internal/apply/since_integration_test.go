@@ -620,6 +620,130 @@ spec:
 	assert.NotContains(t, stderr, "persesDashboard", "the kind name must never be turned into an invented hybrid casing either")
 }
 
+// TestApply_Since_DashboardReauthoredBetweenKindSpellingsIsNotDeleted is a
+// regression test for #270: apply upserts PersesDashboard and Dashboard
+// documents through the same dashboard import, so re-authoring a file from
+// one spelling to the other under the same identifier updates the live
+// dashboard. --since must not then DELETE that dashboard as if it had been
+// removed.
+func TestApply_Since_DashboardReauthoredBetweenKindSpellingsIsNotDeleted(t *testing.T) {
+	const persesYAML = `apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+  duration: 5m
+  panels: {}
+`
+	const plainYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  dash0Extensions:
+    id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
+	const originYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/origin: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
+	// An exported dashboard carries its server id in dash0.com/id. Adding an
+	// origin changes its key, but apply updates it at that id, so it is the
+	// same dashboard.
+	const idYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+spec:
+  display:
+    name: Shared Dashboard
+`
+	const originAndIDYAML = `apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: shared-dashboard
+  labels:
+    dash0.com/id: shared-id
+    dash0.com/origin: dash0-cli_shared-dashboard
+spec:
+  display:
+    name: Shared Dashboard
+`
+	for _, tt := range []struct{ name, before, after string }{
+		{"PersesDashboard to Dashboard", persesYAML, plainYAML},
+		{"Dashboard to PersesDashboard", plainYAML, persesYAML},
+		{"dash0Extensions.id to dash0.com/origin", plainYAML, originYAML},
+		{"dash0.com/id gains dash0.com/origin", idYAML, originAndIDYAML},
+		{"PersesDashboard dash0.com/id gains a Dashboard origin", persesYAML, originAndIDYAML},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "dashboard.yaml", tt.before)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			writeFileFixture(t, dir, "dashboard.yaml", tt.after)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "re-author dashboard")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, dashboardIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureDashboardsImportSuccess,
+			})
+			server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+			// Any DELETE is the bug: fail it (with a status that is not
+			// retried) rather than let it pass as an idempotent "already
+			// deleted".
+			server.OnPattern(http.MethodDelete, dashboardIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusBadRequest,
+				Body:       map[string]any{"error": "unexpected DELETE"},
+			})
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			stderr := testutil.CaptureStderr(t, func() {
+				testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+			})
+
+			require.NoError(t, cmdErr, "stderr: %s", stderr)
+			for _, req := range server.Requests() {
+				assert.NotEqual(t, http.MethodDelete, req.Method, "unexpected DELETE %s", req.Path)
+			}
+			assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, "/api/dashboards/"), "expected the dashboard to be updated")
+		})
+	}
+}
+
 // TestApply_Since_PrometheusRuleWholeCRDDeletion_RecordDroppedBeforeDeletion_StillDeletesRecordingRule
 // is a regression test for a bug where deleting a whole PrometheusRule CRD
 // undercounted which endpoints to clean up, based solely on the CRD's
@@ -1634,6 +1758,74 @@ func TestApply_Since_SLOOriginDeletionDoesNotWarn(t *testing.T) {
 	assert.NotContains(t, stderr, "identified by dash0.com/id alone")
 }
 
+// runSinceTeamDeletion commits a team document with the given labels, removes
+// it in a second commit, runs apply --since against the first, and returns
+// stderr.
+func runSinceTeamDeletion(t *testing.T, labels string) string {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "team.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dash0Team\nmetadata:\n  name: backend-team\n  labels:\n"+labels+"spec:\n  display:\n    name: Backend Team\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add team")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "team.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove team")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.OnPattern(http.MethodDelete, teamIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	stderr := testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+	require.NoError(t, cmdErr)
+	return stderr
+}
+
+// TestApply_Since_TeamIDOnlyDeletionWarns is the team analogue of the SLO
+// warning above: an id-only team whose id was not found took ImportTeam's
+// POST fallback, so the live team sits at a server-assigned id.
+func TestApply_Since_TeamIDOnlyDeletionWarns(t *testing.T) {
+	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
+	stderr := runSinceTeamDeletion(t, "    dash0.com/id: "+teamID+"\n")
+	assert.Contains(t, stderr, "warning: team ")
+	assert.Contains(t, stderr, "("+teamID+") was identified by dash0.com/id alone")
+}
+
+// TestApply_Since_TeamOriginDeletionDoesNotWarn confirms the team warning
+// does not fire when the document carries an origin.
+func TestApply_Since_TeamOriginDeletionDoesNotWarn(t *testing.T) {
+	stderr := runSinceTeamDeletion(t, "    dash0.com/origin: backend-team\n")
+	assert.NotContains(t, stderr, "identified by dash0.com/id alone")
+}
+
 // TestApply_Since_SpamFilterIDOnlyDeletionWarns is a regression test for a
 // gap where deleting a spam filter identified by dash0.com/id alone gave no
 // indication that the id recorded in git history might no longer match the
@@ -2489,4 +2681,336 @@ func TestApply_Since_RemovedAwsMetricScrapeConfigIsCleared(t *testing.T) {
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, `AWS metric scrape config "production-account" (`+awsScrapeIntegrationID+`) cleared`)
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathAwsScrapeConfig))
+}
+
+func TestApply_Since_DeletesRemovedEval(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "eval.yaml", "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  name: relevance\n  labels:\n    dash0.com/origin: dash0-cli_relevance\nspec:\n  display:\n    name: Answer relevance\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add eval")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "eval.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove eval")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.On(http.MethodDelete, "/api/generative-ai-evaluations/dash0-cli_relevance", testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken, "--dataset", "staging",
+	})
+
+	var cmdErr error
+	var output string
+	stderr := testutil.CaptureStderr(t, func() {
+		output = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, `Eval "Answer relevance" (dash0-cli_relevance) deleted`)
+	assert.NotContains(t, stderr, "identified by dash0.com/id alone", "an origin-keyed eval needs no warning")
+	del := findRequest(server.Requests(), http.MethodDelete, "/api/generative-ai-evaluations/dash0-cli_relevance")
+	require.NotNil(t, del)
+	assert.Contains(t, del.Query, "dataset=staging", "evals are dataset-scoped")
+}
+
+func TestApply_Since_DeletesRemovedSignalToMetricsRule(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		label       string
+		identifier  string
+		wantWarning bool
+	}{
+		{name: "by origin", label: "dash0.com/origin: dash0-cli_checkout-errors", identifier: "dash0-cli_checkout-errors"},
+		{name: "by id alone warns", label: "dash0.com/id: 7c1e2a4b", identifier: "7c1e2a4b", wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "rule.yaml", "kind: Dash0SignalToMetrics\nmetadata:\n  name: checkout-errors\n  labels:\n    "+tc.label+"\nspec:\n  display:\n    name: Checkout error logs\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add rule")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "rule.yaml")))
+			writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "remove rule")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureViewsNotFound,
+			})
+			server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+			deletePath := "/api/signal-to-metrics/" + tc.identifier
+			server.On(http.MethodDelete, deletePath, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				Body:       map[string]any{},
+				Validator:  testutil.RequireHeaders,
+			})
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental", "--dataset", "staging",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			var output string
+			stderr := testutil.CaptureStderr(t, func() {
+				output = testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+			})
+
+			require.NoError(t, cmdErr)
+			assert.Contains(t, output, `Signal-to-metrics rule "Checkout error logs" (`+tc.identifier+`) deleted`)
+			del := findRequest(server.Requests(), http.MethodDelete, deletePath)
+			require.NotNil(t, del)
+			assert.Contains(t, del.Query, "dataset=staging", "signal-to-metrics rules are dataset-scoped")
+			if tc.wantWarning {
+				assert.Contains(t, stderr, "identified by dash0.com/id alone")
+			} else {
+				assert.NotContains(t, stderr, "identified by dash0.com/id alone")
+			}
+		})
+	}
+}
+
+// samplingSinceRepo commits a sampling rule document with the given label,
+// then removes it and adds a view, and returns the repository and the commit
+// before the removal.
+func samplingSinceRepo(t *testing.T, label string) (dir, before string) {
+	t.Helper()
+	dir = t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rule.yaml", "kind: Dash0Sampling\nmetadata:\n  name: checkout-errors\n  labels:\n    "+label+
+		"\n    custom:\n      team: checkout\nspec:\n  display:\n    name: Keep checkout errors\n  enabled: false\n  conditions:\n    kind: error\n    spec: {}\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add rule")
+	before = strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "rule.yaml")))
+	writeFileFixture(t, dir, "keep.yaml", "apiVersion: dash0.com/v1alpha1\nkind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove rule")
+	return dir, before
+}
+
+func TestApply_Since_DeletesRemovedSamplingRule(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		label       string
+		identifier  string
+		wantWarning bool
+	}{
+		{name: "by origin", label: "dash0.com/origin: dash0-cli_checkout-errors", identifier: "dash0-cli_checkout-errors"},
+		{name: "by id alone warns", label: "dash0.com/id: 4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35", identifier: "4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35", wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir, before := samplingSinceRepo(t, tc.label)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureViewsNotFound,
+			})
+			server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+			deletePath := "/api/sampling-rules/" + tc.identifier
+			server.On(http.MethodDelete, deletePath, testutil.MockResponse{StatusCode: http.StatusOK, Validator: testutil.RequireHeaders})
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental", "--dataset", "staging",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			var output string
+			stderr := testutil.CaptureStderr(t, func() {
+				output = testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+			})
+
+			require.NoError(t, cmdErr)
+			assert.Contains(t, output, `Sampling rule "Keep checkout errors" (`+tc.identifier+`) deleted`)
+			del := findRequest(server.Requests(), http.MethodDelete, deletePath)
+			require.NotNil(t, del)
+			assert.Contains(t, del.Query, "dataset=staging", "sampling rules are dataset-scoped")
+			if tc.wantWarning {
+				assert.Contains(t, stderr, "identified by dash0.com/id alone")
+			} else {
+				assert.NotContains(t, stderr, "identified by dash0.com/id alone")
+			}
+		})
+	}
+}
+
+// In agent mode a sampling rule deletion needs an explicit --force, as in
+// `sampling-rules delete`, and the refusal leaves the whole run untouched.
+func TestApply_Since_AgentModeSamplingRuleDeletionRequiresForce(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	prev := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = prev })
+	dir, before := samplingSinceRepo(t, "dash0.com/origin: dash0-cli_checkout-errors")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--experimental", "--dataset", "staging",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+	var cmdErr error
+	testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `deleting Sampling rule "dash0-cli_checkout-errors" with --since requires --force when run in agent mode`)
+	assert.Empty(t, server.Requests())
+}
+
+// The rule exists in another dataset, so the delete must fail instead of
+// counting as already gone.
+func TestApply_Since_SamplingRuleInAnotherDatasetFails(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir, before := samplingSinceRepo(t, "dash0.com/origin: dash0-cli_checkout-errors")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureViewsNotFound,
+	})
+	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+	server.On(http.MethodDelete, "/api/sampling-rules/dash0-cli_checkout-errors", testutil.MockResponse{
+		StatusCode: http.StatusBadRequest,
+		BodyFile:   "samplingrules/error_wrong_dataset.json",
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental", "--dataset", "staging",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+
+	var cmdErr error
+	_ = testutil.CaptureStderr(t, func() {
+		_ = testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.Error(t, cmdErr)
+	assert.Contains(t, cmdErr.Error(), `sampling rule "dash0-cli_checkout-errors" already exists in another dataset`)
+}
+
+// A dashboard file with both labels was updated at its dash0.com/id, and the
+// API ignores the origin on an update, so the dashboard may have no origin.
+// Removing the file must delete it at the key apply wrote it at.
+func TestApply_Since_DashboardWithOriginAndIDDeletesWhereApplyWrote(t *testing.T) {
+	const (
+		origin     = "dash0-cli_checkout"
+		id         = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+		originPath = apiPathDashboards + "/" + origin
+		idPath     = apiPathDashboards + "/" + id
+	)
+	for _, tt := range []struct {
+		name         string
+		originStatus int
+		originBody   string
+		wantDeleted  string
+	}{
+		{"origin not found deletes at the id", http.StatusNotFound, testutil.FixtureDashboardsNotFound, idPath},
+		{"origin found deletes at the origin", http.StatusOK, testutil.FixtureDashboardsImportSuccess, originPath},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			writeFileFixture(t, dir, "dashboard.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: "+id+"\n    dash0.com/origin: "+origin+"\nspec:\n  display:\n    name: Checkout\n")
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboard")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.On(http.MethodGet, originPath, testutil.MockResponse{
+				StatusCode: tt.originStatus,
+				BodyFile:   tt.originBody,
+				Validator:  testutil.RequireHeaders,
+			})
+			for _, path := range []string{originPath, idPath} {
+				server.On(http.MethodDelete, path, testutil.MockResponse{
+					StatusCode: http.StatusOK,
+					Body:       map[string]any{},
+					Validator:  testutil.RequireHeaders,
+				})
+			}
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+
+			var cmdErr error
+			testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+
+			require.NoError(t, cmdErr)
+			var deletes []string
+			for _, request := range server.Requests() {
+				if request.Method == http.MethodDelete {
+					deletes = append(deletes, request.Path)
+				}
+			}
+			assert.Equal(t, []string{tt.wantDeleted}, deletes)
+		})
+	}
 }
