@@ -90,7 +90,7 @@ func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 func DashboardIdentity(dashboard *dash0api.DashboardDefinition, dataset *string) Identity {
 	identity := Identity{
 		Origin:   dashboard.GetOrigin(),
-		Inferred: InferOrigin(string(dashboard.Kind), dashboard.Metadata.Name, DatasetName(dataset)),
+		Inferred: InferKindOrigin(string(dashboard.Kind), dashboard.Metadata.Name, dataset),
 	}
 	if identity.Origin == "" {
 		identity.Origin = dashboardExtensionsID(dashboard)

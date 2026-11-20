@@ -86,18 +86,18 @@ type Snapshot struct {
 	RawContent map[string][]byte
 
 	// Aliases maps an identifier to a second identifier of the same asset
-	// (see asset.ExtractDashboardFallbacks), so an asset still declared under either one
+	// (see asset.ExtractDeleteFallbacks), so an asset still declared under either one
 	// is not a deletion.
 	Aliases map[IdentifierKey]string
 
-	// InferredOriginNames maps the identifier of a dashboard that names only
-	// a dash0.com/id to its metadata.name (see asset.ExtractDashboardFallbacks).
+	// InferredOriginNames maps the identifier of a routed document that names
+	// only a dash0.com/id to its metadata.name (see asset.ExtractDeleteFallbacks).
 	InferredOriginNames map[IdentifierKey]string
 
-	// InferredOriginDashboards holds the kind and metadata.name of every
-	// dashboard without an origin, which apply writes at its inferred origin
+	// InferredOriginDocuments holds the kind and metadata.name of every routed
+	// document without an origin, which apply writes at its inferred origin
 	// when it has no id or the id is not found.
-	InferredOriginDashboards map[IdentifierKey]bool
+	InferredOriginDocuments map[IdentifierKey]bool
 }
 
 func newSnapshot() Snapshot {
@@ -111,7 +111,7 @@ func newSnapshot() Snapshot {
 		RawContent:                          map[string][]byte{},
 		Aliases:                             map[IdentifierKey]string{},
 		InferredOriginNames:                 map[IdentifierKey]string{},
-		InferredOriginDashboards:            map[IdentifierKey]bool{},
+		InferredOriginDocuments:             map[IdentifierKey]bool{},
 	}
 }
 
@@ -282,12 +282,12 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		}
 
 		normalizedKind := asset.NormalizeKind(kind)
-		alias, inferredOriginName, err := asset.ExtractDashboardFallbacks(docBytes)
+		alias, inferredOriginName, err := asset.ExtractDeleteFallbacks(docBytes)
 		if err != nil {
-			return fmt.Errorf("failed to read dashboard identifiers: %w", err)
+			return fmt.Errorf("failed to read fallback identifiers: %w", err)
 		}
 		if inferredOriginName != "" {
-			snap.InferredOriginDashboards[IdentifierKey{Kind: normalizedKind, Identifier: inferredOriginName}] = true
+			snap.InferredOriginDocuments[IdentifierKey{Kind: normalizedKind, Identifier: inferredOriginName}] = true
 		}
 		if identifier == "" {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}

@@ -66,7 +66,7 @@ func PlanNotificationChannel(ctx context.Context, apiClient dash0api.Client, cha
 // channel by. Channels are organization-level, so the inferred origin has no
 // dataset.
 func NotificationChannelIdentity(channel *dash0api.NotificationChannelDefinition) Identity {
-	return identityOf("notificationchannel", channel.Metadata.Name, "", channel)
+	return identityOf("notificationchannel", channel.Metadata.Name, nil, channel)
 }
 
 func setNotificationChannelOrigin(channel *dash0api.NotificationChannelDefinition, origin string) {

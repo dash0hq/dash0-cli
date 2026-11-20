@@ -79,7 +79,7 @@ func PlanTimeSeriesAggregation(ctx context.Context, apiClient dash0api.Client, a
 // TimeSeriesAggregationIdentity returns what RouteDocument routes a time series
 // aggregation by.
 func TimeSeriesAggregationIdentity(aggregation *dash0api.TimeSeriesAggregationDefinition, dataset *string) Identity {
-	return identityOf("timeseriesaggregation", aggregation.Metadata.Name, DatasetName(dataset), aggregation)
+	return identityOf("timeseriesaggregation", aggregation.Metadata.Name, dataset, aggregation)
 }
 
 // TimeSeriesAggregationDeletedAt returns when the aggregation was deleted, or

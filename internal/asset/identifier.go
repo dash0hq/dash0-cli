@@ -30,6 +30,7 @@ type identifierProbe struct {
 	Kind     string `json:"kind"`
 	ID       string `json:"id"`
 	Metadata struct {
+		Name string `json:"name"`
 		// Values are not all strings: sampling rules nest custom labels
 		// under labels.custom, so only string values are read.
 		Labels map[string]any `json:"labels"`
@@ -106,24 +107,39 @@ func ExtractIdentifier(data []byte) (string, error) {
 	}
 }
 
-// ExtractDashboardFallbacks returns, for a dashboard, a second identifier
-// that names the same asset as the one ExtractIdentifier returns (see
-// DashboardAlias), and the metadata.name of a dashboard without an origin.
-// apply writes such a dashboard at its inferred origin when it has no id or
-// the id is not found, so --since must delete it there. Both are "" for other kinds.
-func ExtractDashboardFallbacks(data []byte) (alias, inferredOriginName string, err error) {
+// ExtractDeleteFallbacks returns the other keys --since may have to delete a
+// routed document at. alias is, for a dashboard, a second identifier that
+// names the same asset as the one ExtractIdentifier returns (see
+// DashboardAlias). inferredOriginName is the metadata.name of a document
+// without an origin: apply writes it at its inferred origin when it has no id
+// or the id is not found, so --since must delete it there. Both are "" for
+// kinds the router does not serve.
+func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
-	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
+	if err != nil {
 		return "", "", err
 	}
-	var dashboard dash0api.DashboardDefinition
-	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
-		return "", "", err
+	switch NormalizeKind(kind) {
+	case "dashboard", "ephemeraldashboard":
+		var dashboard dash0api.DashboardDefinition
+		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+			return "", "", err
+		}
+		if DashboardIdentity(&dashboard, nil).Origin == "" {
+			inferredOriginName = dashboard.Metadata.Name
+		}
+		return DashboardAlias(&dashboard), inferredOriginName, nil
+	case "team", "notificationchannel", "timeseriesaggregation", "spamfilter":
+		var probe identifierProbe
+		if err := dash0yaml.Unmarshal(data, &probe); err != nil {
+			return "", "", err
+		}
+		if probe.label("dash0.com/origin") == "" {
+			inferredOriginName = probe.Metadata.Name
+		}
+		return "", inferredOriginName, nil
 	}
-	if DashboardIdentity(&dashboard, nil).Origin == "" {
-		inferredOriginName = dashboard.Metadata.Name
-	}
-	return DashboardAlias(&dashboard), inferredOriginName, nil
+	return "", "", nil
 }
 
 // label returns the string value of a metadata label, or "" when it is absent

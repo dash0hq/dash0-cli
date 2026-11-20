@@ -2325,6 +2325,11 @@ func TestApply_Since_TimeSeriesAggregationDeletedByIdentifier(t *testing.T) {
 				BodyFile:   testutil.FixtureViewsNotFound,
 			})
 			server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
+			server.OnPattern(http.MethodGet, timeSeriesAggOriginPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				Body:       map[string]any{"kind": "Dash0TimeSeriesAggregation", "metadata": map[string]any{"name": "http-server-request-duration"}},
+				Validator:  testutil.RequireHeaders,
+			})
 			server.OnPattern(http.MethodDelete, timeSeriesAggOriginPattern, testutil.MockResponse{
 				StatusCode: http.StatusOK,
 				Body:       map[string]any{},
@@ -3026,73 +3031,91 @@ func TestApply_Since_DashboardWithOriginAndIDDeletesWhereApplyWrote(t *testing.T
 	}
 }
 
-// A dashboard file with only a dash0.com/id was created by its inferred origin
-// when the id was not found. Removing the file must delete it there.
-func TestApply_Since_DashboardWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
+// A routed document with only a dash0.com/id was created by its inferred
+// origin when the id was not found. Removing the file must delete it there.
+func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
-	idPath := apiPathDashboards + "/" + id
-	inferredPath := apiPathDashboards + "/" + asset.InferOrigin("Dashboard", "checkout", "default")
-	for _, tt := range []struct {
-		name        string
-		idStatus    int
-		idBody      string
-		wantDeleted string
+	for _, kind := range []struct {
+		name     string
+		document string
+		apiPath  string
+		inferred string
+		found    testutil.MockResponse
 	}{
-		{"id not found deletes at the inferred origin", http.StatusNotFound, testutil.FixtureDashboardsNotFound, inferredPath},
-		{"id found deletes at the id", http.StatusOK, testutil.FixtureDashboardsImportSuccess, idPath},
+		{"dashboard", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n",
+			apiPathDashboards, asset.InferOrigin("Dashboard", "checkout", "default"), testutil.MockResponse{BodyFile: testutil.FixtureDashboardsImportSuccess}},
+		{"notification channel", "apiVersion: dash0.com/v1alpha1\nkind: Dash0NotificationChannel\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  type: slack\n",
+			apiPathNotificationChannels, asset.InferOrigin("Dash0NotificationChannel", "checkout", ""), testutil.MockResponse{BodyFile: testutil.FixtureNotificationChannelsGetSuccess}},
+		{"time series aggregation", "kind: Dash0TimeSeriesAggregation\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  enabled: true\n",
+			apiPathTimeSeriesAggs, asset.InferOrigin("Dash0TimeSeriesAggregation", "checkout", "default"), testutil.MockResponse{Body: map[string]any{"kind": "Dash0TimeSeriesAggregation", "metadata": map[string]any{"name": "checkout"}}}},
+		{"team", "apiVersion: dash0.com/v1alpha1\nkind: Dash0Team\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n",
+			"/api/teams", asset.InferOrigin("Dash0Team", "checkout", ""), testutil.MockResponse{BodyFile: testutil.FixtureTeamsGetSuccess}},
+		{"spam filter", "apiVersion: v1alpha2\nkind: Dash0SpamFilter\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  context: log\n",
+			"/api/spam-filters", asset.InferOrigin("Dash0SpamFilter", "checkout", "default"), testutil.MockResponse{BodyFile: testutil.FixtureSpamFiltersGetSuccess}},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			testutil.SetupTestEnv(t)
+		idPath, inferredPath := kind.apiPath+"/"+id, kind.apiPath+"/"+kind.inferred
+		for _, tt := range []struct {
+			name        string
+			idStatus    int
+			wantDeleted string
+		}{
+			{"id not found deletes at the inferred origin", http.StatusNotFound, inferredPath},
+			{"id found deletes at the id", http.StatusOK, idPath},
+		} {
+			t.Run(kind.name+"/"+tt.name, func(t *testing.T) {
+				testutil.SetupTestEnv(t)
 
-			dir := t.TempDir()
-			runGitCmd(t, dir, "init", "-q", "-b", "main")
-			runGitCmd(t, dir, "config", "user.email", "test@example.com")
-			runGitCmd(t, dir, "config", "user.name", "Test")
-			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+				dir := t.TempDir()
+				runGitCmd(t, dir, "init", "-q", "-b", "main")
+				runGitCmd(t, dir, "config", "user.email", "test@example.com")
+				runGitCmd(t, dir, "config", "user.name", "Test")
+				runGitCmd(t, dir, "config", "commit.gpgsign", "false")
 
-			writeFileFixture(t, dir, "dashboard.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: "+id+"\nspec:\n  display:\n    name: Checkout\n")
-			runGitCmd(t, dir, "add", "-A")
-			runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
-			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+				writeFileFixture(t, dir, "asset.yaml", kind.document)
+				runGitCmd(t, dir, "add", "-A")
+				runGitCmd(t, dir, "commit", "-q", "-m", "add asset")
+				before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
 
-			require.NoError(t, os.Remove(filepath.Join(dir, "dashboard.yaml")))
-			runGitCmd(t, dir, "add", "-A")
-			runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboard")
+				require.NoError(t, os.Remove(filepath.Join(dir, "asset.yaml")))
+				runGitCmd(t, dir, "add", "-A")
+				runGitCmd(t, dir, "commit", "-q", "-m", "remove asset")
 
-			server := testutil.NewMockServer(t, testutil.FixturesDir())
-			server.On(http.MethodGet, idPath, testutil.MockResponse{
-				StatusCode: tt.idStatus,
-				BodyFile:   tt.idBody,
-				Validator:  testutil.RequireHeaders,
-			})
-			for _, path := range []string{idPath, inferredPath} {
-				server.On(http.MethodDelete, path, testutil.MockResponse{
-					StatusCode: http.StatusOK,
-					Body:       map[string]any{},
-					Validator:  testutil.RequireHeaders,
-				})
-			}
-
-			cmd := newSinceTestCmd()
-			cmd.SetArgs([]string{
-				"-f", dir, "--since", before, "--force", "--experimental",
-				"--api-url", server.URL, "--auth-token", testAuthToken,
-			})
-
-			var cmdErr error
-			testutil.CaptureStdout(t, func() {
-				cmdErr = cmd.Execute()
-			})
-
-			require.NoError(t, cmdErr)
-			var deletes []string
-			for _, request := range server.Requests() {
-				if request.Method == http.MethodDelete {
-					deletes = append(deletes, request.Path)
+				server := testutil.NewMockServer(t, testutil.FixturesDir())
+				lookup := kind.found
+				if tt.idStatus == http.StatusNotFound {
+					lookup = testutil.MockResponse{Body: map[string]any{"error": "not found"}}
 				}
-			}
-			assert.Equal(t, []string{tt.wantDeleted}, deletes)
-		})
+				lookup.StatusCode, lookup.Validator = tt.idStatus, testutil.RequireHeaders
+				server.On(http.MethodGet, idPath, lookup)
+				for _, path := range []string{idPath, inferredPath} {
+					server.On(http.MethodDelete, path, testutil.MockResponse{
+						StatusCode: http.StatusOK,
+						Body:       map[string]any{},
+						Validator:  testutil.RequireHeaders,
+					})
+				}
+
+				cmd := newSinceTestCmd()
+				cmd.SetArgs([]string{
+					"-f", dir, "--since", before, "--force", "--experimental",
+					"--api-url", server.URL, "--auth-token", testAuthToken,
+				})
+
+				var cmdErr error
+				testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+
+				require.NoError(t, cmdErr)
+				var deletes []string
+				for _, request := range server.Requests() {
+					if request.Method == http.MethodDelete {
+						deletes = append(deletes, request.Path)
+					}
+				}
+				assert.Equal(t, []string{tt.wantDeleted}, deletes)
+			})
+		}
 	}
 }
 

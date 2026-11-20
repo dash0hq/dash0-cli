@@ -156,7 +156,7 @@ func SpamFilterIdentity(filter interface {
 	routedAsset
 	GetName() string
 }, dataset *string) Identity {
-	return identityOf("spamfilter", filter.GetName(), DatasetName(dataset), filter)
+	return identityOf("spamfilter", filter.GetName(), dataset, filter)
 }
 
 func spamFilterOrigin(filter dash0api.SpamFilterObject) string {

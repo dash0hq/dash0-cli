@@ -838,6 +838,7 @@ The same document gets the same origin from every checkout, and a different one 
 Renaming `metadata.name` changes the inferred origin, so the next apply creates a new asset.
 Set `dash0.com/origin` to keep the asset across a rename.
 Two documents in one run that would get the same inferred origin fail validation before anything is written.
+`apply --since` deletes a removed document with only a `dash0.com/id` at that id, or at its inferred origin when the id is not found, because that is where `apply` wrote it.
 
 The other kinds follow the per-kind rules in the table below.
 For those kinds, a document without an identifier is created by POST, and the server assigns a fresh ID on each invocation, so repeated runs produce duplicate assets.

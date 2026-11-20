@@ -93,6 +93,17 @@ func InferOrigin(kind, name, dataset string) string {
 	return InferredOriginPrefix + hex.EncodeToString(sum[:16])
 }
 
+// InferKindOrigin returns the origin apply infers for a document of kind
+// named name. Teams and notification channels are organization-level, so
+// theirs has no dataset.
+func InferKindOrigin(kind, name string, dataset *string) string {
+	switch NormalizeKind(kind) {
+	case "team", "notificationchannel":
+		return InferOrigin(kind, name, "")
+	}
+	return InferOrigin(kind, name, DatasetName(dataset))
+}
+
 // DatasetName returns the dataset an asset lives in. Without --dataset the API
 // uses "default", so both name the same asset and must infer the same origin.
 func DatasetName(dataset *string) string {
@@ -108,8 +119,8 @@ type routedAsset interface {
 	GetOrigin() string
 }
 
-func identityOf(kind, name, dataset string, asset routedAsset) Identity {
-	return Identity{ID: asset.GetID(), Origin: asset.GetOrigin(), Inferred: InferOrigin(kind, name, dataset)}
+func identityOf(kind, name string, dataset *string, asset routedAsset) Identity {
+	return Identity{ID: asset.GetID(), Origin: asset.GetOrigin(), Inferred: InferKindOrigin(kind, name, dataset)}
 }
 
 // CheckInferredOriginCollisions fails documents that would get the same

@@ -76,7 +76,7 @@ func PlanTeam(ctx context.Context, apiClient dash0api.Client, team *dash0api.Tea
 // TeamIdentity returns what RouteDocument routes a team by. Teams are
 // organization-level, so the inferred origin has no dataset.
 func TeamIdentity(team *dash0api.TeamDefinitionV1Alpha1) Identity {
-	return identityOf("team", team.Metadata.Name, "", team)
+	return identityOf("team", team.Metadata.Name, nil, team)
 }
 
 func setTeamOrigin(team *dash0api.TeamDefinitionV1Alpha1, origin string) {
