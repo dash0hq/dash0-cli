@@ -761,6 +761,25 @@ func TestUpdateSamplingRule_ArgumentMustMatchFile(t *testing.T) {
 	assert.Empty(t, server.Requests())
 }
 
+func TestUpdateSamplingRule_StoredOriginDiffersFails(t *testing.T) {
+	doc := strings.Replace(docWithIDOnly, "    dash0.com/id:", "    dash0.com/origin: another-origin\n    dash0.com/id:", 1)
+	for name, args := range map[string][]string{"without argument": nil, "with the id as argument": {testID}} {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
+
+			cmdArgs := append([]string{"sampling-rules", "update"}, args...)
+			cmdArgs = append(cmdArgs, "-f", writeDoc(t, doc), "--api-url", server.URL, "--auth-token", testAuthToken)
+			_, err := execute(t, cmdArgs...)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "the CLI never changes a stored origin")
+			assert.Zero(t, countMethod(server.Requests(), http.MethodPut))
+		})
+	}
+}
+
 func TestUpdateSamplingRule_NoIdentifierFails(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
