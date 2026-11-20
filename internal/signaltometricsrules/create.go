@@ -22,15 +22,10 @@ func newCreateCmd() *cobra.Command {
 		Long: `Create a signal-to-metrics rule from a YAML or JSON definition file. Use
 '-f -' to read from stdin.
 
-When the document carries a 'dash0.com/origin' label under metadata.labels,
-the rule is upserted by that origin: repeated runs of the same file update the
-same rule instead of creating duplicates.
-
-With only a 'dash0.com/id' label, the rule with that ID is updated. When no
-rule has that ID, for example in a definition exported from another
-organization, a new rule is created with an ID assigned by the server, so
-every further run creates another one. With neither label, every run creates
-a new rule.
+The CLI reads dash0.com/id first and updates the rule at the id when it
+exists. Otherwise it writes by dash0.com/origin, or by an origin it infers from
+the kind, metadata.name, and dataset, so repeated runs of the same file update
+the same rule instead of creating duplicates. A rule is never created by POST.
 
 Origins are unique per organization, and each rule belongs to one dataset.
 Applying a document whose origin already exists in another dataset fails

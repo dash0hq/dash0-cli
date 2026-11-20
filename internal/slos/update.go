@@ -20,7 +20,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "Update an SLO from a file",
 		Long: `Update an existing SLO from a YAML or JSON definition file in OpenSLO v1 format. Use '-f -' to read from stdin.
 
-If the ID argument is omitted, the dash0.com/origin label is read from the file, or the ID when there is no origin, as apply does.` + internal.CONFIG_HINT,
+If the ID argument is omitted, the file's dash0.com/id label is read first, then its dash0.com/origin label when the id is not found, as apply does.` + internal.CONFIG_HINT,
 		Example: `  # Update an SLO from a file
   dash0 slos update <id> -f slo.yaml
 
@@ -50,9 +50,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	fileID := dash0api.GetSLOID(&slo)
 	fileOrigin := dash0api.GetSLOOrigin(&slo)
 
-	var id string
 	if len(args) == 1 {
-		id = args[0]
 		// Only enforceable when the document pins both handles, in which case
 		// the argument has to be one of them. With just one label present the
 		// argument may legitimately be the other — GET/PUT take an
@@ -60,13 +58,15 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		// nothing about the server-assigned id — and there is no offline way
 		// to tell a valid counterpart from a typo. A wrong value surfaces as a
 		// clean "SLO not found" from the GET below.
-		if fileID != "" && fileOrigin != "" && id != fileID && id != fileOrigin {
-			return fmt.Errorf("the ID argument %q does not match the dash0.com/id or dash0.com/origin label in the file (id=%q, origin=%q)", id, fileID, fileOrigin)
+		if fileID != "" && fileOrigin != "" && args[0] != fileID && args[0] != fileOrigin {
+			return fmt.Errorf("the ID argument %q does not match the dash0.com/id or dash0.com/origin label in the file (id=%q, origin=%q)", args[0], fileID, fileOrigin)
 		}
-	} else {
-		var err error
-		id, err = asset.ResolveUpdateKey(nil, asset.UpdateKey{Noun: "SLO", Upsert: &slo})
-		if err != nil {
+	}
+
+	updateKey := asset.UpdateKey{Noun: "SLO", Upsert: &slo}
+	identity := asset.Identity{ID: fileID, Origin: fileOrigin}
+	if len(args) == 0 {
+		if err := asset.CheckRouteUpdate(nil, updateKey, identity); err != nil {
 			return err
 		}
 	}
@@ -78,7 +78,19 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
-	before, err := apiClient.GetSLO(ctx, id, dataset)
+	// Without an argument, the read takes the file's id first, then its
+	// origin, as apply does. update never creates, so a missing SLO fails here.
+	get := func(ctx context.Context, key string) (*dash0api.SloDefinition, error) {
+		return apiClient.GetSLO(ctx, key, dataset)
+	}
+	var id string
+	var before *dash0api.SloDefinition
+	if len(args) == 1 {
+		id = args[0]
+		before, err = get(ctx, id)
+	} else {
+		id, before, err = asset.RouteUpdate(ctx, nil, updateKey, identity, get)
+	}
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "SLO",

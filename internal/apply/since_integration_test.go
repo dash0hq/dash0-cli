@@ -2786,6 +2786,8 @@ func TestApply_Since_DeletesRemovedSignalToMetricsRule(t *testing.T) {
 			})
 			server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
 			deletePath := "/api/signal-to-metrics/" + tc.identifier
+			// --since reads an id-only rule at its id before it deletes there.
+			server.On(http.MethodGet, deletePath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "signaltometricsrules/get_success.json", Validator: testutil.RequireHeaders})
 			server.On(http.MethodDelete, deletePath, testutil.MockResponse{
 				StatusCode: http.StatusOK,
 				Body:       map[string]any{},
@@ -2865,6 +2867,8 @@ func TestApply_Since_DeletesRemovedSamplingRule(t *testing.T) {
 			})
 			server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
 			deletePath := "/api/sampling-rules/" + tc.identifier
+			// --since reads an id-only rule at its id before it deletes there.
+			server.On(http.MethodGet, deletePath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "samplingrules/get_success.json", Validator: testutil.RequireHeaders})
 			server.On(http.MethodDelete, deletePath, testutil.MockResponse{StatusCode: http.StatusOK, Validator: testutil.RequireHeaders})
 
 			cmd := newSinceTestCmd()
