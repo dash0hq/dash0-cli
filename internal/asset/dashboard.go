@@ -211,12 +211,10 @@ func ClearDashboardDeletedAt(dashboard *dash0api.DashboardDefinition) {
 	dashboard.Metadata.Annotations.Dash0ComdeletedAt = nil
 }
 
-// DashboardKeys resolves a dashboard's identifiers for update, preview, and
-// apply --since, in this order: the dash0.com/origin label, then
-// metadata.dash0Extensions.id, then the dash0.com/id label. apply and create
-// route by DashboardIdentity instead. The client's own
-// GetID reads the dash0.com/id label first, which would put the server UUID
-// ahead of the id the user chose. Read it before StripDashboardServerFields,
+// DashboardKeys resolves a dashboard's identifiers for the update argument
+// check and preview, in this order: the dash0.com/origin label, then
+// metadata.dash0Extensions.id, then the dash0.com/id label. apply, create,
+// update -f, and apply --since route by DashboardIdentity instead. Read it before StripDashboardServerFields,
 // which clears the dash0.com/id label.
 func DashboardKeys(dashboard *dash0api.DashboardDefinition) dash0api.AssetMetadata {
 	id := dashboardExtensionsID(dashboard)
@@ -233,15 +231,15 @@ func (k dashboardKeys) GetID() string                   { return k.id }
 func (k dashboardKeys) GetName() string                 { return k.name }
 func (dashboardKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }
 
-// DashboardKey returns the identifier update and apply --since address a
+// DashboardKey returns the identifier the document header and preview name a
 // dashboard by, or "".
 func DashboardKey(dashboard *dash0api.DashboardDefinition) string {
 	return PreferredKey(DashboardKeys(dashboard))
 }
 
 // DashboardAlias returns the dash0.com/id label when DashboardKey is another
-// key, or "". It names the same dashboard, so apply --since deletes at it when
-// the key is not found.
+// key, or "". It names the same dashboard, so preview reads it when the key is
+// not found.
 func DashboardAlias(dashboard *dash0api.DashboardDefinition) string {
 	if dashboard == nil || dashboard.Metadata.Labels == nil || dashboard.Metadata.Labels.Dash0Comid == nil {
 		return ""

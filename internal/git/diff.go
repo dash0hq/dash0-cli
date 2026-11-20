@@ -17,10 +17,9 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
-	// Alias is the dash0.com/id label of a dashboard keyed by its origin (see
-	// asset.DashboardAlias). The API ignores the origin on an update, so a
-	// dashboard that apply updated at this id has no origin, and the delete
-	// must fall back to the id.
+	// Alias is the origin of a routed document whose Identifier is its id
+	// (see asset.ExtractDeleteFallbacks). apply writes at the id when it
+	// exists, else at the origin, so the delete falls back to the origin.
 	Alias string
 	// InferredOriginName is the metadata.name of a routed document that named
 	// only a dash0.com/id. apply created it by its inferred origin when the id was

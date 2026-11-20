@@ -202,40 +202,48 @@ func WithInferredOriginWrites(ctx context.Context, writes InferredOriginWrites, 
 // false for kinds the router does not serve yet. Parse errors are reported
 // when the document is applied.
 func documentIdentity(doc Document, dataset *string) (Identity, bool) {
-	switch NormalizeKind(doc.Kind) {
+	identity, _, routed, err := parseRoutedIdentity(doc.Kind, doc.Raw, dataset)
+	return identity, routed && err == nil
+}
+
+// parseRoutedIdentity returns the identity apply routes the document by, the
+// name its inferred origin comes from, and false for kinds the router does
+// not serve yet.
+func parseRoutedIdentity(kind string, raw []byte, dataset *string) (identity Identity, name string, routed bool, err error) {
+	switch NormalizeKind(kind) {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, inferredName, err := ParseDashboard(doc.Raw)
+		dashboard, inferredName, err := ParseDashboard(raw)
 		if err != nil {
-			return Identity{}, false
+			return Identity{}, "", true, err
 		}
-		return DashboardIdentity(dashboard, inferredName, dataset), true
+		return DashboardIdentity(dashboard, inferredName, dataset), inferredName, true, nil
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
-		if err := dash0yaml.Unmarshal(doc.Raw, &team); err != nil {
-			return Identity{}, false
+		if err := dash0yaml.Unmarshal(raw, &team); err != nil {
+			return Identity{}, "", true, err
 		}
-		return TeamIdentity(&team), true
+		return TeamIdentity(&team), team.Metadata.Name, true, nil
 	case "notificationchannel":
 		var channel dash0api.NotificationChannelDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &channel); err != nil {
-			return Identity{}, false
+		if err := dash0yaml.Unmarshal(raw, &channel); err != nil {
+			return Identity{}, "", true, err
 		}
-		return NotificationChannelIdentity(&channel), true
+		return NotificationChannelIdentity(&channel), channel.Metadata.Name, true, nil
 	case "timeseriesaggregation":
 		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &aggregation); err != nil {
-			return Identity{}, false
+		if err := dash0yaml.Unmarshal(raw, &aggregation); err != nil {
+			return Identity{}, "", true, err
 		}
-		return TimeSeriesAggregationIdentity(&aggregation, dataset), true
+		return TimeSeriesAggregationIdentity(&aggregation, dataset), aggregation.Metadata.Name, true, nil
 	case "spamfilter":
 		// Both apiVersions share the metadata shape.
 		var filter dash0api.SpamFilter
-		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
-			return Identity{}, false
+		if err := dash0yaml.Unmarshal(raw, &filter); err != nil {
+			return Identity{}, "", true, err
 		}
-		return SpamFilterIdentity(&filter, dataset), true
+		return SpamFilterIdentity(&filter, dataset), filter.GetName(), true, nil
 	}
-	return Identity{}, false
+	return Identity{}, "", false, nil
 }
 
 // optionalString returns nil for "", so an empty label is left out of the body.

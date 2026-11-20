@@ -200,7 +200,8 @@ metadata:
     dash0.com/id: d54caa75-e94b-43c7-8470-23e4ab852ab6
 `))
 	require.NoError(t, err)
-	assert.Equal(t, "my-origin", identifier)
+	// The id first, as apply routes; ExtractDeleteFallbacks returns the origin.
+	assert.Equal(t, "d54caa75-e94b-43c7-8470-23e4ab852ab6", identifier)
 }
 
 func TestExtractIdentifier_TimeSeriesAggregationWithoutOriginFallsBackToID(t *testing.T) {
