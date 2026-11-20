@@ -55,7 +55,8 @@ Detailed guidelines are split into focused documents:
   There is no lookup by name.
   The origin is sent only on create; an update clears it from the body.
   The inferred origin is `dash0-cli_` plus a hash of the kind, `metadata.name`, and the dataset (`asset.InferOrigin`), with no clock, randomness, or file path.
-  Two documents with the same inferred origin fail validation (`asset.CheckInferredOriginCollisions`).
+  Two documents without an id or an origin that get the same inferred origin fail validation (`asset.CheckInferredOriginCollisions`).
+  A document whose id is not found fails at write time when another document of the run already wrote its inferred origin (`asset.InferredOriginWrites`).
   `TestRouter_EveryKindFollowsTheSameOrder` checks every kind in `ValidKinds`; kinds not routed yet sit in its `notRoutedYet` list.
   The ID field varies by asset type:
   - Check rules: top-level `id` field (`PrometheusAlertRule.Id`)

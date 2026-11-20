@@ -1810,14 +1810,14 @@ func runSinceTeamDeletion(t *testing.T, labels string) string {
 	return stderr
 }
 
-// TestApply_Since_TeamIDOnlyDeletionWarns is the team analogue of the SLO
-// warning above: an id-only team whose id was not found took ImportTeam's
-// POST fallback, so the live team sits at a server-assigned id.
+// TestApply_Since_TeamIDOnlyDeletionWarns: a team that an earlier CLI version
+// created by POST sits at a server-assigned id, which --since cannot find.
 func TestApply_Since_TeamIDOnlyDeletionWarns(t *testing.T) {
 	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
 	stderr := runSinceTeamDeletion(t, "    dash0.com/id: "+teamID+"\n")
 	assert.Contains(t, stderr, "warning: team ")
 	assert.Contains(t, stderr, "("+teamID+") was identified by dash0.com/id alone")
+	assert.Contains(t, stderr, "an earlier dash0 version created by POST")
 }
 
 // TestApply_Since_TeamOriginDeletionDoesNotWarn confirms the team warning
@@ -1827,12 +1827,9 @@ func TestApply_Since_TeamOriginDeletionDoesNotWarn(t *testing.T) {
 	assert.NotContains(t, stderr, "identified by dash0.com/id alone")
 }
 
-// TestApply_Since_SpamFilterIDOnlyDeletionWarns is a regression test for a
-// gap where deleting a spam filter identified by dash0.com/id alone gave no
-// indication that the id recorded in git history might no longer match the
-// filter's actual live id (the server reassigns an ID-only filter's id on
-// its first PUT — see asset.ImportSpamFilter) — the delete could silently
-// miss the real live filter with no diagnostic at all.
+// TestApply_Since_SpamFilterIDOnlyDeletionWarns: a spam filter that an earlier
+// CLI version created by POST sits at a server-assigned id, which --since
+// cannot find.
 func TestApply_Since_SpamFilterIDOnlyDeletionWarns(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
@@ -1892,6 +1889,7 @@ spec:
 
 	require.NoError(t, cmdErr)
 	assert.Contains(t, stderr, "spam filter \"Drop noisy health checks\" (spam-id-only) was identified by dash0.com/id alone")
+	assert.Contains(t, stderr, "an earlier dash0 version created by POST")
 }
 
 // TestApply_Since_SpamFilterOriginDeletionDoesNotWarn confirms the warning
