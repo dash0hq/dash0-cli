@@ -98,7 +98,7 @@ func (p *page) podCard(title, key, rankKey, unit string, width, rows int) ditt0.
 	if n > len(ss) {
 		title += fmt.Sprintf(" · busiest %d of %d", len(ss), n)
 	}
-	return p.cardOf(title, unit, ss, width, rows, false)
+	return p.cardOf(title, unit, ss, width, rows, oneAxis)
 }
 
 // Whether the target served any request in the window. Under min the requests can be all zeros while other pods
@@ -137,14 +137,15 @@ func heading(title, note string) ditt0.Block {
 }
 
 // Requests, errors and duration of the spans the pod serves: nil when it served none in the window
-func (p *page) redSection(cardW int, side bool, rows int) ditt0.Block {
+// Laid out as Dash0's service catalog: requests, the error percentage and duration side by side
+func (p *page) redSection(width int, side bool, rows int) ditt0.Block {
 	if !p.served() {
 		return nil
 	}
 	requests, errors := p.data["requests"], p.data["errors"]
 	since := "vs " + clock(p.win.start)
 	errTitle := "Errors"
-	if p.aggNote() != "" {
+	if p.aggNote() != "" || p.perPod {
 		errTitle += " · all pods"
 	}
 	stats := ditt0.Row(6,
@@ -153,11 +154,34 @@ func (p *page) redSection(cardW int, side bool, rows int) ditt0.Block {
 		stat("Duration p95", p.data["p95"], "seconds", "", since, "", false, p.theme),
 	)
 
-	var req, dur ditt0.Block
+	cardW := width
+	if side {
+		cardW = (width - 2) / 3
+	}
+	// The share of all the target's requests, in every view: one pod's errors over another's requests mean nothing.
+	// No failed request reads as that, not as a flat line on a made-up axis
+	errCard := func(rows int) ditt0.Block {
+		rate := p.data["errorRate"]
+		if hasSamples(rate) && !active(rate) {
+			return box(errTitle, ditt0.Block{ditt0.Text("No errors in this time range.", ditt0.DimStyle)}, cardW)
+		}
+		var errs []series
+		if hasSamples(rate) {
+			errs = []series{{Values: rate, Color: p.theme.Error.Inline}}
+		}
+		return p.cardOf(errTitle, "percent", errs, cardW, rows, oneAxis)
+	}
+	a := multiples
+	if side {
+		a = fitMultiples
+	}
+
+	var req, dur func(rows int) ditt0.Block
 	if p.perPod {
-		// One axis for every pod: comparing them is the point
-		req = p.podCard("Requests by pod", "requestsPods", "", "/s", cardW, rows)
-		dur = p.podCard("Duration p95 by pod", "p95Pods", "", "seconds", cardW, rows)
+		req = func(rows int) ditt0.Block { return p.podCard("Requests by pod", "requestsPods", "", "/s", cardW, rows) }
+		dur = func(rows int) ditt0.Block {
+			return p.podCard("Duration p95 by pod", "p95Pods", "", "seconds", cardW, rows)
+		}
 	} else {
 		var reqSeries []series
 		reqSeries = append(reqSeries, series{Name: "requests", Values: requests, Color: p.theme.ManagedSeriesColor(0)})
@@ -171,12 +195,16 @@ func (p *page) redSection(cardW int, side bool, rows int) ditt0.Block {
 				durSeries = append(durSeries, series{Name: q, Values: v, Color: p.theme.ManagedSeriesColor(i)})
 			}
 		}
-		req = p.cardOf("Requests"+p.aggNote(), "/s", reqSeries, cardW, rows, true)
-		dur = p.cardOf("Duration", "seconds", durSeries, cardW, rows, true)
+		req = func(rows int) ditt0.Block {
+			return p.cardOf("Requests"+p.aggNote(), "/s", reqSeries, cardW, rows, a)
+		}
+		dur = func(rows int) ditt0.Block { return p.cardOf("Duration", "seconds", durSeries, cardW, rows, a) }
 	}
-	charts := ditt0.Column(1, req, dur)
+	var charts ditt0.Block
 	if side {
-		charts = ditt0.Row(1, req, dur)
+		charts = ditt0.Row(1, fill(rows, req, errCard, dur)...)
+	} else {
+		charts = ditt0.Column(1, req(rows), errCard(rows), dur(rows))
 	}
 	return ditt0.Column(1, heading("Requests", "SERVER spans"), stats, charts)
 }
@@ -238,7 +266,7 @@ func (p *page) logsSection(width, rows int) ditt0.Block {
 		count("Errors", errs, p.theme.Error.Inline),
 		count("Warnings", warns, p.theme.Warning.Inline),
 	)
-	chart := p.cardOf("Log records per "+stepLabel(p.win.step), "", ss, width, rows, true)
+	chart := p.cardOf("Log records per "+stepLabel(p.win.step), "", ss, width, rows, multiples)
 	return ditt0.Column(1, heading("Logs", "records by severity"), stats, chart)
 }
 
