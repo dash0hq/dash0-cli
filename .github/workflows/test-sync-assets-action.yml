@@ -539,15 +539,16 @@ jobs:
 
       - name: Verify the dashboard was deleted
         run: |
-          # Dash0 soft-deletes assets (the dash0.com/deleted-at annotation), so a `get` by id
-          # still returns a deleted dashboard. `list` excludes soft-deleted assets, so that's
-          # the correct way to check absence -- mirrors test/roundtrip/test_dashboard_roundtrip.sh.
-          if ! LIST_JSON=$(dash0 dashboards list --all -o json); then
-            echo "Error: dashboards list -o json failed"
+          # Dash0 soft-deletes dashboards, so get returns this one with a dash0.com/deleted-at
+          # annotation, and a 404 also means it is gone. One get avoids `list -o json`, which
+          # fails when another dashboard in the dataset is deleted between the list and its fetch.
+          if ! OUT=$(dash0 dashboards get sync-assets-e2e-test -o json 2>get.err); then
+            grep -q 'status: 404' get.err && exit 0
+            cat get.err
             exit 1
           fi
-          if echo "$LIST_JSON" | jq -e '.[] | select(.metadata.dash0Extensions.id == "sync-assets-e2e-test")' > /dev/null 2>&1; then
-            echo "Error: dashboard still exists after --since sync"
+          if ! echo "$OUT" | jq -e '.metadata.annotations["dash0.com/deleted-at"] // empty' > /dev/null; then
+            echo "Error: dashboard is not deleted after --since sync"
             exit 1
           fi
 
