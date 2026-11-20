@@ -8,6 +8,11 @@ subtext: |
   Applying the same document again therefore updates the same asset, also without an identifier, and a time series aggregation no longer needs `dash0.com/origin`.
   The CLI sends the origin only when it creates an asset.
   Before, dashboards and teams were read by origin first, so a document whose origin and id named two different assets now updates the asset at the id.
-  `update -f` without an argument and `apply --since` pick the asset the same way, so `update`, `apply`, and `--since` of the same file act on the same asset.
+  `update -f` without an argument reads `dash0.com/id` first, then `dash0.com/origin`, as `apply` does.
+  It does not try the inferred origin.
+  So it fails for a file with neither label, and for a file with only an id that is not found.
+  `apply --since` deletes a removed document where `apply` wrote it.
+  That is its id, or its origin or inferred origin when the id is not found.
+  A removed document with neither label still fails the run.
   Two documents in one run that would get the same inferred origin fail validation.
 change_logs: [user]
