@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/diff"
@@ -27,47 +26,44 @@ import (
 // the kind upserts by. It reuses the documents of
 // TestUpdateKey_Characterization where a command shares the kind.
 func kindDocument(kind string) string {
-	byCommand := map[string]string{
-		"dashboard":              "dashboards",
-		"checkrule":              "check-rules",
-		"syntheticcheck":         "synthetic-checks",
-		"slo":                    "slos",
-		"view":                   "views",
-		"spamfilter":             "spam-filters v1alpha1",
-		"notificationchannel":    "notification-channels",
-		"team":                   "teams",
-		"timeseriesaggregation":  "time-series-aggregations",
-		"dataset":                "datasets",
-		"skill":                  "agent0 skills",
-		"awsmetricscrapeconfig":  "aws-metric-scrape-configs",
-		"generativeaievaluation": "evals",
-		"signaltometrics":        "signal-to-metrics-rules",
-		"sampling":               "sampling-rules",
-	}
 	identifiers := updateWithID
 	if kindUpsertsByOrigin[kind] {
 		identifiers = updateWithOrigin
 	}
-	var document string
 	switch kind {
 	case "ephemeraldashboard":
-		document = "kind: EphemeralDashboard\nmetadata:\n  name: checkout\n" + identifiers.labelBlock(false) + "spec:\n  ttl: 1d\n  display:\n    name: checkout\n"
+		return "kind: EphemeralDashboard\nmetadata:\n  name: checkout\n" + identifiers.labelBlock(false) + "spec:\n  ttl: 1d\n  display:\n    name: checkout\n"
 	case "persesdashboard":
-		document = "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n" + identifiers.labelBlock(true) + "spec:\n  display:\n    name: checkout\n  duration: 5m\n  panels: {}\n"
+		return "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n" + identifiers.labelBlock(true) + "spec:\n  display:\n    name: checkout\n  duration: 5m\n  panels: {}\n"
 	case "prometheusrule":
-		document = "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\n" + identifiers.labelBlock(true) +
+		return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\n" + identifiers.labelBlock(true) +
 			"spec:\n  groups:\n    - name: g\n      rules:\n        - alert: a\n          expr: up == 0\n        - record: r\n          expr: up\n"
 	}
 	for _, command := range updateCommands {
-		if command.name == byCommand[kind] {
-			document = command.document(identifiers)
+		if command.name == updateCommandByKind[kind] {
+			// The YAML decoder reads a plain n as false, so a name of n reads as "false".
+			return strings.ReplaceAll(command.document(identifiers), "name: n\n", "name: checkout\n")
 		}
 	}
-	if document == "" {
-		panic("no characterization document for kind " + kind)
-	}
-	// The YAML decoder reads a plain n as false, so a name of n reads as "false".
-	return strings.ReplaceAll(document, "name: n\n", "name: checkout\n")
+	panic("no characterization document for kind " + kind)
+}
+
+var updateCommandByKind = map[string]string{
+	"dashboard":              "dashboards",
+	"checkrule":              "check-rules",
+	"syntheticcheck":         "synthetic-checks",
+	"slo":                    "slos",
+	"view":                   "views",
+	"spamfilter":             "spam-filters v1alpha1",
+	"notificationchannel":    "notification-channels",
+	"team":                   "teams",
+	"timeseriesaggregation":  "time-series-aggregations",
+	"dataset":                "datasets",
+	"skill":                  "agent0 skills",
+	"awsmetricscrapeconfig":  "aws-metric-scrape-configs",
+	"generativeaievaluation": "evals",
+	"signaltometrics":        "signal-to-metrics-rules",
+	"sampling":               "sampling-rules",
 }
 
 var kindUpsertsByOrigin = map[string]bool{
@@ -98,8 +94,6 @@ func invalidKindDocument(kind string) string {
 		return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\nspec:\n  groups:\n    - name: g\n      rules: []\n"
 	case "spamfilter":
 		return "apiVersion: v9\nkind: Dash0SpamFilter\nmetadata:\n  name: checkout\nspec:\n  contexts: [log]\n  filter: []\n"
-	case "notificationchannel":
-		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0NotificationChannel\nmetadata:\n  name: checkout\nspec: [1]\n"
 	case "timeseriesaggregation":
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0TimeSeriesAggregation\nmetadata:\n  name: checkout\nspec: {}\n"
 	case "dataset":
@@ -226,9 +220,7 @@ type cliRun struct {
 // or a commit SHA.
 func runCLI(t *testing.T, server *testutil.MockServer, placeholders map[string]string, agentMode bool, args ...string) cliRun {
 	t.Helper()
-	previous := agentmode.Enabled
-	agentmode.Enabled = agentMode
-	t.Cleanup(func() { agentmode.Enabled = previous })
+	withAgentMode(t, agentMode)
 
 	requestsBefore := len(server.Requests())
 	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
@@ -293,7 +285,7 @@ type sinceCharacterization struct {
 func TestApplySince_KindCharacterization(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	repoDir, ref := testutil.BuildGitScenario(t, "every-kind-deletion")
-	placeholders := map[string]string{"$DIR": repoDir, "$REF": ref}
+	placeholders := map[string]string{"$REF": ref}
 
 	want := map[string]sinceCharacterization{
 		"dashboard": {
