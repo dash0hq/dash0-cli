@@ -3286,6 +3286,7 @@ Only `source-map` is supported yet; the other types fail with a "not supported y
 | `--output` | `table` (`json` in agent mode) | Output format: `table` or `json` |
 | `--dry-run` | `false` | List what would be uploaded without changing files or uploading |
 | `--force` | `false` | Upload even when Dash0 already has the debug information |
+| `--concurrency` | `8` | Maximum number of uploads in flight at the same time |
 
 Dash0 finds the source map of a profile frame by one of two keys:
 
@@ -3323,6 +3324,9 @@ Pass `--source-map` to name the map of a single script yourself.
 Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
 
 Source maps that Dash0 already has are skipped, and so are copies of a script that share one debug ID.
+The command uploads up to `--concurrency` source maps at the same time and prints the results in file order.
+After an upload fails, no new upload starts, and the uploads in flight finish and are printed before the command fails.
+Each upload in flight holds its script and source map in memory, so lower `--concurrency` when memory is tight.
 A step that fails with a temporary error, such as an unavailable service, a call that gets no answer, or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
 When the answer to the request that starts an upload is lost, the service can treat the upload as in progress, and the retry fails with a hint to run the command again with `--force`.
 When the debuginfo service sends the upload to several destinations, the command uploads to each one and checks again until every destination has the file; a file that is still not delivered after `--max-retries` checks fails.
