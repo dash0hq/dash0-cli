@@ -12,10 +12,13 @@ name: Synchronize docs to dash0.com/docs
 #
 #   - full sync (workflow_call from a release workflow, or workflow_dispatch with dry-run unchecked):
 #     runs the sync-docs-action end-to-end and opens/updates a PR on the target repository.
-#     Requires the DOCS_WEBSITE_PR_TOKEN secret plus SYNC_DOCUMENTATION_TARGET_REPOSITORY and
-#     SYNC_DOCUMENTATION_TARGET_DIRECTORY. v0.4.0 removed the target-coordinate defaults so that
-#     public callers do not re-publish the target repo's name and internal layout; keep them in
-#     secrets rather than hardcoded in this file.
+#     Requires the SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY
+#     secrets. v0.4.0 removed the target-coordinate defaults so that public callers do not
+#     re-publish the target repo's name and internal layout; keep them in secrets rather than
+#     hardcoded in this file. The token for the target repository is a short-lived installation
+#     token of the GitHub App "Dash0 Docs Sync" (dash0-docs-sync), minted per run from the
+#     DOCS_SYNC_APP_CLIENT_ID organization variable and the DOCS_SYNC_APP_PRIVATE_KEY organization
+#     secret.
 
 on:
   workflow_dispatch:
@@ -31,8 +34,8 @@ on:
         type: boolean
         default: false
     secrets:
-      DOCS_WEBSITE_PR_TOKEN:
-        description: Fine-grained PAT scoped to the target docs repository with contents+pull-requests write. Only required when dry-run is false.
+      DOCS_SYNC_APP_PRIVATE_KEY:
+        description: Private key of the GitHub App that opens the pull request in the documentation repository. Only required when dry-run is false.
         required: false
       SYNC_DOCUMENTATION_TARGET_REPOSITORY:
         description: owner/name of the target docs repository. Only required when dry-run is false.
@@ -51,9 +54,20 @@ jobs:
       - name: checkout dash0-cli
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: create GitHub App token for the documentation repository
+        id: app-token
+        if: ${{ !inputs.dry-run }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DOCS_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          repositories: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       # sync-docs-action — https://github.com/dash0hq/sync-docs-action/releases
       # `dry-run: 'true'` runs setup and the transformation engine (including the coverage check),
-      # then stops before any target-side operation, so no docs-website PAT or target coordinates
+      # then stops before any target-side operation, so no app token or target coordinates
       # are needed on PR builds. `source-root` and `transformations-file` inherit their defaults
       # (`.` and `.github/workflows/sync-docs/transformations.yaml`).
       - name: sync docs to dash0.com/docs
@@ -62,7 +76,7 @@ jobs:
           dry-run: ${{ inputs.dry-run }}
           target-repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
           target-directory: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
-          target-github-token: ${{ secrets.DOCS_WEBSITE_PR_TOKEN }}
+          target-github-token: ${{ steps.app-token.outputs.token }}
           pr-branch: sync-dash0-cli-docs
           pr-title: 'docs: synchronize dash0-cli documentation'
           pr-body: |
