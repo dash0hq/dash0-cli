@@ -62,6 +62,11 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 		}
 	}
 	route := Route[T]{Key: identity.CreateOrigin(), Create: true}
+	if claim, ok := ctx.Value(inferredOriginClaimKey{}).(inferredOriginClaim); ok {
+		if err := claim.writes.Claim(identity, route.Key, claim.location); err != nil {
+			return Route[T]{}, err
+		}
+	}
 	stored, err := get(ctx, route.Key)
 	if err != nil {
 		return route, ignoreNotFound(err)
@@ -123,16 +128,16 @@ func identityOf(kind, name string, dataset *string, asset routedAsset) Identity 
 	return Identity{ID: asset.GetID(), Origin: asset.GetOrigin(), Inferred: InferKindOrigin(kind, name, dataset)}
 }
 
-// CheckInferredOriginCollisions fails documents that would get the same
-// inferred origin, because the second would replace the first. A document
-// with only an id counts too: the router creates it by the inferred origin
-// when the id is not found, and that is not known before the run.
+// CheckInferredOriginCollisions fails documents without an id or an origin
+// that would get the same inferred origin, because the second would replace
+// the first. A document with an id writes by the inferred origin only when the
+// id is not found, which only the run knows; InferredOriginWrites checks that.
 func CheckInferredOriginCollisions(documents []Document, dataset *string) []string {
 	var origins []string
 	locations := make(map[string][]string)
 	for _, doc := range documents {
 		identity, ok := documentIdentity(doc, dataset)
-		if !ok || identity.Origin != "" {
+		if !ok || identity.ID != "" || identity.Origin != "" {
 			continue
 		}
 		if _, seen := locations[identity.Inferred]; !seen {
@@ -150,6 +155,47 @@ func CheckInferredOriginCollisions(documents []Document, dataset *string) []stri
 		}
 	}
 	return collisions
+}
+
+// InferredOriginWrites maps each inferred origin a run writes to the document
+// that writes it, so a second document writing there fails instead of
+// replacing the first.
+type InferredOriginWrites map[string]string
+
+// Claim records that the document at location writes key. It fails when
+// another document of the run already writes key as its inferred origin.
+func (w InferredOriginWrites) Claim(identity Identity, key, location string) error {
+	if identity.Origin != "" || key != identity.Inferred {
+		return nil
+	}
+	if first, ok := w[key]; ok && first != location {
+		return fmt.Errorf("%s also writes inferred origin %q in this run, so one document would replace the other's asset; set dash0.com/origin on both", first, key)
+	}
+	w[key] = location
+	return nil
+}
+
+// ClaimDocument is Claim for a document whose write targets key, for callers
+// that plan documents without routing them in run order.
+func (w InferredOriginWrites) ClaimDocument(doc Document, dataset *string, key string) error {
+	identity, ok := documentIdentity(doc, dataset)
+	if !ok {
+		return nil
+	}
+	return w.Claim(identity, key, doc.Location())
+}
+
+type inferredOriginClaimKey struct{}
+
+type inferredOriginClaim struct {
+	writes   InferredOriginWrites
+	location string
+}
+
+// WithInferredOriginWrites makes RouteDocument claim the inferred origin the
+// document at location writes, before the write.
+func WithInferredOriginWrites(ctx context.Context, writes InferredOriginWrites, location string) context.Context {
+	return context.WithValue(ctx, inferredOriginClaimKey{}, inferredOriginClaim{writes: writes, location: location})
 }
 
 // documentIdentity returns the identity apply routes the document by, and

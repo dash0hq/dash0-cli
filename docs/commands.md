@@ -837,7 +837,8 @@ For a document without `dash0.com/origin`, the CLI infers `dash0-cli_` followed 
 The same document gets the same origin from every checkout, and a different one in every dataset.
 Renaming `metadata.name` changes the inferred origin, so the next apply creates a new asset.
 Set `dash0.com/origin` to keep the asset across a rename.
-Two documents in one run that would get the same inferred origin fail validation before anything is written.
+Two documents in one run without `dash0.com/id` or `dash0.com/origin` that would get the same inferred origin fail validation before anything is written.
+A document with only a `dash0.com/id` writes by its inferred origin when the id is not found, so `apply` and `diff` fail at that document when another document of the run already writes there.
 `apply --since` deletes a removed document with only a `dash0.com/id` at that id, or at its inferred origin when the id is not found, because that is where `apply` wrote it.
 
 The other kinds follow the per-kind rules in the table below.

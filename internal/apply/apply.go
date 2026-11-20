@@ -227,8 +227,9 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 	// Apply each document
 	var applied []string
+	writes := asset.InferredOriginWrites{}
 	for _, doc := range datasetsFirst(documents) {
-		results, applyErr := applyDocument(ctx, apiClient, doc, dataset)
+		results, applyErr := applyDocument(asset.WithInferredOriginWrites(ctx, writes, doc.Location()), apiClient, doc, dataset)
 		for _, r := range results {
 			displayKind := asset.KindDisplayName(r.kind)
 			label := asset.FormatNameAndID(r.name, r.id)

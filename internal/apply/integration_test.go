@@ -3058,6 +3058,72 @@ func TestApply_InferredOriginCollisionFailsValidation(t *testing.T) {
 	assert.Empty(t, server.Requests(), "validation must fail before anything is written")
 }
 
+// Two documents with the same name and different ids write at their ids when
+// both ids exist, so validation must not fail them.
+func TestApply_DocumentsWithIDsAndTheSameNameWriteAtTheirIDs(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := writeIDOnlyCheckoutDashboards(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, id := range []string{"id-a", "id-b"} {
+		server.On(http.MethodGet, apiPathDashboards+"/"+id, testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   testutil.FixtureDashboardsImportSuccess,
+			Validator:  testutil.RequireHeaders,
+		})
+	}
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+
+	require.NoError(t, err)
+	assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/id-a"))
+	assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/id-b"))
+}
+
+// When neither id exists, both documents fall back to the same inferred
+// origin, and the second must fail instead of replacing the first.
+func TestApply_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := writeIDOnlyCheckoutDashboards(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+
+	origin := asset.InferOrigin("Dashboard", "checkout", "default")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), "b.yaml")
+	assert.Contains(t, err.Error(), origin)
+	var puts int
+	for _, r := range server.Requests() {
+		if r.Method == http.MethodPut {
+			puts++
+		}
+	}
+	assert.Equal(t, 1, puts, "the second document must not write")
+}
+
+func writeIDOnlyCheckoutDashboards(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+	return tmpDir
+}
+
 // The cross-dataset 400 must keep its explanation instead of being flattened
 // into "invalid request" by HandleAPIError.
 func TestApply_TimeSeriesAggregation_WrongDatasetHint(t *testing.T) {

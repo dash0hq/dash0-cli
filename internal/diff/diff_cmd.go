@@ -132,6 +132,9 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 	if err != nil {
 		return err
 	}
+	if err := checkInferredOriginWrites(planned, dataset); err != nil {
+		return err
+	}
 	warnDeniedReads(planned, dataset)
 
 	pending, err := renderReport(planned, sincePlan, fromDirectory, flags.File, flags.Since)
@@ -238,4 +241,20 @@ func createsDataset(planned []plannedDoc, dataset *string) bool {
 		}
 	}
 	return false
+}
+
+// checkInferredOriginWrites fails like apply when two documents write the same
+// inferred origin. Documents are planned in parallel, so the check runs after
+// planning, in document order.
+func checkInferredOriginWrites(planned []plannedDoc, dataset *string) error {
+	writes := asset.InferredOriginWrites{}
+	for _, p := range planned {
+		if len(p.plans) != 1 {
+			continue
+		}
+		if err := writes.ClaimDocument(p.doc, dataset, p.plans[0].plan.Key); err != nil {
+			return fmt.Errorf("%s (%s): %w", p.doc.Location(), p.doc.Kind, err)
+		}
+	}
+	return nil
 }

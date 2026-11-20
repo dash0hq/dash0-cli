@@ -184,9 +184,26 @@ func TestCheckInferredOriginCollisions(t *testing.T) {
 	assert.Contains(t, collisions[0], "b.yaml")
 	assert.Contains(t, collisions[0], InferOrigin("Dashboard", "checkout", "default"))
 
-	// An id that is not found falls back to the inferred origin.
+	// A document with an id writes by the inferred origin only when the id is
+	// not found, so validation leaves it to InferredOriginWrites.
 	withID := func(id string) string {
 		return "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec: {}\n"
 	}
-	assert.Len(t, CheckInferredOriginCollisions([]Document{doc("a.yaml", withID("i1")), doc("b.yaml", withID("i2"))}, nil), 1)
+	assert.Empty(t, CheckInferredOriginCollisions([]Document{doc("a.yaml", withID("i1")), doc("b.yaml", withID("i2"))}, nil))
+}
+
+func TestInferredOriginWrites_Claim(t *testing.T) {
+	inferred := InferOrigin("Dashboard", "checkout", "default")
+	idOnly := Identity{ID: "i1", Inferred: inferred}
+
+	writes := InferredOriginWrites{}
+	require.NoError(t, writes.Claim(idOnly, "i1", "a.yaml"), "a write at the id claims nothing")
+	require.NoError(t, writes.Claim(idOnly, "i1", "b.yaml"))
+	require.NoError(t, writes.Claim(Identity{Origin: "o", Inferred: inferred}, "o", "c.yaml"))
+
+	require.NoError(t, writes.Claim(idOnly, inferred, "a.yaml"))
+	err := writes.Claim(Identity{ID: "i2", Inferred: inferred}, inferred, "b.yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), inferred)
 }
