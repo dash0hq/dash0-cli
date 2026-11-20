@@ -76,7 +76,7 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 }
 
 // OriginMismatchError reports a document whose id names an asset that Dash0
-// stores with another origin. apply never changes a stored origin.
+// stores with another origin. The CLI never changes a stored origin.
 type OriginMismatchError struct {
 	ID       string
 	Stored   string
@@ -84,7 +84,7 @@ type OriginMismatchError struct {
 }
 
 func (e *OriginMismatchError) Error() string {
-	return fmt.Sprintf("the asset with id %q has origin %q in Dash0, but the document sets origin %q, and apply never changes a stored origin"+
+	return fmt.Sprintf("the asset with id %q has origin %q in Dash0, but the document sets origin %q, and the CLI never changes a stored origin"+
 		"\nHint: remove dash0.com/origin from the document to update that asset, or remove dash0.com/id to create or update the asset with origin %q",
 		e.ID, e.Stored, e.Document, e.Document)
 }

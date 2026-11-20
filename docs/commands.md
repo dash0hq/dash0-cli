@@ -683,8 +683,9 @@ Aliases: `add`
 
 Update an existing asset from a YAML or JSON file.
 If the ID argument is omitted, `update` takes the identifier from the file that `apply` upserts the asset by (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
-For the kinds that follow the [routing rule](#routing-rule), `update` reads `dash0.com/origin` before `dash0.com/id`, while `apply` reads the id first, so a file whose id and origin name different assets updates the asset at the origin.
-A file without that identifier fails, even when it carries the other one.
+For the kinds that follow the [routing rule](#routing-rule), `update` reads `dash0.com/id` first, then `dash0.com/origin` when the id is not found, as `apply` does.
+`update` never creates an asset, so it fails when neither exists.
+For the other kinds, a file without that identifier fails, even when it carries the other one.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
 
@@ -4046,7 +4047,7 @@ Aliases: `add`
 ### `notification-channels update` (experimental)
 
 Update an existing notification channel from a YAML or JSON definition file.
-If the ID argument is omitted, the `dash0.com/origin` label is read from the file, as `apply` does; a file without it fails.
+If the ID argument is omitted, `update` reads the file's `dash0.com/id` label first, then its `dash0.com/origin` label when the id is not found, as `apply` does; a file with neither fails.
 
 ```bash
 dash0 -X notification-channels update [id] -f <file> [--dry-run]
@@ -4717,8 +4718,7 @@ dash0 -X teams update [<id>] -f <file> [--dry-run]
 ```
 
 The file must have the same shape `teams create -f` accepts and `teams get -o yaml` produces, so the export → edit → reapply loop round-trips cleanly.
-If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/origin` label (preferred) or `dash0.com/id` label.
-`apply` reads the id first instead; see the [routing rule](#routing-rule).
+If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/id` label, then its `dash0.com/origin` label, as `apply` does; see the [routing rule](#routing-rule).
 When both a positional `<id>` and one of the labels are present, the argument must match the origin or the id in the file; otherwise the command fails before any API call.
 
 Unlike `teams create -f`, `teams update -f` does not create a new team on 404 — the team must already exist.

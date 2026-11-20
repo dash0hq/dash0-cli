@@ -100,8 +100,7 @@ dash0 -X teams update [<id>] -f <file> [--dry-run]
 ```
 
 The file must have the same shape `teams create -f` accepts and `teams get -o yaml` produces, so the export → edit → reapply loop round-trips cleanly.
-If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/origin` label (preferred) or `dash0.com/id` label.
-`apply` reads the id first instead; see the [routing rule](#routing-rule).
+If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/id` label, then its `dash0.com/origin` label, as `apply` does; see the [routing rule](#routing-rule).
 When both a positional `<id>` and one of the labels are present, the argument must match the origin or the id in the file; otherwise the command fails before any API call.
 
 Unlike `teams create -f`, `teams update -f` does not create a new team on 404 — the team must already exist.

@@ -1037,12 +1037,13 @@ spec:
 }
 
 // TestUpdateTeamFromFile_IDFromFile omits the positional argument and lets
-// the CLI derive the addressor from the file. Origin wins over id, matching
-// asset.ImportTeam.
+// the CLI derive the addressor from the file. The id wins over the origin,
+// as in apply, so update and apply of the same file change the same team.
 func TestUpdateTeamFromFile_IDFromFile(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	const origin = "backend-team-origin"
+	// The fixture stores the team with this origin, so the id route accepts it.
+	const origin = "dash0-cli"
 	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	teamsPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
 
@@ -1085,7 +1086,7 @@ spec:
 	})
 	require.NoError(t, err)
 
-	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "origin must win over id when both are present in the file")
+	assertPUTPath(t, server.Requests(), "/api/teams/"+teamID, "id must win over origin when both are present in the file, as in apply")
 }
 
 // TestUpdateTeamFromFile_ArgFileMismatch pins the safety check that stops
