@@ -6,6 +6,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDashboardDeletedAt(t *testing.T) {
@@ -60,4 +61,18 @@ func TestClearDashboardDeletedAt(t *testing.T) {
 			assert.Equal(t, tt.want, tt.dashboard)
 		})
 	}
+}
+
+func TestDashboardIdentity_PersesTitleDoesNotMoveInferredOrigin(t *testing.T) {
+	perses := func(title string) []byte {
+		return []byte("apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: " + title + "\n")
+	}
+	before, beforeName, err := ParseDashboard(perses("Checkout"))
+	require.NoError(t, err)
+	after, afterName, err := ParseDashboard(perses("Checkout overview"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "checkout", beforeName)
+	assert.Equal(t, DashboardIdentity(before, beforeName, nil).Inferred, DashboardIdentity(after, afterName, nil).Inferred)
+	assert.Equal(t, "Checkout overview", dash0api.GetDashboardName(after), "the title still reaches the API")
 }

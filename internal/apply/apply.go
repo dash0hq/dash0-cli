@@ -303,11 +303,11 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
 	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
+		dashboard, inferredName, err := asset.ParseDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
 		}
-		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
+		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, inferredName, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dashboard",

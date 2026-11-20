@@ -8,16 +8,38 @@ import (
 	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/google/uuid"
 )
 
-// ImportDashboard creates or updates a dashboard through RouteDocument. A PUT
-// to a deleted dashboard brings it back, which is reported as ActionRestored.
-func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportResult, error) {
+// ParseDashboard parses a Dashboard, EphemeralDashboard, or PersesDashboard
+// document, and returns the metadata.name to infer its origin from. The
+// PersesDashboard conversion replaces metadata.name with the title, and a new
+// title must not move the dashboard to a new inferred origin.
+func ParseDashboard(raw []byte) (dashboard *dash0api.DashboardDefinition, inferredName string, err error) {
+	dashboard, err = dash0yaml.ParseAsDashboard(raw)
+	if err != nil {
+		return nil, "", err
+	}
+	kind, err := dash0yaml.DetectKind(raw)
+	if err != nil || NormalizeKind(kind) != "persesdashboard" {
+		return dashboard, dashboard.Metadata.Name, nil
+	}
+	var perses dash0api.PersesDashboard
+	if err := dash0yaml.Unmarshal(raw, &perses); err != nil {
+		return nil, "", err
+	}
+	return dashboard, perses.Metadata.Name, nil
+}
+
+// ImportDashboard creates or updates a dashboard through RouteDocument, and
+// infers its origin from inferredName (see ParseDashboard). A PUT to a deleted
+// dashboard brings it back, which is reported as ActionRestored.
+func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, inferredName string, dataset *string) (ImportResult, error) {
 	if err := ValidateDashboard(dashboard); err != nil {
 		return ImportResult{}, err
 	}
-	plan, err := planDashboard(ctx, apiClient, dashboard, dataset)
+	plan, err := planDashboard(ctx, apiClient, dashboard, inferredName, dataset)
 	// A failed origin read does not block the write: the PUT reports the same
 	// error. A kind mismatch does, because the API rejects that write.
 	if _, ok := errors.AsType[*DashboardKindMismatchError](err); ok || plan.Key == "" {
@@ -50,16 +72,16 @@ func ImportDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *
 
 // PlanDashboard reads the stored dashboard that ImportDashboard would write.
 // It returns any preflight error other than "not found".
-func PlanDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportPlan, error) {
+func PlanDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, inferredName string, dataset *string) (ImportPlan, error) {
 	if err := ValidateDashboard(dashboard); err != nil {
 		return ImportPlan{}, err
 	}
-	return planDashboard(ctx, apiClient, dashboard, dataset)
+	return planDashboard(ctx, apiClient, dashboard, inferredName, dataset)
 }
 
-func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, dataset *string) (ImportPlan, error) {
+func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *dash0api.DashboardDefinition, inferredName string, dataset *string) (ImportPlan, error) {
 	// Read the identity first: the strip clears the dash0.com/id label.
-	identity := DashboardIdentity(dashboard, dataset)
+	identity := DashboardIdentity(dashboard, inferredName, dataset)
 	dash0api.StripDashboardServerFields(dashboard)
 	get := func(ctx context.Context, key string) (*dash0api.DashboardDefinition, error) {
 		return apiClient.GetDashboard(ctx, key, dataset)
@@ -86,11 +108,12 @@ func planDashboard(ctx context.Context, apiClient dash0api.Client, dashboard *da
 
 // DashboardIdentity returns what RouteDocument routes a dashboard by. The id is
 // the dash0.com/id label; metadata.dash0Extensions.id names the origin, which
-// ValidateDashboard keeps equal to the dash0.com/origin label.
-func DashboardIdentity(dashboard *dash0api.DashboardDefinition, dataset *string) Identity {
+// ValidateDashboard keeps equal to the dash0.com/origin label. The inferred
+// origin comes from inferredName (see ParseDashboard).
+func DashboardIdentity(dashboard *dash0api.DashboardDefinition, inferredName string, dataset *string) Identity {
 	identity := Identity{
 		Origin:   dashboard.GetOrigin(),
-		Inferred: InferKindOrigin(string(dashboard.Kind), dashboard.Metadata.Name, dataset),
+		Inferred: InferKindOrigin(string(dashboard.Kind), inferredName, dataset),
 	}
 	if identity.Origin == "" {
 		identity.Origin = dashboardExtensionsID(dashboard)

@@ -125,7 +125,7 @@ func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err 
 		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
 			return "", "", err
 		}
-		if DashboardIdentity(&dashboard, nil).Origin == "" {
+		if DashboardIdentity(&dashboard, dashboard.Metadata.Name, nil).Origin == "" {
 			inferredOriginName = dashboard.Metadata.Name
 		}
 		return DashboardAlias(&dashboard), inferredOriginName, nil

@@ -204,11 +204,11 @@ func WithInferredOriginWrites(ctx context.Context, writes InferredOriginWrites, 
 func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 	switch NormalizeKind(doc.Kind) {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
+		dashboard, inferredName, err := ParseDashboard(doc.Raw)
 		if err != nil {
 			return Identity{}, false
 		}
-		return DashboardIdentity(dashboard, dataset), true
+		return DashboardIdentity(dashboard, inferredName, dataset), true
 	case "team":
 		var team dash0api.TeamDefinitionV1Alpha1
 		if err := dash0yaml.Unmarshal(doc.Raw, &team); err != nil {

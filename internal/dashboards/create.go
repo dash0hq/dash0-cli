@@ -6,7 +6,6 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -49,7 +48,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	dashboard, err := dash0yaml.ParseAsDashboard(data)
+	dashboard, inferredName, err := asset.ParseDashboard(data)
 	if err != nil {
 		return err
 	}
@@ -71,7 +70,7 @@ func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 		return err
 	}
 
-	result, importErr := asset.ImportDashboard(ctx, apiClient, dashboard, client.ResolveDataset(ctx, flags.Dataset))
+	result, importErr := asset.ImportDashboard(ctx, apiClient, dashboard, inferredName, client.ResolveDataset(ctx, flags.Dataset))
 	if importErr != nil {
 		return client.HandleAPIError(importErr, client.ErrorContext{
 			AssetType: "dashboard",

@@ -1137,7 +1137,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the create request contains the Perses spec fields
-	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "Test Perses Dashboard", "default"))
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "test-perses-dashboard", "default"))
 	require.NotNil(t, createReq, "expected a create request for dashboard")
 	var dashboard dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
@@ -1184,7 +1184,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the spec.config wrapper was unwrapped
-	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "V1Alpha2 Dashboard", "default"))
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "v1alpha2-dashboard", "default"))
 	require.NotNil(t, createReq, "expected a create request for dashboard")
 	var dashboard dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
