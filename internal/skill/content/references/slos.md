@@ -120,6 +120,6 @@ spec:
       target: 0.99
 ```
 
-`dash0.com/origin` — not `dash0.com/id` — is the upsert key for SLOs: SLO IDs are assigned by the server (`slo_<ulid>`), so origin is the only identifier a hand-written document can pin, and it is what makes `apply` idempotent. See the `apply` topic for the full upsert-key selection rules.
+`create` and `apply` read `dash0.com/id` first and update the SLO at that id when it exists. Otherwise they PUT to `dash0.com/origin`, or to an origin inferred from the kind, `metadata.name`, and the dataset, so applying the same document again updates the same SLO and never creates a second one. The server assigns ids, so a hand-written document pins `dash0.com/origin` or relies on the inferred one. See the `apply` topic for the routing rule.
 
 `slos get` also returns a deleted SLO: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `slos list` does not show deleted SLOs. `apply`, `slos create`, and `slos update` with the origin of a deleted SLO bring it back and print `restored`; `apply` and `slos update` then show a diff of any other fields that changed. `slos update --dry-run` prints `would be restored` instead, and the SLO stays deleted.
