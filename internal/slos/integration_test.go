@@ -497,6 +497,36 @@ func TestUpdateSLO_PositionalOriginMatchesFileCarryingBothLabels(t *testing.T) {
 		"the positional origin must address the SLO, not be rejected as mismatching the file's id")
 }
 
+func TestUpdateSLO_PositionalIDFailsWhenStoredOriginDiffers(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	yamlFile := filepath.Join(t.TempDir(), "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels(
+		"    dash0.com/origin: another-origin\n    dash0.com/id: "+sloID+"\n")), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", sloID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the CLI never changes a stored origin")
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, http.MethodPut, req.Method)
+	}
+}
+
 func TestDeleteSLO_Success(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

@@ -11,4 +11,5 @@ subtext: |
   An asset that an earlier version created by POST, without an origin in the file, is not found by the inferred origin, so the next apply creates a second one; for an Agent0 skill it fails with a name collision instead.
   Set `dash0.com/origin` or `dash0.com/id` in the file to keep updating the existing asset.
   `update -f` without an argument and `apply --since` follow the same order.
+  `update <id> -f` with the file's id now also fails when the stored origin differs from the one in the file, for every kind that follows the routing rule, as `apply` does.
 change_logs: [user]

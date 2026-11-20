@@ -88,6 +88,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	if len(args) == 1 {
 		id = args[0]
 		before, err = get(ctx, id)
+		if err == nil {
+			err = asset.CheckStoredOrigin(id, identity, before)
+		}
 	} else {
 		id, before, err = asset.RouteUpdate(ctx, nil, updateKey, identity, get)
 	}

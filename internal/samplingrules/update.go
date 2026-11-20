@@ -91,8 +91,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 			AssetID:   key,
 		})
 	}
-	// SamplingDefinition has no GetOrigin method, so RouteUpdate cannot compare
-	// the stored origin itself.
+	// SamplingDefinition has no GetOrigin method, so asset.CheckStoredOrigin
+	// cannot compare the stored origin itself.
 	if stored := asset.GetSamplingRuleOrigin(before); key == identity.ID && identity.Origin != "" && stored != "" && stored != identity.Origin {
 		return &asset.OriginMismatchError{ID: key, Stored: stored, Document: identity.Origin}
 	}
