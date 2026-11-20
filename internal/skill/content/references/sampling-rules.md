@@ -97,4 +97,4 @@ spec:
     rate: 100
 ```
 
-`metadata.labels["dash0.com/origin"]` is the upsert key: `create` and `apply` PUT to that origin, which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only `dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every apply; pin `dash0.com/origin` instead.
+`create` and `apply` read `dash0.com/id` first and update the rule at that id when it exists. Otherwise they PUT to `dash0.com/origin`, or to an origin inferred from the kind, `metadata.name`, and the dataset, so applying the same document again updates the same rule and never creates a second one. The server assigns ids, so a hand-written document pins `dash0.com/origin` or relies on the inferred one. See the `apply` topic for the routing rule.

@@ -4267,7 +4267,7 @@ Use `-o yaml` to get the full definition, suitable for editing and re-applying.
 
 Create an Agent0 custom skill from a YAML or JSON definition file.
 The file must carry a `SKILL.md` in `spec.files`; the skill's name is the `name` in its frontmatter.
-When the file sets `dash0.com/origin`, the command upserts by that origin, so a skill with that origin is updated.
+The command follows the [routing rule](#routing-rule): it reads `dash0.com/id` first and updates the skill at that id when it exists, and otherwise writes by `dash0.com/origin` or by the origin it infers from the skill name.
 `spec.source` and `metadata.annotations["dash0.com/enabled"]` are never sent.
 
 ```bash
