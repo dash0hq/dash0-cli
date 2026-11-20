@@ -30,7 +30,8 @@ func newCreateCmd() *cobra.Command {
 		Long: `Create an Agent0 custom skill from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
 The skill's name comes from the name field in the frontmatter of its SKILL.md file, and is unique per organization.
-If the file sets metadata.labels["dash0.com/origin"] and a skill with that origin exists, it is updated.
+The CLI reads metadata.labels["dash0.com/id"] first and updates the skill at the id when it exists.
+Otherwise it writes by metadata.labels["dash0.com/origin"], or by an origin it infers from the skill's name, so running the command again updates the same skill.
 spec.source and the per-user metadata.annotations["dash0.com/enabled"] are never sent; use spec.permissions[].defaultEnabled to ship a skill turned off.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 --experimental agent0 skills create -f skill.yaml

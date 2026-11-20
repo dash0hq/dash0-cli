@@ -45,11 +45,11 @@ type identifierProbe struct {
 //   - Dashboard, EphemeralDashboard: dash0.com/id, then dash0.com/origin, then
 //     metadata.dash0Extensions.id (see DashboardIdentity)
 //   - Dash0SpamFilter, Dash0Team, Dash0NotificationChannel,
-//     Dash0TimeSeriesAggregation: dash0.com/id, then dash0.com/origin
+//     Dash0TimeSeriesAggregation, SLO, Dash0Skill,
+//     Dash0GenerativeAiEvaluation, Dash0SignalToMetrics, Dash0Sampling:
+//     dash0.com/id, then dash0.com/origin
 //   - CheckRule: top-level id
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - SLO, Dash0Skill, Dash0GenerativeAiEvaluation, Dash0SignalToMetrics,
-//     Dash0Sampling: dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
 //     Dash0AwsMetricScrapeConfig):
 //     dash0.com/id
@@ -99,11 +99,6 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "skill", "generativeaievaluation", "signaltometrics", "sampling":
-		if origin := probe.label("dash0.com/origin"); origin != "" {
-			return origin, nil
-		}
-		return probe.label("dash0.com/id"), nil
 	default:
 		return probe.label("dash0.com/id"), nil
 	}

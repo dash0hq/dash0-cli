@@ -21,9 +21,9 @@ func newUpdateCmd() *cobra.Command {
 		Long: `Update an existing sampling rule from a YAML or JSON definition file. Use
 '-f -' to read from stdin.
 
-When the positional argument is omitted, the target is taken from the
-document's 'dash0.com/origin' label, or else its 'dash0.com/id' label. When it
-is given, it must match one of them. The rule must already exist: unlike
+When the positional argument is omitted, the target is the document's
+'dash0.com/id' label, or its 'dash0.com/origin' label when the id is not
+found, as apply does. When it is given, it must match one of them. The rule must already exist: unlike
 'create' and 'apply', this command never creates one.
 
 The output is a unified diff of the before and after states. When the update
@@ -61,11 +61,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 
-	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   assetType,
-		Upsert: asset.SamplingRuleKeys(rule),
-	})
-	if err != nil {
+	updateKey := asset.UpdateKey{Noun: assetType, Upsert: asset.SamplingRuleKeys(rule)}
+	identity := asset.Identity{ID: dash0api.GetSamplingRuleID(rule), Origin: asset.GetSamplingRuleOrigin(rule)}
+	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
 
@@ -76,10 +74,14 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
-	// The PUT below creates a rule when nothing matches the key, so this GET is
-	// what makes update fail on a missing rule instead of creating one. A rule
-	// in another dataset fails it with the cross-dataset 400.
-	before, err := apiClient.GetSamplingRule(ctx, key, dataset)
+	// The PUT below creates a rule when nothing matches the key, so this read
+	// is what makes update fail on a missing rule instead of creating one. It
+	// reads the file's id first, then its origin, as apply does. A rule in
+	// another dataset fails it with the cross-dataset 400.
+	get := func(ctx context.Context, key string) (*dash0api.SamplingDefinition, error) {
+		return apiClient.GetSamplingRule(ctx, key, dataset)
+	}
+	key, before, err := asset.RouteUpdate(ctx, args, updateKey, identity, get)
 	if err != nil {
 		if asset.IsSamplingRuleWrongDataset(err) {
 			return asset.WrapSamplingRuleWrongDataset(err, key)
@@ -88,6 +90,11 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 			AssetType: assetType,
 			AssetID:   key,
 		})
+	}
+	// SamplingDefinition has no GetOrigin method, so RouteUpdate cannot compare
+	// the stored origin itself.
+	if stored := asset.GetSamplingRuleOrigin(before); key == identity.ID && identity.Origin != "" && stored != "" && stored != identity.Origin {
+		return &asset.OriginMismatchError{ID: key, Stored: stored, Document: identity.Origin}
 	}
 
 	// The server takes the target from the URL, and the dataset from the

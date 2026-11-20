@@ -240,10 +240,10 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withBoth:    {"i", "i", "GetSyntheticCheck(i)"},
 		},
 		"slo": {
-			withNeither: {"", "", ""},
+			withNeither: {"", "", "GetSLO(dash0-cli_ccd8d2fa6938a28d0b9fe487b335cfd2)"},
 			withOrigin:  {"o", "o", "GetSLO(o)"},
-			withID:      {"i", "i", "GetSLO(i)"},
-			withBoth:    {"o", "o", "GetSLO(o)"},
+			withID:      {"i", "i", "GetSLO(i) GetSLO(dash0-cli_ccd8d2fa6938a28d0b9fe487b335cfd2)"},
+			withBoth:    {"i", "o", "GetSLO(i) GetSLO(o)"},
 		},
 		"view": {
 			withNeither: {"", "", ""},
@@ -294,10 +294,10 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withBoth:    {"i", "i", "GetDataset(i)"},
 		},
 		"skill": {
-			withNeither: {"", "", ""},
+			withNeither: {"", "", "GetCustomSkill(dash0-cli_b0d12560acda94b0cbbc694b1a9679c6)"},
 			withOrigin:  {"o", "o", "GetCustomSkill(o)"},
-			withID:      {"i", "i", "GetCustomSkill(i) error: Agent0 skill with id \"i\" not found\nHint: dash0.com/id only addresses an existing skill; set metadata.labels[\"dash0.com/origin\"] to create the skill and manage it as code"},
-			withBoth:    {"o", "o", "GetCustomSkill(o)"},
+			withID:      {"i", "i", "GetCustomSkill(i) GetCustomSkill(dash0-cli_b0d12560acda94b0cbbc694b1a9679c6)"},
+			withBoth:    {"i", "o", "GetCustomSkill(i) GetCustomSkill(o)"},
 		},
 		"awsmetricscrapeconfig": {
 			withNeither: {"", "", "GetAwsMetricScrapeConfig() error: AWS integration not found (status: 404)"},
@@ -306,22 +306,22 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withBoth:    {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
 		},
 		"generativeaievaluation": {
-			withNeither: {"", "", ""},
+			withNeither: {"", "", "GetGenerativeAiEvaluation(dash0-cli_d480f2fd11254a8ae007e52fc33719e4)"},
 			withOrigin:  {"o", "o", "GetGenerativeAiEvaluation(o)"},
-			withID:      {"i", "i", "GetGenerativeAiEvaluation(i)"},
-			withBoth:    {"o", "o", "GetGenerativeAiEvaluation(o)"},
+			withID:      {"i", "i", "GetGenerativeAiEvaluation(i) GetGenerativeAiEvaluation(dash0-cli_d480f2fd11254a8ae007e52fc33719e4)"},
+			withBoth:    {"i", "o", "GetGenerativeAiEvaluation(i) GetGenerativeAiEvaluation(o)"},
 		},
 		"signaltometrics": {
-			withNeither: {"", "", ""},
+			withNeither: {"", "", "GetSignalToMetrics(dash0-cli_c13dd324a80fe512832f0459609b21bc)"},
 			withOrigin:  {"o", "o", "GetSignalToMetrics(o)"},
-			withID:      {"i", "i", "GetSignalToMetrics(i)"},
-			withBoth:    {"o", "o", "GetSignalToMetrics(o)"},
+			withID:      {"i", "i", "GetSignalToMetrics(i) GetSignalToMetrics(dash0-cli_c13dd324a80fe512832f0459609b21bc)"},
+			withBoth:    {"i", "o", "GetSignalToMetrics(i) GetSignalToMetrics(o)"},
 		},
 		"sampling": {
-			withNeither: {"", "", ""},
+			withNeither: {"", "", "GetSamplingRule(dash0-cli_55f1e8303d29484bd22cfcfebb98fc98)"},
 			withOrigin:  {"o", "o", "GetSamplingRule(o)"},
-			withID:      {"i", "i", "GetSamplingRule(i)"},
-			withBoth:    {"o", "o", "GetSamplingRule(o)"},
+			withID:      {"i", "i", "GetSamplingRule(i) GetSamplingRule(dash0-cli_55f1e8303d29484bd22cfcfebb98fc98)"},
+			withBoth:    {"i", "o", "GetSamplingRule(i) GetSamplingRule(o)"},
 		},
 	}
 

@@ -4,6 +4,7 @@ package samplingrules
 
 import (
 	"encoding/json"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"net/http"
 	"net/url"
 	"os"
@@ -90,12 +91,14 @@ metadata:
     dash0.com/id: 4b7e2d91-3c5a-4f08-9e61-2a8d7c4f1b35
 ` + docSpec
 
+const foreignID = "0e5d3b71-8a2c-4f9e-b6d4-1c7a9e3f5b08"
+
 const docWithOriginAndForeignID = `kind: Dash0Sampling
 metadata:
   name: checkout-errors
   labels:
     dash0.com/origin: dash0-cli_checkout-errors
-    dash0.com/id: 0e5d3b71-8a2c-4f9e-b6d4-1c7a9e3f5b08
+    dash0.com/id: ` + foreignID + `
 ` + docSpec
 
 const docWithoutIdentifier = `kind: Dash0Sampling
@@ -402,6 +405,9 @@ func TestCreateSamplingRule_ByOrigin_Creates(t *testing.T) {
 func TestCreateSamplingRule_ByOrigin_DoesNotSendID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// The id belongs to another organization, so it is not found here and the
+	// origin is read next.
+	server.On(http.MethodGet, apiPath+"/"+foreignID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
 
@@ -409,6 +415,7 @@ func TestCreateSamplingRule_ByOrigin_DoesNotSendID(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "updated")
+	findRequest(t, server.Requests(), http.MethodGet, apiPath+"/"+foreignID)
 	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin).Body)
 	if body.Metadata.Labels != nil {
 		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
@@ -474,25 +481,36 @@ func TestCreateSamplingRule_ByIDOnly_ExistingRuleIsUpdatedInPlace(t *testing.T) 
 	assert.Zero(t, countMethod(server.Requests(), http.MethodPost))
 }
 
-// IDs are unique across organizations, so a PUT to an id another
-// organization owns fails. A missing id falls back to POST without the id,
-// which the server rejects in a POST body.
-func TestCreateSamplingRule_ByIDOnly_UnknownIDFallsBackToPOSTWithoutID(t *testing.T) {
+// IDs are unique across organizations, so an id from another organization is
+// not found here. The rule is then created by its inferred origin, never by
+// POST, and without the id, so the next apply updates the same rule.
+func TestCreateSamplingRule_ByIDOnly_UnknownIDCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	listWithEnabledRule(server)
-	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	createByInferredOrigin(server)
 
 	out, err := execute(t, "sampling-rules", "create", "-f", writeDoc(t, docWithIDOnly), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "created (id: "+testCreatedID+")")
-	assert.Zero(t, countMethod(server.Requests(), http.MethodPut), "an unknown id must never be PUT")
-	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPost, apiPath).Body)
+	inferred := inferredPath(nil)
+	assert.Equal(t, []string{"GET " + apiPath + "/" + testID, "GET " + inferred, "GET " + apiPath, "PUT " + inferred}, describe(server.Requests()))
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, inferred).Body)
 	if body.Metadata.Labels != nil {
 		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
 	}
+}
+
+// createByInferredOrigin answers every rule read with 404 and every PUT with
+// the created rule, which is what a create by inferred origin sees.
+func createByInferredOrigin(server *testutil.MockServer) {
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+}
+
+func inferredPath(dataset *string) string {
+	return apiPath + "/" + asset.InferKindOrigin("sampling", "checkout-errors", dataset)
 }
 
 func TestCreateSamplingRule_ByIDOnly_SurfacesNon404PreflightError(t *testing.T) {
@@ -507,17 +525,18 @@ func TestCreateSamplingRule_ByIDOnly_SurfacesNon404PreflightError(t *testing.T) 
 	assert.Zero(t, countMethod(server.Requests(), http.MethodPut))
 }
 
-func TestCreateSamplingRule_WithoutIdentifierPOSTs(t *testing.T) {
+func TestCreateSamplingRule_WithoutIdentifierPUTsByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	listWithEnabledRule(server)
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	createByInferredOrigin(server)
 
 	out, err := execute(t, "sampling-rules", "create", "-f", writeDoc(t, docWithoutIdentifier), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "created")
-	assert.Equal(t, []string{"GET " + apiPath, "POST " + apiPath}, describe(server.Requests()), "only the turn-on check reads")
+	inferred := inferredPath(nil)
+	assert.Equal(t, []string{"GET " + inferred, "GET " + apiPath, "PUT " + inferred}, describe(server.Requests()), "never POST")
 }
 
 // --- create: turning sampling on ---
@@ -526,7 +545,7 @@ func TestCreateSamplingRule_FirstEnabledRuleWarns(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.On(http.MethodGet, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureListEmpty, Validator: testutil.RequireHeaders})
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	createByInferredOrigin(server)
 
 	out, stderr, err := executeWithStderr(t, "sampling-rules", "create", "-f", writeDoc(t, docWithoutIdentifier), "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken)
 
@@ -547,7 +566,7 @@ func TestCreateSamplingRule_FirstEnabledRuleInDefaultDatasetWarns(t *testing.T) 
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.On(http.MethodGet, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureListEmpty, Validator: testutil.RequireHeaders})
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	createByInferredOrigin(server)
 
 	_, stderr, err := executeWithStderr(t, "sampling-rules", "create", "-f", writeDoc(t, docWithoutIdentifier), "--api-url", server.URL, "--auth-token", testAuthToken)
 
@@ -558,15 +577,15 @@ func TestCreateSamplingRule_FirstEnabledRuleInDefaultDatasetWarns(t *testing.T) 
 func TestCreateSamplingRule_DisabledRuleDoesNotWarnOrList(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	createByInferredOrigin(server)
 
 	disabled := strings.Replace(docWithoutIdentifier, "enabled: true", "enabled: false", 1)
 	_, stderr, err := executeWithStderr(t, "sampling-rules", "create", "-f", writeDoc(t, disabled), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
 	assert.NotContains(t, stderr, "warning")
-	assert.Equal(t, []string{"POST " + apiPath}, describe(server.Requests()))
-	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPost, apiPath).Body)
+	assert.Equal(t, []string{"GET " + inferredPath(nil), "PUT " + inferredPath(nil)}, describe(server.Requests()), "a disabled rule does not list")
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, inferredPath(nil)).Body)
 	assert.False(t, body.Spec.Enabled)
 }
 
@@ -633,12 +652,16 @@ func TestUpdateSamplingRule_UnchangedDocumentReportsNoChanges(t *testing.T) {
 func TestUpdateSamplingRule_ByOrigin_DoesNotSendID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// The id belongs to another organization, so it is not found here and the
+	// origin is read next.
+	server.On(http.MethodGet, apiPath+"/"+foreignID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
 
 	_, err := execute(t, "sampling-rules", "update", "-f", writeDoc(t, docWithOriginAndForeignID), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
+	findRequest(t, server.Requests(), http.MethodGet, apiPath+"/"+foreignID)
 	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin).Body)
 	if body.Metadata.Labels != nil {
 		assert.Nil(t, body.Metadata.Labels.Dash0Comid)

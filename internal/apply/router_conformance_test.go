@@ -33,11 +33,6 @@ var notRoutedYet = map[string]string{
 	"prometheusrule":         "creates by POST without an identifier",
 	"syntheticcheck":         "creates by POST without an identifier",
 	"view":                   "creates by POST without an identifier",
-	"slo":                    "POSTs when the id is not found",
-	"generativeaievaluation": "POSTs when the id is not found",
-	"signaltometrics":        "POSTs when the id is not found",
-	"sampling":               "POSTs when the id is not found",
-	"skill":                  "fails when the id is not found",
 	"dataset":                "the slug is the id",
 	"awsmetricscrapeconfig":  "the integration id is the id",
 }
@@ -92,6 +87,40 @@ var routedKinds = map[string]routedKind{
 		path: "/api/time-series-aggregations", fixture: "timeseriesaggregations/get_success.json", originInPath: true,
 		document: func(labels string) string {
 			return "kind: Dash0TimeSeriesAggregation\nmetadata:\n  name: checkout\n" + labels + "spec: {}\n"
+		},
+	},
+	"slo": {
+		path: "/api/slos", fixture: "slos/get_success.json", originInPath: true,
+		document: func(labels string) string {
+			return "apiVersion: openslo.com/v1\nkind: SLO\nmetadata:\n  name: checkout\n" + labels + "spec:\n  service: checkout\n"
+		},
+	},
+	"generativeaievaluation": {
+		path: "/api/generative-ai-evaluations", fixture: "evals/get_success.json",
+		document: func(labels string) string {
+			return "kind: Dash0GenerativeAiEvaluation\nmetadata:\n  name: checkout\n" + labels +
+				"spec:\n  enabled: true\n  judge:\n    model: standard\n    output:\n      kind: boolean\n    userPrompt: judge\n" +
+				"  match:\n    filters:\n      - key: gen_ai.operation.name\n        operator: is_set\n  sample:\n    rate: 0.5\n"
+		},
+	},
+	"signaltometrics": {
+		path: "/api/signal-to-metrics", fixture: "signaltometricsrules/get_success.json", originInPath: true,
+		document: func(labels string) string {
+			return "kind: Dash0SignalToMetrics\nmetadata:\n  name: checkout\n" + labels + "spec:\n  enabled: true\n  match:\n    signal: logs\n"
+		},
+	},
+	"sampling": {
+		path: "/api/sampling-rules", fixture: "samplingrules/get_success.json", originInPath: true,
+		document: func(labels string) string {
+			return "kind: Dash0Sampling\nmetadata:\n  name: checkout\n" + labels + "spec:\n  display:\n    name: Shown in the UI\n  enabled: false\n  conditions:\n    kind: error\n    spec: {}\n"
+		},
+	},
+	"skill": {
+		// The inferred origin comes from the SKILL.md frontmatter name, not metadata.name.
+		path: "/api/agent0/custom-skills", fixture: "agent0skills/get_success.json", orgLevel: true,
+		document: func(labels string) string {
+			return "kind: Dash0Skill\nmetadata:\n  name: not-the-skill-name\n" + labels +
+				"spec:\n  files:\n    - relativePath: SKILL.md\n      content: \"---\\nname: checkout\\n---\\nbody\\n\"\n"
 		},
 	},
 	"spamfilter": {

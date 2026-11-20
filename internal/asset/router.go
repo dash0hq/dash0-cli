@@ -106,12 +106,12 @@ func InferOrigin(kind, name, dataset string) string {
 }
 
 // InferKindOrigin returns the origin apply infers for a document of kind
-// named name. Teams and notification channels are organization-level, so
-// theirs has no dataset.
+// named name. Teams, notification channels, and Agent0 skills are
+// organization-level, so theirs has no dataset.
 func InferKindOrigin(kind, name string, dataset *string) string {
 	kind = InferredOriginKind(kind)
 	switch kind {
-	case "team", "notificationchannel":
+	case "team", "notificationchannel", "skill":
 		return InferOrigin(kind, name, "")
 	}
 	return InferOrigin(kind, name, DatasetName(dataset))
@@ -230,13 +230,18 @@ type routedParser func(raw []byte, dataset *string) (identity Identity, name str
 // routedParsers holds every kind RouteDocument serves. A kind not in it is not
 // routed yet.
 var routedParsers = map[string]routedParser{
-	"dashboard":             parseRoutedDashboard,
-	"ephemeraldashboard":    parseRoutedDashboard,
-	"persesdashboard":       parseRoutedDashboard,
-	"team":                  parseRoutedTeam,
-	"notificationchannel":   parseRoutedNotificationChannel,
-	"timeseriesaggregation": parseRoutedTimeSeriesAggregation,
-	"spamfilter":            parseRoutedSpamFilter,
+	"dashboard":              parseRoutedDashboard,
+	"ephemeraldashboard":     parseRoutedDashboard,
+	"persesdashboard":        parseRoutedDashboard,
+	"team":                   parseRoutedTeam,
+	"notificationchannel":    parseRoutedNotificationChannel,
+	"timeseriesaggregation":  parseRoutedTimeSeriesAggregation,
+	"spamfilter":             parseRoutedSpamFilter,
+	"slo":                    parseRoutedSLO,
+	"generativeaievaluation": parseRoutedGenerativeAiEvaluation,
+	"signaltometrics":        parseRoutedSignalToMetricsRule,
+	"sampling":               parseRoutedSamplingRule,
+	"skill":                  parseRoutedCustomSkill,
 }
 
 // IsRoutedKind reports whether RouteDocument serves kind.
@@ -296,6 +301,46 @@ func parseRoutedSpamFilter(raw []byte, dataset *string) (Identity, string, error
 		return Identity{}, "", err
 	}
 	return SpamFilterIdentity(&filter, dataset), filter.GetName(), nil
+}
+
+func parseRoutedSLO(raw []byte, dataset *string) (Identity, string, error) {
+	var slo dash0api.SloDefinition
+	if err := dash0yaml.Unmarshal(raw, &slo); err != nil {
+		return Identity{}, "", err
+	}
+	return SLOIdentity(&slo, dataset), slo.Metadata.Name, nil
+}
+
+func parseRoutedGenerativeAiEvaluation(raw []byte, dataset *string) (Identity, string, error) {
+	var evaluation dash0api.GenerativeAiEvaluationDefinition
+	if err := dash0yaml.Unmarshal(raw, &evaluation); err != nil {
+		return Identity{}, "", err
+	}
+	return GenerativeAiEvaluationIdentity(&evaluation, dataset), evaluation.Metadata.Name, nil
+}
+
+func parseRoutedSignalToMetricsRule(raw []byte, dataset *string) (Identity, string, error) {
+	var rule dash0api.SignalToMetricsDefinition
+	if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+		return Identity{}, "", err
+	}
+	return SignalToMetricsRuleIdentity(&rule, dataset), rule.Metadata.Name, nil
+}
+
+func parseRoutedSamplingRule(raw []byte, dataset *string) (Identity, string, error) {
+	var rule dash0api.SamplingDefinition
+	if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+		return Identity{}, "", err
+	}
+	return SamplingRuleIdentity(&rule, dataset), rule.Metadata.Name, nil
+}
+
+func parseRoutedCustomSkill(raw []byte, _ *string) (Identity, string, error) {
+	var skill dash0api.SkillDefinition
+	if err := dash0yaml.Unmarshal(raw, &skill); err != nil {
+		return Identity{}, "", err
+	}
+	return CustomSkillIdentity(&skill), CustomSkillName(&skill), nil
 }
 
 // optionalString returns nil for "", so an empty label is left out of the body.
