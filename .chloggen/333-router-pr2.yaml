@@ -1,0 +1,15 @@
+change_type: breaking
+component: apply, slos, evals, signal-to-metrics-rules, sampling-rules, agent0 skills
+note: "`apply` and `create` read `dash0.com/id` before `dash0.com/origin` for SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills, and never create them by POST."
+issues: [333]
+subtext: |
+  Applying the same document again now updates the same asset, also when the document has no identifier.
+  Without `dash0.com/origin`, the CLI infers one from the kind, `metadata.name`, and the dataset.
+  For an Agent0 skill it uses the skill name from the `SKILL.md` frontmatter instead of `metadata.name`.
+  Before, these kinds were read by origin first, so a document whose origin and id named two different assets now updates the asset at the id, and fails when the stored origin differs from the one in the file.
+  A document with only an id that is not found, such as one exported from another organization, is created by its inferred origin instead of by POST.
+  An asset that an earlier version created by POST, without an origin in the file, is not found by the inferred origin, so the next apply creates a second one; for an Agent0 skill it fails with a name collision instead.
+  Set `dash0.com/origin` or `dash0.com/id` in the file to keep updating the existing asset.
+  `update -f` without an argument and `apply --since` follow the same order.
+  `update <id> -f` with the file's id now also fails when the stored origin differs from the one in the file, for every kind that follows the routing rule, as `apply` does.
+change_logs: [user]

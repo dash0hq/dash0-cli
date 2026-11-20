@@ -28,7 +28,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "[experimental] Update an Agent0 custom skill from a file",
 		Long: `Update an existing Agent0 custom skill from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-If the ID argument is omitted, the origin, or else the ID, is read from the file.
+If the ID argument is omitted, the file's dash0.com/id label is read first, then its dash0.com/origin label when the id is not found, as apply does.
 The skill must exist; use create to make a new one.
 The files in the definition replace the stored files. When spec.permissions is absent, the stored grants stay unchanged.` + internal.CONFIG_HINT,
 		Example: `  # Update a skill from a file
@@ -72,11 +72,9 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return err
 	}
 
-	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   assetType,
-		Upsert: &skill,
-	})
-	if err != nil {
+	updateKey := asset.UpdateKey{Noun: assetType, Upsert: &skill}
+	identity := asset.Identity{ID: dash0api.GetCustomSkillID(&skill), Origin: dash0api.GetCustomSkillOrigin(&skill)}
+	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
 
@@ -85,8 +83,10 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return err
 	}
 
-	// PUT creates a skill for an unknown origin, so the GET turns a mistyped key into a not-found error.
-	before, err := apiClient.GetCustomSkill(ctx, key)
+	// PUT creates a skill for an unknown origin, so the read turns a mistyped key
+	// into a not-found error. It takes the file's id first, then its origin, as
+	// apply does.
+	key, before, err := asset.RouteUpdate(ctx, args, updateKey, identity, apiClient.GetCustomSkill)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: assetType, AssetID: key})
 	}
@@ -99,6 +99,9 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	name := asset.CustomSkillName(&skill)
 	dash0api.StripCustomSkillServerFields(&skill)
 	skill.Kind = dash0api.Dash0Skill
+	if key != dash0api.GetCustomSkillID(&skill) {
+		dash0api.ClearCustomSkillID(&skill)
+	}
 
 	if flags.DryRun {
 		preview, err := asset.PreviewUpdate[dash0api.SkillDefinition](before, &skill)
@@ -116,6 +119,8 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		})
 	}
 
+	// The origin is sent only on create, so an update never changes it.
+	asset.SetCustomSkillOrigin(&skill, "")
 	result, err := apiClient.UpdateCustomSkill(ctx, key, &skill)
 	if err != nil {
 		if explained := asset.ExplainCustomSkillError(err, name); explained != nil {

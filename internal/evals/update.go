@@ -21,7 +21,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "[experimental] Update an eval from a file",
 		Long: `Update an existing generative AI evaluation (eval) from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-If the argument is omitted, the origin, or else the ID, is read from the file.
+If the argument is omitted, the file's dash0.com/id label is read first, then its dash0.com/origin label when the id is not found, as apply does.
 The eval must exist; use create to make a new one.
 metadata.name and spec.judge.output.kind cannot change after the eval is created.` + internal.CONFIG_HINT,
 		Example: `  # Update an eval from a file
@@ -61,11 +61,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	origin := dash0api.GetGenerativeAiEvaluationOrigin(evaluation)
-	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "eval",
-		Upsert: evaluation,
-	})
-	if err != nil {
+	updateKey := asset.UpdateKey{Noun: "eval", Upsert: evaluation}
+	identity := asset.Identity{ID: dash0api.GetGenerativeAiEvaluationID(evaluation), Origin: origin}
+	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
 
@@ -76,8 +74,13 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
-	// PUT creates an eval for an unknown origin, so the GET turns a mistyped key into a not-found error.
-	before, err := apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
+	// PUT creates an eval for an unknown origin, so the read turns a mistyped key
+	// into a not-found error. It takes the file's id first, then its origin, as
+	// apply does.
+	get := func(ctx context.Context, key string) (*dash0api.GenerativeAiEvaluationDefinition, error) {
+		return apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
+	}
+	key, before, err := asset.RouteUpdate(ctx, args, updateKey, identity, get)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{AssetType: assetType, AssetID: key})
 	}
@@ -104,6 +107,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		})
 	}
 
+	// The origin is sent only on create, so an update never changes it.
+	asset.SetGenerativeAiEvaluationOrigin(evaluation, "")
 	result, err := apiClient.UpdateGenerativeAiEvaluation(ctx, key, evaluation, dataset)
 	if err != nil {
 		if explained := asset.ExplainGenerativeAiEvaluationError(err, name); explained != nil {

@@ -293,6 +293,7 @@ func TestMalformedResponse_Apply(t *testing.T) {
 var routedByInferredOrigin = map[string]string{
 	"dashboards":           "Dashboard",
 	"notificationchannels": "notificationchannel",
+	"slos":                 "slo",
 	"spamfilters":          "spamfilter",
 	"teams":                "team",
 }

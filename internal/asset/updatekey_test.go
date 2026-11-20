@@ -200,6 +200,8 @@ func TestRouteUpdate(t *testing.T) {
 		{name: "neither found is not found", assets: map[string]storedOrigin{}, wantKey: "doc-origin", wantErr: "not found"},
 		{name: "stored origin differs", assets: map[string]storedOrigin{"the-id": {"other"}}, wantKey: "the-id", wantErr: "the CLI never changes a stored origin"},
 		{name: "id only, not found", idOnly: true, assets: map[string]storedOrigin{}, wantKey: "the-id", wantErr: "not found"},
+		{name: "argument is the id and stored origin differs", args: []string{"the-id"}, assets: map[string]storedOrigin{"the-id": {"other"}}, wantKey: "the-id", wantErr: "the CLI never changes a stored origin"},
+		{name: "argument is the origin, id's stored origin is not read", args: []string{"doc-origin"}, assets: map[string]storedOrigin{"the-id": {"other"}, "doc-origin": {"doc-origin"}}, wantKey: "doc-origin"},
 		{name: "argument is used as given", args: []string{"doc-origin"}, assets: map[string]storedOrigin{"the-id": {"doc-origin"}, "doc-origin": {"doc-origin"}}, wantKey: "doc-origin"},
 	}
 	for _, tt := range tests {

@@ -148,11 +148,11 @@ func TestExtractIdentifier_SignalToMetricsRule(t *testing.T) {
 		want   string
 	}{
 		{
-			name: "origin wins over id",
+			name: "id wins over origin, as apply reads it",
 			labels: `    dash0.com/origin: dash0-cli_checkout-errors
     dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t
 `,
-			want: "dash0-cli_checkout-errors",
+			want: "signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t",
 		},
 		{
 			name: "id when origin is absent",

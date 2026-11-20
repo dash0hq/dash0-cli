@@ -213,7 +213,7 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithNeither: "error: no SLO origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/slos/o",
 			updateWithID:      "GET /api/slos/" + characterizationID,
-			updateWithBoth:    "GET /api/slos/o",
+			updateWithBoth:    "GET /api/slos/" + characterizationID,
 		},
 		"views": {
 			updateWithNeither: "error: no view id given: pass one as an argument, or set the id in the file",
@@ -267,7 +267,7 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithNeither: "error: no Agent0 skill origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/agent0/custom-skills/o",
 			updateWithID:      "GET /api/agent0/custom-skills/" + characterizationID,
-			updateWithBoth:    "GET /api/agent0/custom-skills/o",
+			updateWithBoth:    "GET /api/agent0/custom-skills/" + characterizationID,
 		},
 		"aws-metric-scrape-configs": {
 			updateWithNeither: "error: no AWS integration id given: pass one as an argument, or set the id in the file",
@@ -279,19 +279,19 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithNeither: "error: no eval origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/generative-ai-evaluations/o",
 			updateWithID:      "GET /api/generative-ai-evaluations/" + characterizationID,
-			updateWithBoth:    "GET /api/generative-ai-evaluations/o",
+			updateWithBoth:    "GET /api/generative-ai-evaluations/" + characterizationID,
 		},
 		"signal-to-metrics-rules": {
 			updateWithNeither: "error: no signal-to-metrics rule origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/signal-to-metrics/o",
 			updateWithID:      "GET /api/signal-to-metrics/" + characterizationID,
-			updateWithBoth:    "GET /api/signal-to-metrics/o",
+			updateWithBoth:    "GET /api/signal-to-metrics/" + characterizationID,
 		},
 		"sampling-rules": {
 			updateWithNeither: "error: no sampling rule origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/sampling-rules/o",
 			updateWithID:      "GET /api/sampling-rules/" + characterizationID,
-			updateWithBoth:    "GET /api/sampling-rules/o",
+			updateWithBoth:    "GET /api/sampling-rules/" + characterizationID,
 		},
 		"auth-tokens": {
 			updateWithNeither: "error: no auth token origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",

@@ -99,11 +99,11 @@ func InferOrigin(kind, name, dataset string) string {
 }
 
 // InferKindOrigin returns the origin apply infers for a document of kind
-// named name. Teams and notification channels are organization-level, so
-// theirs has no dataset.
+// named name. Teams, notification channels, and Agent0 skills are
+// organization-level, so theirs has no dataset.
 func InferKindOrigin(kind, name string, dataset *string) string {
 	switch NormalizeKind(kind) {
-	case "team", "notificationchannel":
+	case "team", "notificationchannel", "skill":
 		return InferOrigin(kind, name, "")
 	}
 	return InferOrigin(kind, name, DatasetName(dataset))
@@ -242,6 +242,36 @@ func parseRoutedIdentity(kind string, raw []byte, dataset *string) (identity Ide
 			return Identity{}, "", true, err
 		}
 		return SpamFilterIdentity(&filter, dataset), filter.GetName(), true, nil
+	case "slo":
+		var slo dash0api.SloDefinition
+		if err := dash0yaml.Unmarshal(raw, &slo); err != nil {
+			return Identity{}, "", true, err
+		}
+		return SLOIdentity(&slo, dataset), slo.Metadata.Name, true, nil
+	case "generativeaievaluation":
+		var evaluation dash0api.GenerativeAiEvaluationDefinition
+		if err := dash0yaml.Unmarshal(raw, &evaluation); err != nil {
+			return Identity{}, "", true, err
+		}
+		return GenerativeAiEvaluationIdentity(&evaluation, dataset), evaluation.Metadata.Name, true, nil
+	case "signaltometrics":
+		var rule dash0api.SignalToMetricsDefinition
+		if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+			return Identity{}, "", true, err
+		}
+		return SignalToMetricsRuleIdentity(&rule, dataset), rule.Metadata.Name, true, nil
+	case "sampling":
+		var rule dash0api.SamplingDefinition
+		if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+			return Identity{}, "", true, err
+		}
+		return SamplingRuleIdentity(&rule, dataset), rule.Metadata.Name, true, nil
+	case "skill":
+		var skill dash0api.SkillDefinition
+		if err := dash0yaml.Unmarshal(raw, &skill); err != nil {
+			return Identity{}, "", true, err
+		}
+		return CustomSkillIdentity(&skill), CustomSkillName(&skill), true, nil
 	}
 	return Identity{}, "", false, nil
 }

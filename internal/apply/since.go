@@ -193,7 +193,13 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	case "syntheticcheck":
 		err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
 	case "slo":
-		err = apiClient.DeleteSLO(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetSLO(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteSLO(ctx, identifier, dataset)
+		}
 	case "recordingrule":
 		// A surviving PrometheusRule CRD whose recording-rule role
 		// disappeared entirely (see Diff's PrometheusRecordingRoleByIdentifier
@@ -227,9 +233,21 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 			err = apiClient.DeleteTeam(ctx, identifier)
 		}
 	case "skill":
-		err = apiClient.DeleteCustomSkill(ctx, identifier)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetCustomSkill(ctx, key)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteCustomSkill(ctx, identifier)
+		}
 	case "generativeaievaluation":
-		err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
+		}
 	case "dataset":
 		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
 		// The same path as `datasets delete`.
@@ -239,15 +257,29 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// the same call as `aws-metric-scrape-configs delete`.
 		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
 	case "signaltometrics":
-		err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetSignalToMetrics(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
+		}
 		// Not "already gone": the rule exists in another dataset.
 		if asset.IsSignalToMetricsRuleWrongDataset(err) {
 			return false, asset.WrapSignalToMetricsRuleWrongDataset(err, identifier)
 		}
 	case "sampling":
 		// The API deletes sampling rules for good, and answers a missing rule
-		// with 200, so the tolerance below rarely fires for this kind.
-		err = apiClient.DeleteSamplingRule(ctx, identifier, dataset)
+		// with 200, so the tolerance below rarely fires for this kind. The GET
+		// honors the dataset, so a rule in another dataset fails it with the
+		// cross-dataset 400, which is explained below.
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetSamplingRule(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteSamplingRule(ctx, identifier, dataset)
+		}
 		// Not "already gone": the rule exists in another dataset.
 		if asset.IsSamplingRuleWrongDataset(err) {
 			return false, asset.WrapSamplingRuleWrongDataset(err, identifier)

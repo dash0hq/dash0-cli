@@ -96,14 +96,18 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 			return "", zero, err
 		}
 		stored, err := get(ctx, key)
-		return key, stored, err
+		if err != nil {
+			return key, zero, err
+		}
+		if err := CheckStoredOrigin(key, identity, stored); err != nil {
+			return key, zero, err
+		}
+		return key, stored, nil
 	}
 	stored, err := get(ctx, identity.ID)
 	if err == nil {
-		if asset, ok := any(stored).(interface{ GetOrigin() string }); ok {
-			if origin := asset.GetOrigin(); identity.Origin != "" && origin != "" && origin != identity.Origin {
-				return identity.ID, zero, &OriginMismatchError{ID: identity.ID, Stored: origin, Document: identity.Origin}
-			}
+		if err := CheckStoredOrigin(identity.ID, identity, stored); err != nil {
+			return identity.ID, zero, err
 		}
 		return identity.ID, stored, nil
 	}
@@ -112,4 +116,21 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 	}
 	stored, err = get(ctx, identity.Origin)
 	return identity.Origin, stored, err
+}
+
+// CheckStoredOrigin fails when key is the file's id and the asset stored there
+// has an origin other than the file's, as apply does. Kinds whose type has no
+// GetOrigin method compare the origin themselves.
+func CheckStoredOrigin(key string, identity Identity, stored any) error {
+	if key != identity.ID || identity.Origin == "" {
+		return nil
+	}
+	asset, ok := stored.(interface{ GetOrigin() string })
+	if !ok {
+		return nil
+	}
+	if origin := asset.GetOrigin(); origin != "" && origin != identity.Origin {
+		return &OriginMismatchError{ID: key, Stored: origin, Document: identity.Origin}
+	}
+	return nil
 }

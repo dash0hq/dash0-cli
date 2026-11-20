@@ -77,12 +77,8 @@ func CustomSkillKey(skill *dash0api.SkillDefinition) string {
 	return PreferredKey(skill)
 }
 
-// ImportCustomSkill creates or updates an Agent0 custom skill.
-//
-// The origin is the upsert key: PUT by origin creates the skill when the origin is new.
-// Without an origin, the dash0.com/id label can only address an existing skill, so a preflight GET
-// turns an unknown id into a not-found error instead of a skill created with the id as its origin.
-// Without either, POST creates the skill and the server assigns its id.
+// ImportCustomSkill creates or updates an Agent0 custom skill through
+// RouteDocument. The body carries the origin only on create.
 //
 // The origin and id are read before StripCustomSkillServerFields, which removes spec.source and
 // the per-user dash0.com/enabled annotation that a write must never send.
@@ -91,12 +87,10 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 	if err != nil {
 		return ImportResult{}, err
 	}
-	var result *dash0api.SkillDefinition
-	if plan.Key == "" {
-		result, err = apiClient.CreateCustomSkill(ctx, skill)
-	} else {
-		result, err = apiClient.UpdateCustomSkill(ctx, plan.Key, skill)
+	if plan.Action != ActionCreated {
+		SetCustomSkillOrigin(skill, "")
 	}
+	result, err := apiClient.UpdateCustomSkill(ctx, plan.Key, skill)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -107,36 +101,59 @@ func ImportCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *da
 	return ImportResult{Name: CustomSkillName(result), ID: CustomSkillKey(result), Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanCustomSkill reads the stored skill that ImportCustomSkill would write.
-// dash0.com/origin upserts, while dash0.com/id only addresses an existing
-// skill, so an unknown id is an error instead of a create.
+// PlanCustomSkill routes the skill with RouteDocument and reads the stored
+// skill that ImportCustomSkill would write. Any preflight error other than
+// "not found" is returned and stops the write. Only a PUT to the id keeps the
+// id in the body.
 func PlanCustomSkill(ctx context.Context, apiClient dash0api.Client, skill *dash0api.SkillDefinition) (ImportPlan, error) {
 	if err := ValidateCustomSkill(skill); err != nil {
 		return ImportPlan{}, err
 	}
-	origin := dash0api.GetCustomSkillOrigin(skill)
-	id := dash0api.GetCustomSkillID(skill)
-	plan := ImportPlan{Key: PreferredKey(skill), Action: ActionCreated, Proposed: skill}
+	// The strip clears metadata.name, which the name falls back to, so read it first.
+	identity := CustomSkillIdentity(skill)
 	dash0api.StripCustomSkillServerFields(skill)
 	skill.Kind = dash0api.Dash0Skill
 
-	if plan.Key == "" {
+	route, err := RouteDocument(ctx, identity, apiClient.GetCustomSkill, (*dash0api.SkillDefinition).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: skill}
+	if route.Key != identity.ID {
+		dash0api.ClearCustomSkillID(skill)
+	}
+	if err != nil {
+		return plan, err
+	}
+	if route.Create {
+		SetCustomSkillOrigin(skill, route.Key)
 		return plan, nil
 	}
-	before, err := apiClient.GetCustomSkill(ctx, plan.Key)
-	switch {
-	case err == nil:
-	case dash0api.IsNotFound(err) && origin != "":
-		return plan, nil
-	case dash0api.IsNotFound(err):
-		return ImportPlan{}, fmt.Errorf("Agent0 skill with id %q not found"+
-			"\nHint: dash0.com/id only addresses an existing skill; set %s to create the skill and manage it as code", id, OriginLabel)
-	default:
-		return ImportPlan{}, err
-	}
-	SortCustomSkillPermissions(before)
-	plan.Action, plan.Before = actionForExisting(CustomSkillDeletedAt(before)), before
+	// The stored origin keeps the diff to what changes. ImportCustomSkill
+	// clears it before the write: an update never sends the origin.
+	SetCustomSkillOrigin(skill, route.Stored.GetOrigin())
+	SortCustomSkillPermissions(route.Stored)
+	plan.Action, plan.Before = actionForExisting(CustomSkillDeletedAt(route.Stored)), route.Stored
 	return plan, nil
+}
+
+// CustomSkillIdentity returns what RouteDocument routes a skill by. The
+// inferred origin comes from the skill's name, which is the SKILL.md
+// frontmatter name and unique per organization, not from metadata.name.
+// Skills are organization-level, so it has no dataset.
+func CustomSkillIdentity(skill *dash0api.SkillDefinition) Identity {
+	return Identity{
+		ID:       skill.GetID(),
+		Origin:   skill.GetOrigin(),
+		Inferred: InferKindOrigin("skill", CustomSkillName(skill), nil),
+	}
+}
+
+func SetCustomSkillOrigin(skill *dash0api.SkillDefinition, origin string) {
+	if skill.Metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		skill.Metadata.Labels = &dash0api.SkillLabels{}
+	}
+	skill.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }
 
 // CustomSkillDeletedAt returns when the skill was soft-deleted, or nil if it was not.
