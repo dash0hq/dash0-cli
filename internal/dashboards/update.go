@@ -64,18 +64,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	if err := asset.ValidateDashboard(dashboard); err != nil {
 		return err
 	}
-	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "dashboard",
-		Upsert: asset.DashboardKeys(dashboard),
-	})
-	if err != nil {
+	key := asset.UpdateKey{Noun: "dashboard", Upsert: asset.DashboardKeys(dashboard)}
+	identity := asset.DashboardIdentity(dashboard, "", nil)
+	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}
 
-	return doUpdate(ctx, flags, id, dashboard)
-}
-
-func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashboard *dash0api.DashboardDefinition) error {
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -84,7 +78,10 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	asset.ClearDashboardDeletedAt(dashboard)
 
-	before, err := apiClient.GetDashboard(ctx, id, dataset)
+	get := func(ctx context.Context, key string) (*dash0api.DashboardDefinition, error) {
+		return apiClient.GetDashboard(ctx, key, dataset)
+	}
+	id, before, err := asset.RouteUpdate(ctx, args, key, identity, get)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",

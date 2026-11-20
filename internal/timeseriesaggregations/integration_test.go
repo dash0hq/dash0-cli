@@ -14,6 +14,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -542,9 +543,9 @@ func TestCreateTimeSeriesAggregationFromFile_UpsertByOrigin_Updates(t *testing.T
 	assertNoPOST(t, server.Requests())
 }
 
-// The server ignores the body's id and targets the path's origin, so a document
-// carrying both labels must still be upserted by origin.
-func TestCreateTimeSeriesAggregationFromFile_IDInBodyIgnored(t *testing.T) {
+// The id is read first, so an exported definition updates the aggregation it
+// came from.
+func TestCreateTimeSeriesAggregationFromFile_IDFoundUpdatesAtID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -563,7 +564,7 @@ func TestCreateTimeSeriesAggregationFromFile_IDInBodyIgnored(t *testing.T) {
 	cmd.SetArgs([]string{"tsa", "create", "-f", writeDoc(t, docWithOriginAndID), "--api-url", server.URL, "--auth-token", testAuthToken})
 
 	require.NoError(t, cmd.Execute())
-	assertPUTPath(t, server.Requests(), apiPath+"/"+testOrigin, "origin wins over the id in the body")
+	assertPUTPath(t, server.Requests(), apiPath+"/d54caa75-e94b-43c7-8470-23e4ab852ab6", "the id wins over the origin")
 	assertNoPOST(t, server.Requests())
 }
 
@@ -604,25 +605,26 @@ func TestCreateTimeSeriesAggregationFromFile_StripsOriginFromBody(t *testing.T) 
 	}
 }
 
-// Origin is mandatory and there is no create path to fall back to, so this must
-// fail locally, with no HTTP request at all.
-func TestCreateTimeSeriesAggregationFromFile_MissingOriginFails(t *testing.T) {
+func TestCreateTimeSeriesAggregationFromFile_WithoutOriginCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
+	inferredPath := apiPath + "/" + asset.InferOrigin("timeseriesaggregation", "no-origin", "default")
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodPut, inferredPath, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureUpdateResponse,
+		Validator:  testutil.RequireHeaders,
+	})
 
 	cmd := newRootCmd()
 	cmd.SetArgs([]string{"tsa", "create", "-f", writeDoc(t, docWithoutOrigin), "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	err := cmd.Execute()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `dash0.com/origin`)
-	assert.Empty(t, server.Requests(), "the document must be rejected before any API call")
+	require.NoError(t, cmd.Execute())
+	assertPUTPath(t, server.Requests(), inferredPath, "a document without an origin is created by its inferred origin")
+	assertNoPOST(t, server.Requests())
 }
 
-// --dry-run must catch what a real create would, not report a valid document.
-func TestCreateTimeSeriesAggregationFromFile_MissingOriginFailsDryRun(t *testing.T) {
+func TestCreateTimeSeriesAggregationFromFile_WithoutOriginDryRunSucceeds(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
@@ -630,10 +632,8 @@ func TestCreateTimeSeriesAggregationFromFile_MissingOriginFailsDryRun(t *testing
 	cmd := newRootCmd()
 	cmd.SetArgs([]string{"tsa", "create", "-f", writeDoc(t, docWithoutOrigin), "--dry-run", "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	err := cmd.Execute()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `dash0.com/origin`)
+	require.NoError(t, cmd.Execute())
+	assert.Empty(t, server.Requests())
 }
 
 // Origins are unique per organization while each aggregation belongs to one

@@ -28,7 +28,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "[experimental] Update a notification channel from a file",
 		Long: `Update an existing notification channel from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-If the ID argument is omitted, the dash0.com/origin label is read from the file, as apply does.` + internal.CONFIG_HINT,
+If the ID argument is omitted, the file's dash0.com/id label is read first, then its dash0.com/origin label when the id is not found, as apply does.` + internal.CONFIG_HINT,
 		Example: `  # Update a notification channel from a file
   dash0 --experimental notification-channels update <id> -f channel.yaml
 
@@ -69,11 +69,9 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
 	}
 
-	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "notification channel",
-		Upsert: &channel,
-	})
-	if err != nil {
+	key := asset.UpdateKey{Noun: "notification channel", Upsert: &channel}
+	identity := asset.Identity{ID: channel.GetID(), Origin: channel.GetOrigin()}
+	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}
 
@@ -82,7 +80,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return err
 	}
 
-	before, err := apiClient.GetNotificationChannel(ctx, id)
+	id, before, err := asset.RouteUpdate(ctx, args, key, identity, apiClient.GetNotificationChannel)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "notification channel",

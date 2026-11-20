@@ -455,7 +455,7 @@ See [docs/commands.md](docs/commands.md) for the full per-asset reference and th
 
 Time series aggregations reduce metric cardinality by re-sampling matching series at a coarser interval.
 `time-series-aggregations` (alias `tsa`) has the five subcommands above, and `apply` accepts the `Dash0TimeSeriesAggregation` kind.
-Every command requires the organization admin role, and every document needs a `dash0.com/origin` label.
+Every command requires the organization admin role, and a document without a `dash0.com/origin` label gets an inferred origin.
 
 List the aggregations of the dataset:
 

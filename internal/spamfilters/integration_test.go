@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -265,8 +266,8 @@ func TestCreateSpamFilter_DatasetQueryParam(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathSpamFilters, testutil.MockResponse{
-		StatusCode: http.StatusCreated,
+	server.On(http.MethodPut, apiPathSpamFilters+"/"+asset.InferOrigin("spamfilter", "Drop noisy health checks", "my-dataset"), testutil.MockResponse{
+		StatusCode: http.StatusOK,
 		BodyFile:   fixtureCreateSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
@@ -296,7 +297,7 @@ spec:
 
 	req := server.LastRequest()
 	require.NotNil(t, req)
-	assert.Equal(t, http.MethodPost, req.Method)
+	assert.Equal(t, http.MethodPut, req.Method)
 	assert.Contains(t, req.Query, "dataset=my-dataset")
 }
 
@@ -403,8 +404,8 @@ func TestCreateSpamFilter_V1Alpha2_SendsV1Alpha2Body(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathSpamFilters, testutil.MockResponse{
-		StatusCode: http.StatusCreated,
+	server.On(http.MethodPut, apiPathSpamFilters+"/"+asset.InferOrigin("spamfilter", "Drop debug logs (v1alpha2)", "default"), testutil.MockResponse{
+		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccessV1A2,
 		Validator:  testutil.RequireHeaders,
 	})
@@ -434,7 +435,7 @@ spec:
 
 	req := server.LastRequest()
 	require.NotNil(t, req)
-	assert.Equal(t, http.MethodPost, req.Method)
+	assert.Equal(t, http.MethodPut, req.Method)
 
 	// Parse the outbound body as v1alpha2 and assert on typed fields. This is
 	// the convention required by docs/code-style.md and avoids the fragility

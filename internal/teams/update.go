@@ -34,8 +34,8 @@ func newUpdateCmd() *cobra.Command {
 The file must have the same shape ` + "`teams create -f`" + ` accepts and
 ` + "`teams get -o yaml`" + ` produces, so the export → edit → reapply loop
 round-trips cleanly. If the positional <id> argument is omitted, the CLI
-derives the target team from the document's dash0.com/origin label (preferred)
-or dash0.com/id label. Use '-f -' to read from stdin.
+derives the target team from the document's dash0.com/id label, then its
+dash0.com/origin label, as apply does. Use '-f -' to read from stdin.
 
 The team must already exist; unlike ` + "`teams create -f`" + `, ` + "`update`" + ` does not
 create a new team on 404.
@@ -103,12 +103,9 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 		return fmt.Errorf("failed to read team definition: %w", err)
 	}
 
-	// Origin wins over id, mirroring asset.ImportTeam's routing.
-	addressor, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "team",
-		Upsert: &team,
-	})
-	if err != nil {
+	key := asset.UpdateKey{Noun: "team", Upsert: &team}
+	identity := asset.Identity{ID: team.GetID(), Origin: team.GetOrigin()}
+	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}
 
@@ -117,7 +114,7 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 		return err
 	}
 
-	before, err := apiClient.GetTeam(ctx, addressor)
+	addressor, before, err := asset.RouteUpdate(ctx, args, key, identity, apiClient.GetTeam)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "team",

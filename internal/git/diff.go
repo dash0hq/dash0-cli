@@ -17,11 +17,18 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
-	// Alias is the dash0.com/id label of a dashboard keyed by its origin (see
-	// asset.DashboardAlias). The API ignores the origin on an update, so a
-	// dashboard that apply updated at this id has no origin, and the delete
-	// must fall back to the id.
+	// Alias is the origin of a routed document whose Identifier is its id
+	// (see asset.ExtractDeleteFallbacks). apply writes at the id when it
+	// exists, else at the origin, so the delete falls back to the origin.
 	Alias string
+	// InferredOriginName is the metadata.name of a routed document that named
+	// only a dash0.com/id. apply created it by its inferred origin when the id was
+	// not found, so the delete falls back to that origin.
+	InferredOriginName string
+	// InferredOriginKept reports that the current input has a document of the
+	// same kind and name without an origin. apply can write that document at
+	// the same inferred origin, so the delete must not fall back to it.
+	InferredOriginKept bool
 	// IdentifiedByIDOnly reports that the deleted document carried only
 	// dash0.com/id, for a kind where that needs a warning; see
 	// asset.IdentifiedByIDOnly.
@@ -85,6 +92,8 @@ func Diff(before, after Snapshot) DeletionPlan {
 			Identifier:         key.Identifier,
 			Path:               path,
 			Alias:              before.Aliases[key],
+			InferredOriginName: before.InferredOriginNames[key],
+			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: key.Kind, Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
 		}
 		if key.Kind == "prometheusrule" {

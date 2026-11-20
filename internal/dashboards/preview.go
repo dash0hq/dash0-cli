@@ -106,7 +106,7 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 		asset.ToEphemeralDashboard(dashboard, flags.TTL)
 		usePrefix(dashboard, flags.Prefix)
 		usePreviewID(dashboard, flags.Prefix)
-		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
+		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dashboard.Metadata.Name, dataset)
 		if err != nil {
 			// Report the previews this run already wrote, so their links are not lost.
 			if len(results) > 0 {

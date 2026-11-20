@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -286,7 +287,8 @@ func TestCreateNotificationChannel_Success(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathNotificationChannels, testutil.MockResponse{
+	inferredPath := apiPathNotificationChannels + "/" + asset.InferOrigin("notificationchannel", "Slack Alerts", "")
+	server.On(http.MethodPut, inferredPath, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureNotificationChannelsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -315,6 +317,8 @@ spec:
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "Slack Alerts")
 	assert.Contains(t, output, "created")
+	require.NotNil(t, server.LastRequest())
+	assert.Equal(t, http.MethodPut, server.LastRequest().Method, "a channel without an origin is created by its inferred origin")
 }
 
 func TestCreateNotificationChannel_DryRun(t *testing.T) {

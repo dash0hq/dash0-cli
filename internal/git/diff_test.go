@@ -376,3 +376,27 @@ func TestDiff_PrometheusAlertNoAbandonedAddress(t *testing.T) {
 		})
 	}
 }
+
+// A routed document is keyed by its id, with its origin as the alias, so
+// adding or removing one of the two labels keeps the asset.
+func TestDiff_RoutedDocumentThatGainsOrDropsALabelIsNotADeletion(t *testing.T) {
+	documents := map[string]string{
+		"both":   "    dash0.com/id: i\n    dash0.com/origin: o\n",
+		"id":     "    dash0.com/id: i\n",
+		"origin": "    dash0.com/origin: o\n",
+	}
+	for _, kind := range []string{"Dashboard", "Dash0Team", "Dash0NotificationChannel", "Dash0TimeSeriesAggregation", "Dash0SpamFilter"} {
+		for _, change := range [][2]string{{"both", "id"}, {"both", "origin"}, {"id", "both"}, {"origin", "both"}} {
+			t.Run(kind+"/"+change[0]+"->"+change[1], func(t *testing.T) {
+				snapshot := func(labels string) Snapshot {
+					snap := newSnapshot()
+					doc := "kind: " + kind + "\nmetadata:\n  name: n\n  labels:\n" + labels
+					require.NoError(t, ingestDocuments(&snap, "a.yaml", []byte(doc)))
+					return snap
+				}
+				plan := Diff(snapshot(documents[change[0]]), snapshot(documents[change[1]]))
+				assert.Empty(t, plan.ByIdentifier)
+			})
+		}
+	}
+}
