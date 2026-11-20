@@ -1,0 +1,427 @@
+kind: GitRepoFixture
+spec:
+  # One directory per asset kind apply accepts, each holding one document per
+  # identifier the kind can be deleted by, all removed in the second commit.
+  # Pass a kind's directory as -f to see what --since deletes for that kind.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add one document per kind and identifier"
+        changes:
+          - op: add
+            name: dashboard/origin.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                display:
+                  name: checkout
+          - op: add
+            name: dashboard/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dashboard
+              metadata:
+                name: checkout
+                dash0Extensions:
+                  id: 11111111-1111-4111-8111-111111111111
+              spec:
+                display:
+                  name: checkout
+          - op: add
+            name: ephemeraldashboard/origin.yaml
+            content: |
+              kind: EphemeralDashboard
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                ttl: 1d
+                display:
+                  name: checkout
+          - op: add
+            name: ephemeraldashboard/id.yaml
+            content: |
+              kind: EphemeralDashboard
+              metadata:
+                name: checkout
+                dash0Extensions:
+                  id: 11111111-1111-4111-8111-111111111111
+              spec:
+                ttl: 1d
+                display:
+                  name: checkout
+          - op: add
+            name: checkrule/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: CheckRule
+              id: 11111111-1111-4111-8111-111111111111
+              name: checkout
+              expression: up == 0
+          - op: add
+            name: syntheticcheck/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: SyntheticCheck
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec: {}
+          - op: add
+            name: slo/origin.yaml
+            content: |
+              apiVersion: openslo.com/v1
+              kind: SLO
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec: {}
+          - op: add
+            name: slo/id.yaml
+            content: |
+              apiVersion: openslo.com/v1
+              kind: SLO
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec: {}
+          - op: add
+            name: view/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec: {}
+          - op: add
+            name: prometheusrule/id.yaml
+            content: |
+              apiVersion: monitoring.coreos.com/v1
+              kind: PrometheusRule
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                groups:
+                  - name: g
+                    rules:
+                      - alert: a
+                        expr: up == 0
+                      - record: r
+                        expr: up
+          - op: add
+            name: persesdashboard/id.yaml
+            content: |
+              apiVersion: perses.dev/v1alpha1
+              kind: PersesDashboard
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                display:
+                  name: checkout
+                duration: 5m
+                panels: {}
+          - op: add
+            name: spamfilter/origin.yaml
+            content: |
+              apiVersion: v1alpha1
+              kind: Dash0SpamFilter
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                contexts: [log]
+                filter: []
+          - op: add
+            name: spamfilter/id.yaml
+            content: |
+              apiVersion: v1alpha1
+              kind: Dash0SpamFilter
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                contexts: [log]
+                filter: []
+          - op: add
+            name: notificationchannel/origin.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dash0NotificationChannel
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                type: slack
+          - op: add
+            name: team/origin.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dash0Team
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                display:
+                  name: checkout
+          - op: add
+            name: team/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dash0Team
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                display:
+                  name: checkout
+          - op: add
+            name: timeseriesaggregation/origin.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dash0TimeSeriesAggregation
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec: {}
+          - op: add
+            name: dataset/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dash0Dataset
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec: {}
+          - op: add
+            name: skill/origin.yaml
+            content: |
+              kind: Dash0Skill
+              metadata:
+                labels:
+                  dash0.com/origin: o
+              spec:
+                files:
+                  - relativePath: SKILL.md
+                    content: |
+                      ---
+                      name: checkout
+                      description: d
+                      ---
+          - op: add
+            name: skill/id.yaml
+            content: |
+              kind: Dash0Skill
+              metadata:
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                files:
+                  - relativePath: SKILL.md
+                    content: |
+                      ---
+                      name: checkout
+                      description: d
+                      ---
+          - op: add
+            name: awsmetricscrapeconfig/id.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: Dash0AwsMetricScrapeConfig
+              metadata:
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                namespaces: []
+          - op: add
+            name: generativeaievaluation/origin.yaml
+            content: |
+              kind: Dash0GenerativeAiEvaluation
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                display:
+                  name: checkout
+                enabled: true
+                judge:
+                  model: standard
+                  output:
+                    kind: boolean
+                  systemPrompt: s
+                  userPrompt: u
+                match:
+                  filters:
+                    - key: gen_ai.operation.name
+                      operator: is_set
+                sample:
+                  rate: 0.25
+          - op: add
+            name: generativeaievaluation/id.yaml
+            content: |
+              kind: Dash0GenerativeAiEvaluation
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                display:
+                  name: checkout
+                enabled: true
+                judge:
+                  model: standard
+                  output:
+                    kind: boolean
+                  systemPrompt: s
+                  userPrompt: u
+                match:
+                  filters:
+                    - key: gen_ai.operation.name
+                      operator: is_set
+                sample:
+                  rate: 0.25
+          - op: add
+            name: signaltometrics/origin.yaml
+            content: |
+              kind: Dash0SignalToMetrics
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                display:
+                  name: checkout
+                enabled: true
+                match:
+                  signal: logs
+                  filters: []
+                output:
+                  name: m
+                  interval: 1m
+          - op: add
+            name: signaltometrics/id.yaml
+            content: |
+              kind: Dash0SignalToMetrics
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                display:
+                  name: checkout
+                enabled: true
+                match:
+                  signal: logs
+                  filters: []
+                output:
+                  name: m
+                  interval: 1m
+          - op: add
+            name: sampling/origin.yaml
+            content: |
+              kind: Dash0Sampling
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/origin: o
+              spec:
+                display:
+                  name: checkout
+                enabled: false
+                conditions:
+                  kind: error
+                  spec: {}
+          - op: add
+            name: sampling/id.yaml
+            content: |
+              kind: Dash0Sampling
+              metadata:
+                name: checkout
+                labels:
+                  dash0.com/id: 11111111-1111-4111-8111-111111111111
+              spec:
+                display:
+                  name: checkout
+                enabled: false
+                conditions:
+                  kind: error
+                  spec: {}
+      - message: "remove every document"
+        changes:
+          - op: delete
+            name: dashboard/origin.yaml
+          - op: delete
+            name: dashboard/id.yaml
+          - op: delete
+            name: ephemeraldashboard/origin.yaml
+          - op: delete
+            name: ephemeraldashboard/id.yaml
+          - op: delete
+            name: checkrule/id.yaml
+          - op: delete
+            name: syntheticcheck/id.yaml
+          - op: delete
+            name: slo/origin.yaml
+          - op: delete
+            name: slo/id.yaml
+          - op: delete
+            name: view/id.yaml
+          - op: delete
+            name: prometheusrule/id.yaml
+          - op: delete
+            name: persesdashboard/id.yaml
+          - op: delete
+            name: spamfilter/origin.yaml
+          - op: delete
+            name: spamfilter/id.yaml
+          - op: delete
+            name: notificationchannel/origin.yaml
+          - op: delete
+            name: team/origin.yaml
+          - op: delete
+            name: team/id.yaml
+          - op: delete
+            name: timeseriesaggregation/origin.yaml
+          - op: delete
+            name: dataset/id.yaml
+          - op: delete
+            name: skill/origin.yaml
+          - op: delete
+            name: skill/id.yaml
+          - op: delete
+            name: awsmetricscrapeconfig/id.yaml
+          - op: delete
+            name: generativeaievaluation/origin.yaml
+          - op: delete
+            name: generativeaievaluation/id.yaml
+          - op: delete
+            name: signaltometrics/origin.yaml
+          - op: delete
+            name: signaltometrics/id.yaml
+          - op: delete
+            name: sampling/origin.yaml
+          - op: delete
+            name: sampling/id.yaml
