@@ -50,7 +50,7 @@ func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 		{"Dashboard prefers dash0Extensions.id over the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: uuid\n  dash0Extensions:\n    id: i\n", "i"},
 		{"Dashboard prefers origin over the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: uuid\n    dash0.com/origin: o\n", "o"},
 		{"CheckRule ignores the id label", "kind: CheckRule\nmetadata:\n  labels:\n    dash0.com/id: i\n", ""},
-		{"Dash0NotificationChannel ignores id", "kind: Dash0NotificationChannel\nmetadata:\n  labels:\n    dash0.com/id: i\n", ""},
+		{"Dash0NotificationChannel falls back to id", "kind: Dash0NotificationChannel\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 
 		{"Dash0Team falls back to id", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dash0SpamFilter falls back to id", "kind: Dash0SpamFilter\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},

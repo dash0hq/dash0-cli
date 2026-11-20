@@ -44,9 +44,9 @@ type identifierProbe struct {
 //   - Dashboard, EphemeralDashboard: dash0.com/origin, then metadata.dash0Extensions.id, then
 //     dash0.com/id
 //   - CheckRule: top-level id
-//   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0GenerativeAiEvaluation,
+//   - SLO, Dash0SpamFilter, Dash0Team, Dash0NotificationChannel,
+//     Dash0TimeSeriesAggregation, Dash0Skill, Dash0GenerativeAiEvaluation,
 //     Dash0SignalToMetrics, Dash0Sampling:
 //     dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
@@ -59,8 +59,9 @@ type identifierProbe struct {
 // fallback onto some other field would return an identifier no live asset can
 // match, which --since would then "delete" to a 404 and report as already
 // deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, evals,
-// signal-to-metrics rules, and sampling rules genuinely accept either field.
+// hard-fail. Only SLOs, teams, spam filters, notification channels, time
+// series aggregations, Agent0 skills, evals, signal-to-metrics rules, and
+// sampling rules genuinely accept either field.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
@@ -87,8 +88,6 @@ func ExtractIdentifier(data []byte) (string, error) {
 		return DashboardKey(&dashboard), nil
 	case "checkrule":
 		return probe.ID, nil
-	case "notificationchannel", "timeseriesaggregation":
-		return origin, nil
 	case "dataset":
 		// The client's own helper, so spec.slug wins over the label exactly as it
 		// does on create, update, and apply.
@@ -97,7 +96,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics", "sampling":
+	case "slo", "spamfilter", "team", "notificationchannel", "timeseriesaggregation", "skill", "generativeaievaluation", "signaltometrics", "sampling":
 		if origin != "" {
 			return origin, nil
 		}

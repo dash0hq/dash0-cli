@@ -127,7 +127,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 		fmt.Fprintf(os.Stderr, "%s %s: deletion declined\n", displayKind, display)
 		return true, nil
 	}
-	alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.DeclaredCheckRuleIDs)
+	alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.DeclaredCheckRuleIDs, dp.DeclaredDashboardKeys)
 	if err != nil {
 		return false, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
 	}
@@ -167,7 +167,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 // "was already deleted" message -- printing both claims a deletion that
 // never happened, which a CI log or audit trail would then take at face
 // value.
-func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (alreadyDeleted bool, err error) {
+func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared, declaredDashboards map[string]bool) (alreadyDeleted bool, err error) {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
 		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusAlerts, declared)
@@ -175,7 +175,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 
 	switch kind {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		identifier, err = dashboardDeleteKey(ctx, apiClient, dataset, d)
+		identifier, err = dashboardDeleteKey(ctx, apiClient, dataset, d, declaredDashboards)
 		if err == nil {
 			err = apiClient.DeleteDashboard(ctx, identifier, dataset)
 		}
@@ -458,12 +458,18 @@ func (index checkRuleNameIndex) resolve(name string) (string, error) {
 // identifier, or, when the identifier is not found, its alias or inferred
 // origin. The API answers a DELETE of an unknown dashboard with 200, so
 // deleting at the wrong key would report a deletion that never happened.
-func dashboardDeleteKey(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (string, error) {
+// An inferred origin that the current files still declare is never a
+// fallback, because this run writes the dashboard there.
+func dashboardDeleteKey(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (string, error) {
+	kept := d.InferredOriginKept
 	fallback := d.Alias
-	if fallback == "" && d.InferredOriginName != "" && !d.InferredOriginKept {
+	if fallback == "" && d.InferredOriginName != "" && !kept {
 		fallback = asset.InferOrigin(d.Kind, d.InferredOriginName, asset.DatasetName(dataset))
+		if declared[fallback] {
+			fallback, kept = "", true
+		}
 	}
-	if fallback == "" && !d.InferredOriginKept {
+	if fallback == "" && !kept {
 		return d.Identifier, nil
 	}
 	_, err := apiClient.GetDashboard(ctx, d.Identifier, dataset)

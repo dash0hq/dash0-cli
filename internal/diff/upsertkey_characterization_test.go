@@ -272,7 +272,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 		"notificationchannel": {
 			withNeither: {"", "", "GetNotificationChannel(dash0-cli_42126ca28b4cc4a14dba5c2566ad1eec)"},
 			withOrigin:  {"o", "o", "GetNotificationChannel(o)"},
-			withID:      {"", "i", "GetNotificationChannel(i) GetNotificationChannel(dash0-cli_42126ca28b4cc4a14dba5c2566ad1eec)"},
+			withID:      {"i", "i", "GetNotificationChannel(i) GetNotificationChannel(dash0-cli_42126ca28b4cc4a14dba5c2566ad1eec)"},
 			withBoth:    {"o", "i", "GetNotificationChannel(i) GetNotificationChannel(o)"},
 		},
 		"team": {
@@ -284,7 +284,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 		"timeseriesaggregation": {
 			withNeither: {"", "", "GetTimeSeriesAggregation(dash0-cli_921056c7dd8df46007acec262a6a50d3)"},
 			withOrigin:  {"o", "o", "GetTimeSeriesAggregation(o)"},
-			withID:      {"", "", "GetTimeSeriesAggregation(i) GetTimeSeriesAggregation(dash0-cli_921056c7dd8df46007acec262a6a50d3)"},
+			withID:      {"i", "", "GetTimeSeriesAggregation(i) GetTimeSeriesAggregation(dash0-cli_921056c7dd8df46007acec262a6a50d3)"},
 			withBoth:    {"o", "o", "GetTimeSeriesAggregation(i) GetTimeSeriesAggregation(o)"},
 		},
 		"dataset": {

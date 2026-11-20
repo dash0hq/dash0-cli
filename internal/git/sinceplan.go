@@ -39,6 +39,10 @@ type SincePlan struct {
 	// declare, so a deletion dispatched by identifier never removes an asset
 	// this same run created or updated. See declaredCheckRuleIDs.
 	DeclaredCheckRuleIDs map[string]bool
+	// DeclaredDashboardKeys is every dashboard origin or id -f's current
+	// contents still declare, so --since never falls back to deleting a
+	// dashboard that this same run writes.
+	DeclaredDashboardKeys map[string]bool
 	// targetWasDirectoryAtRef reports whether -f's target was a directory
 	// (rather than a single file) the last time it existed, per git history
 	// at --since's ref. apply uses this to correct its own fromDirectory
@@ -195,7 +199,7 @@ func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, erro
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
-	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredDashboardKeys: declaredDashboardKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that
@@ -297,6 +301,20 @@ func declaredCheckRuleIDs(after Snapshot) map[string]bool {
 			// an orphan, not something it declares, so it stays reclaimable.
 			for _, id := range asset.CheckRuleIDsOccupiedByCRD(key.Identifier, after.PrometheusAlertsByIdentifier[key.Identifier]) {
 				declared[id] = true
+			}
+		}
+	}
+	return declared
+}
+
+func declaredDashboardKeys(after Snapshot) map[string]bool {
+	declared := map[string]bool{}
+	for key := range after.Identifiers {
+		switch key.Kind {
+		case "dashboard", "ephemeraldashboard", "persesdashboard":
+			declared[key.Identifier] = true
+			if alias := after.Aliases[key]; alias != "" {
+				declared[alias] = true
 			}
 		}
 	}
