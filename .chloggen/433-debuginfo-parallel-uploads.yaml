@@ -1,0 +1,18 @@
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: enhancement
+
+# The name of the component, or a single word describing the area of concern (e.g. dashboards, config, apply)
+component: debuginfo
+
+# A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: "`debuginfo upload` uploads up to 8 source maps at the same time instead of one after another"
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: [433]
+
+# (Optional) One or more lines of additional information to render under the primary note.
+subtext: |
+  Set `--concurrency` to change how many uploads run at once.
+  Each upload in flight holds its script and source map in memory, so lower it when memory is tight.
+
+change_logs: []
