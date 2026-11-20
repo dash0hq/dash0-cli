@@ -873,6 +873,27 @@ dash0 -X api POST /api/agentic-workflows -f agentic-workflow.json
 dash0 -X api /api/organization/settings --dataset ""
 ```
 
+### Debuginfo upload (experimental)
+
+The `debuginfo upload` command uploads source maps so Dash0 can resolve Node.js and browser profile frames to the original source.
+For Node.js, it writes a debug ID into each script and its source map, so run it before you package or deploy the build.
+For browser builds, pass the public URL the build output is served from.
+
+```bash
+# Add debug IDs to a Node.js build and upload its source maps
+dash0 -X debuginfo upload --type source-map dist
+```
+
+```bash
+# Preview what would be uploaded for a browser build
+dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
+```
+
+```bash
+# Upload the source maps of a Next.js build
+dash0 -X debuginfo upload --type source-map .next/static --base-url https://app.example.com/_next/static/
+```
+
 ### Local OTLP proxy (experimental)
 
 The `otlp proxy` command runs a long-lived local OTLP forwarder.

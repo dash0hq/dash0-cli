@@ -17,6 +17,7 @@
 - `/internal/diff`: The experimental `diff` command — previews what `apply` would create, update, or delete, through the same `asset.Plan*` reads `apply` runs before each write
 - `/internal/evals`: The `evals` command group — `evals list`, `get`, `create`, `update`, and `delete` for generative AI evaluations (experimental, dataset-scoped). The shared import helper lives in `internal/asset/generativeaievaluation.go`
 - `/internal/datasets`: The `datasets` command group — `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/dataset.go`
+- `/internal/debuginfo`: The `debuginfo upload` command (experimental) — uploads debug information to the Dash0 debuginfo gRPC service with the upstream Parca client. Only source maps are supported yet
 - `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)

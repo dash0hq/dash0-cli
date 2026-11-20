@@ -115,6 +115,7 @@ var topics = []topicSpec{
 		},
 		assetYAMLLabels: []string{"Dataset ("},
 	},
+	{name: "debuginfo", sections: []string{"debuginfo upload"}},
 	{name: "diff", sections: []string{"diff"}},
 	{name: "failed-checks", sections: []string{"failed-checks query"}},
 	{name: "login", sections: []string{"login", "logout"}},

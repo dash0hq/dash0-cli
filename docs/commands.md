@@ -15,7 +15,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Configuration](#configuration) | `config profiles`, `config show` | Profile management, no API calls |
 | [Asset CRUD](#asset-crud-commands) | `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `apply`, `diff` | File-based input, `--dry-run`, five standard subcommands |
 | [Query](#query-commands) | `logs query`, `spans query`, `traces get`, `metrics instant`, `failed-checks query` | Time range, filters |
-| [Send](#send-commands) | `logs send`, `spans send` | OTLP-based, repeatable attribute flags |
+| [Send](#send-commands) | `logs send`, `spans send`, `debuginfo upload` | `logs send` and `spans send` are OTLP-based, with repeatable attribute flags; `debuginfo upload` is experimental and uploads to the Dash0 debuginfo gRPC service |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Interactive](#interactive-commands) | `k8s pods watch`, `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, `k8s cronjobs watch` | Full-screen terminal page, refreshes on a timer, experimental |
 | [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
@@ -36,8 +36,8 @@ The experimental `diff` command previews what `apply` would do, fetching each do
 They accept time range flags (`--from`, `--to`), a repeatable `--filter` flag with the standard [filter syntax](#filter-syntax), and customizable columns via `--column`.
 Output formats are `table`, `json`, and `csv`.
 
-**Send commands** transmit telemetry data to Dash0 via OTLP.
-They require `otlp-url` (not `api-url`) and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag).
+**Send commands** transmit data to Dash0 and require `otlp-url` (not `api-url`).
+`logs send` and `spans send` send telemetry via OTLP and use repeatable attribute flags (`--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag); `debuginfo upload` uploads debug information to the Dash0 debuginfo gRPC service instead.
 
 **Organizational commands** manage entities (teams, members, notification channels, datasets, auth tokens, Agent0 skills, AWS metric scrape configs) scoped to the organization, not to a dataset.
 They use flag-based input (no `-f`, no `--dry-run`) and are all experimental.
@@ -76,7 +76,7 @@ Passing `--profile ""` or `DASH0_PROFILE=""` is treated as "not set" and falls t
 If the selected profile does not exist, the command fails before making any API call with a message listing the available profile names.
 
 Commands that read from the API (asset CRUD, `logs query`, `spans query`, `traces get`, `metrics instant`) require `api-url` and `auth-token`.
-Commands that write via OTLP (`logs send`, `spans send`) require `otlp-url` and `auth-token`.
+Commands that write via OTLP (`logs send`, `spans send`) and `debuginfo upload` require `otlp-url` and `auth-token`.
 
 ### Read the auth token from a file
 
@@ -3073,11 +3073,13 @@ The `dataset` parameter is omitted when the resolved dataset is `default`, since
 
 ## Send commands
 
-Send commands transmit telemetry data to Dash0 via OTLP.
-They share a common set of characteristics:
-- Require `otlp-url` and `auth-token` (not `api-url`).
+Send commands transmit data to Dash0.
+They all require `otlp-url` and `auth-token` (not `api-url`).
+`logs send` and `spans send` send telemetry via OTLP and share these flags:
 - Repeatable attribute flags: `--resource-attribute`, `--scope-attribute`, and a signal-specific attribute flag.
 - OTLP scope flags: `--scope-name` (default: `dash0-cli`), `--scope-version` (default: CLI version).
+
+`debuginfo upload` uploads to the Dash0 debuginfo gRPC service, on the host of the OTLP URL, and has none of these flags.
 
 > [!IMPORTANT]
 > The Dash0 OTLP ingress does not accept OAuth access tokens — it only honors static `auth_*` tokens.
@@ -3216,6 +3218,116 @@ dash0 spans send --name "db-query" \
     --trace-id 0af7651916cd43dd8448eb211c80319c \
     --parent-span-id b7ad6b7169203331
 ```
+
+### `debuginfo upload` (experimental)
+
+Upload debug information to Dash0, so that Dash0 can resolve the frames of profiles to function names, files, and lines when you read them.
+Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
+The auth token must grant the `ingest:debuginfo` permission; an ingest token works.
+
+```bash
+dash0 -X debuginfo upload --type <type> <path> [flags]
+```
+
+`--type` selects what to upload: `debuginfo`, `executable`, `sources`, or `source-map`.
+Only `source-map` is supported yet; the other types fail with a "not supported yet" error.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--type` | | Type of debug information (required) |
+| `--base-url` | | Public URL that `<path>` is served from; keys source maps for browser profiles |
+| `--script-url` | | Public URL of the script, when `<path>` is a single script |
+| `--source-map` | the file the `sourceMappingURL` comment names, or `<path>.map` | Source map of the script, when `<path>` is a single script |
+| `--endpoint` | the host of the OTLP URL on port 4317 | URL of the Dash0 debuginfo gRPC service |
+| `--otlp-url` | | OTLP endpoint URL (overrides active profile) |
+| `--auth-token` | | Auth token (overrides active profile) |
+| `--output` | `table` (`json` in agent mode) | Output format: `table` or `json` |
+| `--dry-run` | `false` | List what would be uploaded without changing files or uploading |
+| `--force` | `false` | Upload even when Dash0 already has the debug information |
+
+Dash0 finds the source map of a profile frame by one of two keys:
+
+- Node.js profiles use a debug ID, a UUID that the profiler reads from the `//# debugId=<uuid>` comment at the end of the script.
+  This is the default, used when you pass neither `--base-url` nor `--script-url`.
+- Browser profiles use the URL the script is served from.
+  Pass `--base-url` or `--script-url` to key source maps this way.
+  When a directory has an `index.html` and you pass neither, the command warns on stderr, because a browser build uploaded by debug ID cannot be found.
+
+For Node.js, collect profiles with the Parca Agent v0.47.0 or later, or another profiler that reads the debug ID.
+A script and its source map that already carry the same debug ID are uploaded as they are, so debug IDs that a bundler or another upload tool already wrote are kept.
+Otherwise the command writes the debug ID into the files: the `debugId` field into the source map, and the comment as the last line of the script.
+The debug ID is computed from the source map, so the same build always gets the same one, and it matches the debug ID that `@polarsignals/sourcemap-cli` writes.
+Run the command after the build step and before you package or deploy the build output, because the deployed scripts must carry the comment.
+The command checks that every file and its directory are writable, and that the credentials resolve, before it changes any file; `--dry-run` checks that the files are writable too.
+Like the profiler, the command reads only the first debug ID comment in the last 1024 bytes of a script.
+It fails when a script and its source map carry different debug IDs, or when the last 1024 bytes of a script hold a debug ID comment the profiler cannot read, such as an indented one.
+It also fails when two scripts share one source map but would get different debug IDs, and names the line to add or the build to redo.
+
+For browser profiles, the key is the host plus the path of the script URL, without the scheme, query, or fragment, so `https://app.example.com/assets/app.js?v=3` becomes `app.example.com/assets/app.js`.
+A URL whose path contains a character Dash0 cannot look up, such as `%`, `~`, or `*`, fails before any upload.
+No file is changed.
+
+When `<path>` is a directory, every `.js`, `.mjs`, and `.cjs` file with a source map is uploaded, except files in `node_modules`.
+For browser profiles, the URL of each script is `--base-url` plus its path relative to `<path>`.
+The source map is the file named by the last `//# sourceMappingURL=` comment of the script, relative to the script, so builds that name the map differently from the script, such as Turbopack, work.
+A script without that comment uses `<file>.map`.
+Scripts whose comment holds an inline `data:` map or an absolute URL, or names a file that does not exist, are skipped and listed on stderr with the reason.
+For Node.js, a source map outside `<path>` is skipped too, because the command would write the debug ID into it.
+When `<path>` is a symbolic link to a directory, the command follows it.
+A symbolic link to a directory inside `<path>` is not followed, and is listed on stderr.
+When `<path>` is a single script of a browser build, pass `--script-url` with its full URL, or `--base-url` with the URL of its directory.
+Pass `--source-map` to name the map of a single script yourself.
+
+Every script must be non-empty and every source map must be valid JSON; the command checks all of them before it uploads anything, and `--dry-run` runs the same checks.
+
+Source maps that Dash0 already has are skipped, and so are copies of a script that share one debug ID.
+A step that fails with a temporary error, such as an unavailable service, a call that gets no answer, or an HTTP 503 from the upload URL, is retried with backoff up to `--max-retries` times, and each retry is printed on stderr.
+When the answer to the request that starts an upload is lost, the service can treat the upload as in progress, and the retry fails with a hint to run the command again with `--force`.
+When the debuginfo service sends the upload to several destinations, the command uploads to each one and checks again until every destination has the file; a file that is still not delivered after `--max-retries` checks fails.
+With `--force`, the command does not check again, because forcing again can replace an upload in progress, and the file fails instead.
+A script served from a URL that stays the same between releases keeps its first source map, so pass `--force` to replace it.
+
+Add debug IDs to a Node.js build and upload its source maps:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map dist
+Injected debug IDs into 2 scripts
+Source map "10427d43-f372-51e7-a4b0-5d39b07f9c24" uploaded
+Source map "6b3ca909-8819-5a53-a52f-3f0decdb8b90" uploaded
+```
+
+Preview a Node.js build without changing it:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map dist --dry-run
+Dry run: 1 source map found
+  10427d43-f372-51e7-a4b0-5d39b07f9c24 <- dist/server.js, dist/server.js.map (debug ID would be injected)
+```
+
+Preview the source maps of a Vite build served from the site root:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map dist --base-url https://app.example.com/ --dry-run
+Dry run: 2 source maps found
+  app.example.com/assets/index-B2xk9.js <- dist/assets/index-B2xk9.js, dist/assets/index-B2xk9.js.map
+  app.example.com/assets/vendor-C81fa.js <- dist/assets/vendor-C81fa.js, dist/assets/vendor-C81fa.js.map
+```
+
+Upload the source maps of a Next.js build:
+
+```bash
+$ dash0 -X debuginfo upload --type source-map .next/static --base-url https://app.example.com/_next/static/
+Source map "app.example.com/_next/static/chunks/main-4f2a.js" uploaded
+Source map "app.example.com/_next/static/chunks/pages/_app-91c3.js" skipped: Debuginfo already exists and is not marked as invalid, therefore no new upload is needed.
+```
+
+Upload one script and its source map:
+
+```bash
+dash0 -X debuginfo upload --type source-map dist/assets/app.js --script-url https://app.example.com/assets/app.js
+```
+
+With `-o json`, the default in agent mode, the command prints a JSON array with one object per source map: `buildId`, `scriptUrl` (browser keys only), `script`, `sourceMap`, `injected` (present when the command wrote, or in a dry run would write, the debug ID), and `status` (`pending` for a dry run, `uploaded`, or `skipped` with a `reason`).
 
 ## Daemon commands
 
@@ -4986,7 +5098,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, diff, evals, failed-checks, k8s, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, debuginfo, diff, evals, failed-checks, k8s, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents
