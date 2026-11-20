@@ -43,7 +43,7 @@ If the ID argument is omitted, the ID is extracted from the file content.` + int
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
 	var view dash0api.ViewDefinition
-	if err := asset.ReadDefinition(flags.File, &view, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &view, os.Stdin, "view"); err != nil {
 		return fmt.Errorf("failed to read view definition: %w", err)
 	}
 

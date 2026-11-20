@@ -63,7 +63,7 @@ The dataset must exist; use create to make a new one.` + internal.CONFIG_HINT,
 
 func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	var dataset dash0api.DatasetDefinition
-	if err := asset.ReadDefinition(flags.File, &dataset, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &dataset, os.Stdin, "dataset"); err != nil {
 		return fmt.Errorf("failed to read dataset definition: %w", err)
 	}
 

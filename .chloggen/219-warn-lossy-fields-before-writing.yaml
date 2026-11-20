@@ -1,0 +1,5 @@
+change_type: bug_fix
+component: assets
+note: Warn before file-based writes when metadata labels or annotations will not be stored by Dash0.
+issues: [219]
+subtext: Warnings also appear during dry runs and preserve normal stdout and exit codes. Ordinary exported server metadata remains quiet.

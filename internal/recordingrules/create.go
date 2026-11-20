@@ -39,7 +39,7 @@ func newCreateCmd() *cobra.Command {
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	var rule dash0api.RecordingRule
-	if err := asset.ReadDefinition(flags.File, &rule, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &rule, os.Stdin, "prometheusrule"); err != nil {
 		return fmt.Errorf("failed to read recording rule definition: %w", err)
 	}
 
