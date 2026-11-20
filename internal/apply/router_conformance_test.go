@@ -193,53 +193,18 @@ func TestRouter_EveryKindFollowsTheSameOrder(t *testing.T) {
 }
 
 func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
-	dataset := "default"
-	if spec.orgLevel {
-		dataset = ""
-	}
-	inferred := asset.InferOrigin(kind, "checkout", dataset)
+	inferred := inferredOrigin(kind, spec)
 	resolve := func(key string) string { return strings.ReplaceAll(key, inferredKey, inferred) }
 
-	fixture, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), spec.fixture))
-	require.NoError(t, err)
-	putResponse := fixture
-	if spec.putFixture != "" {
-		putResponse, err = os.ReadFile(filepath.Join(testutil.FixturesDir(), spec.putFixture))
-		require.NoError(t, err)
-	}
+	fixture, putResponse := routedFixtures(t, spec)
 	storedResponses := make(map[string][]byte)
 	stored := make(map[string]string)
 	for key, origin := range tc.stored {
 		stored[resolve(key)] = origin
 		storedResponses[resolve(key)] = storedAsset(t, fixture, spec, origin)
 	}
-
-	type request struct {
-		line string
-		body []byte
-	}
-	var requests []request
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.OnDefault(func(w http.ResponseWriter, r *http.Request) {
-		key, onAsset := strings.CutPrefix(r.URL.Path, spec.path+"/")
-		if !onAsset {
-			// Reads beside the routing, such as team member lookups.
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		body, _ := io.ReadAll(r.Body)
-		requests = append(requests, request{line: r.Method + " " + key, body: body})
-		w.Header().Set("Content-Type", "application/json")
-		switch response, found := storedResponses[key]; {
-		case r.Method == http.MethodGet && !found:
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found"}}`))
-		case r.Method == http.MethodGet:
-			_, _ = w.Write(response)
-		default:
-			_, _ = w.Write(putResponse)
-		}
-	})
+	requests := serveRouted(server, spec, storedResponses, putResponse)
 
 	var labels string
 	if len(tc.labels) > 0 {
@@ -265,7 +230,7 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 		require.NoError(t, err)
 	}
 	var got []string
-	for _, r := range requests {
+	for _, r := range *requests {
 		got = append(got, r.line)
 	}
 	var want []string
@@ -274,7 +239,7 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 	}
 	require.Equal(t, want, got)
 
-	for _, r := range requests {
+	for _, r := range *requests {
 		if !strings.HasPrefix(r.line, http.MethodPut) {
 			continue
 		}
@@ -286,6 +251,60 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 			assert.Equal(t, key, bodyOrigin, "a create sends the origin it is created by")
 		}
 	}
+}
+
+// inferredOrigin is the origin the CLI infers for a document of kind named checkout.
+func inferredOrigin(kind string, spec routedKind) string {
+	dataset := "default"
+	if spec.orgLevel {
+		dataset = ""
+	}
+	return asset.InferOrigin(kind, "checkout", dataset)
+}
+
+// routedFixtures returns the stored-asset fixture of spec and the body that answers a write.
+func routedFixtures(t *testing.T, spec routedKind) (fixture, writeResponse []byte) {
+	t.Helper()
+	fixture, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), spec.fixture))
+	require.NoError(t, err)
+	writeResponse = fixture
+	if spec.putFixture != "" {
+		writeResponse, err = os.ReadFile(filepath.Join(testutil.FixturesDir(), spec.putFixture))
+		require.NoError(t, err)
+	}
+	return fixture, writeResponse
+}
+
+type routedRequest struct {
+	line string
+	body []byte
+}
+
+// serveRouted answers a GET under spec.path with the stored asset at that key,
+// or 404, and any write with writeResponse. It records every request under spec.path.
+func serveRouted(server *testutil.MockServer, spec routedKind, stored map[string][]byte, writeResponse []byte) *[]routedRequest {
+	var requests []routedRequest
+	server.OnDefault(func(w http.ResponseWriter, r *http.Request) {
+		key, onAsset := strings.CutPrefix(r.URL.Path, spec.path+"/")
+		if !onAsset {
+			// Reads beside the routing, such as team member lookups.
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, routedRequest{line: r.Method + " " + key, body: body})
+		w.Header().Set("Content-Type", "application/json")
+		switch response, found := stored[key]; {
+		case r.Method == http.MethodGet && !found:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found"}}`))
+		case r.Method == http.MethodGet:
+			_, _ = w.Write(response)
+		default:
+			_, _ = w.Write(writeResponse)
+		}
+	})
+	return &requests
 }
 
 // storedAsset returns the fixture as the asset stored with origin.

@@ -82,6 +82,9 @@ var updateCommands = []updateCommand{
 		}
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: n\n" + v.labelBlock(false) + extensions + "spec:\n  display:\n    name: n\n"
 	}},
+	{"dashboards with dash0.com/id", dashboards.NewDashboardsCmd, []string{"dashboards", "update"}, func(v updateIdentifiers) string {
+		return "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  display:\n    name: n\n"
+	}},
 	{"check-rules", checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}, func(v updateIdentifiers) string {
 		id := ""
 		if v.hasID() {
@@ -187,6 +190,12 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithOrigin:  "GET /api/dashboards/o",
 			updateWithID:      "GET /api/dashboards/" + characterizationID,
 			updateWithBoth:    `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("` + characterizationID + `") must be equal; set only metadata.labels["dash0.com/origin"], and move "` + characterizationID + `" to metadata.labels["dash0.com/id"] if it is the id of an existing dashboard`,
+		},
+		"dashboards with dash0.com/id": {
+			updateWithNeither: `error: no dashboard origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/dashboards/o",
+			updateWithID:      "GET /api/dashboards/" + characterizationID,
+			updateWithBoth:    "GET /api/dashboards/" + characterizationID,
 		},
 		"check-rules": {
 			updateWithNeither: "error: no check rule id given: pass one as an argument, or set the id in the file",

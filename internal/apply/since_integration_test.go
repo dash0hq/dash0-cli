@@ -3137,99 +3137,75 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 	}
 }
 
-// A dashboard file that keeps its name but drops its dash0.com/id, changes it to
-// an id that is not found, or pins the inferred origin, is applied at the
-// inferred origin, so --since must not delete that dashboard.
-func TestApply_Since_DashboardThatDropsItsIDKeepsTheInferredOrigin(t *testing.T) {
+// A file that keeps its name but drops its dash0.com/id, changes it to an id
+// that is not found, or pins the inferred origin, is applied at the inferred
+// origin, so --since must not delete there.
+func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	const otherID = "b2c3d4e5-6789-01bc-def0-234567890abc"
-	idPath := apiPathDashboards + "/" + id
-	inferredOrigin := asset.InferOrigin("Dashboard", "checkout", "default")
-	inferredPath := apiPathDashboards + "/" + inferredOrigin
-	dashboardWithLabel := func(label string) string {
-		return "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    " + label + "\nspec:\n  display:\n    name: Checkout\n"
-	}
-	for _, current := range []struct {
-		name     string
-		document string
-	}{
-		{"drops the id", "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n"},
-		{"changes the id", dashboardWithLabel("dash0.com/id: " + otherID)},
-		{"pins the inferred origin", dashboardWithLabel("dash0.com/origin: " + inferredOrigin)},
-	} {
-		for _, tt := range []struct {
-			name        string
-			idStatus    int
-			idBody      string
-			wantDeletes []string
+	for kind, spec := range routedKinds {
+		inferred := inferredOrigin(kind, spec)
+		fixture, writeResponse := routedFixtures(t, spec)
+		for _, current := range []struct {
+			name   string
+			labels string
 		}{
-			{"id not found deletes nothing", http.StatusNotFound, testutil.FixtureDashboardsNotFound, nil},
-			{"id found deletes at the id", http.StatusOK, testutil.FixtureDashboardsImportSuccess, []string{idPath}},
+			{"drops the id", ""},
+			{"changes the id", "  labels:\n    dash0.com/id: " + otherID + "\n"},
+			{"pins the inferred origin", "  labels:\n    dash0.com/origin: " + inferred + "\n"},
 		} {
-			t.Run(current.name+"/"+tt.name, func(t *testing.T) {
-				testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+			writeFileFixture(t, dir, "asset.yaml", spec.document("  labels:\n    dash0.com/id: "+id+"\n"))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add asset")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+			writeFileFixture(t, dir, "asset.yaml", spec.document(current.labels))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", current.name)
 
-				dir := t.TempDir()
-				runGitCmd(t, dir, "init", "-q", "-b", "main")
-				runGitCmd(t, dir, "config", "user.email", "test@example.com")
-				runGitCmd(t, dir, "config", "user.name", "Test")
-				runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-
-				writeFileFixture(t, dir, "dashboard.yaml", dashboardWithLabel("dash0.com/id: "+id))
-				runGitCmd(t, dir, "add", "-A")
-				runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
-				before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
-
-				writeFileFixture(t, dir, "dashboard.yaml", current.document)
-				runGitCmd(t, dir, "add", "-A")
-				runGitCmd(t, dir, "commit", "-q", "-m", current.name)
-
-				server := testutil.NewMockServer(t, testutil.FixturesDir())
-				server.On(http.MethodGet, idPath, testutil.MockResponse{
-					StatusCode: tt.idStatus,
-					BodyFile:   tt.idBody,
-					Validator:  testutil.RequireHeaders,
-				})
-				server.On(http.MethodGet, apiPathDashboards+"/"+otherID, testutil.MockResponse{
-					StatusCode: http.StatusNotFound,
-					BodyFile:   testutil.FixtureDashboardsNotFound,
-					Validator:  testutil.RequireHeaders,
-				})
-				server.On(http.MethodGet, inferredPath, testutil.MockResponse{
-					StatusCode: http.StatusOK,
-					BodyFile:   testutil.FixtureDashboardsImportSuccess,
-					Validator:  testutil.RequireHeaders,
-				})
-				server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
-				for _, path := range []string{idPath, inferredPath} {
-					server.On(http.MethodDelete, path, testutil.MockResponse{
-						StatusCode: http.StatusOK,
-						Body:       map[string]any{},
-						Validator:  testutil.RequireHeaders,
-					})
-				}
-
-				cmd := newSinceTestCmd()
-				cmd.SetArgs([]string{
-					"-f", dir, "--since", before, "--force", "--experimental",
-					"--api-url", server.URL, "--auth-token", testAuthToken,
-				})
-
-				var cmdErr error
-				testutil.CaptureStdout(t, func() {
-					cmdErr = cmd.Execute()
-				})
-
-				require.NoError(t, cmdErr)
-				require.NotNil(t, findRequest(server.Requests(), http.MethodPut, inferredPath), "apply must write the dashboard at its inferred origin")
-				var deletes []string
-				for _, request := range server.Requests() {
-					if request.Method == http.MethodDelete {
-						deletes = append(deletes, request.Path)
+			for _, tt := range []struct {
+				name        string
+				idFound     bool
+				wantDeletes []string
+			}{
+				{"id not found deletes nothing", false, nil},
+				{"id found deletes at the id", true, []string{"DELETE " + id}},
+			} {
+				t.Run(kind+"/"+current.name+"/"+tt.name, func(t *testing.T) {
+					testutil.SetupTestEnv(t)
+					stored := map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred)}
+					if tt.idFound {
+						stored[id] = storedAsset(t, fixture, spec, "")
 					}
-				}
-				assert.Equal(t, tt.wantDeletes, deletes)
-			})
+					server := testutil.NewMockServer(t, testutil.FixturesDir())
+					requests := serveRouted(server, spec, stored, writeResponse)
+
+					cmd := newSinceTestCmd()
+					cmd.SetArgs([]string{
+						"-f", dir, "--since", before, "--force", "--experimental",
+						"--api-url", server.URL, "--auth-token", testAuthToken,
+					})
+					var cmdErr error
+					_ = testutil.CaptureStderr(t, func() {
+						testutil.CaptureStdout(t, func() {
+							cmdErr = cmd.Execute()
+						})
+					})
+
+					require.NoError(t, cmdErr)
+					var writes []string
+					for _, request := range *requests {
+						if !strings.HasPrefix(request.line, http.MethodGet) {
+							writes = append(writes, request.line)
+						}
+					}
+					assert.Equal(t, append([]string{"PUT " + inferred}, tt.wantDeletes...), writes)
+				})
+			}
 		}
 	}
 }
