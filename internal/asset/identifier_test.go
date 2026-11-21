@@ -34,7 +34,8 @@ func TestExtractIdentifier_NonStringIdentifierLabelFails(t *testing.T) {
 // printed "was already deleted" while the asset stayed live. Returning ""
 // instead routes it to the NoIdentifier hard-fail written for this case.
 //
-// Only SLO, Dash0Team, and Dash0SpamFilter genuinely accept either field.
+// Only datasets and AWS metric scrape configs read a single field; every
+// other kind reads the id, then the origin.
 func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 	for _, tc := range []struct {
 		name string
