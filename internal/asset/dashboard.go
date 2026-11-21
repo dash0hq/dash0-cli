@@ -29,7 +29,30 @@ func ParseDashboard(raw []byte) (dashboard *dash0api.DashboardDefinition, inferr
 	if err := dash0yaml.Unmarshal(raw, &perses); err != nil {
 		return nil, "", err
 	}
+	keepPersesIdentity(dashboard, perses.Metadata.Labels)
 	return dashboard, perses.Metadata.Name, nil
+}
+
+// keepPersesIdentity gives a converted PersesDashboard the identity of a
+// Dashboard with the same labels. The client conversion drops the
+// dash0.com/origin label and moves dash0.com/id to metadata.dash0Extensions.id,
+// which names the origin of a Dashboard.
+func keepPersesIdentity(dashboard *dash0api.DashboardDefinition, labels map[string]string) {
+	if extensions := dashboard.Metadata.Dash0Extensions; extensions != nil {
+		extensions.Id = nil
+		if extensions.Dataset == nil {
+			dashboard.Metadata.Dash0Extensions = nil
+		}
+	}
+	id, origin := labels[dash0api.LabelID], labels[dash0api.LabelOrigin]
+	if id == "" && origin == "" {
+		return
+	}
+	if dashboard.Metadata.Labels == nil {
+		dashboard.Metadata.Labels = &dash0api.DashboardLabels{}
+	}
+	dashboard.Metadata.Labels.Dash0Comid = optionalString(id)
+	dashboard.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }
 
 // ImportDashboard creates or updates a dashboard through RouteDocument, and

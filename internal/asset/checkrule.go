@@ -7,30 +7,23 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
-// ImportCheckRule creates or updates a check rule via the standard CRUD APIs.
-// When the input has a user-defined ID, UPDATE is always used — PUT has
-// create-or-replace semantics, so this is idempotent regardless of whether the
-// rule already exists.
-// When the input has no ID, CREATE is used and the server assigns an ID.
-// A PUT to the ID of a deleted check rule brings it back, which is reported as
+// ImportCheckRule creates or updates a check rule through RouteDocument. A
+// PUT to a deleted check rule brings it back, which is reported as
 // ActionRestored.
-func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportResult, error) {
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := PlanCheckRule(ctx, apiClient, rule, dataset)
-	id := plan.Key
-
-	var (
-		result *dash0api.PrometheusAlertRule
-		err    error
-	)
-	if id != "" {
-		result, err = apiClient.UpdateCheckRule(ctx, id, rule, dataset)
-	} else {
-		result, err = apiClient.CreateCheckRule(ctx, rule, dataset)
+func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule CheckRule, dataset *string) (ImportResult, error) {
+	plan, err := PlanCheckRule(ctx, apiClient, rule, dataset)
+	// A failed origin read does not block the write: the PUT reports the same error.
+	if plan.Key == "" {
+		return ImportResult{}, err
 	}
+	if plan.Action != ActionCreated {
+		setCheckRuleOrigin(rule.PrometheusAlertRule, "")
+	}
+	result, err := apiClient.UpdateCheckRule(ctx, plan.Key, rule.PrometheusAlertRule, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
+	id := plan.Key
 	if result.Id != nil {
 		id = *result.Id
 	}
@@ -40,21 +33,48 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0
 	return ImportResult{Name: result.Name, ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanCheckRule reads the stored check rule that ImportCheckRule would write.
-// It returns any preflight error other than "not found".
-func PlanCheckRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.PrometheusAlertRule, dataset *string) (ImportPlan, error) {
-	dash0api.StripCheckRuleServerFields(rule)
-	plan := ImportPlan{Action: ActionCreated, Proposed: rule}
-	if rule.Id == nil || *rule.Id == "" {
-		return plan, nil
+// PlanCheckRule routes the check rule with RouteDocument and reads the stored
+// rule that ImportCheckRule would write. It returns any preflight error other
+// than "not found"; Key is empty when the id read failed, because the write
+// has no target.
+func PlanCheckRule(ctx context.Context, apiClient dash0api.Client, rule CheckRule, dataset *string) (ImportPlan, error) {
+	// StripCheckRuleServerFields clears the origin, so read the identity first.
+	identity := rule.Identity(dataset)
+	dash0api.StripCheckRuleServerFields(rule.PrometheusAlertRule)
+	get := func(ctx context.Context, key string) (*dash0api.PrometheusAlertRule, error) {
+		return apiClient.GetCheckRule(ctx, key, dataset)
 	}
-	plan.Key = *rule.Id
-	existing, err := apiClient.GetCheckRule(ctx, plan.Key, dataset)
-	if err != nil {
-		return plan, ignoreNotFound(err)
+	route, err := RouteDocument(ctx, identity, get, (*dash0api.PrometheusAlertRule).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: rule.PrometheusAlertRule}
+	// An id in the body that is not the path's key can only disagree with it.
+	if route.Key != identity.ID {
+		dash0api.ClearCheckRuleID(rule.PrometheusAlertRule)
 	}
-	plan.Action, plan.Before = actionForExisting(CheckRuleDeletedAt(existing)), existing
+	if route.Key == "" || route.Create {
+		setCheckRuleOrigin(rule.PrometheusAlertRule, route.Key)
+		return plan, err
+	}
+	// The stored origin keeps the diff to what changes; ImportCheckRule clears
+	// it before the write.
+	setCheckRuleOrigin(rule.PrometheusAlertRule, route.Stored.GetOrigin())
+	plan.Action, plan.Before = actionForExisting(CheckRuleDeletedAt(route.Stored)), route.Stored
 	return plan, nil
+}
+
+// setCheckRuleOrigin sets the origin, which a check rule keeps among its
+// Prometheus labels.
+func setCheckRuleOrigin(rule *dash0api.PrometheusAlertRule, origin string) {
+	if rule.Labels == nil {
+		if origin == "" {
+			return
+		}
+		rule.Labels = &map[string]string{}
+	}
+	if origin == "" {
+		delete(*rule.Labels, dash0api.LabelOrigin)
+		return
+	}
+	(*rule.Labels)[dash0api.LabelOrigin] = origin
 }
 
 // CheckRuleDeletedAt returns when the check rule was deleted, or nil when it is

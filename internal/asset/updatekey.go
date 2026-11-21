@@ -21,6 +21,10 @@ type UpdateKey struct {
 	// Upsert is the document. Read it before a Strip*ServerFields call, which
 	// can clear both labels.
 	Upsert dash0api.AssetMetadata
+
+	// OriginLabel is where the document sets its origin, when that is not
+	// metadata.labels, as for check rules.
+	OriginLabel string
 }
 
 // ResolveUpdateKey returns the originOrId to update. Without an argument it is
@@ -65,9 +69,13 @@ func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
 		return key, nil
 	}
 	if byOrigin {
+		label := OriginLabel
+		if k.OriginLabel != "" {
+			label = k.OriginLabel
+		}
 		return "", fmt.Errorf(
 			"no %s origin or id given: pass one as an argument, or set %s in the file",
-			k.Noun, OriginLabel,
+			k.Noun, label,
 		)
 	}
 	return "", fmt.Errorf("no %s id given: pass one as an argument, or set the id in the file", k.Noun)
@@ -134,3 +142,13 @@ func CheckStoredOrigin(key string, identity Identity, stored any) error {
 	}
 	return nil
 }
+
+// RoutedKeys lets the shared key rules read the origin of a routed kind whose
+// client type reports that it upserts by id only.
+func RoutedKeys(upsert dash0api.AssetMetadata) dash0api.AssetMetadata {
+	return routedKeys{upsert}
+}
+
+type routedKeys struct{ dash0api.AssetMetadata }
+
+func (routedKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }

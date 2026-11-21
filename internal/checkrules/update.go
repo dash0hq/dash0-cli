@@ -22,7 +22,7 @@ func newUpdateCmd() *cobra.Command {
 
 Accepts both plain CheckRule definitions and PrometheusRule CRD files. When a PrometheusRule CRD is provided, the CRD must contain exactly one alerting rule.
 
-If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
+If the ID argument is omitted, the file's id is read first, then its dash0.com/origin label when the id is not found, as apply does.` + internal.CONFIG_HINT,
 		Example: `  # Update a check rule from a file
   dash0 check-rules update <id> -f rule.yaml
 
@@ -62,32 +62,38 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 	rule := rules[0]
 
-	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "check rule",
-		Upsert: rule,
-	})
-	if err != nil {
+	updateKey := asset.UpdateKey{Noun: "check rule", Upsert: asset.RoutedKeys(rule.PrometheusAlertRule), OriginLabel: `labels["dash0.com/origin"]`}
+	identity := rule.Identity(nil)
+	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
 
-	return doUpdate(ctx, flags, id, rule)
-}
-
-func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule *dash0api.PrometheusAlertRule) error {
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
-	asset.ClearCheckRuleDeletedAt(rule)
+	asset.ClearCheckRuleDeletedAt(rule.PrometheusAlertRule)
 
-	before, err := apiClient.GetCheckRule(ctx, id, dataset)
+	// The PUT below creates a rule when nothing matches the key, so this read
+	// is what makes update fail on a missing rule. It reads the file's id
+	// first, then its origin, as apply does.
+	get := func(ctx context.Context, key string) (*dash0api.PrometheusAlertRule, error) {
+		return apiClient.GetCheckRule(ctx, key, dataset)
+	}
+	id, before, err := asset.RouteUpdate(ctx, args, updateKey, identity, get)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "check rule",
 			AssetID:   id,
 		})
+	}
+	// An update never sends the origin, and an id that is not the path's key
+	// can only disagree with it.
+	dash0api.StripCheckRuleServerFields(rule.PrometheusAlertRule)
+	if id != identity.ID {
+		dash0api.ClearCheckRuleID(rule.PrometheusAlertRule)
 	}
 
 	beforeDeletedAt := asset.CheckRuleDeletedAt(before)
@@ -98,13 +104,13 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, rule 
 			Name:            rule.Name,
 			ID:              id,
 			Before:          before,
-			After:           rule,
+			After:           rule.PrometheusAlertRule,
 			BeforeDeletedAt: beforeDeletedAt,
 			DryRun:          true,
 		})
 	}
 
-	result, err := apiClient.UpdateCheckRule(ctx, id, rule, dataset)
+	result, err := apiClient.UpdateCheckRule(ctx, id, rule.PrometheusAlertRule, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "check rule",

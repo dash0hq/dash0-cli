@@ -199,6 +199,11 @@ func planEach(ctx context.Context, apiClient dash0api.Client, documents []asset.
 				failed.Store(true)
 				return
 			}
+			// A denied id read leaves no key, but apply creates the dataset
+			// first, so the id is not found and the write goes to the origin.
+			if len(plans) == 1 && plans[0].readDenied && plans[0].plan.Key == "" {
+				plans[0].plan.Key = asset.DocumentCreateOrigin(doc, dataset)
+			}
 			planned[i] = plannedDoc{doc: doc, plans: plans}
 		}()
 	}

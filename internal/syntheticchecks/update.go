@@ -20,7 +20,7 @@ func newUpdateCmd() *cobra.Command {
 		Short: "Update a synthetic check from a file",
 		Long: `Update an existing synthetic check from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-If the ID argument is omitted, the ID is extracted from the file content.` + internal.CONFIG_HINT,
+If the ID argument is omitted, the file's dash0.com/id label is read first, then its dash0.com/origin label when the id is not found, as apply does.` + internal.CONFIG_HINT,
 		Example: `  # Update a synthetic check from a file
   dash0 synthetic-checks update <id> -f check.yaml
 
@@ -47,11 +47,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read synthetic check definition: %w", err)
 	}
 
-	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "synthetic check",
-		Upsert: &check,
-	})
-	if err != nil {
+	updateKey := asset.UpdateKey{Noun: "synthetic check", Upsert: asset.RoutedKeys(&check)}
+	identity := asset.SyntheticCheckIdentity(&check, nil)
+	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
 
@@ -61,14 +59,25 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
-	dash0api.StripSyntheticCheckServerFields(&check)
 
-	before, err := apiClient.GetSyntheticCheck(ctx, id, dataset)
+	// The PUT below creates the asset when nothing matches the key, so this
+	// read is what makes update fail on a missing one. It reads the file's id
+	// first, then its origin, as apply does.
+	get := func(ctx context.Context, key string) (*dash0api.SyntheticCheckDefinition, error) {
+		return apiClient.GetSyntheticCheck(ctx, key, dataset)
+	}
+	id, before, err := asset.RouteUpdate(ctx, args, updateKey, identity, get)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "synthetic check",
 			AssetID:   id,
 		})
+	}
+	// An update never sends the origin, and an id that is not the path's key
+	// can only disagree with it.
+	dash0api.StripSyntheticCheckServerFields(&check)
+	if id != identity.ID {
+		dash0api.ClearSyntheticCheckID(&check)
 	}
 
 	if flags.DryRun {

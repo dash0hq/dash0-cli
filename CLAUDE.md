@@ -44,12 +44,12 @@ Detailed guidelines are split into focused documents:
 
 - **Origin** identifies which system is the authoritative source of truth for an asset (e.g., `dash0-cli`, `terraform`, `ui`).
   It is provenance/ownership metadata, not a lookup key.
-  It is stored as the label `dash0.com/origin` on check rules, synthetic checks, and views.
-  The CLI strips it before sending assets to the API (`StripXxxServerFields`), because the CLI should not claim ownership when the asset may be managed by another system.
+  It is stored as the label `dash0.com/origin`; check rules keep it in their top-level `labels`.
+  For the routed kinds below, the origin is also the key a create writes by, so the CLI sends it only on a create and clears it before an update.
 
 - **ID** is the user-defined external identifier used for upsert (create-or-replace) operations.
   When an asset has a user-defined ID, `apply` and the individual import functions route to PUT (which has upsert semantics) instead of POST for most asset types.
-- **One routing rule** (`asset.RouteDocument` in `internal/asset/router.go`) serves dashboards, ephemeral dashboards, teams, notification channels, time series aggregations, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills.
+- **One routing rule** (`asset.RouteDocument` in `internal/asset/router.go`) serves dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, teams, notification channels, time series aggregations, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills.
   A document with `dash0.com/id` is read by that id; on hit the CLI PUTs at the id, and fails when the stored origin differs from an explicit origin in the file.
   On 404, or without an id, the CLI PUTs by the file's origin or the inferred one, never by the id and never with POST.
   There is no lookup by name.
@@ -59,12 +59,12 @@ Detailed guidelines are split into focused documents:
   A document whose id is not found fails at write time when another document of the run already wrote its inferred origin (`asset.InferredOriginWrites`).
   `TestRouter_EveryKindFollowsTheSameOrder` checks every kind in `ValidKinds`; kinds not routed yet sit in its `notRoutedYet` list.
   The ID field varies by asset type:
-  - Check rules: top-level `id` field (`PrometheusAlertRule.Id`)
-  - Views: `metadata.labels["dash0.com/id"]` (`ViewLabels.Dash0Comid`)
-  - Synthetic checks: `metadata.labels["dash0.com/id"]`
+  - Check rules: routed. The top-level `id` field (`PrometheusAlertRule.Id`), then `labels["dash0.com/origin"]` in the top-level labels. The inferred origin hashes `name`.
+  - Views: routed. `metadata.labels["dash0.com/id"]` (`ViewLabels.Dash0Comid`), then `metadata.labels["dash0.com/origin"]`. The server rejects a body origin that differs from the path, which is why an update never sends it.
+  - Synthetic checks: routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`.
   - Dashboards: routed. The ID is `metadata.labels["dash0.com/id"]` (the server UUID); the origin is `metadata.labels["dash0.com/origin"]`, or `metadata.dash0Extensions.id` when the label is absent (`asset.DashboardIdentity`). Read them before `StripDashboardServerFields`, which clears `dash0.com/id`. An origin that differs from `dash0Extensions.id` fails validation. A UUID origin is not set as the origin label on create, because the API stores a UUID key as the id. `asset.DashboardKeys` and `asset.DashboardAlias` still serve `update`, `preview`, and `apply --since`.
-  - PersesDashboard CRD: `metadata.labels["dash0.com/id"]`
-  - PrometheusRule CRD (alerting and recording rules): `metadata.labels["dash0.com/id"]`
+  - PersesDashboard CRD: routed as a dashboard. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. The library's conversion drops both labels, so `asset.ParseDashboard` copies them back (`keepPersesIdentity`). The inferred origin hashes kind `dashboard`, as `apply` converts the CRD first, and `asset.InferKindOrigin` maps `persesdashboard` to it so `--since` deletes at the same key.
+  - PrometheusRule CRD: routed per asset. Each alert reads its id (the CRD's `dash0.com/id`, or `asset.DeriveAlertCheckRuleID` of it for two or more alerts), then its origin: the CRD's `dash0.com/origin` derived the same way, or an inferred origin that hashes kind `prometheusrule` and `metadata.name` NUL `<group> - <alert>`. The recording rules are one asset: the CRD's id, then its origin, or an inferred origin that hashes kind `recordingrule` and `metadata.name`. Collision checks and `--since` identify the CRD by its own labels and `metadata.name`.
   - Spam filters (v1alpha1 and v1alpha2): routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`.
   - Notification channels: routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`; organization-level, so the inferred origin uses no dataset.
   - SLOs: routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. IDs are server-assigned (`slo_<ulid>`), so a hand-authored document pins `dash0.com/origin` or relies on the inferred one. An id from another organization is not found, so the SLO is created by its origin, never by POST. `StripSLOServerFields` clears the origin, because the path carries it.
