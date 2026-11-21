@@ -471,8 +471,12 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 // id, the key apply wrote the alert at when its id was not found: the key
 // derived from the CRD's origin, or the alert's inferred origin. It returns
 // nil when the CRD has no id, because its alerts live at the keys derived
-// from its origin, which is its identifier.
+// from its origin, which is its identifier, and nil when the CRD has no
+// alerts, because apply wrote no check rule for it.
 func prometheusAlertFallbacks(d gitutil.Deletion, dataset *string) []string {
+	if len(d.PrometheusAlerts) == 0 {
+		return nil
+	}
 	if d.Alias != "" {
 		return asset.CheckRuleIDsOccupiedByCRD(d.Alias, d.PrometheusAlerts)
 	}

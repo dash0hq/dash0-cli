@@ -28,7 +28,6 @@ func (p PrometheusAlertName) CheckRuleName() string {
 
 type identifierProbe struct {
 	Kind     string `json:"kind"`
-	ID       string `json:"id"`
 	Metadata struct {
 		Name string `json:"name"`
 		// Values are not all strings: sampling rules nest custom labels

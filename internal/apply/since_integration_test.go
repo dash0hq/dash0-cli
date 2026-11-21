@@ -3406,3 +3406,67 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 		})
 	}
 }
+
+func TestApply_Since_RecordingOnlyPrometheusRuleWithIDOnly_DeletesWhereApplyWrote(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+	writeFileFixture(t, dir, "rules.yaml", `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: app-rules
+spec:
+  groups:
+    - name: cpu
+      rules:
+        - record: instance:cpu_usage:avg5m
+          expr: avg(rate(node_cpu_seconds_total[5m]))
+`)
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add rules")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+	require.NoError(t, os.Remove(filepath.Join(dir, "rules.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove rules")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureRecordingRulesNotFound,
+	})
+	server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   testutil.FixtureCheckRulesNotFound,
+	})
+	server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       map[string]any{},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+	require.NoError(t, cmdErr, output)
+
+	dataset := "default"
+	var deleted []string
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodDelete && strings.HasPrefix(req.Path, "/api/recording-rules/") {
+			deleted = append(deleted, strings.TrimPrefix(req.Path, "/api/recording-rules/"))
+		}
+	}
+	assert.Equal(t, []string{asset.InferKindOrigin("recordingrule", "app-rules", &dataset)}, deleted)
+}
