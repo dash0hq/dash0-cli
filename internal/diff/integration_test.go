@@ -1467,3 +1467,55 @@ func TestDiff_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing
 	assert.Contains(t, cmdErr.Error(), "b.yaml")
 	assert.Contains(t, cmdErr.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
 }
+
+// In a dataset the same run creates, a PrometheusRule alert is created by its
+// own inferred origin, and recording rules by theirs, never by the CRD's.
+func TestDiff_PrometheusRuleInDatasetCreatedInSameRunUsesItsOwnKeys(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writeNewDatasetWithView(t)
+	require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "alerts.yaml"), []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alerts
+  labels:
+    dash0.com/id: alerts-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: Down
+          expr: up == 0
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "records.yaml"), []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: records
+  labels:
+    dash0.com/id: records-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - record: up:sum
+          expr: sum(up)
+`), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), forbiddenResponse)
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), forbiddenResponse)
+
+	output, err := runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	dataset := "staging"
+	assert.Contains(t, output, "("+asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", &dataset)+")")
+	assert.Contains(t, output, "("+asset.InferOrigin("recordingrule", "records", "staging")+")")
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts", &dataset))
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "records", &dataset))
+}

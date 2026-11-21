@@ -3292,3 +3292,117 @@ func storedAt(server *testutil.MockServer, path, fixture string) {
 		Validator:  testutil.RequireHeaders,
 	})
 }
+
+// A removed multi-alert CRD whose alert ids are not found is deleted where
+// apply wrote it: at the keys derived from its origin, at each alert's inferred
+// origin, or nowhere when the current files still write those inferred origins.
+func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t *testing.T) {
+	const crdBody = `spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+        - alert: DiskFull
+          expr: disk > 0.9
+`
+	dataset := "default"
+	inferred := func(alert string) string {
+		return asset.InferKindOrigin("prometheusrule", "app-rules\x00test-group - "+alert, &dataset)
+	}
+	tests := []struct {
+		name          string
+		labels        string
+		keepCRD       bool
+		wantDeleted   []string
+		wantNoDeletes bool
+	}{
+		{
+			name:        "id only",
+			labels:      "    dash0.com/id: app-rules\n",
+			wantDeleted: []string{inferred("HighErrorRate"), inferred("DiskFull")},
+		},
+		{
+			name:        "id and origin",
+			labels:      "    dash0.com/id: app-rules\n    dash0.com/origin: app-origin\n",
+			wantDeleted: []string{"app-origin--test-group-higherrorrate", "app-origin--test-group-diskfull"},
+		},
+		{
+			name:          "inferred origins kept",
+			labels:        "    dash0.com/id: app-rules\n",
+			keepCRD:       true,
+			wantNoDeletes: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			runGitCmd(t, dir, "init", "-q", "-b", "main")
+			runGitCmd(t, dir, "config", "user.email", "test@example.com")
+			runGitCmd(t, dir, "config", "user.name", "Test")
+			runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+
+			header := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: app-rules\n"
+			writeFileFixture(t, dir, "rules.yaml", header+"  labels:\n"+tt.labels+crdBody)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "add rules")
+			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+
+			if tt.keepCRD {
+				writeFileFixture(t, dir, "rules.yaml", header+crdBody)
+			} else {
+				require.NoError(t, os.Remove(filepath.Join(dir, "rules.yaml")))
+			}
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "change rules")
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureCheckRulesNotFound,
+			})
+			server.OnPattern(http.MethodGet, recordingRuleIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureRecordingRulesNotFound,
+			})
+			server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+			server.OnPattern(http.MethodDelete, checkRuleIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				Body:       map[string]any{},
+				Validator:  testutil.RequireHeaders,
+			})
+			server.OnPattern(http.MethodDelete, recordingRuleIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureRecordingRulesNotFound,
+			})
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{
+				"-f", dir, "--since", before, "--force", "--experimental",
+				"--api-url", server.URL, "--auth-token", testAuthToken,
+			})
+			var cmdErr error
+			output := testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+			require.NoError(t, cmdErr, output)
+
+			var deleted []string
+			for _, req := range server.Requests() {
+				if req.Method == http.MethodDelete && strings.HasPrefix(req.Path, "/api/alerting/check-rules/") {
+					deleted = append(deleted, strings.TrimPrefix(req.Path, "/api/alerting/check-rules/"))
+				}
+			}
+			if tt.wantNoDeletes {
+				assert.Empty(t, deleted)
+				return
+			}
+			for _, key := range tt.wantDeleted {
+				assert.Contains(t, deleted, key)
+			}
+			assert.NotContains(t, deleted, "app-rules--test-group-higherrorrate")
+			assert.NotContains(t, deleted, "app-rules--test-group-diskfull")
+		})
+	}
+}
