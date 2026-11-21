@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -3162,6 +3163,60 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 	}
 }
 
+// A failed read by id cannot tell where apply wrote the asset, so --since must
+// stop instead of guessing a key to delete at.
+func TestApply_Since_DocumentWithOnlyIDStopsWhenTheReadFails(t *testing.T) {
+	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	for kind, spec := range routedKinds {
+		for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+			t.Run(fmt.Sprintf("%s/%d", kind, status), func(t *testing.T) {
+				testutil.SetupTestEnv(t)
+				t.Setenv("DASH0_MAX_RETRIES", "0")
+
+				dir := t.TempDir()
+				runGitCmd(t, dir, "init", "-q", "-b", "main")
+				runGitCmd(t, dir, "config", "user.email", "test@example.com")
+				runGitCmd(t, dir, "config", "user.name", "Test")
+				runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+				writeFileFixture(t, dir, "asset.yaml", spec.document("  labels:\n    dash0.com/id: "+id+"\n"))
+				runGitCmd(t, dir, "add", "-A")
+				runGitCmd(t, dir, "commit", "-q", "-m", "add asset")
+				before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+				require.NoError(t, os.Remove(filepath.Join(dir, "asset.yaml")))
+				runGitCmd(t, dir, "add", "-A")
+				runGitCmd(t, dir, "commit", "-q", "-m", "remove asset")
+
+				var deletes []string
+				server := testutil.NewMockServer(t, testutil.FixturesDir())
+				server.OnDefault(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodDelete {
+						deletes = append(deletes, r.URL.Path)
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(status)
+					_, _ = w.Write([]byte(`{"error":{"code":` + strconv.Itoa(status) + `,"message":"denied"}}`))
+				})
+
+				cmd := newSinceTestCmd()
+				cmd.SetArgs([]string{
+					"-f", dir, "--since", before, "--force", "--experimental",
+					"--api-url", server.URL, "--auth-token", testAuthToken,
+				})
+
+				var cmdErr error
+				_ = testutil.CaptureStderr(t, func() {
+					testutil.CaptureStdout(t, func() {
+						cmdErr = cmd.Execute()
+					})
+				})
+
+				require.Error(t, cmdErr)
+				assert.Empty(t, deletes)
+			})
+		}
+	}
+}
+
 // A file that keeps its name but drops its dash0.com/id, changes it to an id
 // that is not found, or pins the inferred origin, is applied at the inferred
 // origin, so --since must not delete there.
@@ -3296,6 +3351,8 @@ func storedAt(server *testutil.MockServer, path, fixture string) {
 // A removed multi-alert CRD whose alert ids are not found is deleted where
 // apply wrote it: at the keys derived from its origin, at each alert's inferred
 // origin, or nowhere when the current files still write those inferred origins.
+// The CRD's literal id is always deleted too, for the check rule that CLI
+// versions before the per-alert ids wrote there.
 func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t *testing.T) {
 	const crdBody = `spec:
   groups:
@@ -3314,18 +3371,25 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 		name          string
 		labels        string
 		keepCRD       bool
+		foundIDs      []string
 		wantDeleted   []string
 		wantNoDeletes bool
 	}{
 		{
 			name:        "id only",
 			labels:      "    dash0.com/id: app-rules\n",
-			wantDeleted: []string{inferred("HighErrorRate"), inferred("DiskFull")},
+			wantDeleted: []string{"app-rules", inferred("HighErrorRate"), inferred("DiskFull")},
 		},
 		{
 			name:        "id and origin",
 			labels:      "    dash0.com/id: app-rules\n    dash0.com/origin: app-origin\n",
-			wantDeleted: []string{"app-origin--test-group-higherrorrate", "app-origin--test-group-diskfull"},
+			wantDeleted: []string{"app-rules", "app-origin--test-group-higherrorrate", "app-origin--test-group-diskfull"},
+		},
+		{
+			name:        "id only, one alert found",
+			labels:      "    dash0.com/id: app-rules\n",
+			foundIDs:    []string{"app-rules--test-group-higherrorrate"},
+			wantDeleted: []string{"app-rules", "app-rules--test-group-higherrorrate", inferred("DiskFull")},
 		},
 		{
 			name:          "inferred origins kept",
@@ -3358,6 +3422,12 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 			runGitCmd(t, dir, "commit", "-q", "-m", "change rules")
 
 			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			for _, id := range tt.foundIDs {
+				server.On(http.MethodGet, "/api/alerting/check-rules/"+id, testutil.MockResponse{
+					StatusCode: http.StatusOK,
+					BodyFile:   testutil.FixtureCheckRulesGetSuccess,
+				})
+			}
 			server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
 				StatusCode: http.StatusNotFound,
 				BodyFile:   testutil.FixtureCheckRulesNotFound,
@@ -3398,11 +3468,7 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 				assert.Empty(t, deleted)
 				return
 			}
-			for _, key := range tt.wantDeleted {
-				assert.Contains(t, deleted, key)
-			}
-			assert.NotContains(t, deleted, "app-rules--test-group-higherrorrate")
-			assert.NotContains(t, deleted, "app-rules--test-group-diskfull")
+			assert.ElementsMatch(t, tt.wantDeleted, deleted)
 		})
 	}
 }

@@ -3,12 +3,15 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -315,5 +318,79 @@ func TestUpdateKey_Characterization(t *testing.T) {
 				assert.Equal(t, expected, got)
 			})
 		}
+	}
+}
+
+// putIdentity reads the identifiers a PUT body carries: a check rule keeps
+// them at the top level, every other kind under metadata.
+type putIdentity struct {
+	ID       *string           `json:"id"`
+	Labels   map[string]string `json:"labels"`
+	Metadata struct {
+		Labels map[string]string `json:"labels"`
+	} `json:"metadata"`
+}
+
+// A file with an id that is not found updates the asset at its origin, so the
+// body must carry neither the id, which names another asset, nor the origin,
+// which an update never changes.
+func TestUpdate_IDNotFound_PutsAtOriginWithoutIdentifiers(t *testing.T) {
+	for _, command := range updateCommands {
+		switch command.name {
+		case "check-rules", "views", "synthetic-checks", "recording-rules":
+		default:
+			continue
+		}
+		t.Run(command.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			// Quoted, because YAML decoded into a map reads a plain n as false.
+			storedYAML := strings.ReplaceAll(command.document(updateWithOrigin), "name: n\n", "name: \"n\"\n")
+			var document map[string]any
+			require.NoError(t, dash0yaml.Unmarshal([]byte(storedYAML), &document))
+			stored, err := json.Marshal(document)
+			require.NoError(t, err)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnDefault(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/o"):
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(stored)
+				case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/o"):
+					body, _ := io.ReadAll(r.Body)
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(body)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+
+			file := filepath.Join(t.TempDir(), "asset.yaml")
+			require.NoError(t, os.WriteFile(file, []byte(command.document(updateWithBoth)), 0o600))
+
+			root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+			root.AddCommand(command.newCmd())
+			root.SetArgs(append(command.args, "-f", file, "--api-url", server.URL, "--auth-token", "auth_test_token"))
+			testutil.CaptureStdout(t, func() { err = root.Execute() })
+			require.NoError(t, err)
+
+			var puts []testutil.RecordedRequest
+			for _, request := range server.Requests() {
+				if request.Method == http.MethodPut {
+					puts = append(puts, request)
+				}
+			}
+			require.Len(t, puts, 1)
+			assert.True(t, strings.HasSuffix(puts[0].Path, "/o"), puts[0].Path)
+
+			var body putIdentity
+			require.NoError(t, json.Unmarshal(puts[0].Body, &body))
+			assert.Nil(t, body.ID)
+			for _, labels := range []map[string]string{body.Labels, body.Metadata.Labels} {
+				assert.NotContains(t, labels, "dash0.com/id")
+				assert.NotContains(t, labels, "dash0.com/origin")
+			}
+		})
 	}
 }
