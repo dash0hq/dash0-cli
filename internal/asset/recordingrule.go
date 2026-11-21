@@ -77,26 +77,19 @@ func CarryRecordingRuleVersion(src, dst *dash0api.RecordingRule) {
 	}
 }
 
-// ImportRecordingRule creates or updates a recording rule via the standard CRUD APIs.
-// When the input has a user-defined ID, UPDATE is always used — PUT has
-// create-or-replace semantics, so this is idempotent regardless of whether the
-// rule already exists.
-// When the input has no ID, CREATE is used and the server assigns an ID.
-// A PUT to the ID of a deleted recording rule brings it back, which is reported
-// as ActionRestored.
+// ImportRecordingRule creates or updates a recording rule through
+// RouteDocument. A PUT to a deleted recording rule brings it back, which is
+// reported as ActionRestored.
 func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.RecordingRule, dataset *string) (ImportResult, error) {
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := PlanRecordingRule(ctx, apiClient, rule, dataset)
-
-	var (
-		result *dash0api.RecordingRule
-		err    error
-	)
-	if plan.Key != "" {
-		result, err = apiClient.UpdateRecordingRule(ctx, plan.Key, rule, dataset)
-	} else {
-		result, err = apiClient.CreateRecordingRule(ctx, rule, dataset)
+	plan, err := PlanRecordingRule(ctx, apiClient, rule, dataset)
+	// A failed origin read does not block the write: the PUT reports the same error.
+	if plan.Key == "" {
+		return ImportResult{}, err
 	}
+	if plan.Action != ActionCreated {
+		setRecordingRuleLabel(rule, dash0api.LabelOrigin, "")
+	}
+	result, err := apiClient.UpdateRecordingRule(ctx, plan.Key, rule, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -108,24 +101,50 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	return ImportResult{Name: dash0api.GetRecordingRuleName(result), ID: resultID, Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanRecordingRule reads the stored recording rule that ImportRecordingRule
-// would write, and carries its version onto rule. It returns any preflight
-// error other than "not found".
+// PlanRecordingRule routes the recording rule with RouteDocument, reads the
+// stored rule that ImportRecordingRule would write, and carries its version
+// onto rule. It returns any preflight error other than "not found"; Key is
+// empty when the id read failed, because the write has no target.
 func PlanRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *dash0api.RecordingRule, dataset *string) (ImportPlan, error) {
-	// StripRecordingRuleServerFields clears the dash0.com/id label, so read it first.
-	id := dash0api.GetRecordingRuleID(rule)
+	// StripRecordingRuleServerFields clears the id and origin, so read the identity first.
+	identity := RecordingRuleIdentity(rule, dataset)
 	dash0api.StripRecordingRuleServerFields(rule)
-	plan := ImportPlan{Key: id, Action: ActionCreated, Proposed: rule}
-	if id == "" {
-		return plan, nil
+	get := func(ctx context.Context, key string) (*dash0api.RecordingRule, error) {
+		return apiClient.GetRecordingRule(ctx, key, dataset)
 	}
-	existing, err := apiClient.GetRecordingRule(ctx, id, dataset)
-	if err != nil {
-		return plan, ignoreNotFound(err)
+	route, err := RouteDocument(ctx, identity, get, (*dash0api.RecordingRule).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: rule}
+	if route.Key == "" || route.Create {
+		setRecordingRuleLabel(rule, dash0api.LabelOrigin, route.Key)
+		return plan, err
 	}
-	plan.Action, plan.Before = actionForExisting(RecordingRuleDeletedAt(existing)), existing
-	CarryRecordingRuleVersion(existing, rule)
+	// The stored origin keeps the diff to what changes; ImportRecordingRule
+	// clears it before the write.
+	setRecordingRuleLabel(rule, dash0api.LabelOrigin, route.Stored.GetOrigin())
+	plan.Action, plan.Before = actionForExisting(RecordingRuleDeletedAt(route.Stored)), route.Stored
+	CarryRecordingRuleVersion(route.Stored, rule)
 	return plan, nil
+}
+
+// RecordingRuleIdentity returns what RouteDocument routes the recording rules
+// of a PrometheusRule CRD by. They are one asset, so the origin is inferred
+// from the CRD's metadata.name alone.
+func RecordingRuleIdentity(rule *dash0api.RecordingRule, dataset *string) Identity {
+	return identityOf("recordingrule", rule.Metadata.Name, dataset, rule)
+}
+
+func setRecordingRuleLabel(rule *dash0api.RecordingRule, key, value string) {
+	if rule.Metadata.Labels == nil {
+		if value == "" {
+			return
+		}
+		rule.Metadata.Labels = &map[string]string{}
+	}
+	if value == "" {
+		delete(*rule.Metadata.Labels, key)
+		return
+	}
+	(*rule.Metadata.Labels)[key] = value
 }
 
 // RecordingRuleDeletedAt returns when the recording rule was deleted, or nil

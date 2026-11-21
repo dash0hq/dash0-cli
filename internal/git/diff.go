@@ -122,10 +122,13 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if !crdSurvives || hasRecordingRuleNow {
 			continue
 		}
+		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
 		plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-			Kind:       "recordingrule",
-			Identifier: identifier,
-			Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
+			Kind:               "recordingrule",
+			Identifier:         identifier,
+			Path:               before.Identifiers[crd],
+			Alias:              before.Aliases[crd],
+			InferredOriginName: before.InferredOriginNames[crd],
 		})
 	}
 

@@ -92,7 +92,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetCheckRuleName(&rule)
-		id = dash0api.GetCheckRuleID(&rule)
+		id = PreferredKey(RoutedKeys(&rule))
 
 	case "view":
 		var view dash0api.ViewDefinition
@@ -100,7 +100,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetViewName(&view)
-		id = dash0api.GetViewID(&view)
+		id = PreferredKey(RoutedKeys(&view))
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -108,7 +108,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSyntheticCheckName(&check)
-		id = dash0api.GetSyntheticCheckID(&check)
+		id = PreferredKey(RoutedKeys(&check))
 
 	case "slo":
 		var slo dash0api.SloDefinition
@@ -128,7 +128,10 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = partial.Metadata.Name
-		id = partial.Metadata.Labels[dash0api.LabelID]
+		id = partial.Metadata.Labels[dash0api.LabelOrigin]
+		if id == "" {
+			id = partial.Metadata.Labels[dash0api.LabelID]
+		}
 
 	case "persesdashboard":
 		var perses dash0api.PersesDashboard
@@ -136,7 +139,10 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetPersesDashboardName(&perses)
-		id = dash0api.GetPersesDashboardID(&perses)
+		id = perses.Metadata.Labels[dash0api.LabelOrigin]
+		if id == "" {
+			id = dash0api.GetPersesDashboardID(&perses)
+		}
 
 	case "spamfilter":
 		// Metadata fields (name + dash0.com/id label) are identical across

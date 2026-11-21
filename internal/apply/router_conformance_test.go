@@ -33,11 +33,6 @@ import (
 // notRoutedYet lists the kinds that do not go through asset.RouteDocument yet.
 // Each later change that moves a kind onto the router removes it here.
 var notRoutedYet = map[string]string{
-	"persesdashboard":       "the Perses conversion drops dash0.com/origin",
-	"checkrule":             "creates by POST without an identifier",
-	"prometheusrule":        "creates by POST without an identifier",
-	"syntheticcheck":        "creates by POST without an identifier",
-	"view":                  "creates by POST without an identifier",
 	"dataset":               "the slug is the id",
 	"awsmetricscrapeconfig": "the integration id is the id",
 }
@@ -60,6 +55,12 @@ type routedKind struct {
 	putFixture string
 	// storedKind overrides the kind of the stored asset.
 	storedKind string
+	// topLevelLabels kinds keep their labels, and their id, at the top level
+	// of the document, as check rules do.
+	topLevelLabels bool
+	// inferKind and inferName override the kind and name the inferred origin
+	// is computed from, for kinds whose asset is not named after the document.
+	inferKind, inferName string
 }
 
 var routedKinds = map[string]routedKind{
@@ -128,6 +129,43 @@ var routedKinds = map[string]routedKind{
 				"spec:\n  files:\n    - relativePath: SKILL.md\n      content: \"---\\nname: checkout\\n---\\nbody\\n\"\n"
 		},
 	},
+	"view": {
+		path: "/api/views", fixture: "views/get_success.json",
+		document: func(labels string) string {
+			return "kind: Dash0View\nmetadata:\n  name: checkout\n" + labels + "spec:\n  type: logs\n  display:\n    name: checkout\n"
+		},
+	},
+	"syntheticcheck": {
+		path: "/api/synthetic-checks", fixture: "syntheticchecks/get_success.json",
+		document: func(labels string) string {
+			return "kind: Dash0SyntheticCheck\nmetadata:\n  name: checkout\n" + labels + "spec:\n  display:\n    name: checkout\n  enabled: false\n"
+		},
+	},
+	"checkrule": {
+		// The id is the top-level id field; the labels sit at the top level.
+		path: "/api/alerting/check-rules", fixture: "checkrules/get_success.json", topLevelLabels: true,
+		document: func(labels string) string {
+			return "kind: CheckRule\nname: checkout\nexpression: up == 0\n" + topLevel(labels)
+		},
+	},
+	"persesdashboard": {
+		// The conversion names the dashboard after its title, but the inferred
+		// origin keeps the CRD's metadata.name.
+		path: "/api/dashboards", fixture: "dashboards/get_success.json", inferKind: "dashboard",
+		document: func(labels string) string {
+			return "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n" + labels + "spec:\n  display:\n    name: Checkout title\n  duration: 5m\n"
+		},
+	},
+	"prometheusrule": {
+		// One check rule per alert, named "<group> - <alert>"; its inferred
+		// origin comes from the CRD's metadata.name and that composed name.
+		path: "/api/alerting/check-rules", fixture: "checkrules/get_success.json", topLevelLabels: true,
+		inferName: "checkout\x00group - HighErrorRate",
+		document: func(labels string) string {
+			return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\n" + labels +
+				"spec:\n  groups:\n    - name: group\n      rules:\n        - alert: HighErrorRate\n          expr: up == 0\n"
+		},
+	},
 	"spamfilter": {
 		path: "/api/spam-filters", fixture: "spamfilters/get_success.json",
 		document: func(labels string) string {
@@ -139,6 +177,17 @@ var routedKinds = map[string]routedKind{
 // routedVariants are other schema versions of a routed kind that apply imports
 // through their own code path, keyed by the kind they belong to.
 var routedVariants = map[string]map[string]routedKind{
+	"prometheusrule": {
+		"recording": {
+			// A CRD's recording rules are one asset, inferred from the CRD's
+			// metadata.name.
+			path: "/api/recording-rules", fixture: "recordingrules/get_success.json", inferKind: "recordingrule",
+			document: func(labels string) string {
+				return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\n" + labels +
+					"spec:\n  groups:\n    - name: group\n      rules:\n        - record: instance:up:sum\n          expr: sum(up)\n"
+			},
+		},
+	},
 	"spamfilter": {
 		"v1alpha2": {
 			path: "/api/spam-filters", fixture: "spamfilters/get_success_v1alpha2.json",
@@ -284,7 +333,7 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 			continue
 		}
 		key := strings.TrimPrefix(r.line, "PUT ")
-		bodyOrigin := labelOf(t, r.body, "dash0.com/origin")
+		bodyOrigin := labelOf(t, r.body, spec, "dash0.com/origin")
 		if _, update := stored[key]; update || spec.originInPath {
 			assert.Empty(t, bodyOrigin, "an update must not send the origin")
 		} else {
@@ -336,7 +385,7 @@ func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
 				require.NotEmpty(t, *requests)
 				last := (*requests)[len(*requests)-1]
 				require.Equal(t, "PUT o", last.line)
-				assert.Empty(t, labelOf(t, last.body, "dash0.com/origin"), "an update must not send the origin")
+				assert.Empty(t, labelOf(t, last.body, spec, "dash0.com/origin"), "an update must not send the origin")
 			})
 		}
 	}
@@ -391,7 +440,28 @@ func inferredOrigin(kind string, spec routedKind) string {
 	if spec.orgLevel {
 		dataset = ""
 	}
-	return asset.InferOrigin(kind, "checkout", dataset)
+	name := "checkout"
+	if spec.inferKind != "" {
+		kind = spec.inferKind
+	}
+	if spec.inferName != "" {
+		name = spec.inferName
+	}
+	return asset.InferOrigin(kind, name, dataset)
+}
+
+// topLevel turns a metadata.labels block into the top-level id and labels of
+// a check rule.
+func topLevel(labels string) string {
+	var out string
+	for _, line := range strings.Split(strings.TrimSuffix(labels, "\n"), "\n") {
+		if id, ok := strings.CutPrefix(line, "    dash0.com/id: "); ok {
+			out = "id: " + id + "\n" + out
+		} else if line != "" {
+			out += strings.TrimPrefix(line, "  ") + "\n"
+		}
+	}
+	return out
 }
 
 // routedFixtures returns the stored-asset fixture of spec and the body that answers a write.
@@ -455,11 +525,14 @@ func storedAsset(t *testing.T, fixture []byte, spec routedKind, origin string) [
 		document["kind"] = spec.storedKind
 		document["spec"].(map[string]any)["ttl"] = "1d"
 	}
-	metadata := document["metadata"].(map[string]any)
-	labels, _ := metadata["labels"].(map[string]any)
+	parent := document
+	if !spec.topLevelLabels {
+		parent = document["metadata"].(map[string]any)
+	}
+	labels, _ := parent["labels"].(map[string]any)
 	if labels == nil {
 		labels = map[string]any{}
-		metadata["labels"] = labels
+		parent["labels"] = labels
 	}
 	if origin == "" {
 		delete(labels, "dash0.com/origin")
@@ -471,14 +544,19 @@ func storedAsset(t *testing.T, fixture []byte, spec routedKind, origin string) [
 	return out
 }
 
-func labelOf(t *testing.T, body []byte, key string) string {
+func labelOf(t *testing.T, body []byte, spec routedKind, key string) string {
 	t.Helper()
 	var document struct {
+		Labels   map[string]any `json:"labels"`
 		Metadata struct {
 			Labels map[string]any `json:"labels"`
 		} `json:"metadata"`
 	}
 	require.NoError(t, json.Unmarshal(body, &document))
-	value, _ := document.Metadata.Labels[key].(string)
+	labels := document.Metadata.Labels
+	if spec.topLevelLabels {
+		labels = document.Labels
+	}
+	value, _ := labels[key].(string)
 	return value
 }

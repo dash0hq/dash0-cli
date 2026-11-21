@@ -242,12 +242,26 @@ var routedParsers = map[string]routedParser{
 	"signaltometrics":        parseRoutedSignalToMetricsRule,
 	"sampling":               parseRoutedSamplingRule,
 	"skill":                  parseRoutedCustomSkill,
+	"view":                   parseRoutedView,
+	"syntheticcheck":         parseRoutedSyntheticCheck,
+	"checkrule":              parseRoutedCheckRule,
+	"prometheusrule":         parseRoutedPrometheusRule,
 }
 
 // IsRoutedKind reports whether RouteDocument serves kind.
 func IsRoutedKind(kind string) bool {
 	_, routed := routedParsers[NormalizeKind(kind)]
 	return routed
+}
+
+// DocumentCreateOrigin returns the origin apply creates the document by, or ""
+// for kinds the router does not serve.
+func DocumentCreateOrigin(doc Document, dataset *string) string {
+	identity, ok := documentIdentity(doc, dataset)
+	if !ok {
+		return ""
+	}
+	return identity.CreateOrigin()
 }
 
 // parseRoutedIdentity returns the identity apply routes the document by, the
@@ -341,6 +355,40 @@ func parseRoutedCustomSkill(raw []byte, _ *string) (Identity, string, error) {
 		return Identity{}, "", err
 	}
 	return CustomSkillIdentity(&skill), CustomSkillName(&skill), nil
+}
+
+func parseRoutedView(raw []byte, dataset *string) (Identity, string, error) {
+	var view dash0api.ViewDefinition
+	if err := dash0yaml.Unmarshal(raw, &view); err != nil {
+		return Identity{}, "", err
+	}
+	return ViewIdentity(&view, dataset), view.Metadata.Name, nil
+}
+
+func parseRoutedSyntheticCheck(raw []byte, dataset *string) (Identity, string, error) {
+	var check dash0api.SyntheticCheckDefinition
+	if err := dash0yaml.Unmarshal(raw, &check); err != nil {
+		return Identity{}, "", err
+	}
+	return SyntheticCheckIdentity(&check, dataset), check.Metadata.Name, nil
+}
+
+func parseRoutedCheckRule(raw []byte, dataset *string) (Identity, string, error) {
+	var rule dash0api.PrometheusAlertRule
+	if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+		return Identity{}, "", err
+	}
+	return CheckRule{PrometheusAlertRule: &rule, InferredKind: "checkrule", InferredName: rule.Name}.Identity(dataset), rule.Name, nil
+}
+
+func parseRoutedPrometheusRule(raw []byte, dataset *string) (Identity, string, error) {
+	// The CRD's own labels. Each alert and the recording rules route by
+	// keys derived from them, which deletePrometheusRuleCRD recomputes.
+	crd, err := ParsePrometheusRuleCRD(raw)
+	if err != nil {
+		return Identity{}, "", err
+	}
+	return identityOf("prometheusrule", crd.Metadata.Name, dataset, crd), crd.Metadata.Name, nil
 }
 
 // optionalString returns nil for "", so an empty label is left out of the body.

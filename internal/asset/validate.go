@@ -147,7 +147,7 @@ func checkRulesWithID(doc Document) []*dash0api.PrometheusAlertRule {
 	var withID []*dash0api.PrometheusAlertRule
 	for _, rule := range rules {
 		if rule.Id != nil && *rule.Id != "" {
-			withID = append(withID, rule)
+			withID = append(withID, rule.PrometheusAlertRule)
 		}
 	}
 	return withID
