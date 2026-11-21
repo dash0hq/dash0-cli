@@ -326,7 +326,7 @@ Check rule "service-alerts - HighLatency" deleted
 ```
 
 Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with.
-Each alert and the recording rule are deleted where `apply` wrote them: at the id, or at the origin or inferred origin when the id is not found:
+Each alert and the recording rule are deleted where `apply` wrote them: at the id, or at the origin or inferred origin when the id is not found.
 
 The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
 
