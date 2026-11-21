@@ -105,6 +105,9 @@ func InferKindOrigin(kind, name string, dataset *string) string {
 	switch NormalizeKind(kind) {
 	case "team", "notificationchannel", "skill":
 		return InferOrigin(kind, name, "")
+	case "persesdashboard":
+		// apply converts a PersesDashboard to a Dashboard before it routes it.
+		return InferOrigin("dashboard", name, DatasetName(dataset))
 	}
 	return InferOrigin(kind, name, DatasetName(dataset))
 }
@@ -206,6 +209,16 @@ func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 	return identity, routed && err == nil
 }
 
+// DocumentCreateOrigin returns the origin apply creates the document by, or ""
+// for kinds the router does not serve.
+func DocumentCreateOrigin(doc Document, dataset *string) string {
+	identity, ok := documentIdentity(doc, dataset)
+	if !ok {
+		return ""
+	}
+	return identity.CreateOrigin()
+}
+
 // parseRoutedIdentity returns the identity apply routes the document by, the
 // name its inferred origin comes from, and false for kinds the router does
 // not serve yet.
@@ -272,6 +285,32 @@ func parseRoutedIdentity(kind string, raw []byte, dataset *string) (identity Ide
 			return Identity{}, "", true, err
 		}
 		return CustomSkillIdentity(&skill), CustomSkillName(&skill), true, nil
+	case "view":
+		var view dash0api.ViewDefinition
+		if err := dash0yaml.Unmarshal(raw, &view); err != nil {
+			return Identity{}, "", true, err
+		}
+		return ViewIdentity(&view, dataset), view.Metadata.Name, true, nil
+	case "syntheticcheck":
+		var check dash0api.SyntheticCheckDefinition
+		if err := dash0yaml.Unmarshal(raw, &check); err != nil {
+			return Identity{}, "", true, err
+		}
+		return SyntheticCheckIdentity(&check, dataset), check.Metadata.Name, true, nil
+	case "checkrule":
+		var rule dash0api.PrometheusAlertRule
+		if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+			return Identity{}, "", true, err
+		}
+		return CheckRule{PrometheusAlertRule: &rule, InferredKind: "checkrule", InferredName: rule.Name}.Identity(dataset), rule.Name, true, nil
+	case "prometheusrule":
+		// The CRD's own labels. Each alert and the recording rules route by
+		// keys derived from them, which deletePrometheusRuleCRD recomputes.
+		crd, err := ParsePrometheusRuleCRD(raw)
+		if err != nil {
+			return Identity{}, "", true, err
+		}
+		return identityOf("prometheusrule", crd.Metadata.Name, dataset, crd), crd.Metadata.Name, true, nil
 	}
 	return Identity{}, "", false, nil
 }

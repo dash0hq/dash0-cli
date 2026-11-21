@@ -90,7 +90,12 @@ var updateCommands = []updateCommand{
 		if v.hasID() {
 			id = "id: " + characterizationID + "\n"
 		}
-		return "apiVersion: dash0.com/v1alpha1\nkind: CheckRule\n" + id + "name: n\nexpression: up == 0\nmetadata:\n" + v.labelBlock(false)
+		// A check rule keeps its origin in the top-level labels.
+		labels := ""
+		if v.hasOrigin() {
+			labels = "labels:\n  dash0.com/origin: o\n"
+		}
+		return "apiVersion: dash0.com/v1alpha1\nkind: CheckRule\n" + id + "name: n\nexpression: up == 0\n" + labels
 	}},
 	{"synthetic-checks", syntheticchecks.NewSyntheticChecksCmd, []string{"synthetic-checks", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: SyntheticCheck\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec: {}\n"
@@ -198,14 +203,14 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/dashboards/" + characterizationID,
 		},
 		"check-rules": {
-			updateWithNeither: "error: no check rule id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no check rule id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no check rule origin or id given: pass one as an argument, or set labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/alerting/check-rules/o",
 			updateWithID:      "GET /api/alerting/check-rules/" + characterizationID,
 			updateWithBoth:    "GET /api/alerting/check-rules/" + characterizationID,
 		},
 		"synthetic-checks": {
-			updateWithNeither: "error: no synthetic check id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no synthetic check id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no synthetic check origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/synthetic-checks/o",
 			updateWithID:      "GET /api/synthetic-checks/" + characterizationID,
 			updateWithBoth:    "GET /api/synthetic-checks/" + characterizationID,
 		},
@@ -216,14 +221,14 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/slos/" + characterizationID,
 		},
 		"views": {
-			updateWithNeither: "error: no view id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no view id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no view origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/views/o",
 			updateWithID:      "GET /api/views/" + characterizationID,
 			updateWithBoth:    "GET /api/views/" + characterizationID,
 		},
 		"recording-rules": {
-			updateWithNeither: "error: no recording rule id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no recording rule id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no recording rule origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/recording-rules/o",
 			updateWithID:      "GET /api/recording-rules/" + characterizationID,
 			updateWithBoth:    "GET /api/recording-rules/" + characterizationID,
 		},

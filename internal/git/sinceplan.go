@@ -312,7 +312,7 @@ func declaredRoutedKeys(after Snapshot) map[string]bool {
 	for key := range after.Identifiers {
 		switch key.Kind {
 		case "dashboard", "ephemeraldashboard", "persesdashboard", "team", "notificationchannel", "timeseriesaggregation", "spamfilter",
-			"slo", "generativeaievaluation", "signaltometrics", "sampling", "skill":
+			"slo", "generativeaievaluation", "signaltometrics", "sampling", "skill", "view", "syntheticcheck":
 			declared[key.Identifier] = true
 			if alias := after.Aliases[key]; alias != "" {
 				declared[alias] = true

@@ -1,0 +1,16 @@
+change_type: breaking
+component: apply, views, check-rules, synthetic-checks, recording-rules, dashboards
+note: "`apply` and `create` route views, check rules, synthetic checks, recording rules, PersesDashboards, and PrometheusRules by `dash0.com/id`, then `dash0.com/origin`, and never create them by POST."
+issues: [333]
+subtext: |
+  Applying the same document again now updates the same asset, also when the document has no identifier.
+  Without `dash0.com/origin`, the CLI infers one from the kind, `metadata.name`, and the dataset.
+  A check rule uses its top-level `name`, and reads its origin from its top-level `labels`.
+  Each alert of a PrometheusRule uses `metadata.name` and `<group name> - <alert name>`, and the recording rules use `metadata.name`.
+  A PersesDashboard keeps its `dash0.com/id` and `dash0.com/origin` labels, which the conversion to a dashboard used to drop.
+  Before, these kinds were written at the file's id, so a document whose id is not found now creates the asset at its origin or inferred origin, with a server-assigned id.
+  A document without an identifier used to create a new asset on every apply; an asset created that way is not found by the inferred origin, so the next apply creates one more.
+  Set `dash0.com/origin` or `dash0.com/id` in the file to keep updating the existing asset.
+  The CLI now sends `dash0.com/origin` when it creates one of these assets, and still never on an update.
+  `update -f` without an argument and `apply --since` follow the same order.
+change_logs: [user]

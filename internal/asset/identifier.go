@@ -42,17 +42,12 @@ type identifierProbe struct {
 // per the "Asset identifiers and idempotent upsert" table in the command
 // reference:
 //
-//   - Dashboard, EphemeralDashboard: dash0.com/id, then dash0.com/origin, then
-//     metadata.dash0Extensions.id (see DashboardIdentity)
-//   - Dash0SpamFilter, Dash0Team, Dash0NotificationChannel,
-//     Dash0TimeSeriesAggregation, SLO, Dash0Skill,
-//     Dash0GenerativeAiEvaluation, Dash0SignalToMetrics, Dash0Sampling:
-//     dash0.com/id, then dash0.com/origin
-//   - CheckRule: top-level id
+//   - Dashboard, EphemeralDashboard, PersesDashboard: dash0.com/id, then
+//     dash0.com/origin, then metadata.dash0Extensions.id (see DashboardIdentity)
+//   - CheckRule: top-level id, then labels["dash0.com/origin"]
+//   - every other routed kind: dash0.com/id, then dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
-//     Dash0AwsMetricScrapeConfig):
-//     dash0.com/id
+//   - Dash0AwsMetricScrapeConfig: dash0.com/id
 //
 // The kinds RouteDocument routes read the id first, as apply does, so --since
 // deletes where apply wrote. For the other kinds, a fallback onto another
@@ -74,23 +69,18 @@ func ExtractIdentifier(data []byte) (string, error) {
 	}
 
 	kind := NormalizeKind(probe.Kind)
-	// A PersesDashboard is upserted by dash0.com/id alone; see the table above.
-	if kind != "persesdashboard" {
-		identity, _, routed, err := parseRoutedIdentity(kind, data, nil)
-		if err != nil {
-			return "", fmt.Errorf("failed to extract identifier: %w", err)
+	identity, _, routed, err := parseRoutedIdentity(kind, data, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract identifier: %w", err)
+	}
+	if routed {
+		if identity.ID != "" {
+			return identity.ID, nil
 		}
-		if routed {
-			if identity.ID != "" {
-				return identity.ID, nil
-			}
-			return identity.Origin, nil
-		}
+		return identity.Origin, nil
 	}
 
 	switch kind {
-	case "checkrule":
-		return probe.ID, nil
 	case "dataset":
 		// The client's own helper, so spec.slug wins over the label exactly as it
 		// does on create, update, and apply.
@@ -113,7 +103,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 // kinds the router does not serve.
 func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
-	if err != nil || NormalizeKind(kind) == "persesdashboard" {
+	if err != nil {
 		return "", "", err
 	}
 	identity, name, _, err := parseRoutedIdentity(kind, data, nil)

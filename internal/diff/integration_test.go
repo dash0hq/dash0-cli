@@ -727,7 +727,9 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	require.ErrorAs(t, err, &pending, output)
 	assert.Equal(t, 2, pending.Count)
 	assert.Contains(t, output, `Create Dataset "Staging" (staging)`)
-	assert.Contains(t, output, `Create View "my-view" (view-id)`)
+	// apply creates the dataset first, so the id is not found and the view is
+	// created by its inferred origin.
+	assert.Contains(t, output, `Create View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`)`)
 }
 
 // A token without access to an existing dataset also gets a 404 for the
@@ -755,7 +757,7 @@ func TestDiff_DroppedForbiddenReadWarnsOnStderr(t *testing.T) {
 	assert.Equal(t, 2, pending.Count)
 	assert.True(t, json.Valid([]byte(output)), "stdout must stay valid JSON in agent mode: %s", output)
 	assert.Contains(t, stderr,
-		`warning: View "my-view" (view-id): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
+		`warning: View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
 }
 
 // A 403 is only read as "nothing stored" for the dataset this run creates.
