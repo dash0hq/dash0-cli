@@ -644,6 +644,7 @@ dash0 dashboards create -f <file> [--dry-run] [-o <format>]
 
 Use `-f -` to read from stdin.
 The `--dry-run` flag validates the file without creating anything.
+Unsupported metadata labels and annotations produce [warnings on stderr](#warnings-for-ignored-metadata), including during dry runs.
 
 Example:
 
@@ -686,6 +687,7 @@ If the ID argument is omitted, `update` takes the identifier from the file that 
 A file without that identifier fails, even when it carries the other one.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
+Unsupported metadata labels and annotations produce [warnings on stderr](#warnings-for-ignored-metadata), including during dry runs.
 
 The diff is computed semantically, not as a raw text diff: cosmetic differences, such as key order, duration formatting (`2m` vs. `2m0s`), int-vs-float representation, and API-populated defaults absent from the local file, never produce a spurious "changed" result.
 See [`diff`](#diff-experimental) for what the comparison does and does not normalize.

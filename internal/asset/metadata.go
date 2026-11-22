@@ -16,16 +16,6 @@ import (
 // for file formats that allow kind to be omitted. It never changes the input.
 // Parsing and schema errors remain the responsibility of the caller's parser.
 func LossyMetadataWarnings(raw []byte, fallbackKind string) []string {
-	var doc struct {
-		Kind string `json:"kind"`
-		Spec struct {
-			Groups []struct {
-				Rules []struct {
-					Alert string `json:"alert"`
-				} `json:"rules"`
-			} `json:"groups"`
-		} `json:"spec"`
-	}
 	// Decode metadata separately: metadata.name and other scalar metadata are
 	// legitimate, but labels/annotations must be inspected as maps.
 	var envelope struct {
@@ -36,26 +26,17 @@ func LossyMetadataWarnings(raw []byte, fallbackKind string) []string {
 	if err := dash0yaml.Unmarshal(raw, &envelope); err != nil {
 		return nil
 	}
-	doc.Kind = envelope.Kind
-	if doc.Kind == "" {
-		doc.Kind = fallbackKind
+	if envelope.Kind == "" {
+		envelope.Kind = fallbackKind
 	}
-	kind := NormalizeKind(doc.Kind)
+	kind := NormalizeKind(envelope.Kind)
 	labels, annotations, known := metadataKeys(kind)
 	if !known {
 		return nil
 	}
 	// Alert annotations are inherited from metadata by the SDK. Do not apply
 	// the recording-rule API's restricted metadata policy to those annotations.
-	allowAlertAnnotations := false
-	if kind == "prometheusrule" {
-		_ = json.Unmarshal(envelope.Spec, &doc.Spec)
-		for _, group := range doc.Spec.Groups {
-			for _, rule := range group.Rules {
-				allowAlertAnnotations = allowAlertAnnotations || rule.Alert != ""
-			}
-		}
-	}
+	allowAlertAnnotations := kind == "prometheusrule" && hasAlertRule(envelope.Spec)
 	var warnings []string
 	for _, field := range []string{"labels", "annotations"} {
 		if field == "annotations" && allowAlertAnnotations {
@@ -80,6 +61,27 @@ func LossyMetadataWarnings(raw []byte, fallbackKind string) []string {
 	return warnings
 }
 
+func hasAlertRule(raw json.RawMessage) bool {
+	var spec struct {
+		Groups []struct {
+			Rules []struct {
+				Alert string `json:"alert"`
+			} `json:"rules"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return false
+	}
+	for _, group := range spec.Groups {
+		for _, rule := range group.Rules {
+			if rule.Alert != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Known exported server fields stay quiet so get -> edit -> apply does not
 // produce warnings for metadata the user never authored. Identifiers below
 // can also be consumed by the CLI as lookup keys before they are stripped.
@@ -93,7 +95,7 @@ func metadataKeys(kind string) (labels, annotations string, known bool) {
 	const resourceLabels = "dash0.com/id dash0.com/origin dash0.com/source dash0.com/dataset dash0.com/version"
 	const sharing = "dash0.com/folder-path dash0.com/sharing"
 	switch kind {
-	case "dashboard":
+	case "dashboard", "ephemeraldashboard":
 		return "dash0.com/source", sharing + " dash0.com/source", true
 	case "persesdashboard":
 		return "dash0.com/id dash0.com/dataset dash0.com/origin", sharing + " dash0.com/source", true
@@ -104,7 +106,11 @@ func metadataKeys(kind string) (labels, annotations string, known bool) {
 	case "spamfilter": // v1alpha1 and v1alpha2 have the same metadata.
 		return "dash0.com/id dash0.com/origin dash0.com/source dash0.com/dataset custom", "dash0.com/enabled", true
 	case "slo":
-		return resourceLabels, sharing + " dash0.com/enabled", true
+		return resourceLabels, sharing + " dash0.com/enabled dash0.com/display-name", true
+	case "signaltometrics":
+		return resourceLabels, sharing, true
+	case "sampling":
+		return resourceLabels + " custom", "", true
 	case "team", "notificationchannel", "authtoken":
 		return "dash0.com/id dash0.com/origin dash0.com/source", "", true
 	case "dataset":

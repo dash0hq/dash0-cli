@@ -45,6 +45,7 @@ metadata:
 func TestLossyMetadataWarnings_SupportedAndExportedMetadata(t *testing.T) {
 	for _, tc := range []struct{ kind, labels, annotations string }{
 		{"Dashboard", "dash0.com/source: api", "dash0.com/folder-path: /backend\n    dash0.com/sharing: 'team:team_123'"},
+		{"EphemeralDashboard", "dash0.com/source: api", "dash0.com/folder-path: /backend"},
 		{"PersesDashboard", "dash0.com/id: dashboard-id", "dash0.com/source: api"},
 		{"View", "dash0.com/id: view-id\n    dash0.com/origin: terraform", "dash0.com/sharing: 'team:team_123'"},
 		{"SyntheticCheck", "custom: {team-lead: alice}", "dash0.com/folder-path: /backend"},
@@ -56,6 +57,8 @@ func TestLossyMetadataWarnings_SupportedAndExportedMetadata(t *testing.T) {
 		{"Dash0Skill", "dash0.com/origin: git", "dash0.com/creator-name: Alice\n    dash0.com/enabled: 'true'"},
 		{"Dash0GenerativeAiEvaluation", "dash0.com/id: eval_123", "dash0.com/created-by: alice\n    dash0.com/sharing: 'team:team_123'"},
 		{"Dash0TimeSeriesAggregation", "dash0.com/origin: git\n    custom: {team-lead: alice}", "{}"},
+		{"Dash0SignalToMetrics", "dash0.com/id: rule-id\n    dash0.com/origin: git\n    dash0.com/dataset: default\n    dash0.com/version: '1'\n    dash0.com/source: api", "dash0.com/folder-path: /backend\n    dash0.com/sharing: 'team:team_123'"},
+		{"Dash0Sampling", "dash0.com/id: rule-id\n    dash0.com/origin: git\n    dash0.com/dataset: default\n    dash0.com/version: '1'\n    dash0.com/source: api\n    custom: {team-lead: alice}", "{}"},
 		{"Dash0AuthToken", "dash0.com/origin: git", "{}"},
 		{"PrometheusRule", "dash0.com/id: rule-id", "dash0.com/enabled: 'true'"},
 	} {
@@ -74,6 +77,18 @@ metadata:
 `, tc.kind)), ""))
 		})
 	}
+}
+
+func TestLossyMetadataWarnings_SLOFixture(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "test", "roundtrip", "fixtures", "slo.yaml"))
+	require.NoError(t, err)
+	assert.Empty(t, LossyMetadataWarnings(raw, ""), "the SLO display-name annotation is stored by Dash0")
+
+	docs, err := ParseMultiDocumentYAML(raw)
+	require.NoError(t, err)
+	errors, warnings := ValidateDocuments(docs)
+	assert.Empty(t, errors)
+	assert.Empty(t, warnings)
 }
 
 func TestLossyMetadataWarnings_PrometheusRuleAnnotations(t *testing.T) {
@@ -99,7 +114,10 @@ spec:
 }
 
 func TestLossyMetadataWarnings_JSONFallbackAndMalformedInput(t *testing.T) {
-	assert.Len(t, LossyMetadataWarnings([]byte(`{"metadata":{"labels":{"team-lead":"alice"}}}`), "team"), 1)
+	for _, kind := range []string{"team", "signaltometrics", "sampling"} {
+		assert.Equal(t, []string{`metadata.labels["team-lead"] will not be stored by Dash0`},
+			LossyMetadataWarnings([]byte(`{"metadata":{"labels":{"team-lead":"alice"}}}`), kind))
+	}
 	for _, raw := range []string{"[invalid:", "metadata: scalar", "kind: Unrelated\nmetadata: {labels: {team: backend}}", "kind: Dash0Team\nmetadata: {labels: null, annotations: []}"} {
 		assert.Empty(t, LossyMetadataWarnings([]byte(raw), ""))
 	}

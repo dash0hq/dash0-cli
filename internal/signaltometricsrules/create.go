@@ -56,7 +56,7 @@ before anything is written, so use a distinct origin per dataset.` + internal.CO
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "signaltometrics")
 	if err != nil {
 		return fmt.Errorf("failed to read signal-to-metrics rule definition: %w", err)
 	}
