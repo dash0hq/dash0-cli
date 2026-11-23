@@ -62,7 +62,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	updateKey := asset.UpdateKey{Noun: assetType, Upsert: aggregation}
-	identity := asset.Identity{ID: aggregation.GetID(), Origin: aggregation.GetOrigin()}
+	identity := asset.TimeSeriesAggregationIdentity(aggregation, nil)
 	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}

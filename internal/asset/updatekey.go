@@ -101,8 +101,8 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 	stored, err := get(ctx, identity.ID)
 	if err == nil {
 		if asset, ok := any(stored).(interface{ GetOrigin() string }); ok {
-			if origin := asset.GetOrigin(); identity.Origin != "" && origin != "" && origin != identity.Origin {
-				return identity.ID, zero, &OriginMismatchError{ID: identity.ID, Stored: origin, Document: identity.Origin}
+			if err := checkStoredOrigin(identity, asset.GetOrigin()); err != nil {
+				return identity.ID, zero, err
 			}
 		}
 		return identity.ID, stored, nil

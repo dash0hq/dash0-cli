@@ -104,7 +104,7 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 	}
 
 	key := asset.UpdateKey{Noun: "team", Upsert: &team}
-	identity := asset.Identity{ID: team.GetID(), Origin: team.GetOrigin()}
+	identity := asset.TeamIdentity(&team)
 	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}

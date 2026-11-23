@@ -70,7 +70,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 
 	key := asset.UpdateKey{Noun: "notification channel", Upsert: &channel}
-	identity := asset.Identity{ID: channel.GetID(), Origin: channel.GetOrigin()}
+	identity := asset.NotificationChannelIdentity(&channel)
 	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}

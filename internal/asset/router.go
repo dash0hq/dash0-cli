@@ -52,8 +52,8 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 	if identity.ID != "" {
 		stored, err := get(ctx, identity.ID)
 		if err == nil {
-			if origin := storedOrigin(stored); identity.Origin != "" && origin != "" && origin != identity.Origin {
-				return Route[T]{}, &OriginMismatchError{ID: identity.ID, Stored: origin, Document: identity.Origin}
+			if err := checkStoredOrigin(identity, storedOrigin(stored)); err != nil {
+				return Route[T]{}, err
 			}
 			return Route[T]{Key: identity.ID, Stored: stored}, nil
 		}
@@ -81,6 +81,13 @@ type OriginMismatchError struct {
 	ID       string
 	Stored   string
 	Document string
+}
+
+func checkStoredOrigin(identity Identity, stored string) error {
+	if identity.Origin != "" && stored != "" && stored != identity.Origin {
+		return &OriginMismatchError{ID: identity.ID, Stored: stored, Document: identity.Origin}
+	}
+	return nil
 }
 
 func (e *OriginMismatchError) Error() string {
@@ -204,6 +211,12 @@ func WithInferredOriginWrites(ctx context.Context, writes InferredOriginWrites, 
 func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 	identity, _, routed, err := parseRoutedIdentity(doc.Kind, doc.Raw, dataset)
 	return identity, routed && err == nil
+}
+
+// IsRoutedKind reports whether RouteDocument serves kind.
+func IsRoutedKind(kind string) bool {
+	_, _, routed, _ := parseRoutedIdentity(kind, nil, nil)
+	return routed
 }
 
 // parseRoutedIdentity returns the identity apply routes the document by, the

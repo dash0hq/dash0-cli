@@ -310,12 +310,12 @@ func declaredCheckRuleIDs(after Snapshot) map[string]bool {
 func declaredRoutedKeys(after Snapshot) map[string]bool {
 	declared := map[string]bool{}
 	for key := range after.Identifiers {
-		switch key.Kind {
-		case "dashboard", "ephemeraldashboard", "persesdashboard", "team", "notificationchannel", "timeseriesaggregation", "spamfilter":
-			declared[key.Identifier] = true
-			if alias := after.Aliases[key]; alias != "" {
-				declared[alias] = true
-			}
+		if !asset.IsRoutedKind(key.Kind) {
+			continue
+		}
+		declared[key.Identifier] = true
+		if alias := after.Aliases[key]; alias != "" {
+			declared[alias] = true
 		}
 	}
 	return declared
