@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cli/browser v1.3.0
-	github.com/dash0hq/dash0-api-client-go v1.35.1-0.20261123123307-279f7766ffaf
+	github.com/dash0hq/dash0-api-client-go v1.35.1-0.20261123163851-e278dee5bf07
 	github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261119130541-a4154f2d775c
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0

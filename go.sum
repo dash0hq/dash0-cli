@@ -35,6 +35,8 @@ github.com/dash0hq/dash0-api-client-go v1.35.0 h1:Zv9XvPDQ/a2X+XCf/3fsySE48LMjI/
 github.com/dash0hq/dash0-api-client-go v1.35.0/go.mod h1:r0AJKYZy8Y6hmGhsVbHbCEOEH3bIUKcHlg/KeZs6dJo=
 github.com/dash0hq/dash0-api-client-go v1.35.1-0.20261123123307-279f7766ffaf h1:CW1VLmoJaCIc+ic8sXq4TttEbsJ+jDk7IG6d8RMjy9Q=
 github.com/dash0hq/dash0-api-client-go v1.35.1-0.20261123123307-279f7766ffaf/go.mod h1:r0AJKYZy8Y6hmGhsVbHbCEOEH3bIUKcHlg/KeZs6dJo=
+github.com/dash0hq/dash0-api-client-go v1.35.1-0.20261123163851-e278dee5bf07 h1:8UwP1O0j0bgowLHrnj2tykNBgKaxrxt1WHdxa0KfIQM=
+github.com/dash0hq/dash0-api-client-go v1.35.1-0.20261123163851-e278dee5bf07/go.mod h1:r0AJKYZy8Y6hmGhsVbHbCEOEH3bIUKcHlg/KeZs6dJo=
 github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261119130541-a4154f2d775c h1:bO8MfqN5035nd4uL3ZfyLZl9PnxKWLYyR2b41orKFFw=
 github.com/dash0hq/ditt0-cli-design-system/go v0.0.0-20261119130541-a4154f2d775c/go.mod h1:eZIkk5Hluk1XMEe223b1BdWL98GnPZ/xr3qrEUDO4TI=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
