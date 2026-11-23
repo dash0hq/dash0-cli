@@ -107,6 +107,7 @@ const (
 	FixtureEvalsNotFound            = "evals/error_not_found.json"
 	FixtureEvalsNameImmutable       = "evals/error_name_immutable.json"
 	FixtureEvalsOutputKindImmutable = "evals/error_output_kind_immutable.json"
+	FixtureEvalsNameTaken           = "evals/error_name_taken.json"
 
 	// Datasets fixtures
 	FixtureDatasetsListSuccess   = "datasets/list_success.json"

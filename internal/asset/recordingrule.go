@@ -86,7 +86,10 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	if plan.Key == "" {
 		return ImportResult{}, err
 	}
-	if plan.Action != ActionCreated {
+	// An update at the id never sends the origin, which the API rejects there.
+	// An update at the stored origin sends it back: without it, Dash0 leaves
+	// the origin out of a later read by id.
+	if plan.Action != ActionCreated && rule.GetOrigin() != plan.Key {
 		setRecordingRuleLabel(rule, dash0api.LabelOrigin, "")
 	}
 	result, err := apiClient.UpdateRecordingRule(ctx, plan.Key, rule, dataset)
@@ -118,8 +121,8 @@ func PlanRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *das
 		setRecordingRuleLabel(rule, dash0api.LabelOrigin, route.Key)
 		return plan, err
 	}
-	// The stored origin keeps the diff to what changes; ImportRecordingRule
-	// clears it before the write.
+	// The stored origin keeps the diff to what changes; the import clears it
+	// before a write at the id.
 	setRecordingRuleLabel(rule, dash0api.LabelOrigin, route.Stored.GetOrigin())
 	plan.Action, plan.Before = actionForExisting(RecordingRuleDeletedAt(route.Stored)), route.Stored
 	CarryRecordingRuleVersion(route.Stored, rule)

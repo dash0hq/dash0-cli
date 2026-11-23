@@ -18,16 +18,20 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/agent0"
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
+	"github.com/dash0hq/dash0-cli/internal/recordingrules"
 	"github.com/dash0hq/dash0-cli/internal/samplingrules"
 	"github.com/dash0hq/dash0-cli/internal/signaltometricsrules"
 	"github.com/dash0hq/dash0-cli/internal/slos"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
+	"github.com/dash0hq/dash0-cli/internal/syntheticchecks"
 	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/dash0hq/dash0-cli/internal/timeseriesaggregations"
+	"github.com/dash0hq/dash0-cli/internal/views"
 )
 
 // notRoutedYet lists the kinds that do not go through asset.RouteDocument yet.
@@ -58,6 +62,9 @@ type routedKind struct {
 	// topLevelLabels kinds keep their labels, and their id, at the top level
 	// of the document, as check rules do.
 	topLevelLabels bool
+	// originIsID kinds store their origin as their id, as check rules do: the
+	// labels are the alerts' Prometheus labels and never carry the origin.
+	originIsID bool
 	// inferKind and inferName override the kind and name the inferred origin
 	// is computed from, for kinds whose asset is not named after the document.
 	inferKind, inferName string
@@ -143,7 +150,7 @@ var routedKinds = map[string]routedKind{
 	},
 	"checkrule": {
 		// The id is the top-level id field; the labels sit at the top level.
-		path: "/api/alerting/check-rules", fixture: "checkrules/get_success.json", topLevelLabels: true,
+		path: "/api/alerting/check-rules", fixture: "checkrules/get_success.json", topLevelLabels: true, originIsID: true,
 		document: func(labels string) string {
 			return "kind: CheckRule\nname: checkout\nexpression: up == 0\n" + topLevel(labels)
 		},
@@ -159,7 +166,7 @@ var routedKinds = map[string]routedKind{
 	"prometheusrule": {
 		// One check rule per alert, named "<group> - <alert>"; its inferred
 		// origin comes from the CRD's metadata.name and that composed name.
-		path: "/api/alerting/check-rules", fixture: "checkrules/get_success.json", topLevelLabels: true,
+		path: "/api/alerting/check-rules", fixture: "checkrules/get_success.json", topLevelLabels: true, originIsID: true,
 		inferName: "checkout\x00group - HighErrorRate",
 		document: func(labels string) string {
 			return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\n" + labels +
@@ -281,6 +288,14 @@ func TestRouter_EveryKindFollowsTheSameOrder(t *testing.T) {
 	}
 }
 
+// keepsOriginOnUpdateAtOrigin lists the kinds whose update at the stored origin
+// sends that origin: without it, Dash0 leaves the origin out of a later read by
+// id, which the stored-origin check relies on. An update at the id cannot send
+// it, because the API rejects a body origin that differs from the path.
+// A PrometheusRule's recording rules keep it too; its alerts are check rules,
+// which never send it.
+var keepsOriginOnUpdateAtOrigin = map[string]bool{"view": true, "syntheticcheck": true, "prometheusrule": true}
+
 func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 	inferred := inferredOrigin(kind, spec)
 	resolve := func(key string) string { return strings.ReplaceAll(key, inferredKey, inferred) }
@@ -289,8 +304,11 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 	storedResponses := make(map[string][]byte)
 	stored := make(map[string]string)
 	for key, origin := range tc.stored {
+		if spec.originIsID && origin != key {
+			t.Skip("the stored origin of this kind is its id; see TestRouter_CheckRuleOriginIsItsID")
+		}
 		stored[resolve(key)] = origin
-		storedResponses[resolve(key)] = storedAsset(t, fixture, spec, origin)
+		storedResponses[resolve(key)] = storedAsset(t, fixture, spec, resolve(key), origin)
 	}
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	requests := serveRouted(server, spec, storedResponses, putResponse)
@@ -334,9 +352,15 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 		}
 		key := strings.TrimPrefix(r.line, "PUT ")
 		bodyOrigin := labelOf(t, r.body, spec, "dash0.com/origin")
-		if _, update := stored[key]; update || spec.originInPath {
+		storedOrigin, update := stored[key]
+		switch {
+		case spec.originIsID:
+			assert.Empty(t, bodyOrigin, "the path carries the origin, and the labels belong to the alerts")
+		case update && storedOrigin == key && keepsOriginOnUpdateAtOrigin[kind]:
+			assert.Equal(t, key, bodyOrigin, "an update at the stored origin keeps it, so a read by id still shows it")
+		case update || spec.originInPath:
 			assert.Empty(t, bodyOrigin, "an update must not send the origin")
-		} else {
+		default:
 			assert.Equal(t, key, bodyOrigin, "a create sends the origin it is created by")
 		}
 	}
@@ -360,6 +384,13 @@ var routedUpdateCommands = map[string]routedUpdateCommand{
 	"signaltometrics":        {signaltometricsrules.NewSignalToMetricsRulesCmd, []string{"signal-to-metrics-rules", "update"}},
 	"sampling":               {samplingrules.NewSamplingRulesCmd, []string{"sampling-rules", "update"}},
 	"skill":                  {agent0.NewAgent0Cmd, []string{"-X", "agent0", "skills", "update"}},
+	"view":                   {views.NewViewsCmd, []string{"views", "update"}},
+	"syntheticcheck":         {syntheticchecks.NewSyntheticChecksCmd, []string{"synthetic-checks", "update"}},
+	"checkrule":              {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
+	"persesdashboard":        {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"prometheusrule":         {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
+	// A variant whose writes go to another endpoint has its own command.
+	"prometheusrule/recording": {recordingrules.NewRecordingRulesCmd, []string{"recording-rules", "update"}},
 }
 
 // TestRouter_UpdateNeverSendsTheOrigin checks that `update -f` sends the body
@@ -373,11 +404,15 @@ func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
 			specs[kind+"/"+version] = variant
 		}
 		for name, spec := range specs {
+			command := command
+			if variantCommand, ok := routedUpdateCommands[name]; ok {
+				command = variantCommand
+			}
 			t.Run(name, func(t *testing.T) {
 				testutil.SetupTestEnv(t)
 				fixture, putResponse := routedFixtures(t, spec)
 				server := testutil.NewMockServer(t, testutil.FixturesDir())
-				requests := serveRouted(server, spec, map[string][]byte{"o": storedAsset(t, fixture, spec, "o")}, putResponse)
+				requests := serveRouted(server, spec, map[string][]byte{"o": storedAsset(t, fixture, spec, "o", "o")}, putResponse)
 
 				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/origin: o\n"), server.URL)
 				require.NoError(t, err)
@@ -385,7 +420,12 @@ func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
 				require.NotEmpty(t, *requests)
 				last := (*requests)[len(*requests)-1]
 				require.Equal(t, "PUT o", last.line)
-				assert.Empty(t, labelOf(t, last.body, spec, "dash0.com/origin"), "an update must not send the origin")
+				bodyOrigin := labelOf(t, last.body, spec, "dash0.com/origin")
+				if keepsOriginOnUpdateAtOrigin[kind] && !spec.originIsID {
+					assert.Equal(t, "o", bodyOrigin, "an update at the stored origin keeps it, so a read by id still shows it")
+				} else {
+					assert.Empty(t, bodyOrigin, "an update must not send the origin")
+				}
 			})
 		}
 	}
@@ -403,7 +443,7 @@ func TestRouter_UpdateFailsWhenTheStoredOriginDiffers(t *testing.T) {
 				testutil.SetupTestEnv(t)
 				fixture, putResponse := routedFixtures(t, spec)
 				server := testutil.NewMockServer(t, testutil.FixturesDir())
-				requests := serveRouted(server, spec, map[string][]byte{"i": storedAsset(t, fixture, spec, "other")}, putResponse)
+				requests := serveRouted(server, spec, map[string][]byte{"i": storedAsset(t, fixture, spec, "i", "other")}, putResponse)
 
 				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n"), server.URL, args...)
 
@@ -513,7 +553,7 @@ func serveRouted(server *testutil.MockServer, spec routedKind, stored map[string
 }
 
 // storedAsset returns the fixture as the asset stored with origin.
-func storedAsset(t *testing.T, fixture []byte, spec routedKind, origin string) []byte {
+func storedAsset(t *testing.T, fixture []byte, spec routedKind, key, origin string) []byte {
 	t.Helper()
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(fixture, &response))
@@ -524,6 +564,12 @@ func storedAsset(t *testing.T, fixture []byte, spec routedKind, origin string) [
 	if spec.storedKind != "" {
 		document["kind"] = spec.storedKind
 		document["spec"].(map[string]any)["ttl"] = "1d"
+	}
+	if spec.originIsID {
+		document["id"] = key
+		out, err := json.Marshal(response)
+		require.NoError(t, err)
+		return out
 	}
 	parent := document
 	if !spec.topLevelLabels {
@@ -583,10 +629,10 @@ func TestRouter_MultiAlertPrometheusRuleRoutesEachAlertByItsDerivedKey(t *testin
 		},
 		{
 			name:   "id hit",
-			labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
+			labels: map[string]string{"dash0.com/id": "i"},
 			stored: map[string]string{
-				derive("i", "HighErrorRate"): derive("o", "HighErrorRate"),
-				derive("i", "DiskFull"):      derive("o", "DiskFull"),
+				derive("i", "HighErrorRate"): derive("i", "HighErrorRate"),
+				derive("i", "DiskFull"):      derive("i", "DiskFull"),
 			},
 			want: []string{
 				"GET " + derive("i", "HighErrorRate"), "PUT " + derive("i", "HighErrorRate"),
@@ -598,5 +644,39 @@ func TestRouter_MultiAlertPrometheusRuleRoutesEachAlertByItsDerivedKey(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			runRouterCase(t, "prometheusrule", spec, tc)
 		})
+	}
+}
+
+// TestRouter_CheckRuleOriginIsItsID covers the stored-origin check for check
+// rules, whose id is their origin: Dash0 creates a check rule with its origin
+// as its id, and a read returns no origin label.
+func TestRouter_CheckRuleOriginIsItsID(t *testing.T) {
+	cases := []routerCase{
+		{
+			name:   "id hit without an origin",
+			labels: map[string]string{"dash0.com/id": "i"},
+			stored: map[string]string{"i": "i"},
+			want:   []string{"GET i", "PUT i"},
+		},
+		{
+			name:   "id hit with the id as origin",
+			labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "i"},
+			stored: map[string]string{"i": "i"},
+			want:   []string{"GET i", "PUT i"},
+		},
+		{
+			name:    "id hit with another origin",
+			labels:  map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
+			stored:  map[string]string{"i": "i"},
+			want:    []string{"GET i"},
+			wantErr: `has origin "i" in Dash0`,
+		},
+	}
+	for _, kind := range []string{"checkrule", "prometheusrule"} {
+		for _, tc := range cases {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				runRouterCase(t, kind, routedKinds[kind], tc)
+			})
+		}
 	}
 }

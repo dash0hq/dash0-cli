@@ -64,7 +64,7 @@ if ! grep -q "^Deleted: " <<< "$GET5"; then
   echo "FAIL: expected a 'Deleted:' line in check-rules get output after delete"
   exit 1
 fi
-LIST5=$("$DASH0" check-rules list --all -o wide 2>/dev/null)
+LIST5=$("$DASH0" check-rules list --all -o csv 2>/dev/null)
 if grep -q "$ORIGIN" <<< "$LIST5"; then
   echo "FAIL: check-rules list still contains '$ORIGIN' after delete"
   exit 1
@@ -90,7 +90,7 @@ if grep -q "^Deleted: " <<< "$GET7"; then
   echo "FAIL: check-rules get still shows '$ORIGIN' as deleted after re-apply"
   exit 1
 fi
-LIST7=$("$DASH0" check-rules list --all -o wide 2>/dev/null)
+LIST7=$("$DASH0" check-rules list --all -o csv 2>/dev/null)
 if ! grep -q "$ORIGIN" <<< "$LIST7"; then
   echo "FAIL: check-rules list does not contain '$ORIGIN' after re-apply"
   exit 1

@@ -86,7 +86,7 @@ if echo "$GET7" | grep -q "^Deleted: "; then
 fi
 # Capture the list before searching it: with pipefail, `list | grep -q` fails
 # when grep exits on an early match and the CLI dies on the closed pipe.
-if ! LIST7=$("$DASH0" views list --all -o wide 2>/dev/null) || ! grep -q "$ORIGIN" <<< "$LIST7"; then
+if ! LIST7=$("$DASH0" views list --all -o csv 2>/dev/null) || ! grep -q "$ORIGIN" <<< "$LIST7"; then
   echo "FAIL: views list does not contain '$ORIGIN' after re-apply"
   exit 1
 fi

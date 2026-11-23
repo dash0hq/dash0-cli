@@ -147,33 +147,77 @@ func identityOf(kind, name string, dataset *string, asset routedAsset) Identity 
 	return Identity{ID: asset.GetID(), Origin: asset.GetOrigin(), Inferred: InferKindOrigin(kind, name, dataset)}
 }
 
-// CheckInferredOriginCollisions fails documents without an id or an origin
-// that would get the same inferred origin, because the second would replace
-// the first. A document with an id writes by the inferred origin only when the
-// id is not found, which only the run knows; InferredOriginWrites checks that.
+// CheckInferredOriginCollisions fails documents without an id that would
+// write the same origin: two that get the same inferred origin, or one whose
+// explicit origin is another's inferred origin, because the second would
+// replace the first. A document with an id writes by the inferred origin only
+// when the id is not found, which only the run knows; InferredOriginWrites
+// checks that.
 func CheckInferredOriginCollisions(documents []Document, dataset *string) []string {
-	var origins []string
-	locations := make(map[string][]string)
+	type use struct {
+		location string
+		explicit bool
+	}
+	var keys []string
+	uses := make(map[string][]use)
+	add := func(key string, u use) {
+		if _, seen := uses[key]; !seen {
+			keys = append(keys, key)
+		}
+		uses[key] = append(uses[key], u)
+	}
 	for _, doc := range documents {
 		identity, ok := documentIdentity(doc, dataset)
-		if !ok || identity.ID != "" || identity.Origin != "" {
+		if !ok || identity.ID != "" {
 			continue
 		}
-		if _, seen := locations[identity.Inferred]; !seen {
-			origins = append(origins, identity.Inferred)
+		group := writeGroup(doc.Kind)
+		if identity.Origin == "" {
+			add(group+"\x00"+identity.Inferred, use{location: doc.Location()})
+		} else if group != "prometheusrule" {
+			// A PrometheusRule writes each alert at an origin derived from its own.
+			add(group+"\x00"+identity.Origin, use{location: doc.Location(), explicit: true})
 		}
-		locations[identity.Inferred] = append(locations[identity.Inferred], doc.Location())
 	}
 
 	var collisions []string
-	for _, origin := range origins {
-		if uses := locations[origin]; len(uses) > 1 {
+	for _, key := range keys {
+		list := uses[key]
+		origin := key[strings.IndexByte(key, 0)+1:]
+		var locations []string
+		inferred, explicit := 0, 0
+		for _, u := range list {
+			locations = append(locations, u.location)
+			if u.explicit {
+				explicit++
+			} else {
+				inferred++
+			}
+		}
+		switch {
+		case inferred == 0 || len(list) < 2:
+			// Only check rules check equal explicit origins (checkRuleIDCollisions).
+		case explicit == 0:
 			collisions = append(collisions, fmt.Sprintf(
 				"%d documents have no dash0.com/origin and the same kind, metadata.name, and dataset, so any of them created by inferred origin %q would replace the others; set dash0.com/origin on each:\n    %s",
-				len(uses), origin, strings.Join(uses, "\n    ")))
+				len(list), origin, strings.Join(locations, "\n    ")))
+		default:
+			collisions = append(collisions, fmt.Sprintf(
+				"origin %q is set as dash0.com/origin and is also the origin the CLI infers for a document without one, so one would replace the other's asset; set another dash0.com/origin:\n    %s",
+				origin, strings.Join(locations, "\n    ")))
 		}
 	}
 	return collisions
+}
+
+// writeGroup returns the kind whose endpoint a document writes to, so
+// origins compare only between documents that write the same assets.
+func writeGroup(kind string) string {
+	switch kind = NormalizeKind(kind); kind {
+	case "dashboard", "ephemeraldashboard", "persesdashboard":
+		return "dashboard"
+	}
+	return kind
 }
 
 // InferredOriginWrites maps each inferred origin a run writes to the document
@@ -378,7 +422,7 @@ func parseRoutedCheckRule(raw []byte, dataset *string) (Identity, string, error)
 	if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
 		return Identity{}, "", err
 	}
-	return CheckRule{PrometheusAlertRule: &rule, InferredKind: "checkrule", InferredName: rule.Name}.Identity(dataset), rule.Name, nil
+	return CheckRule{PrometheusAlertRule: &rule, Origin: rule.GetOrigin(), InferredKind: "checkrule", InferredName: rule.Name}.Identity(dataset), rule.Name, nil
 }
 
 func parseRoutedPrometheusRule(raw []byte, dataset *string) (Identity, string, error) {

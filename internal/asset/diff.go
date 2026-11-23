@@ -361,7 +361,7 @@ const (
 func withOmittedFieldsAsStored(before, after any) any {
 	switch stored := before.(type) {
 	case *dash0api.PrometheusAlertRule:
-		return withCheckRuleEnabledDefault(stored, after)
+		return withStoredCheckRuleID(stored, withCheckRuleEnabledDefault(stored, after))
 	case *dash0api.NotificationChannelDefinition:
 		channel, ok := after.(*dash0api.NotificationChannelDefinition)
 		if !ok || channel == nil || stored == nil || stored.Spec.Frequency == nil || channel.Spec.Frequency != nil {
@@ -408,6 +408,18 @@ func withStoredSkillDefaultEnabled(stored *dash0api.SkillDefinition, after any) 
 	withStored := *skill
 	withStored.Spec.Permissions = &grants
 	return &withStored
+}
+
+// withStoredCheckRuleID returns after with the stored id when after leaves it
+// out, because a write by origin sends no id and the API keeps the stored one.
+func withStoredCheckRuleID(stored *dash0api.PrometheusAlertRule, after any) any {
+	rule, ok := after.(*dash0api.PrometheusAlertRule)
+	if !ok || rule == nil || rule.Id != nil || stored == nil || stored.Id == nil {
+		return after
+	}
+	withID := *rule
+	withID.Id = stored.Id
+	return &withID
 }
 
 // withCheckRuleEnabledDefault returns after with the server default for

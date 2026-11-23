@@ -76,6 +76,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	// An update never sends the origin, and an id that is not the path's key
 	// can only disagree with it.
 	dash0api.StripViewServerFields(&view)
+	asset.KeepStoredOrigin(&view, before.GetOrigin(), id)
 	if id != identity.ID {
 		dash0api.ClearViewID(&view)
 	}

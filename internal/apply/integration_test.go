@@ -224,7 +224,6 @@ annotations:
   description: Test description
   sharing: team:team_01abc
 labels:
-  dash0.com/origin: dash0-cli
   team: platform
 `), 0644)
 	require.NoError(t, err)

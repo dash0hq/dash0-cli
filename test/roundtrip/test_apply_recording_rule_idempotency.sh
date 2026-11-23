@@ -225,7 +225,9 @@ if [ "$RECORDING_COUNT" != "1" ]; then
   echo "FAIL: expected exactly 1 recording rule with name '$MIXED_NAME' after second apply, got $RECORDING_COUNT"
   exit 1
 fi
-CHECK_COUNT=$("$DASH0" check-rules list --all -o json | jq --arg o "$MIXED_ORIGIN" '[.[] | select(.labels["dash0.com/origin"] == $o)] | length')
+# Count by the list's origin column: after an update, which sends no origin,
+# Dash0 leaves the origin out of each rule's labels, but the list still has it.
+CHECK_COUNT=$("$DASH0" check-rules list --all -o csv | grep -c ",${MIXED_ORIGIN},")
 if [ "$CHECK_COUNT" != "1" ]; then
   echo "FAIL: expected exactly 1 check rule with origin '$MIXED_ORIGIN' after second apply, got $CHECK_COUNT"
   exit 1

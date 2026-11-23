@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Bad Request: The submitted generative AI evaluation has a metadata.name (\"answer-relevance\") that another generative AI evaluation in this dataset already uses. Evaluation results are keyed on the name, so it has to be unique per dataset.",
+    "traceId": "3257a1c2e3b4d5f6a7b8c9d0e1f2a3b4"
+  }
+}

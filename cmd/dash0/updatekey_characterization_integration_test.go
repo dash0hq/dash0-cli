@@ -332,9 +332,11 @@ type putIdentity struct {
 }
 
 // A file with an id that is not found updates the asset at its origin, so the
-// body must carry neither the id, which names another asset, nor the origin,
-// which an update never changes.
-func TestUpdate_IDNotFound_PutsAtOriginWithoutIdentifiers(t *testing.T) {
+// body must not carry the id, which names another asset. It carries the stored
+// origin, the path's key: without it, Dash0 leaves the origin out of a later
+// read by id. A check rule's labels belong to its alerts, and its id is its
+// origin, so its body carries no origin label.
+func TestUpdate_IDNotFound_PutsAtOriginWithTheStoredOrigin(t *testing.T) {
 	for _, command := range updateCommands {
 		switch command.name {
 		case "check-rules", "views", "synthetic-checks", "recording-rules":
@@ -387,10 +389,13 @@ func TestUpdate_IDNotFound_PutsAtOriginWithoutIdentifiers(t *testing.T) {
 			var body putIdentity
 			require.NoError(t, json.Unmarshal(puts[0].Body, &body))
 			assert.Nil(t, body.ID)
-			for _, labels := range []map[string]string{body.Labels, body.Metadata.Labels} {
-				assert.NotContains(t, labels, "dash0.com/id")
-				assert.NotContains(t, labels, "dash0.com/origin")
+			labels := body.Metadata.Labels
+			wantOrigin := "o"
+			if command.name == "check-rules" {
+				labels, wantOrigin = body.Labels, ""
 			}
+			assert.NotContains(t, labels, "dash0.com/id")
+			assert.Equal(t, wantOrigin, labels["dash0.com/origin"])
 		})
 	}
 }

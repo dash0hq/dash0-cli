@@ -16,7 +16,10 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 	if plan.Key == "" {
 		return ImportResult{}, err
 	}
-	if plan.Action != ActionCreated {
+	// An update at the id never sends the origin, which the API rejects there.
+	// An update at the stored origin sends it back: without it, Dash0 leaves
+	// the origin out of a later read by id.
+	if plan.Action != ActionCreated && check.GetOrigin() != plan.Key {
 		setSyntheticCheckOrigin(check, "")
 	}
 	result, err := apiClient.UpdateSyntheticCheck(ctx, plan.Key, check, dataset)
@@ -51,8 +54,8 @@ func PlanSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *d
 		setSyntheticCheckOrigin(check, route.Key)
 		return plan, err
 	}
-	// The stored origin keeps the diff to what changes; ImportSyntheticCheck
-	// clears it before the write.
+	// The stored origin keeps the diff to what changes; the import clears it
+	// before a write at the id.
 	setSyntheticCheckOrigin(check, route.Stored.GetOrigin())
 	plan.Action, plan.Before = actionForExisting(SyntheticCheckDeletedAt(route.Stored)), route.Stored
 	return plan, nil

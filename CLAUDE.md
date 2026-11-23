@@ -45,21 +45,22 @@ Detailed guidelines are split into focused documents:
 - **Origin** identifies which system is the authoritative source of truth for an asset (e.g., `dash0-cli`, `terraform`, `ui`).
   It is provenance/ownership metadata, not a lookup key.
   It is stored as the label `dash0.com/origin`; check rules keep it in their top-level `labels`.
-  For the routed kinds below, the origin is also the key a create writes by, so the CLI sends it only on a create and clears it before an update.
+  For the routed kinds below, the origin is also the key a create writes by, so the CLI sends it on a create and clears it before an update at the id.
 
 - **ID** is the user-defined external identifier used for upsert (create-or-replace) operations.
   When an asset has a user-defined ID, `apply` and the individual import functions route to PUT (which has upsert semantics) instead of POST for most asset types.
 - **One routing rule** (`asset.RouteDocument` in `internal/asset/router.go`) serves dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, teams, notification channels, time series aggregations, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills.
   A document with `dash0.com/id` is read by that id; on hit the CLI PUTs at the id, and fails when the stored origin differs from an explicit origin in the file.
+  Views, synthetic checks, and recording rules send the stored origin back on an update at that origin (`asset.KeepStoredOrigin`), because Dash0 echoes the body's labels on a read by id; an update at the id cannot send it, since the API rejects a body origin there.
   On 404, or without an id, the CLI PUTs by the file's origin or the inferred one, never by the id and never with POST.
   There is no lookup by name.
-  The origin is sent only on create; an update clears it from the body.
+  The origin is sent on create; an update at the id clears it from the body.
   The inferred origin is `dash0-cli_` plus a hash of the kind, `metadata.name`, and the dataset (`asset.InferOrigin`), with no clock, randomness, or file path.
-  Two documents without an id or an origin that get the same inferred origin fail validation (`asset.CheckInferredOriginCollisions`).
+  Two documents without an id that would write the same origin fail validation (`asset.CheckInferredOriginCollisions`): two with the same inferred origin, or one whose explicit origin is the other's inferred origin.
   A document whose id is not found fails at write time when another document of the run already wrote its inferred origin (`asset.InferredOriginWrites`).
   `TestRouter_EveryKindFollowsTheSameOrder` checks every kind in `ValidKinds`; kinds not routed yet sit in its `notRoutedYet` list.
   The ID field varies by asset type:
-  - Check rules: routed. The top-level `id` field (`PrometheusAlertRule.Id`), then `labels["dash0.com/origin"]` in the top-level labels. The inferred origin hashes `name`.
+  - Check rules: routed. The top-level `id` field (`PrometheusAlertRule.Id`), then `labels["dash0.com/origin"]` in the top-level labels. The inferred origin hashes `name`. The top-level labels are the alerts' Prometheus labels, so the CLI reads the origin from the file into `asset.CheckRule.Origin` and never sends it in a body; the path carries it. Dash0 stores a check rule's origin as its id and returns no origin label, so the stored-origin check compares the stored id (`asset.CheckRuleStoredOrigin`).
   - Views: routed. `metadata.labels["dash0.com/id"]` (`ViewLabels.Dash0Comid`), then `metadata.labels["dash0.com/origin"]`. The server rejects a body origin that differs from the path, which is why an update never sends it.
   - Synthetic checks: routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`.
   - Dashboards: routed. The ID is `metadata.labels["dash0.com/id"]` (the server UUID); the origin is `metadata.labels["dash0.com/origin"]`, or `metadata.dash0Extensions.id` when the label is absent (`asset.DashboardIdentity`). Read them before `StripDashboardServerFields`, which clears `dash0.com/id`. An origin that differs from `dash0Extensions.id` fails validation. A UUID origin is not set as the origin label on create, because the API stores a UUID key as the id. `asset.DashboardKeys` and `asset.DashboardAlias` still serve `update`, `preview`, and `apply --since`.

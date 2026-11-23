@@ -244,3 +244,11 @@ func TestCheckStoredOrigin(t *testing.T) {
 	assert.NoError(t, CheckStoredOrigin("o", identity, fakeKeys{origin: "other"}), "a write by origin is not checked")
 	assert.ErrorContains(t, CheckStoredOrigin("i", identity, struct{}{}), "cannot read the stored origin")
 }
+
+func TestCheckStoredOrigin_CheckRuleOriginIsItsID(t *testing.T) {
+	id := "i"
+	stored := &dash0api.PrometheusAlertRule{Id: &id}
+	assert.NoError(t, CheckStoredOrigin(id, Identity{ID: id, Origin: id}, stored))
+	var mismatch *OriginMismatchError
+	assert.ErrorAs(t, CheckStoredOrigin(id, Identity{ID: id, Origin: "o"}, stored), &mismatch)
+}

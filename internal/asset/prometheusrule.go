@@ -13,6 +13,9 @@ import (
 // inferred origin comes from.
 type CheckRule struct {
 	*dash0api.PrometheusAlertRule
+	// Origin is the document's origin. The rule's labels are its alerts'
+	// Prometheus labels, so the origin never travels in them.
+	Origin       string
 	InferredKind string
 	InferredName string
 }
@@ -21,7 +24,7 @@ type CheckRule struct {
 func (rule CheckRule) Identity(dataset *string) Identity {
 	return Identity{
 		ID:       rule.GetID(),
-		Origin:   rule.GetOrigin(),
+		Origin:   rule.Origin,
 		Inferred: InferKindOrigin(rule.InferredKind, rule.InferredName, dataset),
 	}
 }
@@ -52,8 +55,12 @@ func ParseCheckRules(data []byte) ([]CheckRule, error) {
 	}
 	parsed := make([]CheckRule, len(rules))
 	for i, rule := range rules {
-		parsed[i] = CheckRule{PrometheusAlertRule: rule, InferredKind: "checkrule", InferredName: rule.Name}
+		parsed[i] = CheckRule{PrometheusAlertRule: rule, Origin: rule.GetOrigin(), InferredKind: "checkrule", InferredName: rule.Name}
 		if crd != nil {
+			parsed[i].Origin = crd.GetOrigin()
+			if parsed[i].Origin != "" && len(rules) > 1 {
+				parsed[i].Origin = DeriveAlertCheckRuleID(parsed[i].Origin, rule.Name)
+			}
 			// The NUL keeps CRD "a" with alert "b - c" apart from CRD "a\x00b" with alert "c".
 			parsed[i].InferredKind, parsed[i].InferredName = "prometheusrule", crd.Metadata.Name+"\x00"+rule.Name
 		}
@@ -142,7 +149,6 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 		return nil, err
 	}
 	multiAlert := len(names) > 1
-	origin := crd.GetOrigin()
 	for i, name := range names {
 		if i >= len(rules) {
 			break
@@ -152,13 +158,6 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 		if multiAlert && rules[i].Id != nil && *rules[i].Id != "" {
 			derived := DeriveAlertCheckRuleID(*rules[i].Id, composedName)
 			rules[i].Id = &derived
-		}
-		if origin != "" {
-			alertOrigin := origin
-			if multiAlert {
-				alertOrigin = DeriveAlertCheckRuleID(origin, composedName)
-			}
-			setCheckRuleOrigin(rules[i], alertOrigin)
 		}
 	}
 	return crd, nil

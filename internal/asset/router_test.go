@@ -192,6 +192,30 @@ func TestCheckInferredOriginCollisions(t *testing.T) {
 	assert.Empty(t, CheckInferredOriginCollisions([]Document{doc("a.yaml", withID("i1")), doc("b.yaml", withID("i2"))}, nil))
 }
 
+// An explicit origin equal to another document's inferred origin writes both
+// documents to one asset, so it fails validation like two inferred origins do.
+func TestCheckInferredOriginCollisions_ExplicitOriginEqualToAnInferredOne(t *testing.T) {
+	inferred := InferOrigin("Dashboard", "checkout", "default")
+	doc := func(path, kind, raw string) Document {
+		return Document{Kind: kind, Raw: []byte(raw), FilePath: path, DocIndex: 1, DocCount: 1}
+	}
+	noIdentifier := doc("a.yaml", "Dashboard", "kind: Dashboard\nmetadata:\n  name: checkout\nspec: {}\n")
+	pinned := func(kind string) Document {
+		return doc("b.yaml", kind, "kind: "+kind+"\nmetadata:\n  name: other\n  labels:\n    dash0.com/origin: "+inferred+"\nspec: {}\n")
+	}
+
+	collisions := CheckInferredOriginCollisions([]Document{noIdentifier, pinned("Dashboard")}, nil)
+	require.Len(t, collisions, 1)
+	assert.Contains(t, collisions[0], "a.yaml")
+	assert.Contains(t, collisions[0], "b.yaml")
+	assert.Contains(t, collisions[0], inferred)
+
+	require.Len(t, CheckInferredOriginCollisions([]Document{noIdentifier, pinned("EphemeralDashboard")}, nil), 1,
+		"an ephemeral dashboard writes to the same endpoint")
+	assert.Empty(t, CheckInferredOriginCollisions([]Document{noIdentifier, pinned("View")}, nil),
+		"a view with that origin is another asset")
+}
+
 func TestInferredOriginWrites_Claim(t *testing.T) {
 	inferred := InferOrigin("Dashboard", "checkout", "default")
 	idOnly := Identity{ID: "i1", Inferred: inferred}

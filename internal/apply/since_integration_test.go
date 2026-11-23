@@ -3146,9 +3146,9 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 				runGitCmd(t, dir, "add", "-A")
 				runGitCmd(t, dir, "commit", "-q", "-m", "remove asset")
 
-				stored := map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred)}
+				stored := map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}
 				if tt.idFound {
-					stored[id] = storedAsset(t, fixture, spec, "")
+					stored[id] = storedAsset(t, fixture, spec, id, "")
 				}
 				if tt.idFails {
 					stored[id] = nil
@@ -3281,9 +3281,9 @@ func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testi
 			} {
 				t.Run(kind+"/"+current.name+"/"+tt.name, func(t *testing.T) {
 					testutil.SetupTestEnv(t)
-					stored := map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred)}
+					stored := map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}
 					if tt.idFound {
-						stored[id] = storedAsset(t, fixture, spec, "")
+						stored[id] = storedAsset(t, fixture, spec, id, "")
 					}
 					server := testutil.NewMockServer(t, testutil.FixturesDir())
 					requests := serveRouted(server, spec, stored, writeResponse)
@@ -3337,7 +3337,7 @@ func TestApply_Since_DashboardRewrittenAsPersesDashboardKeepsTheInferredOrigin(t
 
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	requests := serveRouted(server, spec, map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred)}, writeResponse)
+	requests := serveRouted(server, spec, map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}, writeResponse)
 
 	cmd := newSinceTestCmd()
 	cmd.SetArgs([]string{

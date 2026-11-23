@@ -16,9 +16,6 @@ func ImportCheckRule(ctx context.Context, apiClient dash0api.Client, rule CheckR
 	if plan.Key == "" {
 		return ImportResult{}, err
 	}
-	if plan.Action != ActionCreated {
-		setCheckRuleOrigin(rule.PrometheusAlertRule, "")
-	}
 	result, err := apiClient.UpdateCheckRule(ctx, plan.Key, rule.PrometheusAlertRule, dataset)
 	if err != nil {
 		return ImportResult{}, err
@@ -44,37 +41,23 @@ func PlanCheckRule(ctx context.Context, apiClient dash0api.Client, rule CheckRul
 	get := func(ctx context.Context, key string) (*dash0api.PrometheusAlertRule, error) {
 		return apiClient.GetCheckRule(ctx, key, dataset)
 	}
-	route, err := RouteDocument(ctx, identity, get, (*dash0api.PrometheusAlertRule).GetOrigin)
+	route, err := RouteDocument(ctx, identity, get, CheckRuleStoredOrigin)
 	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: rule.PrometheusAlertRule}
 	// An id in the body that is not the path's key can only disagree with it.
 	if route.Key != identity.ID {
 		dash0api.ClearCheckRuleID(rule.PrometheusAlertRule)
 	}
 	if route.Key == "" || route.Create {
-		setCheckRuleOrigin(rule.PrometheusAlertRule, route.Key)
 		return plan, err
 	}
-	// The stored origin keeps the diff to what changes; ImportCheckRule clears
-	// it before the write.
-	setCheckRuleOrigin(rule.PrometheusAlertRule, route.Stored.GetOrigin())
 	plan.Action, plan.Before = actionForExisting(CheckRuleDeletedAt(route.Stored)), route.Stored
 	return plan, nil
 }
 
-// setCheckRuleOrigin sets the origin, which a check rule keeps among its
-// Prometheus labels.
-func setCheckRuleOrigin(rule *dash0api.PrometheusAlertRule, origin string) {
-	if rule.Labels == nil {
-		if origin == "" {
-			return
-		}
-		rule.Labels = &map[string]string{}
-	}
-	if origin == "" {
-		delete(*rule.Labels, dash0api.LabelOrigin)
-		return
-	}
-	(*rule.Labels)[dash0api.LabelOrigin] = origin
+// CheckRuleStoredOrigin returns the origin of a stored check rule. Dash0
+// creates a check rule with its origin as its id, and returns no origin label.
+func CheckRuleStoredOrigin(rule *dash0api.PrometheusAlertRule) string {
+	return rule.GetID()
 }
 
 // CheckRuleDeletedAt returns when the check rule was deleted, or nil when it is

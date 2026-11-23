@@ -158,6 +158,8 @@ func CheckStoredOrigin(key string, identity Identity, stored any) error {
 	case *dash0api.SamplingDefinition:
 		// The client gives SamplingDefinition no GetOrigin method.
 		origin = GetSamplingRuleOrigin(asset)
+	case *dash0api.PrometheusAlertRule:
+		origin = CheckRuleStoredOrigin(asset)
 	case interface{ GetOrigin() string }:
 		origin = asset.GetOrigin()
 	default:
@@ -176,3 +178,21 @@ func RoutedKeys(upsert dash0api.AssetMetadata) dash0api.AssetMetadata {
 type routedKeys struct{ dash0api.AssetMetadata }
 
 func (routedKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }
+
+// KeepStoredOrigin puts the stored origin back on a view, synthetic check, or
+// recording rule that update writes at that origin: without it,
+// Dash0 leaves the origin out of a later read by id. An update at the id
+// never sends it, because the API rejects a body origin there.
+func KeepStoredOrigin(proposed any, storedOrigin, key string) {
+	if storedOrigin == "" || storedOrigin != key {
+		return
+	}
+	switch asset := proposed.(type) {
+	case *dash0api.ViewDefinition:
+		setViewOrigin(asset, key)
+	case *dash0api.SyntheticCheckDefinition:
+		setSyntheticCheckOrigin(asset, key)
+	case *dash0api.RecordingRule:
+		setRecordingRuleLabel(asset, dash0api.LabelOrigin, key)
+	}
+}

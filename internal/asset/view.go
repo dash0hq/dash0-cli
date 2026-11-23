@@ -15,7 +15,10 @@ func ImportView(ctx context.Context, apiClient dash0api.Client, view *dash0api.V
 	if plan.Key == "" {
 		return ImportResult{}, err
 	}
-	if plan.Action != ActionCreated {
+	// An update at the id never sends the origin, which the API rejects there.
+	// An update at the stored origin sends it back: without it, Dash0 leaves
+	// the origin out of a later read by id.
+	if plan.Action != ActionCreated && view.GetOrigin() != plan.Key {
 		setViewOrigin(view, "")
 	}
 	result, err := apiClient.UpdateView(ctx, plan.Key, view, dataset)
@@ -49,8 +52,8 @@ func PlanView(ctx context.Context, apiClient dash0api.Client, view *dash0api.Vie
 		setViewOrigin(view, route.Key)
 		return plan, err
 	}
-	// The stored origin keeps the diff to what changes; ImportView clears it
-	// before the write.
+	// The stored origin keeps the diff to what changes; the import clears it
+	// before a write at the id.
 	setViewOrigin(view, route.Stored.GetOrigin())
 	plan.Action, plan.Before = actionForExisting(ViewDeletedAt(route.Stored)), route.Stored
 	return plan, nil
