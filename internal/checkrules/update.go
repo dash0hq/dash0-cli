@@ -62,7 +62,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 	rule := rules[0]
 
-	updateKey := asset.UpdateKey{Noun: "check rule", Upsert: asset.RoutedKeys(rule.PrometheusAlertRule), OriginLabel: `labels["dash0.com/origin"]`}
+	updateKey := asset.UpdateKey{Noun: "check rule", Upsert: rule.UpdateKeys(), OriginLabel: `labels["dash0.com/origin"]`}
 	identity := rule.Identity(nil)
 	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err

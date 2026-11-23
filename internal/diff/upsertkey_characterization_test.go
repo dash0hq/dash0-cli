@@ -231,8 +231,8 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			// The test document puts the origin in metadata.labels; a check rule reads it from its top-level labels.
 			withNeither: {"", "", "GetCheckRule(dash0-cli_eda043ab83329c77b4ed7f465caea040)"},
 			withOrigin:  {"", "", "GetCheckRule(dash0-cli_eda043ab83329c77b4ed7f465caea040)"},
-			withID:      {"i", "i", "GetCheckRule(i) GetCheckRule(dash0-cli_eda043ab83329c77b4ed7f465caea040)"},
-			withBoth:    {"i", "i", "GetCheckRule(i) GetCheckRule(dash0-cli_eda043ab83329c77b4ed7f465caea040)"},
+			withID:      {"i", "i", "GetCheckRule(i)"},
+			withBoth:    {"i", "i", "GetCheckRule(i)"},
 		},
 		"syntheticcheck": {
 			withNeither: {"", "", "GetSyntheticCheck(dash0-cli_5d001689d30e63de937bf0bd6185d1e5)"},
@@ -255,8 +255,8 @@ func TestUpsertKey_Characterization(t *testing.T) {
 		"prometheusrule": {
 			withNeither: {"", "", "GetCheckRule(dash0-cli_c8b5205e526cbeb9cb5fc77fad4e09f6) GetRecordingRule(dash0-cli_87a69fbd04c8b6bb51abb4e7465c67f6)"},
 			withOrigin:  {"o", "o", "GetCheckRule(o) GetRecordingRule(o)"},
-			withID:      {"i", "i", "GetCheckRule(i) GetCheckRule(dash0-cli_c8b5205e526cbeb9cb5fc77fad4e09f6) GetRecordingRule(i) GetRecordingRule(dash0-cli_87a69fbd04c8b6bb51abb4e7465c67f6)"},
-			withBoth:    {"i", "o", "GetCheckRule(i) GetCheckRule(o) GetRecordingRule(i) GetRecordingRule(o)"},
+			withID:      {"i", "i", "GetCheckRule(i) GetRecordingRule(i) GetRecordingRule(dash0-cli_87a69fbd04c8b6bb51abb4e7465c67f6)"},
+			withBoth:    {"i", "o", "GetCheckRule(i) GetRecordingRule(i) GetRecordingRule(o)"},
 		},
 		"persesdashboard": {
 			withNeither: {"", "", "GetDashboard(dash0-cli_8c3789eb30701c9e4d02c5b21660f40d)"},

@@ -421,7 +421,7 @@ func TestDiff_PersesDashboardSwitchedToDashboardKeepsItsInferredOrigin(t *testin
 
 // When the id was not found, apply wrote the alert by the CRD's origin or its
 // inferred origin, so the deletion of the abandoned id carries that fallback.
-func TestDiff_PrometheusAlertThresholdCrossingCarriesTheRoutingFallback(t *testing.T) {
+func TestDiff_PrometheusAlertThresholdCrossingDeletesAtTheID(t *testing.T) {
 	alerts := func(names ...string) []byte {
 		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: rules\n  labels:\n    dash0.com/id: crd-1\n%s\nspec:\n  groups:\n    - name: g\n      rules:\n"
 		for _, name := range names {
@@ -432,11 +432,9 @@ func TestDiff_PrometheusAlertThresholdCrossingCarriesTheRoutingFallback(t *testi
 	for _, tc := range []struct {
 		name        string
 		originLabel string
-		wantAlias   string
-		wantKept    bool
 	}{
-		{name: "explicit origin", originLabel: "    dash0.com/origin: crd-origin", wantAlias: "crd-origin"},
-		{name: "inferred origin", wantKept: true},
+		{name: "explicit origin", originLabel: "    dash0.com/origin: crd-origin"},
+		{name: "inferred origin"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before, after := newSnapshot(), newSnapshot()
@@ -447,8 +445,9 @@ func TestDiff_PrometheusAlertThresholdCrossingCarriesTheRoutingFallback(t *testi
 
 			require.Len(t, plan.ByIdentifier, 1)
 			assert.Equal(t, "crd-1", plan.ByIdentifier[0].Identifier)
-			assert.Equal(t, tc.wantAlias, plan.ByIdentifier[0].Alias)
-			assert.Equal(t, tc.wantKept, plan.ByIdentifier[0].InferredOriginKept)
+			// apply writes an alert at its id whether or not it was found.
+			assert.Empty(t, plan.ByIdentifier[0].Alias)
+			assert.False(t, plan.ByIdentifier[0].InferredOriginKept)
 		})
 	}
 }

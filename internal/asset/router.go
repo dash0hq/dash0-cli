@@ -23,10 +23,16 @@ type Identity struct {
 	Origin string
 	// Inferred is the origin a document without one is created by.
 	Inferred string
+	// CreatesAtID is set for kinds that keep the id in the file, as check
+	// rules: an id that is not found is created at that id.
+	CreatesAtID bool
 }
 
 // CreateOrigin is the origin the asset is created by.
 func (i Identity) CreateOrigin() string {
+	if i.CreatesAtID && i.ID != "" {
+		return i.ID
+	}
 	if i.Origin != "" {
 		return i.Origin
 	}
@@ -59,6 +65,9 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 		}
 		if !dash0api.IsNotFound(err) {
 			return Route[T]{}, err
+		}
+		if identity.CreatesAtID {
+			return Route[T]{Key: identity.ID, Create: true}, nil
 		}
 	}
 	route := Route[T]{Key: identity.CreateOrigin(), Create: true}

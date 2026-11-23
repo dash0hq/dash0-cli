@@ -109,6 +109,10 @@ func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err 
 	if err != nil {
 		return "", "", err
 	}
+	if identity.CreatesAtID && identity.ID != "" {
+		// apply writes at the id whether or not it was found.
+		return "", "", nil
+	}
 	if identity.Origin == "" {
 		inferredOriginName = name
 	}

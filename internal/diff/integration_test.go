@@ -1468,8 +1468,8 @@ func TestDiff_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing
 	assert.Contains(t, cmdErr.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
 }
 
-// In a dataset the same run creates, a PrometheusRule alert is created by its
-// own inferred origin, and recording rules by theirs, never by the CRD's.
+// In a dataset the same run creates, a PrometheusRule alert is created at its
+// id, and recording rules by their own inferred origin, never by the CRD's.
 func TestDiff_PrometheusRuleInDatasetCreatedInSameRunUsesItsOwnKeys(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writeNewDatasetWithView(t)
@@ -1514,15 +1514,16 @@ spec:
 	var pending *PendingDifferencesError
 	require.ErrorAs(t, err, &pending, output)
 	dataset := "staging"
-	assert.Contains(t, output, "("+asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", &dataset)+")")
+	assert.Contains(t, output, "(alerts-id)")
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", &dataset))
 	assert.Contains(t, output, "("+asset.InferOrigin("recordingrule", "records", "staging")+")")
 	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts", &dataset))
 	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "records", &dataset))
 }
 
-// Two PrometheusRules whose ids are not found write the same alert at the same
-// inferred origin, so diff must fail as apply does.
-func TestDiff_PrometheusRuleAlertsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+// Two PrometheusRules whose ids are not found create the same alert at their
+// own ids, so they never collide at the alert's inferred origin.
+func TestDiff_PrometheusRuleAlertsWithIDsNotFoundCreateAtTheirIDs(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	tmpDir := t.TempDir()
 	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
@@ -1538,10 +1539,8 @@ func TestDiff_PrometheusRuleAlertsThatFallBackToTheSameInferredOriginFail(t *tes
 
 	output, err := runDiffCmd(t, "-f", tmpDir, "--api-url", server.URL)
 
-	require.Error(t, err, output)
 	var pending *PendingDifferencesError
-	assert.False(t, errors.As(err, &pending), "a collision is an error, not a pending difference")
-	assert.Contains(t, err.Error(), "a.yaml")
-	assert.Contains(t, err.Error(), "b.yaml")
-	assert.Contains(t, err.Error(), asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", nil))
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, output, "(id-a)")
+	assert.Contains(t, output, "(id-b)")
 }

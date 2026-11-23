@@ -29,11 +29,6 @@ type Deletion struct {
 	// same kind and name without an origin. apply can write that document at
 	// the same inferred origin, so the delete must not fall back to it.
 	InferredOriginKept bool
-	// KeptInferredOriginAlerts holds the check rule names of the alerts that
-	// the kept document still declares, when Kind is "prometheusrule". apply
-	// writes only those alerts at their inferred origins, so the delete falls
-	// back to the inferred origins of the other alerts.
-	KeptInferredOriginAlerts map[string]bool
 	// IdentifiedByIDOnly reports that the deleted document carried only
 	// dash0.com/id, for a kind where that needs a warning; see
 	// asset.IdentifiedByIDOnly.
@@ -104,9 +99,6 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
 			deletion.PrometheusHadRecordingRule = before.PrometheusRecordingRoleByIdentifier[key.Identifier]
-			if deletion.InferredOriginKept {
-				deletion.KeptInferredOriginAlerts = after.InferredOriginAlerts[deletion.InferredOriginName]
-			}
 		}
 		plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 	}
@@ -157,15 +149,6 @@ func Diff(before, after Snapshot) DeletionPlan {
 		occupiedNow := asset.CheckRuleIDsOccupiedByCRD(identifier, afterAlerts)
 		occupiedBefore := asset.CheckRuleIDsOccupiedByCRD(identifier, beforeAlerts)
 		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
-		// When the id was not found, apply wrote the alert at the key derived
-		// from the CRD's origin, which moves with the id, or at its inferred
-		// origin, which does not.
-		var aliasNow, aliasBefore []string
-		if alias := before.Aliases[crd]; alias != "" {
-			aliasBefore = asset.CheckRuleIDsOccupiedByCRD(alias, beforeAlerts)
-			aliasNow = asset.CheckRuleIDsOccupiedByCRD(after.Aliases[crd], afterAlerts)
-		}
-		inferredOriginName := before.InferredOriginNames[crd]
 		for i, name := range beforeAlerts {
 			if !afterSet[name] {
 				plan.AlertsByName = append(plan.AlertsByName, AlertDeletion{
@@ -175,14 +158,8 @@ func Diff(before, after Snapshot) DeletionPlan {
 				continue
 			}
 			if id := occupiedBefore[i]; !slices.Contains(occupiedNow, id) {
-				deletion := Deletion{Kind: "checkrule", Identifier: id, Path: before.Identifiers[crd]}
-				switch {
-				case aliasBefore != nil && !slices.Contains(aliasNow, aliasBefore[i]):
-					deletion.Alias = aliasBefore[i]
-				case aliasBefore == nil && inferredOriginName != "":
-					deletion.InferredOriginKept = after.InferredOriginAlerts[inferredOriginName][name.CheckRuleName()]
-				}
-				plan.ByIdentifier = append(plan.ByIdentifier, deletion)
+				// apply wrote the alert at its id, found or not.
+				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{Kind: "checkrule", Identifier: id, Path: before.Identifiers[crd]})
 			}
 		}
 	}

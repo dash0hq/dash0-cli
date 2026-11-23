@@ -385,38 +385,19 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // deletion, matching the fact that something was.
 func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (alreadyDeleted bool, err error) {
 	identifier, alerts := d.Identifier, d.PrometheusAlerts
+	// apply writes each alert at its id whether or not the id was found.
 	checkRuleIDs := asset.CheckRuleIDsOccupiedByCRD(identifier, alerts)
-	fallbacks := prometheusAlertFallbacks(d, dataset)
-	// The current files write the kept alerts' inferred origins, so a missing
-	// id leaves nothing to delete for them.
-	keptOnly := d.Alias == "" && d.InferredOriginName != "" && d.InferredOriginKept
 	if len(alerts) > 1 {
 		// A multi-alert CRD applied before per-alert derivation existed left
 		// its one check rule at the literal id (docs/commands.md's multi-alert
 		// migration note); the per-id 404 tolerance below makes this extra
 		// attempt free when there is no such orphan.
 		checkRuleIDs = append([]string{identifier}, checkRuleIDs...)
-		if fallbacks != nil {
-			fallbacks = append([]string{""}, fallbacks...)
-		}
 	}
 
 	var lastCheckRuleNotFoundErr error
 	checkRulesAllNotFound := true
-	for i, id := range checkRuleIDs {
-		if fallbacks != nil && (fallbacks[i] != "" || keptOnly) && !declared[id] {
-			// apply wrote the alert at its origin when its id was not found.
-			_, getErr := apiClient.GetCheckRule(ctx, id, dataset)
-			if dash0api.IsNotFound(getErr) && fallbacks[i] == "" {
-				lastCheckRuleNotFoundErr = getErr
-				continue
-			}
-			if dash0api.IsNotFound(getErr) {
-				id = fallbacks[i]
-			} else if getErr != nil {
-				return false, client.HandleAPIError(getErr, client.ErrorContext{AssetType: "check rule", AssetID: id})
-			}
-		}
+	for _, id := range checkRuleIDs {
 		if declared[id] {
 			// Not attempted, so not a "found nothing" either.
 			warnSkippedDeclaredCheckRule(id, fmt.Sprintf("PrometheusRule %q", identifier))
@@ -462,32 +443,6 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 		return false, client.HandleAPIError(notFoundErr, ectx)
 	}
 	return false, nil
-}
-
-// prometheusAlertFallbacks returns, for each alert of a removed CRD with an
-// id, the key apply wrote the alert at when its id was not found: the key
-// derived from the CRD's origin, or the alert's inferred origin. It returns
-// nil when the CRD has no id, because its alerts live at the keys derived
-// from its origin, which is its identifier, and nil when the CRD has no
-// alerts, because apply wrote no check rule for it.
-func prometheusAlertFallbacks(d gitutil.Deletion, dataset *string) []string {
-	if len(d.PrometheusAlerts) == 0 {
-		return nil
-	}
-	if d.Alias != "" {
-		return asset.CheckRuleIDsOccupiedByCRD(d.Alias, d.PrometheusAlerts)
-	}
-	if d.InferredOriginName == "" {
-		return nil
-	}
-	fallbacks := make([]string, len(d.PrometheusAlerts))
-	for i, alert := range d.PrometheusAlerts {
-		if d.KeptInferredOriginAlerts[alert.CheckRuleName()] {
-			continue
-		}
-		fallbacks[i] = asset.InferKindOrigin("prometheusrule", d.InferredOriginName+"\x00"+alert.CheckRuleName(), dataset)
-	}
-	return fallbacks
 }
 
 // warnSkippedDeclaredCheckRule reports a skipped check-rule deletion, so the

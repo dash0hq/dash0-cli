@@ -23,11 +23,22 @@ type CheckRule struct {
 // Identity returns what RouteDocument routes the check rule by.
 func (rule CheckRule) Identity(dataset *string) Identity {
 	return Identity{
-		ID:       rule.GetID(),
-		Origin:   rule.Origin,
-		Inferred: InferKindOrigin(rule.InferredKind, rule.InferredName, dataset),
+		ID:          rule.GetID(),
+		Origin:      rule.Origin,
+		Inferred:    InferKindOrigin(rule.InferredKind, rule.InferredName, dataset),
+		CreatesAtID: true,
 	}
 }
+
+// UpdateKeys is what `check-rules update -f` resolves its key from: the
+// rule's origin lives in Origin, not in its labels.
+func (rule CheckRule) UpdateKeys() dash0api.AssetMetadata {
+	return routedKeys{checkRuleKeys{rule}}
+}
+
+type checkRuleKeys struct{ CheckRule }
+
+func (keys checkRuleKeys) GetOrigin() string { return keys.Origin }
 
 // ParseCheckRules parses a CheckRule or PrometheusRule CRD document into one or
 // more check rules ready for import.

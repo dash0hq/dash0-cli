@@ -684,6 +684,7 @@ Aliases: `add`
 Update an existing asset from a YAML or JSON file.
 If the ID argument is omitted, `update` takes the identifier from the file that `apply` upserts the asset by (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
 For the kinds that follow the [routing rule](#routing-rule), `update` reads `dash0.com/id` first, then `dash0.com/origin` when the id is not found, as `apply` does.
+For check rules, an id that is not found fails, because `apply` would create the check rule at that id.
 `update` never creates an asset, so it fails when neither exists.
 For datasets and AWS metric scrape configs, a file without that identifier fails, even when it carries the other one.
 The output shows a unified diff of what changed.
@@ -830,6 +831,7 @@ Every kind except datasets and AWS metric scrape configs follows one routing rul
    If the stored asset has a `dash0.com/origin` other than the one in the document, the write fails, because the CLI never changes a stored origin.
 2. When the id is not found, or the document has no id, the CLI writes by the document's `dash0.com/origin`, or else by the origin it infers.
    A PUT to an origin that does not exist yet creates the asset with that origin.
+   Check rules and the alerting rules of a PrometheusRule are the exception: when the id is not found, the CLI creates the check rule at that id, so the id in the file is kept.
 
 These kinds are never created by POST, so applying the same document again updates the same asset.
 The CLI sends `dash0.com/origin` when it creates an asset, and never sends another origin on an update.
@@ -884,8 +886,8 @@ The identifier field location varies by asset kind:
 | `Dashboard` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` or `metadata.dash0Extensions.id` | Follows the [routing rule](#routing-rule). `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from. `metadata.dash0Extensions.id` names the origin too, but Kubernetes drops this unknown field from a custom resource, so prefer `dash0.com/origin`. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. An origin that is a UUID is stored as the dashboard's id. `apply --since` deletes a dashboard at its `dash0.com/id`, or at its origin when the id is not found, and a dashboard with only a `dash0.com/id` that is not found at its inferred origin. When the file keeps the dashboard under the same `metadata.name` without a `dash0.com/id`, `apply` writes it at that inferred origin, so `--since` does not delete it there |
 | `EphemeralDashboard` | Same as `Dashboard` | Shares its identifiers with `Dashboard` and `PersesDashboard`, and the API does not change the kind of an existing dashboard. Its inferred origin differs from that of a `Dashboard` with the same name |
 | `PersesDashboard` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule), as a dashboard |
-| `CheckRule` | top-level `id`, then `labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). A check rule keeps its labels at the top level, not under `metadata`. These labels are the labels of its alerts, so the CLI reads the origin from them but never sends it there. Dash0 stores a check rule's origin as its id, so a document whose `id` exists and differs from its `dash0.com/origin` fails |
-| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule) per alert. For a single-alert CRD, the labels are the alert's id and origin directly. For a CRD with two or more alerting rules, each alert derives its own id and origin from them (the label plus a slug of the alert's own composed name), see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
+| `CheckRule` | top-level `id`, then `labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). A check rule keeps its labels at the top level, not under `metadata`. These labels are the labels of its alerts, so the CLI reads the origin from them but never sends it there. Dash0 stores a check rule's origin as its id, so a document whose `id` exists and differs from its `dash0.com/origin` fails. An `id` that is not found creates the check rule at that id |
+| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule) per alert. For a single-alert CRD, the labels are the alert's id and origin directly. For a CRD with two or more alerting rules, each alert derives its own id and origin from them (the label plus a slug of the alert's own composed name), see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds). An alert whose id is not found is created at that id |
 | `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). A CRD's recording rules are one asset |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule) |
 | `SLO` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | OpenSLO v1 document (`apiVersion: openslo.com/v1`). Follows the [routing rule](#routing-rule). SLO IDs are server-assigned (`slo_<ulid>`), so a hand-written document pins `dash0.com/origin`, or relies on the inferred origin. An exported SLO keeps its `dash0.com/id`, so reapplying a YAML downloaded from the Dash0 platform UI updates the SLO it came from. A `dash0.com/id` from another organization is not found, so the SLO is created by its origin, and the next apply updates the same SLO |
@@ -919,7 +921,7 @@ For a single alerting rule, that label unambiguously names its one check rule, s
 For two or more alerting rules, each one instead gets its own identifier: the CRD's label, plus `--`, plus a slug of that alert's own composed name (`<group name> - <alert name>`, lowercased, with every run of non-alphanumeric characters collapsed to a single hyphen).
 For example, a CRD labeled `dash0.com/id: app-rules` with alerts `HighErrorRate` and `DiskFull` in a group named `test-group` reads check rules `app-rules--test-group-higherrorrate` and `app-rules--test-group-diskfull`.
 A `dash0.com/origin` label is derived per alert the same way.
-Each alert follows the [routing rule](#routing-rule): it updates the check rule at its id when that exists, and otherwise writes by its origin.
+Each alert follows the [routing rule](#routing-rule): it updates the check rule at its id when that exists, and creates it at that id when it does not.
 Without `dash0.com/origin`, each alert's inferred origin hashes the CRD's `metadata.name` and the alert's composed name, so it stays the same when the CRD gains or loses alerts.
 
 This derivation exists because upsert is PUT (create-or-*replace*), and the CRD-level label is the only identifier a multi-alert CRD has to work with — reusing it verbatim for every alert would upsert them all to the exact same check rule, so only the last alert applied in document order would end up with a real check rule at all, silently losing every other one.
@@ -1388,6 +1390,7 @@ Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
 A removed view, check rule, synthetic check, SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed check rule with an `id` is always deleted at that id, because `apply` creates a check rule whose id is not found at that id.
 Each uses the same API call as its `delete` command.
 For an SLO, eval, signal-to-metrics rule, or sampling rule identified by `dash0.com/id` alone, `--since` prints a warning, because one that an earlier CLI version created by POST sits at a server-assigned id that the delete misses.
 
@@ -1430,7 +1433,8 @@ Check rule "service-alerts - HighLatency" deleted
 ```
 
 Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with.
-Each alert and the recording rule are deleted where `apply` wrote them: at the id, or at the origin or inferred origin when the id is not found.
+Each alert and the recording rule are deleted where `apply` wrote them.
+An alert with an id is deleted at that id, found or not, and the recording rule at its id, or at its origin or inferred origin when the id is not found.
 
 The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
 

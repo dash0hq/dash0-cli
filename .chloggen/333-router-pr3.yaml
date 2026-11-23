@@ -10,6 +10,7 @@ subtext: |
   Each alert of a PrometheusRule uses `metadata.name` and `<group name> - <alert name>`, and the recording rules use `metadata.name`.
   A PersesDashboard keeps its `dash0.com/id` and `dash0.com/origin` labels, which the conversion to a dashboard used to drop.
   Before, these kinds were written at the file's id, so a document whose id is not found now creates the asset at its origin or inferred origin, with a server-assigned id.
+  Check rules and the alerting rules of a PrometheusRule are the exception: when the id is not found, the CLI creates the check rule at that id, so the id in the file is kept, and `check-rules update -f` fails instead of updating the rule at its origin.
   A document without an identifier used to create a new asset on every apply; now only the first apply after the upgrade creates one, and later applies update it.
   Set `dash0.com/origin` to the stored origin, or set `dash0.com/id`, to update the existing asset instead.
   Origins are unique per organization, so a document with an explicit `dash0.com/origin` now applies to one dataset only for PersesDashboards, check rules, PrometheusRules, synthetic checks, and views; before, the second dataset got a new asset by POST. Leave the origin out to get one inferred per dataset.

@@ -119,7 +119,7 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 		}
 		return identity.ID, stored, nil
 	}
-	if !dash0api.IsNotFound(err) || identity.Origin == "" || identity.Origin == identity.ID {
+	if !dash0api.IsNotFound(err) || identity.Origin == "" || identity.Origin == identity.ID || identity.CreatesAtID {
 		return identity.ID, zero, err
 	}
 	stored, err = get(ctx, identity.Origin)

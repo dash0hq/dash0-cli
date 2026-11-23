@@ -286,6 +286,7 @@ Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
 A removed view, check rule, synthetic check, SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed check rule with an `id` is always deleted at that id, because `apply` creates a check rule whose id is not found at that id.
 Each uses the same API call as its `delete` command.
 For an SLO, eval, signal-to-metrics rule, or sampling rule identified by `dash0.com/id` alone, `--since` prints a warning, because one that an earlier CLI version created by POST sits at a server-assigned id that the delete misses.
 
@@ -328,7 +329,8 @@ Check rule "service-alerts - HighLatency" deleted
 ```
 
 Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with.
-Each alert and the recording rule are deleted where `apply` wrote them: at the id, or at the origin or inferred origin when the id is not found.
+Each alert and the recording rule are deleted where `apply` wrote them.
+An alert with an id is deleted at that id, found or not, and the recording rule at its id, or at its origin or inferred origin when the id is not found.
 
 The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
 

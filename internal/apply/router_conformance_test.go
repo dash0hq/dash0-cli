@@ -215,6 +215,8 @@ type routerCase struct {
 	// document's inferred origin.
 	want    []string
 	wantErr string
+	// idMiss rows write at the origin after the id is not found.
+	idMiss bool
 }
 
 const inferredKey = "<inferred>"
@@ -241,12 +243,14 @@ var routerCases = []routerCase{
 		name:   "id not found",
 		labels: map[string]string{"dash0.com/id": "i"},
 		want:   []string{"GET i", "GET " + inferredKey, "PUT " + inferredKey},
+		idMiss: true,
 	},
 	{
 		name:   "id not found, inferred origin stored",
 		labels: map[string]string{"dash0.com/id": "i"},
 		stored: map[string]string{inferredKey: inferredKey},
 		want:   []string{"GET i", "GET " + inferredKey, "PUT " + inferredKey},
+		idMiss: true,
 	},
 	{
 		name:    "id with a differing stored origin",
@@ -303,6 +307,9 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 	fixture, putResponse := routedFixtures(t, spec)
 	storedResponses := make(map[string][]byte)
 	stored := make(map[string]string)
+	if spec.originIsID && tc.idMiss {
+		t.Skip("an id of this kind that is not found is written at the id; see TestRouter_CheckRuleOriginIsItsID")
+	}
 	for key, origin := range tc.stored {
 		if spec.originIsID && origin != key {
 			t.Skip("the stored origin of this kind is its id; see TestRouter_CheckRuleOriginIsItsID")
@@ -628,6 +635,14 @@ func TestRouter_MultiAlertPrometheusRuleRoutesEachAlertByItsDerivedKey(t *testin
 			},
 		},
 		{
+			name:   "id not found",
+			labels: map[string]string{"dash0.com/id": "i"},
+			want: []string{
+				"GET " + derive("i", "HighErrorRate"), "PUT " + derive("i", "HighErrorRate"),
+				"GET " + derive("i", "DiskFull"), "PUT " + derive("i", "DiskFull"),
+			},
+		},
+		{
 			name:   "id hit",
 			labels: map[string]string{"dash0.com/id": "i"},
 			stored: map[string]string{
@@ -647,11 +662,22 @@ func TestRouter_MultiAlertPrometheusRuleRoutesEachAlertByItsDerivedKey(t *testin
 	}
 }
 
-// TestRouter_CheckRuleOriginIsItsID covers the stored-origin check for check
-// rules, whose id is their origin: Dash0 creates a check rule with its origin
-// as its id, and a read returns no origin label.
+// TestRouter_CheckRuleOriginIsItsID covers check rules, whose id is their
+// origin: Dash0 creates a check rule with its origin as its id, and a read
+// returns no origin label. So an id that is not found is written at the id,
+// which keeps the id the file names.
 func TestRouter_CheckRuleOriginIsItsID(t *testing.T) {
 	cases := []routerCase{
+		{
+			name:   "id not found",
+			labels: map[string]string{"dash0.com/id": "i"},
+			want:   []string{"GET i", "PUT i"},
+		},
+		{
+			name:   "id not found with an origin",
+			labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
+			want:   []string{"GET i", "PUT i"},
+		},
 		{
 			name:   "id hit without an origin",
 			labels: map[string]string{"dash0.com/id": "i"},

@@ -98,11 +98,6 @@ type Snapshot struct {
 	// document without an origin, which apply writes at its inferred origin
 	// when it has no id or the id is not found.
 	InferredOriginDocuments map[IdentifierKey]bool
-
-	// InferredOriginAlerts maps the metadata.name of a PrometheusRule without
-	// an origin to the check rule names of its alerts, each of which apply
-	// writes at its own inferred origin.
-	InferredOriginAlerts map[string]map[string]bool
 }
 
 func newSnapshot() Snapshot {
@@ -117,7 +112,6 @@ func newSnapshot() Snapshot {
 		Aliases:                             map[IdentifierKey]string{},
 		InferredOriginNames:                 map[IdentifierKey]string{},
 		InferredOriginDocuments:             map[IdentifierKey]bool{},
-		InferredOriginAlerts:                map[string]map[string]bool{},
 	}
 }
 
@@ -294,18 +288,6 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		}
 		if inferredOriginName != "" {
 			snap.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(normalizedKind), Identifier: inferredOriginName}] = true
-			if normalizedKind == "prometheusrule" {
-				alerts, err := asset.ExtractPrometheusAlertNames(docBytes)
-				if err != nil {
-					return fmt.Errorf("failed to extract alert names: %w", err)
-				}
-				for _, alert := range alerts {
-					if snap.InferredOriginAlerts[inferredOriginName] == nil {
-						snap.InferredOriginAlerts[inferredOriginName] = map[string]bool{}
-					}
-					snap.InferredOriginAlerts[inferredOriginName][alert.CheckRuleName()] = true
-				}
-			}
 		}
 		if identifier == "" {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}

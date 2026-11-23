@@ -1033,17 +1033,15 @@ spec:
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "Check rule")
 
-	// Each alert reads its own derived id, and on 404 is created by its own
-	// inferred origin, so the two alerts never write the same check rule.
-	require.NotNil(t, findRequest(server.Requests(), http.MethodGet, "/api/alerting/check-rules/shared-id--test-group-higherrorrate"))
-	require.NotNil(t, findRequest(server.Requests(), http.MethodGet, "/api/alerting/check-rules/shared-id--test-group-diskfull"))
-	highErrorRateOrigin := asset.InferOrigin("prometheusrule", "test-rules\x00test-group - HighErrorRate", "default")
-	diskFullOrigin := asset.InferOrigin("prometheusrule", "test-rules\x00test-group - DiskFull", "default")
-	require.NotEqual(t, highErrorRateOrigin, diskFullOrigin)
-	highErrorRateReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/"+highErrorRateOrigin)
-	diskFullReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/"+diskFullOrigin)
-	require.NotNil(t, highErrorRateReq, "expected a PUT to the HighErrorRate alert's own inferred origin")
-	require.NotNil(t, diskFullReq, "expected a PUT to the DiskFull alert's own inferred origin, not a second write to the same key as HighErrorRate")
+	// Each alert reads its own derived id, and on 404 is created at that id.
+	highErrorRateID := "/api/alerting/check-rules/shared-id--test-group-higherrorrate"
+	diskFullID := "/api/alerting/check-rules/shared-id--test-group-diskfull"
+	require.NotNil(t, findRequest(server.Requests(), http.MethodGet, highErrorRateID))
+	require.NotNil(t, findRequest(server.Requests(), http.MethodGet, diskFullID))
+	highErrorRateReq := findRequest(server.Requests(), http.MethodPut, highErrorRateID)
+	diskFullReq := findRequest(server.Requests(), http.MethodPut, diskFullID)
+	require.NotNil(t, highErrorRateReq, "expected a PUT to the HighErrorRate alert's own derived id")
+	require.NotNil(t, diskFullReq, "expected a PUT to the DiskFull alert's own derived id, not a second write to the same key as HighErrorRate")
 
 	var highErrorRateRule, diskFullRule dash0api.PrometheusAlertRule
 	require.NoError(t, json.Unmarshal(highErrorRateReq.Body, &highErrorRateRule))
@@ -1766,11 +1764,11 @@ spec:
 	assert.Contains(t, output2, "no changes")
 }
 
-func TestApply_CheckRule_IDNotFoundCreatesByInferredOrigin(t *testing.T) {
+func TestApply_CheckRule_IDNotFoundCreatesAtTheID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	// An id that is not found is never written to: the check rule is created by
-	// its inferred origin, without the id.
+	// A check rule whose id is not found is created at that id, so the file
+	// keeps its id.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
@@ -1802,11 +1800,8 @@ expression: up == 0
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "created")
 
-	putReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/"+asset.InferOrigin("checkrule", "test-check-rule", "default"))
-	require.NotNil(t, putReq, "expected a PUT request for check rule")
-	var rule dash0api.PrometheusAlertRule
-	require.NoError(t, json.Unmarshal(putReq.Body, &rule))
-	assert.Nil(t, rule.Id)
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/new-rule-uuid"), "expected a PUT at the id")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/"+asset.InferOrigin("checkrule", "test-check-rule", "default")))
 }
 
 func TestApply_CheckRule_RoundTrip(t *testing.T) {
@@ -1834,7 +1829,7 @@ expression: up == 0
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
 	})
-	// The id is not found, so the first apply PUTs by the inferred origin.
+	// The id is not found, so the first apply creates the rule at the id.
 	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
 	cmd1 := NewApplyCmd()
@@ -1847,11 +1842,7 @@ expression: up == 0
 	require.NoError(t, err1)
 	assert.Contains(t, output1, "created")
 
-	putReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/"+asset.InferOrigin("checkrule", "test-check-rule", "default"))
-	require.NotNil(t, putReq, "expected a PUT to the inferred origin on first apply")
-	var ruleBody dash0api.PrometheusAlertRule
-	require.NoError(t, json.Unmarshal(putReq.Body, &ruleBody))
-	assert.Nil(t, ruleBody.Id)
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, getPath), "expected a PUT at the id on first apply")
 
 	// --- Second apply: rule now exists under the same user-defined ID ---
 	server.Reset()

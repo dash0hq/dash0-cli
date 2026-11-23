@@ -445,11 +445,10 @@ spec:
 	require.NotNil(t, deleteReq, "expected a DELETE request for the dashboard removed from the subdirectory-scoped repo")
 }
 
-// runPrometheusRuleAlertPartialDeletion removes one of two alerts from an
-// id-only CRD whose literal id is not found, so the survivor moves from its
-// derived id back to the literal id, and returns the server.
-func runPrometheusRuleAlertPartialDeletion(t *testing.T, derivedIDFound bool) *testutil.MockServer {
-	t.Helper()
+// TestApply_Since_PrometheusRuleAlertPartialDeletion removes one of two alerts
+// from an id-only CRD, so the survivor moves from its derived id back to the
+// literal id.
+func TestApply_Since_PrometheusRuleAlertPartialDeletion(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	dir := t.TempDir()
@@ -495,15 +494,8 @@ spec:
 	runGitCmd(t, dir, "commit", "-q", "-m", "remove DiskFull alert")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	if derivedIDFound {
-		server.On(http.MethodGet, apiPathCheckRules+"/shared-id--test-group-higherrorrate", testutil.MockResponse{
-			StatusCode: http.StatusOK,
-			BodyFile:   testutil.FixtureCheckRulesImportSuccess,
-			Validator:  testutil.RequireHeaders,
-		})
-	}
 	// The surviving alert (HighErrorRate) reads the CRD's dash0.com/id, which
-	// is not found, so it is created by its inferred origin.
+	// is not found, so it is created at that id.
 	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureCheckRulesNotFound,
@@ -542,34 +534,23 @@ spec:
 	deleteReq := findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/disk-full-check-rule-id")
 	require.NotNil(t, deleteReq, "expected a DELETE request for the removed alert's resolved check rule id")
 
-	return server
-}
-
-func TestApply_Since_PrometheusRuleAlertPartialDeletion(t *testing.T) {
-	server := runPrometheusRuleAlertPartialDeletion(t, false)
-
-	// The survivor's derived id is not found, so apply wrote it at its inferred
-	// origin, which the current file still writes: nothing to delete there.
-	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/shared-id--test-group-higherrorrate"),
-		"an id apply never wrote must not be deleted")
-	survivorOrigin := asset.InferOrigin("prometheusrule", "test-rules\x00test-group - HighErrorRate", "default")
-	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+survivorOrigin),
-		"the surviving alert must be written at its inferred origin")
-	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/"+survivorOrigin),
-		"the survivor's inferred origin must never be deleted")
-	// Exact path: findRequest matches by prefix, which the derived id shares.
-	for _, req := range server.Requests() {
-		if req.Method == http.MethodDelete && req.Path == apiPathCheckRules+"/shared-id" {
-			t.Error("the literal id is the surviving alert's new home and must never be deleted")
-		}
-	}
-}
-
-func TestApply_Since_PrometheusRuleAlertPartialDeletionDeletesAFoundDerivedID(t *testing.T) {
-	server := runPrometheusRuleAlertPartialDeletion(t, true)
-
+	// apply wrote the survivor at its derived id before, found or not.
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/shared-id--test-group-higherrorrate"),
 		"expected a DELETE for the surviving alert's now-abandoned derived id")
+	// Exact paths: findRequest matches by prefix, which the derived id shares.
+	survivorWritten := false
+	for _, req := range server.Requests() {
+		if req.Path != apiPathCheckRules+"/shared-id" {
+			continue
+		}
+		if req.Method == http.MethodDelete {
+			t.Error("the literal id is the surviving alert's new home and must never be deleted")
+		}
+		if req.Method == http.MethodPut {
+			survivorWritten = true
+		}
+	}
+	assert.True(t, survivorWritten, "the surviving alert must be written at the literal id")
 }
 
 // TestApply_Since_PersesDashboardAlreadyDeletedPreservesCanonicalKindName is a
@@ -1229,9 +1210,8 @@ spec:
 	assert.Contains(t, output, "deleted")
 
 	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathRecordingRules+"/"+ruleID), "expected the dropped recording rule to be deleted")
-	// The alert's id is not found, so apply writes it at its inferred origin.
-	alertOrigin := asset.InferOrigin("prometheusrule", "mixed-rules\x00mixed-group - HighErrorRate", "default")
-	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+alertOrigin), "the surviving alert must still be written")
+	// The alert's id is not found, so apply creates it at that id.
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+ruleID), "the surviving alert must still be written")
 }
 
 func TestApply_Since_UnresolvableRef(t *testing.T) {
@@ -3112,7 +3092,8 @@ func TestApply_Since_DocumentWithOriginAndIDDeletesWhereApplyWrote(t *testing.T)
 }
 
 // A routed document with only a dash0.com/id was created by its inferred
-// origin when the id was not found. Removing the file must delete it there.
+// origin when the id was not found, or at the id for kinds that create an id
+// that is not found at that id. Removing the file must delete it there.
 func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	for kind, spec := range routedKinds {
@@ -3130,6 +3111,9 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 		} {
 			t.Run(kind+"/"+tt.name, func(t *testing.T) {
 				testutil.SetupTestEnv(t)
+				if spec.originIsID {
+					tt.wantDelete = "DELETE " + id
+				}
 
 				dir := t.TempDir()
 				runGitCmd(t, dir, "init", "-q", "-b", "main")
@@ -3175,7 +3159,9 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 						deletes = append(deletes, request.line)
 					}
 				}
-				if tt.idFails {
+				// A check rule is deleted at its id without a read, so a failed
+				// read cannot stop it.
+				if tt.idFails && !spec.originIsID {
 					require.Error(t, cmdErr)
 					assert.Empty(t, deletes)
 					return
@@ -3188,7 +3174,8 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 }
 
 // A failed read by id cannot tell where apply wrote the asset, so --since must
-// stop instead of guessing a key to delete at.
+// stop instead of guessing a key to delete at. Kinds that create an id that
+// is not found at that id need no read: the delete goes to the id.
 func TestApply_Since_DocumentWithOnlyIDStopsWhenTheReadFails(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	for kind, spec := range routedKinds {
@@ -3235,6 +3222,12 @@ func TestApply_Since_DocumentWithOnlyIDStopsWhenTheReadFails(t *testing.T) {
 				})
 
 				require.Error(t, cmdErr)
+				if spec.originIsID {
+					for _, path := range deletes {
+						assert.True(t, strings.HasSuffix(path, "/"+id), path)
+					}
+					return
+				}
 				assert.Empty(t, deletes)
 			})
 		}
@@ -3243,7 +3236,9 @@ func TestApply_Since_DocumentWithOnlyIDStopsWhenTheReadFails(t *testing.T) {
 
 // A file that keeps its name but drops its dash0.com/id, changes it to an id
 // that is not found, or pins the inferred origin, is applied at the inferred
-// origin, so --since must not delete there.
+// origin, so --since must not delete there. Kinds that create an id that is
+// not found at that id wrote the old document at its id, so --since deletes
+// there, and the changed id is written at itself.
 func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	const otherID = "b2c3d4e5-6789-01bc-def0-234567890abc"
@@ -3281,6 +3276,13 @@ func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testi
 			} {
 				t.Run(kind+"/"+current.name+"/"+tt.name, func(t *testing.T) {
 					testutil.SetupTestEnv(t)
+					written := "PUT " + inferred
+					if spec.originIsID {
+						tt.wantDeletes = []string{"DELETE " + id}
+						if current.name == "changes the id" {
+							written = "PUT " + otherID
+						}
+					}
 					stored := map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}
 					if tt.idFound {
 						stored[id] = storedAsset(t, fixture, spec, id, "")
@@ -3307,7 +3309,7 @@ func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testi
 							writes = append(writes, request.line)
 						}
 					}
-					assert.Equal(t, append([]string{"PUT " + inferred}, tt.wantDeletes...), writes)
+					assert.Equal(t, append([]string{written}, tt.wantDeletes...), writes)
 				})
 			}
 		}
@@ -3372,12 +3374,12 @@ func storedAt(server *testutil.MockServer, path, fixture string) {
 	})
 }
 
-// A removed multi-alert CRD whose alert ids are not found is deleted where
-// apply wrote it: at the keys derived from its origin, at each alert's inferred
-// origin, or nowhere when the current files still write those inferred origins.
-// The CRD's literal id is always deleted too, for the check rule that CLI
-// versions before the per-alert ids wrote there.
-func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t *testing.T) {
+// A removed multi-alert CRD with a dash0.com/id is deleted at its per-alert
+// ids, found or not, because apply writes each alert at its id. The CRD's
+// literal id is always deleted too, for the check rule that CLI versions
+// before the per-alert ids wrote there. A CRD that drops its id counts as
+// removed, because apply wrote it at the ids before.
+func TestApply_Since_PrometheusRuleWholeCRDDeletion_DeletesAtTheIDs(t *testing.T) {
 	const crdBody = `spec:
   groups:
     - name: test-group
@@ -3387,43 +3389,34 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
         - alert: DiskFull
           expr: disk > 0.9
 `
-	dataset := "default"
-	inferred := func(alert string) string {
-		return asset.InferKindOrigin("prometheusrule", "app-rules\x00test-group - "+alert, &dataset)
-	}
+	atTheIDs := []string{"app-rules", "app-rules--test-group-higherrorrate", "app-rules--test-group-diskfull"}
 	tests := []struct {
-		name          string
-		labels        string
-		keepCRD       bool
-		keptCRDBody   string
-		foundIDs      []string
-		wantDeleted   []string
-		wantNoDeletes bool
+		name        string
+		labels      string
+		keepCRD     bool
+		keptCRDBody string
+		foundIDs    []string
 	}{
 		{
-			name:        "id only",
-			labels:      "    dash0.com/id: app-rules\n",
-			wantDeleted: []string{"app-rules", inferred("HighErrorRate"), inferred("DiskFull")},
+			name:   "id only",
+			labels: "    dash0.com/id: app-rules\n",
 		},
 		{
-			name:        "id and origin",
-			labels:      "    dash0.com/id: app-rules\n    dash0.com/origin: app-origin\n",
-			wantDeleted: []string{"app-rules", "app-origin--test-group-higherrorrate", "app-origin--test-group-diskfull"},
+			name:   "id and origin",
+			labels: "    dash0.com/id: app-rules\n    dash0.com/origin: app-origin\n",
 		},
 		{
-			name:        "id only, one alert found",
-			labels:      "    dash0.com/id: app-rules\n",
-			foundIDs:    []string{"app-rules--test-group-higherrorrate"},
-			wantDeleted: []string{"app-rules", "app-rules--test-group-higherrorrate", inferred("DiskFull")},
+			name:     "id only, one alert found",
+			labels:   "    dash0.com/id: app-rules\n",
+			foundIDs: []string{"app-rules--test-group-higherrorrate"},
 		},
 		{
-			name:          "inferred origins kept",
-			labels:        "    dash0.com/id: app-rules\n",
-			keepCRD:       true,
-			wantNoDeletes: true,
+			name:    "id dropped",
+			labels:  "    dash0.com/id: app-rules\n",
+			keepCRD: true,
 		},
 		{
-			name:    "inferred origins kept, one alert removed",
+			name:    "id dropped, one alert removed",
 			labels:  "    dash0.com/id: app-rules\n",
 			keepCRD: true,
 			keptCRDBody: `spec:
@@ -3433,7 +3426,6 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
         - alert: HighErrorRate
           expr: sum(rate(errors[5m])) > 0.1
 `,
-			wantDeleted: []string{inferred("DiskFull")},
 		},
 	}
 	for _, tt := range tests {
@@ -3506,11 +3498,7 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 					deleted = append(deleted, strings.TrimPrefix(req.Path, "/api/alerting/check-rules/"))
 				}
 			}
-			if tt.wantNoDeletes {
-				assert.Empty(t, deleted)
-				return
-			}
-			assert.ElementsMatch(t, tt.wantDeleted, deleted)
+			assert.ElementsMatch(t, atTheIDs, deleted)
 		})
 	}
 }
