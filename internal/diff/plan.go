@@ -20,6 +20,9 @@ type docPlan struct {
 	// readDenied reports that the read answered 403 and the plan assumes a
 	// create, because this run creates the dataset.
 	readDenied bool
+	// identity is what the write routes by, when it is not the document's
+	// own, as for each asset of a PrometheusRule.
+	identity *asset.Identity
 }
 
 // planDocument reads the stored state of every asset doc would write, through
@@ -273,7 +276,7 @@ func planCheckRules(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 		if denied && plan.Key == "" {
 			plan.Key = identity.CreateOrigin()
 		}
-		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied})
+		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied, identity: &identity})
 	}
 	return plans, nil
 }
@@ -307,7 +310,7 @@ func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asse
 		if denied && plan.Key == "" {
 			plan.Key = identity.CreateOrigin()
 		}
-		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied})
+		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied, identity: &identity})
 	}
 	return plans, nil
 }

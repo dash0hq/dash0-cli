@@ -156,6 +156,16 @@ func Diff(before, after Snapshot) DeletionPlan {
 		// address and leaves the old one live.
 		occupiedNow := asset.CheckRuleIDsOccupiedByCRD(identifier, afterAlerts)
 		occupiedBefore := asset.CheckRuleIDsOccupiedByCRD(identifier, beforeAlerts)
+		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
+		// When the id was not found, apply wrote the alert at the key derived
+		// from the CRD's origin, which moves with the id, or at its inferred
+		// origin, which does not.
+		var aliasNow, aliasBefore []string
+		if alias := before.Aliases[crd]; alias != "" {
+			aliasBefore = asset.CheckRuleIDsOccupiedByCRD(alias, beforeAlerts)
+			aliasNow = asset.CheckRuleIDsOccupiedByCRD(after.Aliases[crd], afterAlerts)
+		}
+		inferredOriginName := before.InferredOriginNames[crd]
 		for i, name := range beforeAlerts {
 			if !afterSet[name] {
 				plan.AlertsByName = append(plan.AlertsByName, AlertDeletion{
@@ -165,11 +175,14 @@ func Diff(before, after Snapshot) DeletionPlan {
 				continue
 			}
 			if id := occupiedBefore[i]; !slices.Contains(occupiedNow, id) {
-				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-					Kind:       "checkrule",
-					Identifier: id,
-					Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
-				})
+				deletion := Deletion{Kind: "checkrule", Identifier: id, Path: before.Identifiers[crd]}
+				switch {
+				case aliasBefore != nil && !slices.Contains(aliasNow, aliasBefore[i]):
+					deletion.Alias = aliasBefore[i]
+				case aliasBefore == nil && inferredOriginName != "":
+					deletion.InferredOriginKept = after.InferredOriginAlerts[inferredOriginName][name.CheckRuleName()]
+				}
+				plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 			}
 		}
 	}

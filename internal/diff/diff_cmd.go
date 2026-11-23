@@ -254,11 +254,17 @@ func createsDataset(planned []plannedDoc, dataset *string) bool {
 func checkInferredOriginWrites(planned []plannedDoc, dataset *string) error {
 	writes := asset.InferredOriginWrites{}
 	for _, p := range planned {
-		if len(p.plans) != 1 {
-			continue
-		}
-		if err := writes.ClaimDocument(p.doc, dataset, p.plans[0].plan.Key); err != nil {
-			return fmt.Errorf("%s (%s): %w", p.doc.Location(), p.doc.Kind, err)
+		for _, dp := range p.plans {
+			var err error
+			switch {
+			case dp.identity != nil:
+				err = writes.Claim(*dp.identity, dp.plan.Key, p.doc.Location())
+			case len(p.plans) == 1:
+				err = writes.ClaimDocument(p.doc, dataset, dp.plan.Key)
+			}
+			if err != nil {
+				return fmt.Errorf("%s (%s): %w", p.doc.Location(), p.doc.Kind, err)
+			}
 		}
 	}
 	return nil

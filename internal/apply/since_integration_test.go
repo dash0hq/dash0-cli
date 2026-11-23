@@ -445,7 +445,11 @@ spec:
 	require.NotNil(t, deleteReq, "expected a DELETE request for the dashboard removed from the subdirectory-scoped repo")
 }
 
-func TestApply_Since_PrometheusRuleAlertPartialDeletion(t *testing.T) {
+// runPrometheusRuleAlertPartialDeletion removes one of two alerts from an
+// id-only CRD whose literal id is not found, so the survivor moves from its
+// derived id back to the literal id, and returns the server.
+func runPrometheusRuleAlertPartialDeletion(t *testing.T, derivedIDFound bool) *testutil.MockServer {
+	t.Helper()
 	testutil.SetupTestEnv(t)
 
 	dir := t.TempDir()
@@ -491,6 +495,13 @@ spec:
 	runGitCmd(t, dir, "commit", "-q", "-m", "remove DiskFull alert")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	if derivedIDFound {
+		server.On(http.MethodGet, apiPathCheckRules+"/shared-id--test-group-higherrorrate", testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+			Validator:  testutil.RequireHeaders,
+		})
+	}
 	// The surviving alert (HighErrorRate) reads the CRD's dash0.com/id, which
 	// is not found, so it is created by its inferred origin.
 	server.OnPattern(http.MethodGet, checkRuleIDPattern, testutil.MockResponse{
@@ -531,10 +542,16 @@ spec:
 	deleteReq := findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/disk-full-check-rule-id")
 	require.NotNil(t, deleteReq, "expected a DELETE request for the removed alert's resolved check rule id")
 
-	// The survivor reads the literal id, which is not found, so it is written
-	// at its inferred origin; its derived id is abandoned.
-	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, "/api/alerting/check-rules/shared-id--test-group-higherrorrate"),
-		"expected a DELETE for the surviving alert's now-abandoned derived id")
+	return server
+}
+
+func TestApply_Since_PrometheusRuleAlertPartialDeletion(t *testing.T) {
+	server := runPrometheusRuleAlertPartialDeletion(t, false)
+
+	// The survivor's derived id is not found, so apply wrote it at its inferred
+	// origin, which the current file still writes: nothing to delete there.
+	assert.Nil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/shared-id--test-group-higherrorrate"),
+		"an id apply never wrote must not be deleted")
 	survivorOrigin := asset.InferOrigin("prometheusrule", "test-rules\x00test-group - HighErrorRate", "default")
 	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules+"/"+survivorOrigin),
 		"the surviving alert must be written at its inferred origin")
@@ -546,6 +563,13 @@ spec:
 			t.Error("the literal id is the surviving alert's new home and must never be deleted")
 		}
 	}
+}
+
+func TestApply_Since_PrometheusRuleAlertPartialDeletionDeletesAFoundDerivedID(t *testing.T) {
+	server := runPrometheusRuleAlertPartialDeletion(t, true)
+
+	require.NotNil(t, findRequest(server.Requests(), http.MethodDelete, apiPathCheckRules+"/shared-id--test-group-higherrorrate"),
+		"expected a DELETE for the surviving alert's now-abandoned derived id")
 }
 
 // TestApply_Since_PersesDashboardAlreadyDeletedPreservesCanonicalKindName is a

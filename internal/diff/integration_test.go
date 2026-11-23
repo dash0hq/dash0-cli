@@ -1519,3 +1519,29 @@ spec:
 	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts", &dataset))
 	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "records", &dataset))
 }
+
+// Two PrometheusRules whose ids are not found write the same alert at the same
+// inferred origin, so diff must fail as apply does.
+func TestDiff_PrometheusRuleAlertsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: alerts\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  groups:\n    - name: g\n      rules:\n        - alert: Down\n          expr: up == 0\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, err := runDiffCmd(t, "-f", tmpDir, "--api-url", server.URL)
+
+	require.Error(t, err, output)
+	var pending *PendingDifferencesError
+	assert.False(t, errors.As(err, &pending), "a collision is an error, not a pending difference")
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), "b.yaml")
+	assert.Contains(t, err.Error(), asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", nil))
+}
