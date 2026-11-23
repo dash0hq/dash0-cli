@@ -271,6 +271,15 @@ func TestUpload_TypeSelection(t *testing.T) {
 	}
 }
 
+func TestUpload_RejectsConcurrencyBelowOne(t *testing.T) {
+	dir := writeBuildOutput(t)
+	for _, concurrency := range []string{"0", "-1"} {
+		_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--concurrency", concurrency)
+		require.Error(t, err, concurrency)
+		assert.Contains(t, err.Error(), "--concurrency must be at least 1, got "+concurrency, concurrency)
+	}
+}
+
 func TestUpload_RequiresExperimentalFlag(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	cmd := newTestRootCmd()

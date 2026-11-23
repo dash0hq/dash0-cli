@@ -111,3 +111,16 @@ func TestUploadInOrder_UploadsASharedBuildIDOnce(t *testing.T) {
 	assert.Equal(t, outcomeSkipped, reported[2].Status)
 	assert.Equal(t, "same source map as script-0.js", reported[2].Reason)
 }
+
+func TestUploadInOrder_ReturnsEveryFailureInFlight(t *testing.T) {
+	artifacts := artifactsWithBuildIDs("a", "b")
+	upload := func(artifact sourceMapArtifact) (uploadOutcome, string, error) {
+		return "", "", errors.New("upload of " + artifact.BuildID + " failed")
+	}
+	var reported []uploadResult
+
+	err := uploadInOrder(artifacts, 2, upload, func(result uploadResult) { reported = append(reported, result) })
+
+	require.EqualError(t, err, "upload of a failed\nupload of b failed")
+	assert.Empty(t, reported)
+}

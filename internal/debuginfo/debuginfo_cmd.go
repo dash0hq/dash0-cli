@@ -1,6 +1,7 @@
 package debuginfo
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -233,7 +234,7 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 
 // uploadInOrder uploads up to concurrency artifacts at a time and reports each result in the order of artifacts.
 // Artifacts that share a build ID are uploaded once. After an upload fails, no new upload starts, the uploads in
-// flight finish and are reported, and the first error in the order of artifacts is returned.
+// flight finish and are reported, and the errors of all failed uploads are returned in the order of artifacts.
 func uploadInOrder(artifacts []sourceMapArtifact, concurrency int, upload func(sourceMapArtifact) (uploadOutcome, string, error), report func(uploadResult)) error {
 	results := make([]uploadResult, len(artifacts))
 	errs := make([]error, len(artifacts))
@@ -288,12 +289,7 @@ func uploadInOrder(artifacts []sourceMapArtifact, concurrency int, upload func(s
 		})
 	}
 	running.Wait()
-	for _, err := range errs {
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifact, error) {
