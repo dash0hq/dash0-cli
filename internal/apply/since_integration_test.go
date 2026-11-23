@@ -3371,6 +3371,7 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 		name          string
 		labels        string
 		keepCRD       bool
+		keptCRDBody   string
 		foundIDs      []string
 		wantDeleted   []string
 		wantNoDeletes bool
@@ -3397,6 +3398,19 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 			keepCRD:       true,
 			wantNoDeletes: true,
 		},
+		{
+			name:    "inferred origins kept, one alert removed",
+			labels:  "    dash0.com/id: app-rules\n",
+			keepCRD: true,
+			keptCRDBody: `spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(errors[5m])) > 0.1
+`,
+			wantDeleted: []string{inferred("DiskFull")},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3414,7 +3428,11 @@ func TestApply_Since_PrometheusRuleWholeCRDDeletion_FallsBackToWhereApplyWrote(t
 			before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
 
 			if tt.keepCRD {
-				writeFileFixture(t, dir, "rules.yaml", header+crdBody)
+				keptCRDBody := crdBody
+				if tt.keptCRDBody != "" {
+					keptCRDBody = tt.keptCRDBody
+				}
+				writeFileFixture(t, dir, "rules.yaml", header+keptCRDBody)
 			} else {
 				require.NoError(t, os.Remove(filepath.Join(dir, "rules.yaml")))
 			}

@@ -37,7 +37,7 @@ Recording rules (entries with `record:`) are sent to the recording-rule endpoint
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
 
-Two check rules in one run that resolve to the same ID fail validation up front, because only the last one applied would be kept.
+Two check rules in one run that resolve to the same ID, or without an ID to the same `dash0.com/origin`, fail validation up front, because only the last one applied would be kept.
 This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.

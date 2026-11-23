@@ -158,6 +158,14 @@ spec:
 			files: map[string]string{"a.yaml": checkRuleA, "b.yaml": strings.Replace(checkRuleB, "shared-id", "other-id", 1)},
 		},
 		{
+			name: "check rules with the same origin and no id",
+			files: map[string]string{
+				"a.yaml": "kind: CheckRule\nname: Rule A\nlabels:\n  dash0.com/origin: shared-origin\nexpression: up == 0\n",
+				"b.yaml": "kind: CheckRule\nname: Rule B\nlabels:\n  dash0.com/origin: shared-origin\nexpression: up == 1\n",
+			},
+			want: []string{`check rule origin "shared-origin" is used more than once, so only the last one would be kept:` + "\n    " + `a.yaml: "Rule A"` + "\n    " + `b.yaml: "Rule B"`},
+		},
+		{
 			name: "check rules without id",
 			files: map[string]string{
 				"a.yaml": "kind: CheckRule\nname: Rule A\nexpression: up == 0\n",

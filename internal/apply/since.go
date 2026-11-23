@@ -387,12 +387,9 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	identifier, alerts := d.Identifier, d.PrometheusAlerts
 	checkRuleIDs := asset.CheckRuleIDsOccupiedByCRD(identifier, alerts)
 	fallbacks := prometheusAlertFallbacks(d, dataset)
-	// The current files write the inferred origins, so a missing id leaves
-	// nothing to delete.
+	// The current files write the kept alerts' inferred origins, so a missing
+	// id leaves nothing to delete for them.
 	keptOnly := d.Alias == "" && d.InferredOriginName != "" && d.InferredOriginKept
-	if keptOnly {
-		fallbacks = make([]string, len(checkRuleIDs))
-	}
 	if len(alerts) > 1 {
 		// A multi-alert CRD applied before per-alert derivation existed left
 		// its one check rule at the literal id (docs/commands.md's multi-alert
@@ -480,11 +477,14 @@ func prometheusAlertFallbacks(d gitutil.Deletion, dataset *string) []string {
 	if d.Alias != "" {
 		return asset.CheckRuleIDsOccupiedByCRD(d.Alias, d.PrometheusAlerts)
 	}
-	if d.InferredOriginName == "" || d.InferredOriginKept {
+	if d.InferredOriginName == "" {
 		return nil
 	}
 	fallbacks := make([]string, len(d.PrometheusAlerts))
 	for i, alert := range d.PrometheusAlerts {
+		if d.KeptInferredOriginAlerts[alert.CheckRuleName()] {
+			continue
+		}
 		fallbacks[i] = asset.InferKindOrigin("prometheusrule", d.InferredOriginName+"\x00"+alert.CheckRuleName(), dataset)
 	}
 	return fallbacks

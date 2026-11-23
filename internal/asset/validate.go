@@ -112,28 +112,35 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 }
 
 func checkRuleIDCollisions(documents []Document) []string {
-	var ids []string
-	usesByID := make(map[string][]string)
+	var keys []string
+	usesByKey := make(map[string][]string)
 	for _, doc := range documents {
-		for _, rule := range checkRulesWithID(doc) {
-			id := *rule.Id
-			if _, seen := usesByID[id]; !seen {
-				ids = append(ids, id)
+		for _, key := range checkRuleWriteKeys(doc) {
+			if _, seen := usesByKey[key.label]; !seen {
+				keys = append(keys, key.label)
 			}
-			usesByID[id] = append(usesByID[id], fmt.Sprintf("%s: %q", doc.Location(), rule.Name))
+			usesByKey[key.label] = append(usesByKey[key.label], fmt.Sprintf("%s: %q", doc.Location(), key.name))
 		}
 	}
 
 	var collisions []string
-	for _, id := range ids {
-		if uses := usesByID[id]; len(uses) > 1 {
-			collisions = append(collisions, fmt.Sprintf("check rule id %q is used more than once, so only the last one would be kept:\n    %s", id, strings.Join(uses, "\n    ")))
+	for _, key := range keys {
+		if uses := usesByKey[key]; len(uses) > 1 {
+			collisions = append(collisions, fmt.Sprintf("%s is used more than once, so only the last one would be kept:\n    %s", key, strings.Join(uses, "\n    ")))
 		}
 	}
 	return collisions
 }
 
-func checkRulesWithID(doc Document) []*dash0api.PrometheusAlertRule {
+type checkRuleWriteKey struct {
+	label string
+	name  string
+}
+
+// checkRuleWriteKeys returns the explicit key each check rule of doc is
+// written at: its id, else its origin. Inferred origins are checked by
+// CheckInferredOriginCollisions.
+func checkRuleWriteKeys(doc Document) []checkRuleWriteKey {
 	kind := NormalizeKind(doc.Kind)
 	if kind != "checkrule" && kind != "prometheusrule" {
 		return nil
@@ -144,13 +151,15 @@ func checkRulesWithID(doc Document) []*dash0api.PrometheusAlertRule {
 	if err != nil {
 		return nil
 	}
-	var withID []*dash0api.PrometheusAlertRule
+	var keys []checkRuleWriteKey
 	for _, rule := range rules {
-		if rule.Id != nil && *rule.Id != "" {
-			withID = append(withID, rule.PrometheusAlertRule)
+		if id := rule.GetID(); id != "" {
+			keys = append(keys, checkRuleWriteKey{label: fmt.Sprintf("check rule id %q", id), name: rule.Name})
+		} else if origin := rule.GetOrigin(); origin != "" {
+			keys = append(keys, checkRuleWriteKey{label: fmt.Sprintf("check rule origin %q", origin), name: rule.Name})
 		}
 	}
-	return withID
+	return keys
 }
 
 // FormatValidationError formats one or more validation issues into a consistent

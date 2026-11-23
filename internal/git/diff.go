@@ -29,6 +29,11 @@ type Deletion struct {
 	// same kind and name without an origin. apply can write that document at
 	// the same inferred origin, so the delete must not fall back to it.
 	InferredOriginKept bool
+	// KeptInferredOriginAlerts holds the check rule names of the alerts that
+	// the kept document still declares, when Kind is "prometheusrule". apply
+	// writes only those alerts at their inferred origins, so the delete falls
+	// back to the inferred origins of the other alerts.
+	KeptInferredOriginAlerts map[string]bool
 	// IdentifiedByIDOnly reports that the deleted document carried only
 	// dash0.com/id, for a kind where that needs a warning; see
 	// asset.IdentifiedByIDOnly.
@@ -99,6 +104,9 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
 			deletion.PrometheusHadRecordingRule = before.PrometheusRecordingRoleByIdentifier[key.Identifier]
+			if deletion.InferredOriginKept {
+				deletion.KeptInferredOriginAlerts = after.InferredOriginAlerts[deletion.InferredOriginName]
+			}
 		}
 		plan.ByIdentifier = append(plan.ByIdentifier, deletion)
 	}
