@@ -48,6 +48,8 @@ type fakeDebuginfoService struct {
 	shouldAnswer   func(call int) *debuginfopb.ShouldInitiateUploadResponse
 	initiateAnswer func(call int) *debuginfopb.InitiateUploadResponse
 	stallShould    int
+	// latency delays every RPC and signed URL PUT, like the network round trip to Dash0.
+	latency time.Duration
 
 	mutex          sync.Mutex
 	calls          map[string]int
@@ -73,6 +75,7 @@ func (service *fakeDebuginfoService) record(ctx context.Context, debuginfoType d
 
 // step counts a call of the RPC and returns the next injected error for it, if any.
 func (service *fakeDebuginfoService) step(name string) error {
+	time.Sleep(service.latency)
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
 	service.calls[name]++
@@ -179,7 +182,7 @@ func (service *fakeDebuginfoService) MarkUploadFinished(ctx context.Context, req
 	return &debuginfopb.MarkUploadFinishedResponse{}, nil
 }
 
-func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstructions_UploadStrategy) (*fakeDebuginfoService, string) {
+func startFakeDebuginfoService(t testing.TB, strategy debuginfopb.UploadInstructions_UploadStrategy) (*fakeDebuginfoService, string) {
 	t.Helper()
 	service := &fakeDebuginfoService{strategy: strategy, stored: map[string][]byte{}, pending: map[string][]byte{}, calls: map[string]int{}, buildIDTypes: map[string]debuginfopb.BuildIDType{}}
 
@@ -189,6 +192,7 @@ func startFakeDebuginfoService(t *testing.T, strategy debuginfopb.UploadInstruct
 			writer.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		time.Sleep(service.latency)
 		service.mutex.Lock()
 		defer service.mutex.Unlock()
 		service.puts++
@@ -233,7 +237,7 @@ func newTestRootCmd() *cobra.Command {
 	return root
 }
 
-func runDebuginfoCmd(t *testing.T, args ...string) (string, error) {
+func runDebuginfoCmd(t testing.TB, args ...string) (string, error) {
 	t.Helper()
 	testutil.SetupTestEnv(t)
 	cmd := newTestRootCmd()
@@ -264,6 +268,15 @@ func TestUpload_TypeSelection(t *testing.T) {
 		_, err := runDebuginfoCmd(t, "--type", debuginfoType, dir, "--base-url", "https://app.example.com/", "--dry-run")
 		require.Error(t, err, debuginfoType)
 		assert.Contains(t, err.Error(), want, debuginfoType)
+	}
+}
+
+func TestUpload_RejectsConcurrencyBelowOne(t *testing.T) {
+	dir := writeBuildOutput(t)
+	for _, concurrency := range []string{"0", "-1"} {
+		_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--concurrency", concurrency)
+		require.Error(t, err, concurrency)
+		assert.Contains(t, err.Error(), "--concurrency must be at least 1, got "+concurrency, concurrency)
 	}
 }
 

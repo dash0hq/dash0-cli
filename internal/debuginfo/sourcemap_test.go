@@ -215,7 +215,7 @@ func TestDiscoverSourceMaps_RejectsFileNameDash0CannotLookUp(t *testing.T) {
 	assert.Contains(t, err.Error(), "app~1.js")
 }
 
-func writeFile(t *testing.T, dir, name, content string) {
+func writeFile(t testing.TB, dir, name, content string) {
 	t.Helper()
 	fullPath := filepath.Join(dir, name)
 	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))

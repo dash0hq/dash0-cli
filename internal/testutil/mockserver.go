@@ -690,7 +690,7 @@ func (m *MockServer) WithUnauthorized(fixture string) *MockServer {
 }
 
 // SetupTestEnv sets environment variables for testing and returns a cleanup function.
-func SetupTestEnv(t *testing.T) {
+func SetupTestEnv(t testing.TB) {
 	t.Helper()
 
 	t.Setenv("DASH0_CONFIG_DIR", t.TempDir())
@@ -724,7 +724,7 @@ func CaptureStderr(t *testing.T, fn func()) string {
 
 // CaptureStdout captures stdout during the execution of the given function.
 // It returns the captured output as a string.
-func CaptureStdout(t *testing.T, fn func()) string {
+func CaptureStdout(t testing.TB, fn func()) string {
 	t.Helper()
 
 	// Save original stdout

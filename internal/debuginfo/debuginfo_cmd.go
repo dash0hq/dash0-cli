@@ -1,10 +1,12 @@
 package debuginfo
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
@@ -41,16 +43,17 @@ Dash0 uses it to resolve the frames of profiles to function names, files, and li
 }
 
 type uploadFlags struct {
-	Type      string
-	BaseURL   string
-	ScriptURL string
-	SourceMap string
-	Endpoint  string
-	OtlpUrl   string
-	AuthToken string
-	Output    string
-	DryRun    bool
-	Force     bool
+	Type        string
+	BaseURL     string
+	ScriptURL   string
+	SourceMap   string
+	Endpoint    string
+	OtlpUrl     string
+	AuthToken   string
+	Output      string
+	DryRun      bool
+	Force       bool
+	Concurrency int
 }
 
 func newUploadCmd() *cobra.Command {
@@ -108,6 +111,7 @@ Files that Dash0 already has are skipped; pass --force to replace them.` + inter
 	cmd.Flags().StringVarP(&flags.Output, "output", "o", "", "Output format: table, json (default: table; json in agent mode)")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "List what would be uploaded without changing files or uploading")
 	cmd.Flags().BoolVar(&flags.Force, "force", false, "Upload even when Dash0 already has the debug information")
+	cmd.Flags().IntVar(&flags.Concurrency, "concurrency", 8, "Maximum number of uploads in flight at the same time")
 	return cmd
 }
 
@@ -126,6 +130,9 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		return fmt.Errorf("unknown --type %q; one of: %s", flags.Type, debuginfoTypeNames)
 	case flags.Type != typeSourceMap:
 		return fmt.Errorf("--type %s is not supported yet; only source-map can be uploaded", flags.Type)
+	}
+	if flags.Concurrency < 1 {
+		return fmt.Errorf("--concurrency must be at least 1, got %d", flags.Concurrency)
 	}
 
 	jsonOutput, err := parseOutputFormat(flags.Output)
@@ -198,34 +205,90 @@ func runUpload(cmd *cobra.Command, inputPath string, flags *uploadFlags) error {
 		fmt.Printf("Injected debug IDs into %s\n", asset.Pluralize(injected, "script"))
 	}
 
-	uploadedBy := map[string]string{}
-	for _, artifact := range artifacts {
-		result := uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped}
-		if firstScript, seen := uploadedBy[artifact.BuildID]; seen {
-			result.Reason = "same source map as " + firstScript
-		} else {
-			uploadedBy[artifact.BuildID] = artifact.Script
-			body, err := artifact.readBundle()
-			if err != nil {
-				return err
-			}
-			result.Status, result.Reason, err = debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, artifact.buildIDType(), body)
-			if err != nil {
-				if jsonOutput {
-					_ = printJSON(results)
-				}
-				return fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
-			}
+	upload := func(artifact sourceMapArtifact) (uploadOutcome, string, error) {
+		body, err := artifact.readBundle()
+		if err != nil {
+			return "", "", err
 		}
+		status, reason, err := debuginfoUploader.upload(cmd.Context(), artifact.BuildID, debuginfoType, artifact.buildIDType(), body)
+		if err != nil {
+			return "", "", fmt.Errorf("source map %q (%s):\n  %w", artifact.BuildID, artifact.Script, err)
+		}
+		return status, reason, nil
+	}
+	report := func(result uploadResult) {
 		results = append(results, result)
 		if !jsonOutput {
 			printResultLine(result)
 		}
 	}
+	uploadErr := uploadInOrder(artifacts, flags.Concurrency, upload, report)
 	if jsonOutput {
-		return printJSON(results)
+		if err := printJSON(results); err != nil && uploadErr == nil {
+			return err
+		}
 	}
-	return nil
+	return uploadErr
+}
+
+// uploadInOrder uploads up to concurrency artifacts at a time and reports each result in the order of artifacts.
+// Artifacts that share a build ID are uploaded once. After an upload fails, no new upload starts, the uploads in
+// flight finish and are reported, and the errors of all failed uploads are returned in the order of artifacts.
+func uploadInOrder(artifacts []sourceMapArtifact, concurrency int, upload func(sourceMapArtifact) (uploadOutcome, string, error), report func(uploadResult)) error {
+	results := make([]uploadResult, len(artifacts))
+	errs := make([]error, len(artifacts))
+	finished := make([]bool, len(artifacts))
+	firstByBuildID := map[string]int{}
+	for index, artifact := range artifacts {
+		if first, seen := firstByBuildID[artifact.BuildID]; seen {
+			results[index] = uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped, Reason: "same source map as " + artifacts[first].Script}
+		} else {
+			firstByBuildID[artifact.BuildID] = index
+		}
+	}
+
+	var mutex sync.Mutex
+	failed := false
+	nextToReport := 0
+	reportFinished := func() {
+		for ; nextToReport < len(artifacts); nextToReport++ {
+			first := firstByBuildID[artifacts[nextToReport].BuildID]
+			if !finished[first] {
+				return
+			}
+			if errs[first] == nil {
+				report(results[nextToReport])
+			}
+		}
+	}
+
+	slots := make(chan struct{}, concurrency)
+	var running sync.WaitGroup
+	for index, artifact := range artifacts {
+		if firstByBuildID[artifact.BuildID] != index {
+			continue
+		}
+		slots <- struct{}{}
+		mutex.Lock()
+		stop := failed
+		mutex.Unlock()
+		if stop {
+			break
+		}
+		running.Go(func() {
+			defer func() { <-slots }()
+			status, reason, err := upload(artifact)
+			mutex.Lock()
+			defer mutex.Unlock()
+			results[index] = uploadResult{sourceMapArtifact: artifact, Status: status, Reason: reason}
+			errs[index] = err
+			finished[index] = true
+			failed = failed || err != nil
+			reportFinished()
+		})
+	}
+	running.Wait()
+	return errors.Join(errs...)
 }
 
 func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifact, error) {
