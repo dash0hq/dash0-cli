@@ -560,3 +560,43 @@ func labelOf(t *testing.T, body []byte, spec routedKind, key string) string {
 	value, _ := labels[key].(string)
 	return value
 }
+
+// TestRouter_MultiAlertPrometheusRuleRoutesEachAlertByItsDerivedKey covers a
+// CRD with two alerts, whose id and origin each alert derives for itself.
+func TestRouter_MultiAlertPrometheusRuleRoutesEachAlertByItsDerivedKey(t *testing.T) {
+	spec := routedKinds["prometheusrule"]
+	spec.document = func(labels string) string {
+		return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\n" + labels +
+			"spec:\n  groups:\n    - name: group\n      rules:\n" +
+			"        - alert: HighErrorRate\n          expr: up == 0\n" +
+			"        - alert: DiskFull\n          expr: up == 1\n"
+	}
+	derive := func(key, alert string) string { return asset.DeriveAlertCheckRuleID(key, "group - "+alert) }
+	cases := []routerCase{
+		{
+			name:   "origin only",
+			labels: map[string]string{"dash0.com/origin": "o"},
+			want: []string{
+				"GET " + derive("o", "HighErrorRate"), "PUT " + derive("o", "HighErrorRate"),
+				"GET " + derive("o", "DiskFull"), "PUT " + derive("o", "DiskFull"),
+			},
+		},
+		{
+			name:   "id hit",
+			labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
+			stored: map[string]string{
+				derive("i", "HighErrorRate"): derive("o", "HighErrorRate"),
+				derive("i", "DiskFull"):      derive("o", "DiskFull"),
+			},
+			want: []string{
+				"GET " + derive("i", "HighErrorRate"), "PUT " + derive("i", "HighErrorRate"),
+				"GET " + derive("i", "DiskFull"), "PUT " + derive("i", "DiskFull"),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runRouterCase(t, "prometheusrule", spec, tc)
+		})
+	}
+}
