@@ -88,7 +88,7 @@ expression: up == 0
 	runGit(t, dir, "commit", "-q", "-m", "seed")
 
 	repo := Repo{Dir: dir}
-	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	deletions := []Deletion{
@@ -126,7 +126,7 @@ spec:
 	runGit(t, dir, "commit", "-q", "-m", "seed")
 
 	repo := Repo{Dir: dir}
-	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	// The repository (and thus any chance of a second git read succeeding)

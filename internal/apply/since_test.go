@@ -134,7 +134,7 @@ func TestComputeDeletionPlan_WholeFileDeletion(t *testing.T) {
 	dir, before := testSinceRepo(t)
 
 	flags := &applyFlags{File: dir, Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err)
 	require.Len(t, dp.Plan.ByIdentifier, 1)
 	deletion := dp.Plan.ByIdentifier[0]
@@ -178,7 +178,7 @@ spec:
 	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
 
 	flags := &applyFlags{File: target, Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err, "a single-file -f target that still exists must not fail to locate its repository")
 	assert.True(t, dp.Plan.IsEmpty(), "the file is unchanged since before, so there is nothing to delete")
 }
@@ -234,7 +234,7 @@ func TestComputeDeletionPlan_AllFilesDeleted(t *testing.T) {
 	dir, before := testSinceRepoAllDeleted(t)
 
 	flags := &applyFlags{File: dir, Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err)
 	require.Len(t, dp.Plan.ByIdentifier, 2)
 
@@ -278,7 +278,7 @@ spec:
 	runGitCmd(t, dir, "commit", "-q", "-m", "remove dashboards directory entirely")
 
 	flags := &applyFlags{File: target, Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err)
 	require.Len(t, dp.Plan.ByIdentifier, 1)
 	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.Plan.ByIdentifier[0].Identifier)
@@ -326,7 +326,7 @@ spec:
 	runGitCmd(t, dir, "commit", "-q", "-m", "replace dashboards with a dangling symlink")
 
 	flags := &applyFlags{File: target, Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err, "a dangling symlink target must be treated the same as a missing one, not fail to resolve")
 	require.Len(t, dp.Plan.ByIdentifier, 1)
 	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.Plan.ByIdentifier[0].Identifier)
@@ -370,7 +370,7 @@ spec:
 	runGitCmd(t, dir, "commit", "-q", "-m", "rename team-a to team-b")
 
 	flags := &applyFlags{File: filepath.Join(dir, "dashboards"), Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err)
 	assert.True(t, dp.Plan.IsEmpty(), "renaming a subdirectory within the scanned scope must not be reported as a deletion")
 	assert.Empty(t, dp.Warning)
@@ -415,7 +415,7 @@ spec:
 
 	// -f still names the old path, which the rename left nonexistent.
 	flags := &applyFlags{File: filepath.Join(dir, "dashboards"), Since: before}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err)
 	require.Len(t, dp.Plan.ByIdentifier, 1)
 	assert.Equal(t, "a1b2c3d4-5678-90ab-cdef-1234567890ab", dp.Plan.ByIdentifier[0].Identifier)
@@ -454,7 +454,7 @@ func TestCheckRuleIDsOccupiedByCRD_MultiAlertUsesDerivedIDs(t *testing.T) {
 func TestComputeDeletionPlan_EmptyRef(t *testing.T) {
 	dir, _ := testSinceRepo(t)
 	flags := &applyFlags{File: dir, Since: ""}
-	_, err := computeDeletionPlan(context.Background(), flags)
+	_, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty ref")
 }
@@ -462,7 +462,7 @@ func TestComputeDeletionPlan_EmptyRef(t *testing.T) {
 func TestComputeDeletionPlan_AllZerosRef(t *testing.T) {
 	dir, _ := testSinceRepo(t)
 	flags := &applyFlags{File: dir, Since: "0000000000000000000000000000000000000000"}
-	_, err := computeDeletionPlan(context.Background(), flags)
+	_, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "all-zeros")
 }
@@ -470,7 +470,7 @@ func TestComputeDeletionPlan_AllZerosRef(t *testing.T) {
 func TestComputeDeletionPlan_UnresolvableRef(t *testing.T) {
 	dir, _ := testSinceRepo(t)
 	flags := &applyFlags{File: dir, Since: "totally-bogus-ref"}
-	_, err := computeDeletionPlan(context.Background(), flags)
+	_, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not be resolved")
 	assert.Contains(t, err.Error(), "\nHint: check the ref for a typo", "a genuine typo must still get the generic suggestions, as an agent-mode-parseable hint")
@@ -487,7 +487,7 @@ func TestComputeDeletionPlan_UnresolvableRef(t *testing.T) {
 func TestComputeDeletionPlan_NotAGitRepository(t *testing.T) {
 	dir := t.TempDir() // deliberately never `git init`-ed
 	flags := &applyFlags{File: dir, Since: "HEAD~1"}
-	_, err := computeDeletionPlan(context.Background(), flags)
+	_, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "to be inside a git repository, but it is not")
 	assert.NotContains(t, err.Error(), "failed to determine repository root", "the nested git-plumbing wrapping must not leak into the message")
@@ -510,12 +510,14 @@ func TestComputeDeletionPlan_InsufficientHistory(t *testing.T) {
 	runGitCmd(t, dir, "commit", "-q", "-m", "only commit")
 
 	flags := &applyFlags{File: dir, Since: "HEAD~1"}
-	_, err := computeDeletionPlan(context.Background(), flags)
+	_, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "1 commit")
 	assert.NotContains(t, err.Error(), "check the ref for a typo", "the generic suggestions don't apply here and must not be shown")
 }
 
+// A dataset without a slug has no inferred origin, so --since cannot tell
+// which dataset the removed document was.
 func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {
 	dir := t.TempDir()
 	runGitCmd(t, dir, "init", "-q", "-b", "main")
@@ -523,7 +525,7 @@ func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {
 	runGitCmd(t, dir, "config", "user.name", "Test")
 	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
 
-	writeFileFixture(t, dir, "orphan.yaml", "kind: Dashboard\nmetadata:\n  name: no-id\n")
+	writeFileFixture(t, dir, "orphan.yaml", "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: no-slug\n")
 	writeFileFixture(t, dir, "keep.yaml", "kind: View\nmetadata:\n  name: keep\n  labels:\n    dash0.com/id: keep-id\nspec:\n  query: \"true\"\n")
 	runGitCmd(t, dir, "add", "-A")
 	runGitCmd(t, dir, "commit", "-q", "-m", "add files")
@@ -534,10 +536,33 @@ func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {
 	runGitCmd(t, dir, "commit", "-q", "-m", "remove orphan")
 
 	flags := &applyFlags{File: dir, Since: before}
-	_, err := computeDeletionPlan(context.Background(), flags)
+	_, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no identifier its kind is upserted by")
 	assert.Contains(t, err.Error(), "orphan.yaml")
+}
+
+// A document without an id or an origin was written at its inferred origin in
+// the run's dataset, so --since deletes it there.
+func TestComputeDeletionPlan_NoIdentifierDeletesAtTheInferredOrigin(t *testing.T) {
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+	writeFileFixture(t, dir, "orphan.yaml", "kind: Dashboard\nmetadata:\n  name: no-id\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add file")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+	require.NoError(t, os.Remove(filepath.Join(dir, "orphan.yaml")))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove orphan")
+
+	dataset := "prod"
+	plan, err := computeDeletionPlan(context.Background(), &applyFlags{File: dir, Since: before}, &dataset)
+	require.NoError(t, err)
+	require.Len(t, plan.Plan.ByIdentifier, 1)
+	assert.Equal(t, asset.InferOrigin("dashboard", "no-id", "prod"), plan.Plan.ByIdentifier[0].Identifier)
 }
 
 // TestComputeDeletionPlan_NonAncestorRef_NeverPromptsOrErrors documents
@@ -575,7 +600,7 @@ func TestComputeDeletionPlan_NonAncestorRef_NeverPromptsOrErrors(t *testing.T) {
 	runGitCmd(t, dir, "commit", "-q", "-m", "main commit")
 
 	flags := &applyFlags{File: dir, Since: branchA}
-	dp, err := computeDeletionPlan(context.Background(), flags)
+	dp, err := computeDeletionPlan(context.Background(), flags, nil)
 	require.NoError(t, err)
 	assert.Contains(t, dp.Warning, "not an ancestor of HEAD")
 }
@@ -687,7 +712,7 @@ func TestComputeDeletionPlan_SparseCheckoutRefuses(t *testing.T) {
 	runGitCmd(t, dir, "update-index", "--skip-worktree", "hidden.yaml")
 	require.NoError(t, os.Remove(filepath.Join(dir, "hidden.yaml")))
 
-	_, err := computeDeletionPlan(context.Background(), &applyFlags{File: dir, Since: before})
+	_, err := computeDeletionPlan(context.Background(), &applyFlags{File: dir, Since: before}, nil)
 	require.Error(t, err, "hidden.yaml is still declared in git and must never become a deletion candidate")
 	assert.Contains(t, err.Error(), "sparse checkout")
 	assert.Contains(t, err.Error(), "\nHint:")

@@ -175,7 +175,7 @@ Dry run: 1 document validated
 `--since <ref>` turns `apply` into a full GitOps sync, not just create/update: it additionally deletes any asset whose definition existed in `-f`'s scanned scope at `<ref>` but is no longer present in the current contents.
 `<ref>` accepts any revision expression `git` itself accepts — a commit SHA, a branch or tag name, or a relative expression like `HEAD~1` — and `-f`'s target must be inside a git repository (a single file or a directory both work).
 
-Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert) — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
+Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert), or the [inferred origin](#routing-rule) of a document without either — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
 `--since` requires `--experimental`/`-X`.
 `apply` itself is not gated: every other flag, including `--dry-run`, is completely unaffected when `--since` is not passed.
 
@@ -313,10 +313,20 @@ In agent mode, a `--since` run that would delete a sampling rule requires an exp
 A `Dash0Team` document removed since `<ref>` deletes the team at its `dash0.com/id`, or, when the id is not found, at its `dash0.com/origin` or its inferred origin, with the same API call as `teams delete`.
 `--since` warns before it deletes a team identified by `dash0.com/id` alone, because a team that an earlier CLI version created by POST sits at a server-assigned ID that the delete misses.
 
-A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+A removed document without `dash0.com/id` or `dash0.com/origin` is deleted at the origin `apply` inferred for it, from its kind, its `metadata.name` at `<ref>`, and the dataset of the run:
 
 ```bash
-$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+$ dash0 --experimental apply -f views/ --since HEAD~1 --force
+View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
+```
+
+When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
+
+A dataset without a slug and an AWS metric scrape config without `dash0.com/id` have no inferred origin.
+A removed document of these kinds that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+
+```bash
+$ dash0 --experimental apply -f datasets/ --since HEAD~1
 Error: --since 'HEAD~1' found 1 document deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:
   removed.yaml
 Hint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation

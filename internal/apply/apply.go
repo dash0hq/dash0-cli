@@ -181,7 +181,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 	var deletionPlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
-		plan, err := computeDeletionPlan(ctx, flags)
+		plan, err := computeDeletionPlan(ctx, flags, dataset)
 		if err != nil {
 			return err
 		}

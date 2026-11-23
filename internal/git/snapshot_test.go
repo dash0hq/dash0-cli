@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,7 +72,7 @@ func TestBuildSnapshotFromRef_UnrecognizedKindIsTolerated(t *testing.T) {
 	writeFile(t, repo.Dir, "configmap.yaml", configMapYAML)
 	commitAll(t, repo.Dir, "add assets")
 
-	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "dashboard.yaml", snap.Identifiers[IdentifierKey{Kind: "dashboard", Identifier: "a1b2c3d4-5678-90ab-cdef-1234567890ab"}])
@@ -85,7 +86,7 @@ func TestBuildSnapshotFromRef_BasicIdentifiers(t *testing.T) {
 	writeFile(t, repo.Dir, "checkrule.yaml", checkRuleYAML)
 	commitAll(t, repo.Dir, "add assets")
 
-	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "dashboard.yaml", snap.Identifiers[IdentifierKey{Kind: "dashboard", Identifier: "a1b2c3d4-5678-90ab-cdef-1234567890ab"}])
@@ -106,24 +107,24 @@ func TestBuildSnapshotFromRef_RawContentPopulated(t *testing.T) {
 	writeFile(t, repo.Dir, "dashboard.yaml", dashboardYAML)
 	commitAll(t, repo.Dir, "add asset")
 
-	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	require.Contains(t, snap.RawContent, "dashboard.yaml")
 	assert.Equal(t, dashboardYAML, string(snap.RawContent["dashboard.yaml"]))
 }
 
-func TestBuildSnapshotFromRef_NoIdentifierTracked(t *testing.T) {
+func TestBuildSnapshotFromRef_NoIdentifierTrackedByInferredOrigin(t *testing.T) {
 	repo := testRepo(t)
 	writeFile(t, repo.Dir, "dashboard.yaml", dashboardNoIdentifierYAML)
 	commitAll(t, repo.Dir, "add asset")
 
-	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
-	require.Contains(t, snap.NoIdentifier, "dashboard.yaml")
-	assert.Equal(t, NoIdentifierDoc{Kind: "dashboard", FilePath: "dashboard.yaml"}, snap.NoIdentifier["dashboard.yaml"])
-	assert.Empty(t, snap.Identifiers)
+	assert.Empty(t, snap.NoIdentifier)
+	key := IdentifierKey{Kind: "dashboard", Identifier: asset.InferOrigin("dashboard", "no-id-dashboard", "default")}
+	assert.Equal(t, map[IdentifierKey]string{key: "dashboard.yaml"}, snap.Identifiers)
 }
 
 func TestBuildSnapshotFromRef_MultiDocument(t *testing.T) {
@@ -132,7 +133,7 @@ func TestBuildSnapshotFromRef_MultiDocument(t *testing.T) {
 	writeFile(t, repo.Dir, "combined.yaml", multiDoc)
 	commitAll(t, repo.Dir, "add combined")
 
-	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "combined.yaml", snap.Identifiers[IdentifierKey{Kind: "dashboard", Identifier: "a1b2c3d4-5678-90ab-cdef-1234567890ab"}])
@@ -144,7 +145,7 @@ func TestBuildSnapshotFromRef_PrometheusRuleAlerts(t *testing.T) {
 	writeFile(t, repo.Dir, "rules.yaml", prometheusRuleYAML)
 	commitAll(t, repo.Dir, "add rules")
 
-	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	snap, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	require.Contains(t, snap.PrometheusAlertsByIdentifier, "shared-id")
@@ -157,7 +158,7 @@ func TestBuildSnapshotFromDisk_MatchesGitSide(t *testing.T) {
 	writeFile(t, repo.Dir, ".hidden/skip.yaml", dashboardYAML)
 	writeFile(t, repo.Dir, "notes.txt", "not yaml")
 
-	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir, repo.Dir)
+	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir, repo.Dir, nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, snap.Identifiers, IdentifierKey{Kind: "dashboard", Identifier: "a1b2c3d4-5678-90ab-cdef-1234567890ab"})
@@ -171,7 +172,7 @@ func TestBuildSnapshotFromDisk_SingleFileScope(t *testing.T) {
 	writeFile(t, repo.Dir, "dashboard.yaml", dashboardYAML)
 	writeFile(t, repo.Dir, "checkrule.yaml", checkRuleYAML)
 
-	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/dashboard.yaml", repo.Dir)
+	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/dashboard.yaml", repo.Dir, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, snap.Identifiers, 1)
@@ -189,7 +190,7 @@ func TestBuildSnapshotFromDisk_SingleFileScopeIgnoresExtension(t *testing.T) {
 	repo := testRepo(t)
 	writeFile(t, repo.Dir, "config.json", dashboardYAML)
 
-	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/config.json", repo.Dir)
+	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/config.json", repo.Dir, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, snap.Identifiers, 1)
@@ -206,7 +207,7 @@ func TestBuildSnapshotFromDisk_SingleFileScopeIgnoresExtension(t *testing.T) {
 func TestBuildSnapshotFromDisk_ScopeDoesNotExist(t *testing.T) {
 	repo := testRepo(t)
 
-	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/never-existed", repo.Dir)
+	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/never-existed", repo.Dir, nil)
 	require.NoError(t, err)
 	assert.Empty(t, snap.Identifiers)
 	assert.Empty(t, snap.Paths)
@@ -216,7 +217,7 @@ func TestBuildSnapshotFromDisk_PathsAlignWithRepoRootWhenScopeIsSubdirectory(t *
 	repo := testRepo(t)
 	writeFile(t, repo.Dir, "sub/dashboard.yaml", dashboardYAML)
 
-	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/sub", repo.Dir)
+	snap, err := BuildSnapshotFromDisk(context.Background(), repo.Dir+"/sub", repo.Dir, nil)
 	require.NoError(t, err)
 
 	assert.True(t, snap.Paths["sub/dashboard.yaml"], "disk-side paths must be repo-root-relative, matching the git ls-tree side, even when scope is a subdirectory")
@@ -272,9 +273,9 @@ spec:
 			writeFile(t, repo.Dir, "dashboard.yaml", tt.after)
 			commitAll(t, repo.Dir, "re-author dashboard")
 
-			before, err := BuildSnapshotFromRef(context.Background(), repo, first, "")
+			before, err := BuildSnapshotFromRef(context.Background(), repo, first, "", nil)
 			require.NoError(t, err)
-			after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+			after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 			require.NoError(t, err)
 
 			plan := Diff(before, after)
@@ -289,9 +290,9 @@ spec:
 		runGit(t, repo.Dir, "rm", "-q", "dashboard.yaml")
 		commitAll(t, repo.Dir, "remove dashboard")
 
-		before, err := BuildSnapshotFromRef(context.Background(), repo, first, "")
+		before, err := BuildSnapshotFromRef(context.Background(), repo, first, "", nil)
 		require.NoError(t, err)
-		after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+		after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 		require.NoError(t, err)
 
 		plan := Diff(before, after)
@@ -307,9 +308,9 @@ spec:
 		runGit(t, repo.Dir, "rm", "-q", "dashboard.yaml")
 		commitAll(t, repo.Dir, "remove dashboard")
 
-		before, err := BuildSnapshotFromRef(context.Background(), repo, first, "")
+		before, err := BuildSnapshotFromRef(context.Background(), repo, first, "", nil)
 		require.NoError(t, err)
-		after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+		after, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 		require.NoError(t, err)
 
 		plan := Diff(before, after)
@@ -333,6 +334,6 @@ metadata:
     dash0.com/origin: shared
 `)
 	snap := newSnapshot()
-	require.NoError(t, ingestDocuments(&snap, "teams.yaml", data))
+	require.NoError(t, ingestDocuments(&snap, "teams.yaml", data, nil))
 	assert.False(t, snap.IdentifiedByIDOnly[IdentifierKey{Kind: "team", Identifier: "shared"}])
 }

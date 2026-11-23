@@ -99,7 +99,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 	// dp.Names is resolved from git history and best-effort: a lookup
 	// failure falls back to an explicit "<name>" placeholder, matching
 	// printDryRunWithDeletions' convention.
-	name := dp.Names[d.Path]
+	name := dp.NameOf(d)
 	if name == "" {
 		name = "<name>"
 	}

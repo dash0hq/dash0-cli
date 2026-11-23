@@ -55,8 +55,10 @@ type SincePlan struct {
 // ComputeSincePlan resolves since against the git repository
 // containing file and diffs the identifier set at that ref against
 // file's current disk contents. It never talks to the Dash0 API —
-// everything it needs comes from git and the local filesystem.
-func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, error) {
+// everything it needs comes from git and the local filesystem. dataset is the
+// one apply writes to: a document without an identifier is deleted at the
+// origin apply infers for it in that dataset.
+func ComputeSincePlan(ctx context.Context, file, since string, dataset *string) (*SincePlan, error) {
 	absFile, err := filepath.Abs(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve absolute path for %s: %w", file, err)
@@ -182,11 +184,11 @@ func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, erro
 		targetWasDirectoryAtRef = false
 	}
 
-	before, err := BuildSnapshotFromRef(ctx, repo, sha, scope)
+	before, err := BuildSnapshotFromRef(ctx, repo, sha, scope, dataset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read git state at --since ref '%s': %w", since, err)
 	}
-	after, err := BuildSnapshotFromDisk(ctx, absFile, repoRoot)
+	after, err := BuildSnapshotFromDisk(ctx, absFile, repoRoot, dataset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read current Git state: %w", err)
 	}
@@ -200,6 +202,14 @@ func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, erro
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
 	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+}
+
+// NameOf returns the display name of d, or "" when the lookup failed.
+func (p *SincePlan) NameOf(d Deletion) string {
+	if d.Name != "" {
+		return d.Name
+	}
+	return p.Names[d.Path]
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that

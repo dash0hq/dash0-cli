@@ -106,7 +106,7 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 
 	var sincePlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
-		plan, err := gitutil.ComputeSincePlan(ctx, flags.File, flags.Since)
+		plan, err := gitutil.ComputeSincePlan(ctx, flags.File, flags.Since, dataset)
 		if err != nil {
 			return err
 		}

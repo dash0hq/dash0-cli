@@ -46,6 +46,10 @@ type Deletion struct {
 	// the "before" snapshot, when Kind is "prometheusrule". The preview needs
 	// it to list that deletion once it lists a multi-alert CRD per alert.
 	PrometheusHadRecordingRule bool
+	// Name is the display name of an alert or the recording rules of a
+	// PrometheusRule without an identifier, which share one Path. "" means
+	// SincePlan.Names has it.
+	Name string
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -95,6 +99,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			InferredOriginName: before.InferredOriginNames[key],
 			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(key.Kind), Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
+			Name:               before.Inferred[key].Name,
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
@@ -228,6 +233,9 @@ func Diff(before, after Snapshot) DeletionPlan {
 // dashboard, not a deletion. The key keeps its own
 // kind, so a real deletion is still reported under the spelling it had.
 func survives(before, after Snapshot, key IdentifierKey) bool {
+	if inferred, ok := before.Inferred[key]; ok && keepsInferredOrigin(after, inferred) {
+		return true
+	}
 	names := []string{key.Identifier}
 	if alias := before.Aliases[key]; alias != "" {
 		names = append(names, alias)
@@ -244,6 +252,18 @@ func survives(before, after Snapshot, key IdentifierKey) bool {
 		}
 	}
 	return false
+}
+
+// keepsInferredOrigin reports whether after has a document of the same kind and
+// name with only an id. apply writes it at the same inferred origin when the
+// id is not found, so that asset is not a deletion.
+// ponytail: when the id is found, the asset at the inferred origin is left
+// behind; reading the id would need the API, which --since's plan never calls.
+func keepsInferredOrigin(after Snapshot, inferred asset.InferredKey) bool {
+	if !after.IDOnlyDocuments[IdentifierKey{Kind: asset.InferredOriginKind(inferred.DocumentKind), Identifier: inferred.DocumentName}] {
+		return false
+	}
+	return inferred.Alert == "" || after.InferredOriginAlerts[inferred.DocumentName][inferred.Alert]
 }
 
 // declares reports whether snapshot names key as an identifier or an alias.

@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/exec"
@@ -355,4 +357,53 @@ func execCommand(ctx context.Context, t *testing.T, container testcontainers.Con
 		t.Fatalf("failed to exec %v: %v", args, err)
 	}
 	return exitCode, drainExecOutput(reader)
+}
+
+// TestE2E_ApplySince_NoIdentifierDeletion runs the no-identifier-deletion
+// scenario through the real binary: the removed and the renamed view are
+// deleted at their old inferred origins, and the renamed view is written at
+// its new one.
+func TestE2E_ApplySince_NoIdentifierDeletion(t *testing.T) {
+	ctx := context.Background()
+	repoDir, ref := testutil.BuildGitScenario(t, "no-identifier-deletion")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, Body: map[string]any{}})
+	server.OnPattern(http.MethodPut, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureViewsImportSuccess})
+	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{}})
+
+	container := startContainer(ctx, t, mockServerPort(t, server))
+	copyScenarioIntoContainer(ctx, t, container, repoDir)
+
+	exitCode, output := execDash0(ctx, t, container, mockServerPort(t, server),
+		"--experimental", "apply", "-f", "/work/repo", "--since", ref, "--force")
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d. Output:\n%s", exitCode, output)
+	}
+	var deleted, written []string
+	for _, r := range server.Requests() {
+		switch r.Method {
+		case http.MethodDelete:
+			deleted = append(deleted, r.Path)
+		case http.MethodPut:
+			written = append(written, r.Path)
+		}
+	}
+	wantDeleted := []string{
+		"/api/views/" + asset.InferOrigin("view", "View A", "default"),
+		"/api/views/" + asset.InferOrigin("view", "View B", "default"),
+	}
+	if !slices.Equal(sorted(deleted), sorted(wantDeleted)) {
+		t.Errorf("expected deletes %v, got %v. Output:\n%s", wantDeleted, deleted, output)
+	}
+	if want := []string{"/api/views/" + asset.InferOrigin("view", "View C", "default")}; !slices.Equal(written, want) {
+		t.Errorf("expected writes %v, got %v", want, written)
+	}
+}
+
+func sorted(values []string) []string {
+	values = slices.Clone(values)
+	slices.Sort(values)
+	return values
 }

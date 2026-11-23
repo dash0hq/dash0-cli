@@ -392,7 +392,7 @@ func TestDiff_RoutedDocumentThatGainsOrDropsALabelIsNotADeletion(t *testing.T) {
 				snapshot := func(labels string) Snapshot {
 					snap := newSnapshot()
 					doc := "kind: " + kind + "\nmetadata:\n  name: n\n  labels:\n" + labels
-					require.NoError(t, ingestDocuments(&snap, "a.yaml", []byte(doc)))
+					require.NoError(t, ingestDocuments(&snap, "a.yaml", []byte(doc), nil))
 					return snap
 				}
 				plan := Diff(snapshot(documents[change[0]]), snapshot(documents[change[1]]))
@@ -407,10 +407,10 @@ func TestDiff_RoutedDocumentThatGainsOrDropsALabelIsNotADeletion(t *testing.T) {
 func TestDiff_PersesDashboardSwitchedToDashboardKeepsItsInferredOrigin(t *testing.T) {
 	before := newSnapshot()
 	require.NoError(t, ingestDocuments(&before, "dashboard.yaml", []byte(
-		"apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: old-id\nspec:\n  display:\n    name: Checkout\n")))
+		"apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: old-id\nspec:\n  display:\n    name: Checkout\n"), nil))
 	after := newSnapshot()
 	require.NoError(t, ingestDocuments(&after, "dashboard.yaml", []byte(
-		"kind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n")))
+		"kind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n"), nil))
 
 	plan := Diff(before, after)
 
@@ -438,8 +438,8 @@ func TestDiff_PrometheusAlertThresholdCrossingDeletesAtTheID(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before, after := newSnapshot(), newSnapshot()
-			require.NoError(t, ingestDocuments(&before, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A")), tc.originLabel))))
-			require.NoError(t, ingestDocuments(&after, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A", "B")), tc.originLabel))))
+			require.NoError(t, ingestDocuments(&before, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A")), tc.originLabel)), nil))
+			require.NoError(t, ingestDocuments(&after, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A", "B")), tc.originLabel)), nil))
 
 			plan := Diff(before, after)
 
@@ -450,4 +450,127 @@ func TestDiff_PrometheusAlertThresholdCrossingDeletesAtTheID(t *testing.T) {
 			assert.False(t, plan.ByIdentifier[0].InferredOriginKept)
 		})
 	}
+}
+
+// A document without an id or an origin is written at its inferred origin, so
+// --since deletes it there instead of failing the run.
+func TestDiff_DocumentWithoutIdentifierIsDeletedAtItsInferredOrigin(t *testing.T) {
+	dataset := "prod"
+	doc := func(kind, name, labels string) string {
+		return "kind: " + kind + "\nmetadata:\n  name: " + name + "\n" + labels
+	}
+	snapshot := func(t *testing.T, docs ...string) Snapshot {
+		snap := newSnapshot()
+		for index, document := range docs {
+			require.NoError(t, ingestDocuments(&snap, fmt.Sprintf("doc-%d.yaml", index), []byte(document), &dataset))
+		}
+		return snap
+	}
+	for _, kind := range []string{"View", "Dashboard", "SyntheticCheck", "Dash0Team", "Dash0NotificationChannel", "Dash0Skill"} {
+		normalized := asset.NormalizeKind(kind)
+		original := doc(kind, "checkout", "")
+		origin := asset.InferKindOrigin(normalized, "checkout", &dataset)
+
+		t.Run(kind+"/removed", func(t *testing.T) {
+			plan := Diff(snapshot(t, original), snapshot(t))
+			assert.Empty(t, plan.NoIdentifier)
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, normalized, plan.ByIdentifier[0].Kind)
+			assert.Equal(t, origin, plan.ByIdentifier[0].Identifier)
+		})
+		t.Run(kind+"/unchanged", func(t *testing.T) {
+			assert.True(t, Diff(snapshot(t, original), snapshot(t, original)).IsEmpty())
+		})
+		t.Run(kind+"/renamed", func(t *testing.T) {
+			plan := Diff(snapshot(t, original), snapshot(t, doc(kind, "payments", "")))
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, origin, plan.ByIdentifier[0].Identifier)
+		})
+		t.Run(kind+"/gained an origin", func(t *testing.T) {
+			plan := Diff(snapshot(t, original), snapshot(t, doc(kind, "checkout", "  labels:\n    dash0.com/origin: o\n")))
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, origin, plan.ByIdentifier[0].Identifier)
+		})
+		t.Run(kind+"/gained only an id", func(t *testing.T) {
+			// apply writes the inferred origin again when the id is not found.
+			plan := Diff(snapshot(t, original), snapshot(t, doc(kind, "checkout", "  labels:\n    dash0.com/id: i\n")))
+			assert.True(t, plan.IsEmpty(), "got %+v", plan)
+		})
+	}
+}
+
+func TestDiff_InferredOriginUsesTheRunDataset(t *testing.T) {
+	staging := "staging"
+	snap := newSnapshot()
+	require.NoError(t, ingestDocuments(&snap, "a.yaml", []byte("kind: View\nmetadata:\n  name: checkout\n"), &staging))
+	require.NoError(t, ingestDocuments(&snap, "b.yaml", []byte("kind: Dash0Team\nmetadata:\n  name: backend\n"), &staging))
+
+	assert.Contains(t, snap.Identifiers, IdentifierKey{Kind: "view", Identifier: asset.InferOrigin("view", "checkout", "staging")})
+	// Teams are organization-level, so their inferred origin has no dataset.
+	assert.Contains(t, snap.Identifiers, IdentifierKey{Kind: "team", Identifier: asset.InferOrigin("team", "backend", "")})
+}
+
+// A dataset without a slug and an AWS metric scrape config without an id have
+// no inferred origin, so --since still cannot tell which asset they were.
+func TestDiff_KindsWithoutAnInferredOriginStillFailWithoutAnIdentifier(t *testing.T) {
+	for _, document := range []string{
+		"apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Staging\n",
+		"apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  name: prod\nspec:\n  namespaces: []\n",
+	} {
+		before := newSnapshot()
+		require.NoError(t, ingestDocuments(&before, "a.yaml", []byte(document), nil))
+		plan := Diff(before, newSnapshot())
+		assert.Equal(t, []string{"a.yaml"}, plan.NoIdentifier)
+		assert.Empty(t, plan.ByIdentifier)
+	}
+}
+
+// A PrometheusRule without an id or an origin writes each alert and its
+// recording rules at their own inferred origins, so --since deletes each one
+// there.
+func TestDiff_PrometheusRuleWithoutIdentifierIsDeletedAtEachInferredOrigin(t *testing.T) {
+	crd := func(record bool, alerts ...string) []byte {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: rules\nspec:\n  groups:\n    - name: g\n      rules:\n"
+		for _, alert := range alerts {
+			doc += "        - alert: " + alert + "\n          expr: up == 0\n"
+		}
+		if record {
+			doc += "        - record: r\n          expr: up\n"
+		}
+		return []byte(doc)
+	}
+	snapshot := func(t *testing.T, data []byte) Snapshot {
+		snap := newSnapshot()
+		if data != nil {
+			require.NoError(t, ingestDocuments(&snap, "rules.yaml", data, nil))
+		}
+		return snap
+	}
+	alertOrigin := func(alert string) string {
+		return asset.InferKindOrigin("prometheusrule", "rules\x00g - "+alert, nil)
+	}
+	recordingOrigin := asset.InferKindOrigin("recordingrule", "rules", nil)
+
+	t.Run("removed", func(t *testing.T) {
+		plan := Diff(snapshot(t, crd(true, "A", "B")), snapshot(t, nil))
+		assert.Empty(t, plan.NoIdentifier)
+		assert.Empty(t, plan.AlertsByName)
+		assert.ElementsMatch(t, []Deletion{
+			{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A"},
+			{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B"},
+			{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules"},
+		}, plan.ByIdentifier)
+	})
+	t.Run("one alert removed", func(t *testing.T) {
+		plan := Diff(snapshot(t, crd(false, "A", "B")), snapshot(t, crd(false, "A")))
+		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B"}}, plan.ByIdentifier)
+		assert.Empty(t, plan.AlertsByName)
+	})
+	t.Run("an alert added keeps the others where they are", func(t *testing.T) {
+		assert.True(t, Diff(snapshot(t, crd(false, "A")), snapshot(t, crd(false, "A", "B"))).IsEmpty())
+	})
+	t.Run("recording rules removed", func(t *testing.T) {
+		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, crd(false, "A")))
+		assert.Equal(t, []Deletion{{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules"}}, plan.ByIdentifier)
+	})
 }

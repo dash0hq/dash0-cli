@@ -3582,3 +3582,128 @@ spec:
 	}
 	assert.Equal(t, []string{asset.InferKindOrigin("recordingrule", "app-rules", &dataset)}, deleted)
 }
+
+// commitRemoval commits each document at its own file, then removes the files
+// named in removed, and returns the first commit.
+func commitRemoval(t *testing.T, dir string, files map[string]string, removed ...string) string {
+	t.Helper()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+	for name, content := range files {
+		writeFileFixture(t, dir, name, content)
+	}
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add assets")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+	for _, name := range removed {
+		require.NoError(t, os.Remove(filepath.Join(dir, name)))
+	}
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove assets")
+	return before
+}
+
+// A removed document without an id or an origin was written at its inferred
+// origin, so --since deletes it there, for every kind that has one. Datasets
+// and AWS metric scrape configs require an id, so they cannot get here.
+func TestApply_Since_EveryKindDeletesADocumentWithoutIdentifierAtItsInferredOrigin(t *testing.T) {
+	run := func(t *testing.T, kind string, spec routedKind) {
+		testutil.SetupTestEnv(t)
+		dir := t.TempDir()
+		before := commitRemoval(t, dir, map[string]string{"asset.yaml": spec.document("")}, "asset.yaml")
+
+		inferred := inferredOrigin(kind, spec)
+		fixture, writeResponse := routedFixtures(t, spec)
+		server := testutil.NewMockServer(t, testutil.FixturesDir())
+		requests := serveRouted(server, spec, map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}, writeResponse)
+
+		cmd := newSinceTestCmd()
+		cmd.SetArgs([]string{
+			"-f", dir, "--since", before, "--force", "--experimental",
+			"--api-url", server.URL, "--auth-token", testAuthToken,
+		})
+		var cmdErr error
+		_ = testutil.CaptureStderr(t, func() {
+			testutil.CaptureStdout(t, func() {
+				cmdErr = cmd.Execute()
+			})
+		})
+
+		require.NoError(t, cmdErr)
+		var writes []string
+		for _, request := range *requests {
+			if !strings.HasPrefix(request.line, http.MethodGet) {
+				writes = append(writes, request.line)
+			}
+		}
+		assert.Equal(t, []string{"DELETE " + inferred}, writes)
+	}
+	for _, kind := range asset.ValidKinds {
+		spec := routedKinds[kind]
+		if spec.idRequired() {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) { run(t, kind, spec) })
+		for version, variant := range routedVariants[kind] {
+			t.Run(kind+"/"+version, func(t *testing.T) { run(t, kind, variant) })
+		}
+	}
+}
+
+// Renaming a document without an identifier moves it to a new inferred origin:
+// apply creates the new asset, --since deletes the old one, and plain apply
+// leaves it.
+func TestApply_RenamedDocumentWithoutIdentifier(t *testing.T) {
+	view := func(name string) string {
+		return "kind: View\nmetadata:\n  name: " + name + "\nspec:\n  type: logs\n  display:\n    name: " + name + "\n"
+	}
+	spec := routedKinds["view"]
+	oldOrigin := asset.InferOrigin("view", "checkout", "staging")
+	newOrigin := asset.InferOrigin("view", "payments", "staging")
+
+	for _, tt := range []struct {
+		name  string
+		since bool
+		want  []string
+	}{
+		{"with --since", true, []string{"PUT " + newOrigin, "DELETE " + oldOrigin}},
+		{"without --since", false, []string{"PUT " + newOrigin}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			before := commitRemoval(t, dir, map[string]string{"old.yaml": view("checkout")}, "old.yaml")
+			writeFileFixture(t, dir, "new.yaml", view("payments"))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "rename")
+
+			fixture, writeResponse := routedFixtures(t, spec)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			requests := serveRouted(server, spec, map[string][]byte{oldOrigin: storedAsset(t, fixture, spec, oldOrigin, oldOrigin)}, writeResponse)
+
+			args := []string{"-f", dir, "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken}
+			if tt.since {
+				args = append(args, "--since", before, "--force", "--experimental")
+			}
+			cmd := newSinceTestCmd()
+			cmd.SetArgs(args)
+			var cmdErr error
+			_ = testutil.CaptureStderr(t, func() {
+				testutil.CaptureStdout(t, func() {
+					cmdErr = cmd.Execute()
+				})
+			})
+
+			require.NoError(t, cmdErr)
+			var writes []string
+			for _, request := range *requests {
+				if !strings.HasPrefix(request.line, http.MethodGet) {
+					writes = append(writes, request.line)
+				}
+			}
+			assert.Equal(t, tt.want, writes)
+		})
+	}
+}
