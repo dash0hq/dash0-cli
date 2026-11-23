@@ -8,7 +8,7 @@ component: automerge
 note: "`automerge settings get` and `automerge settings update` read and replace the AutoMerge settings of a repository (experimental)"
 
 # Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
-issues: [0]
+issues: [440]
 
 # (Optional) One or more lines of additional information to render under the primary note.
 subtext: |
