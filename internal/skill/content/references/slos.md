@@ -81,7 +81,7 @@ kind: SLO
 metadata:
   name: checkout-api-availability
   labels:
-    dash0.com/origin: checkout-api-availability
+    dash0.com/origin: dash0-cli_checkout-api-availability
   annotations:
     dash0.com/display-name: Checkout API availability
 spec:

@@ -30,7 +30,7 @@ kind: Dash0TimeSeriesAggregation
 metadata:
   name: http-server-request-duration
   labels:
-    dash0.com/origin: http-server-request-duration
+    dash0.com/origin: dash0-cli_http-server-request-duration
 spec:
   enabled: true
   display:

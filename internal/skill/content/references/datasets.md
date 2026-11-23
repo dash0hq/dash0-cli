@@ -61,7 +61,7 @@ $ dash0 -X datasets get <id>
 Kind:   Dash0Dataset
 Name:   Staging
 ID:     staging
-Origin: api-0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90
+Origin: dash0-cli_staging
 ```
 
 Use `-o yaml` to get the full definition, suitable for editing and re-applying.

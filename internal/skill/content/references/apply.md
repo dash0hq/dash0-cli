@@ -98,7 +98,7 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
 > You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_http-server-request-duration-staging`.
 
 `Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
 They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.

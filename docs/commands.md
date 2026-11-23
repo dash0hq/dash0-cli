@@ -559,8 +559,8 @@ The `wide` format adds `DATASET`, `ORIGIN`, and `URL` columns:
 
 ```bash
 $ dash0 dashboards list -o wide
-NAME                  ID                                    DATASET   ORIGIN       URL
-Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   gitops/prod  https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
+NAME                  ID                                    DATASET   ORIGIN                         URL
+Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   dash0-cli_production-overview  https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
 Use `-o json` or `-o yaml` to get the full asset definitions, suitable for backup or re-applying with `apply -f -`.
@@ -570,7 +570,7 @@ Use `-o csv` for a pipe-friendly, machine-readable format with the same columns 
 ```bash
 $ dash0 dashboards list -o csv
 name,id,dataset,origin,url
-Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,gitops/prod,https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
+Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,dash0-cli_production-overview,https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
 For dashboards, a failed name lookup emits a warning to stderr and shows `<name>` in `table` and `wide` output, or an empty name in `csv` output.
@@ -595,7 +595,7 @@ $ dash0 dashboards get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Kind: Dashboard
 Name: Production Overview
 Dataset: default
-Origin: gitops/prod
+Origin: dash0-cli_production-overview
 URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 Created: 2026-01-15 10:30:00
 Updated: 2026-01-20 14:45:00
@@ -625,7 +625,7 @@ Kind: Dashboard
 Name: Production Overview
 Dataset: default
 Deleted: 2026-01-21 09:15:00
-Origin: gitops/prod
+Origin: dash0-cli_production-overview
 URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 Created: 2026-01-15 10:30:00
 Updated: 2026-01-20 14:45:00
@@ -1220,7 +1220,7 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
 > You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_http-server-request-duration-staging`.
 
 `Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
 They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
@@ -1754,7 +1754,7 @@ kind: SLO
 metadata:
   name: checkout-api-availability
   labels:
-    dash0.com/origin: checkout-api-availability
+    dash0.com/origin: dash0-cli_checkout-api-availability
   annotations:
     dash0.com/display-name: Checkout API availability
 spec:
@@ -1859,7 +1859,7 @@ kind: Dash0NotificationChannel
 metadata:
   name: Slack Alerts
   labels:
-    dash0.com/origin: my-slack-channel
+    dash0.com/origin: dash0-cli_slack-alerts
 spec:
   type: slack
   config:
@@ -1990,7 +1990,7 @@ kind: Dash0Team
 metadata:
   name: backend-team
   labels:
-    dash0.com/origin: backend-team
+    dash0.com/origin: dash0-cli_backend-team
 spec:
   display:
     name: Backend Team
@@ -2011,7 +2011,7 @@ kind: Dash0TimeSeriesAggregation
 metadata:
   name: http-server-request-duration
   labels:
-    dash0.com/origin: http-server-request-duration
+    dash0.com/origin: dash0-cli_http-server-request-duration
 spec:
   enabled: true
   display:
@@ -2263,7 +2263,7 @@ dash0 --experimental evals delete dash0-cli_answer-relevance --force
 > Eval origins are unique per organization, while each eval belongs to exactly one dataset.
 > You therefore cannot apply one document to two datasets.
 > The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `answer-relevance-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_answer-relevance-staging`.
 
 An eval that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with `metadata.name ... already uses`, and the CLI adds a hint.
 Find that eval's origin with `dash0 -X evals list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it.
@@ -4028,10 +4028,10 @@ Example:
 
 ```bash
 $ dash0 -X notification-channels list
-NAME                  TYPE         ID                  ORIGIN       URL
-Slack Alerts          slack        abc-123-def-456     my-origin    https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
-PagerDuty On-Call     pagerduty    def-456-ghi-789     -            https://app.dash0.com/goto/settings/notifications?channel_id=def-456-ghi-789
-Email Digest          email_v2     ghi-789-jkl-012     -            https://app.dash0.com/goto/settings/notifications?channel_id=ghi-789-jkl-012
+NAME                  TYPE         ID                  ORIGIN                  URL
+Slack Alerts          slack        abc-123-def-456     dash0-cli_slack-alerts  https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
+PagerDuty On-Call     pagerduty    def-456-ghi-789     -                       https://app.dash0.com/goto/settings/notifications?channel_id=def-456-ghi-789
+Email Digest          email_v2     ghi-789-jkl-012     -                       https://app.dash0.com/goto/settings/notifications?channel_id=ghi-789-jkl-012
 ```
 
 Column aliases: `name` / `channel name`, `type` / `channel type`, `id` / `channel id`, `origin`, `url`.
@@ -4056,7 +4056,7 @@ Kind:  Dash0NotificationChannel
 Name:  Slack Alerts
 Type:  slack
 ID:    abc-123-def-456
-Origin: my-origin
+Origin: dash0-cli_slack-alerts
 URL:   https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
 ```
 
@@ -4069,7 +4069,7 @@ metadata:
   name: Slack Alerts
   labels:
     dash0.com/id: abc-123-def-456
-    dash0.com/origin: my-origin
+    dash0.com/origin: dash0-cli_slack-alerts
 spec:
   type: slack
   config: ...
@@ -4197,7 +4197,7 @@ $ dash0 -X datasets get <id>
 Kind:   Dash0Dataset
 Name:   Staging
 ID:     staging
-Origin: api-0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90
+Origin: dash0-cli_staging
 ```
 
 Use `-o yaml` to get the full definition, suitable for editing and re-applying.
@@ -4702,9 +4702,9 @@ Example:
 
 ```bash
 $ dash0 -X teams list
-NAME            ID          MEMBERS  ORIGIN       URL
-Backend Team    a1b2c3d4    3        dash0-cli    https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
-Frontend Team   b2c3d4e5    2                     https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
+NAME            ID          MEMBERS  ORIGIN                  URL
+Backend Team    a1b2c3d4    3        dash0-cli_backend-team  https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
+Frontend Team   b2c3d4e5    2                                https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
 ```
 
 Column aliases: `name` / `team name`, `id` / `team id`, `members` / `member count`, `origin`, `url`.
@@ -4728,7 +4728,7 @@ $ dash0 -X teams get <id>
 Kind:    Team
 Name:    Backend Team
 ID:      a1b2c3d4-5678-90ab-cdef-1234567890ab
-Origin:  dash0-cli
+Origin:  dash0-cli_backend-team
 Color:   #FF6B6B -> #4ECDC4
 Members: 2
 ...

@@ -67,7 +67,7 @@ dash0 --experimental evals delete dash0-cli_answer-relevance --force
 > Eval origins are unique per organization, while each eval belongs to exactly one dataset.
 > You therefore cannot apply one document to two datasets.
 > The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `answer-relevance-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_answer-relevance-staging`.
 
 An eval that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with `metadata.name ... already uses`, and the CLI adds a hint.
 Find that eval's origin with `dash0 -X evals list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it.
