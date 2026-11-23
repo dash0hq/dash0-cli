@@ -22,7 +22,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Send | `logs send`, `spans send`, `debuginfo upload` | OTLP-based, repeatable attribute flags; `debuginfo upload` is experimental |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | Interactive | `k8s pods watch`, `k8s deployments watch`, and the other kinds | Full-screen terminal page, refreshes on a timer, experimental |
-| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
+| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `automerge settings`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
 
@@ -184,6 +184,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `agent0` | Agent0 custom skill CRUD (`agent0 skills`; organization-level, experimental; `kind: Dash0Skill`) |
 | `api` | Raw HTTP passthrough to any Dash0 API endpoint |
 | `auth-tokens` | Auth token CRUD (organization-level, experimental; `create` needs `--secret-file` outside an interactive terminal; not supported by `apply`) |
+| `automerge` | AutoMerge settings of a repository (bot mode, criteria and thresholds, path rules, reviewer): `settings get`, `settings update` (replace) by `owner/repo` or id (organization-level, experimental; not accepted by `apply`) |
 | `aws-metric-scrape-configs` | CloudWatch metric scrape config of an AWS integration: `get`, `update` (replace), `delete` (clear) by integration id (organization-level, experimental; also accepted by `apply` as `Dash0AwsMetricScrapeConfig`) |
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |

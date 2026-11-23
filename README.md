@@ -797,6 +797,20 @@ dash0 -X auth-tokens create -f token.yaml --secret-file "$RUNNER_TEMP/ingest-tok
 dash0 -X auth-tokens delete <id>
 ```
 
+### AutoMerge settings (experimental)
+
+```bash
+# Show the bot mode, criteria, thresholds and path rules of a repository
+dash0 -X automerge settings get acme/api
+```
+
+```bash
+# Export, edit, and replace them; the update fails if someone changed them in between
+dash0 -X automerge settings get acme/api -o yaml > automerge.yaml
+dash0 -X automerge settings update -f automerge.yaml --dry-run
+dash0 -X automerge settings update -f automerge.yaml
+```
+
 ### AWS metric scrape configs (experimental)
 
 ```bash
