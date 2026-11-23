@@ -10,8 +10,8 @@ subtext: |
   Each alert of a PrometheusRule uses `metadata.name` and `<group name> - <alert name>`, and the recording rules use `metadata.name`.
   A PersesDashboard keeps its `dash0.com/id` and `dash0.com/origin` labels, which the conversion to a dashboard used to drop.
   Before, these kinds were written at the file's id, so a document whose id is not found now creates the asset at its origin or inferred origin, with a server-assigned id.
-  A document without an identifier used to create a new asset on every apply; an asset created that way is not found by the inferred origin, so the next apply creates one more.
-  Set `dash0.com/origin` or `dash0.com/id` in the file to keep updating the existing asset.
+  A document without an identifier used to create a new asset on every apply; now only the first apply after the upgrade creates one, and later applies update it.
+  Set `dash0.com/origin` to the stored origin, or set `dash0.com/id`, to update the existing asset instead.
   Origins are unique per organization, so a document with an explicit `dash0.com/origin` now applies to one dataset only for PersesDashboards, check rules, PrometheusRules, synthetic checks, and views; before, the second dataset got a new asset by POST. Leave the origin out to get one inferred per dataset.
   A document whose `dash0.com/origin` is the inferred origin of another document in the run now fails validation.
   The CLI now sends `dash0.com/origin` when it creates one of these assets; a check rule gets it from the request path only, because its labels belong to its alerts. An update of a view, synthetic check, or recording rule at the stored origin sends that origin back, so a later read by id still shows it; an update never sends another origin.
