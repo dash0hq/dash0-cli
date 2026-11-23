@@ -309,12 +309,10 @@ func PlanSamplingRule(ctx context.Context, apiClient dash0api.Client, rule *dash
 	if err != nil {
 		return plan, err
 	}
-	var existing *dash0api.SamplingDefinition
 	if !route.Create {
-		existing = route.Stored
-		plan.Action, plan.Before = ActionUpdated, existing
+		plan.Action, plan.Before = ActionUpdated, route.Stored
 	}
-	if warning := SamplingTurnOnWarning(ctx, apiClient, rule, existing, dataset); warning != "" {
+	if warning := SamplingTurnOnWarning(ctx, apiClient, rule, route.Stored, dataset); warning != "" {
 		plan.Warnings = append(plan.Warnings, warning)
 	}
 	return plan, nil

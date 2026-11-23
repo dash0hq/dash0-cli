@@ -62,7 +62,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	origin := dash0api.GetGenerativeAiEvaluationOrigin(evaluation)
 	updateKey := asset.UpdateKey{Noun: "eval", Upsert: evaluation}
-	identity := asset.Identity{ID: dash0api.GetGenerativeAiEvaluationID(evaluation), Origin: origin}
+	identity := asset.GenerativeAiEvaluationIdentity(evaluation, nil)
 	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}

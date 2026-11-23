@@ -60,7 +60,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	updateKey := asset.UpdateKey{Noun: assetType, Upsert: rule}
-	identity := asset.Identity{ID: dash0api.GetSignalToMetricsID(rule), Origin: dash0api.GetSignalToMetricsOrigin(rule)}
+	identity := asset.SignalToMetricsRuleIdentity(rule, nil)
 	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}

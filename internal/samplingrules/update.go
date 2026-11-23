@@ -62,7 +62,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	updateKey := asset.UpdateKey{Noun: assetType, Upsert: asset.SamplingRuleKeys(rule)}
-	identity := asset.Identity{ID: dash0api.GetSamplingRuleID(rule), Origin: asset.GetSamplingRuleOrigin(rule)}
+	identity := asset.SamplingRuleIdentity(rule, nil)
 	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
@@ -90,11 +90,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 			AssetType: assetType,
 			AssetID:   key,
 		})
-	}
-	// SamplingDefinition has no GetOrigin method, so asset.CheckStoredOrigin
-	// cannot compare the stored origin itself.
-	if stored := asset.GetSamplingRuleOrigin(before); key == identity.ID && identity.Origin != "" && stored != "" && stored != identity.Origin {
-		return &asset.OriginMismatchError{ID: key, Stored: stored, Document: identity.Origin}
 	}
 
 	// The server takes the target from the URL, and the dataset from the

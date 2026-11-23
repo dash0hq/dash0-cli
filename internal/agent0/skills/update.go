@@ -73,7 +73,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 
 	updateKey := asset.UpdateKey{Noun: assetType, Upsert: &skill}
-	identity := asset.Identity{ID: dash0api.GetCustomSkillID(&skill), Origin: dash0api.GetCustomSkillOrigin(&skill)}
+	identity := asset.CustomSkillIdentity(&skill)
 	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}

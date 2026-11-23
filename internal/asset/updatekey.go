@@ -136,15 +136,18 @@ func ClearUpdateOrigin(document dash0api.AssetMetadata) {
 }
 
 // CheckStoredOrigin fails when key is the file's id and the asset stored there
-// has an origin other than the file's, as apply does. Kinds whose type has no
-// GetOrigin method compare the origin themselves.
+// has an origin other than the file's, as apply does.
 func CheckStoredOrigin(key string, identity Identity, stored any) error {
 	if key != identity.ID || identity.Origin == "" {
 		return nil
 	}
-	asset, ok := stored.(interface{ GetOrigin() string })
-	if !ok {
-		return nil
+	var origin string
+	switch asset := stored.(type) {
+	case *dash0api.SamplingDefinition:
+		// The client gives SamplingDefinition no GetOrigin method.
+		origin = GetSamplingRuleOrigin(asset)
+	case interface{ GetOrigin() string }:
+		origin = asset.GetOrigin()
 	}
-	return checkStoredOrigin(identity, asset.GetOrigin())
+	return checkStoredOrigin(identity, origin)
 }
