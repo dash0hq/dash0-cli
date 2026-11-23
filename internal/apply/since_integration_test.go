@@ -3583,26 +3583,26 @@ spec:
 	assert.Equal(t, []string{asset.InferKindOrigin("recordingrule", "app-rules", &dataset)}, deleted)
 }
 
-// commitRemoval commits each document at its own file, then removes the files
-// named in removed, and returns the first commit.
-func commitRemoval(t *testing.T, dir string, files map[string]string, removed ...string) string {
+// runSinceWrites runs apply with args and returns every request it sent
+// other than a GET.
+func runSinceWrites(t *testing.T, args []string, requests *[]routedRequest) []string {
 	t.Helper()
-	runGitCmd(t, dir, "init", "-q", "-b", "main")
-	runGitCmd(t, dir, "config", "user.email", "test@example.com")
-	runGitCmd(t, dir, "config", "user.name", "Test")
-	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-	for name, content := range files {
-		writeFileFixture(t, dir, name, content)
+	cmd := newSinceTestCmd()
+	cmd.SetArgs(args)
+	var cmdErr error
+	_ = testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+	require.NoError(t, cmdErr)
+	var writes []string
+	for _, request := range *requests {
+		if !strings.HasPrefix(request.line, http.MethodGet) {
+			writes = append(writes, request.line)
+		}
 	}
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "add assets")
-	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
-	for _, name := range removed {
-		require.NoError(t, os.Remove(filepath.Join(dir, name)))
-	}
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "remove assets")
-	return before
+	return writes
 }
 
 // A removed document without an id or an origin was written at its inferred
@@ -3619,25 +3619,10 @@ func TestApply_Since_EveryKindDeletesADocumentWithoutIdentifierAtItsInferredOrig
 		server := testutil.NewMockServer(t, testutil.FixturesDir())
 		requests := serveRouted(server, spec, map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}, writeResponse)
 
-		cmd := newSinceTestCmd()
-		cmd.SetArgs([]string{
+		writes := runSinceWrites(t, []string{
 			"-f", dir, "--since", before, "--force", "--experimental",
 			"--api-url", server.URL, "--auth-token", testAuthToken,
-		})
-		var cmdErr error
-		_ = testutil.CaptureStderr(t, func() {
-			testutil.CaptureStdout(t, func() {
-				cmdErr = cmd.Execute()
-			})
-		})
-
-		require.NoError(t, cmdErr)
-		var writes []string
-		for _, request := range *requests {
-			if !strings.HasPrefix(request.line, http.MethodGet) {
-				writes = append(writes, request.line)
-			}
-		}
+		}, requests)
 		assert.Equal(t, []string{"DELETE " + inferred}, writes)
 	}
 	for _, kind := range asset.ValidKinds {
@@ -3687,23 +3672,7 @@ func TestApply_RenamedDocumentWithoutIdentifier(t *testing.T) {
 			if tt.since {
 				args = append(args, "--since", before, "--force", "--experimental")
 			}
-			cmd := newSinceTestCmd()
-			cmd.SetArgs(args)
-			var cmdErr error
-			_ = testutil.CaptureStderr(t, func() {
-				testutil.CaptureStdout(t, func() {
-					cmdErr = cmd.Execute()
-				})
-			})
-
-			require.NoError(t, cmdErr)
-			var writes []string
-			for _, request := range *requests {
-				if !strings.HasPrefix(request.line, http.MethodGet) {
-					writes = append(writes, request.line)
-				}
-			}
-			assert.Equal(t, tt.want, writes)
+			assert.Equal(t, tt.want, runSinceWrites(t, args, requests))
 		})
 	}
 }

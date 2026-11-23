@@ -137,7 +137,7 @@ func originAlias(id, origin string) string {
 }
 
 // InferredKey is an asset that apply writes at its inferred origin, because
-// its document has neither an id nor an origin.
+// its document has no origin.
 type InferredKey struct {
 	// Kind is the normalized kind of the asset: "checkrule" and
 	// "recordingrule" for the assets of a PrometheusRule.
@@ -145,18 +145,13 @@ type InferredKey struct {
 	Origin string
 	// Name is the display name of an asset of a PrometheusRule, else "".
 	Name string
-	// DocumentKind and DocumentName are the kind and name the inferred origin
-	// comes from, so a later document with only an id can write it again.
-	DocumentKind string
-	DocumentName string
-	// Alert is the check rule name of a PrometheusRule alert, else "".
-	Alert string
 }
 
-// ExtractInferredKeys returns the assets that a document without an id or an
-// origin writes at their inferred origins, the same ones apply computes for
-// the dataset. It returns false for a document that has an identifier, and for
-// datasets and AWS metric scrape configs, whose id is required.
+// ExtractInferredKeys returns the assets that a document without an origin
+// writes at their inferred origins, the same ones apply computes for the
+// dataset. A document with an id writes there only when the id is not found.
+// It returns false for a document with an origin, and for datasets and AWS
+// metric scrape configs, whose id is required.
 func ExtractInferredKeys(data []byte, dataset *string) ([]InferredKey, bool, error) {
 	kind, err := dash0yaml.DetectKind(data)
 	if err != nil {
@@ -164,35 +159,28 @@ func ExtractInferredKeys(data []byte, dataset *string) ([]InferredKey, bool, err
 	}
 	kind = NormalizeKind(kind)
 	identity, name, routed, err := parseRoutedIdentity(kind, data, dataset)
-	if err != nil || !routed || identity.ID != "" || identity.Origin != "" {
+	if err != nil || !routed || identity.Origin != "" {
 		return nil, false, err
 	}
 	if kind != "prometheusrule" {
-		return []InferredKey{{Kind: kind, Origin: identity.Inferred, DocumentKind: kind, DocumentName: name}}, true, nil
+		return []InferredKey{{Kind: kind, Origin: identity.Inferred}}, true, nil
 	}
 
-	// Each alert and the recording rules have their own inferred origin, as
-	// ParseCheckRules and the recording rule import compute it.
 	alerts, err := ExtractPrometheusAlertNames(data)
 	if err != nil {
 		return nil, false, err
 	}
 	var keys []InferredKey
 	for _, alert := range alerts {
-		keys = append(keys, InferredKey{
-			Kind: "checkrule", Origin: InferKindOrigin("prometheusrule", name+"\x00"+alert.CheckRuleName(), dataset),
-			Name: alert.CheckRuleName(), DocumentKind: kind, DocumentName: name, Alert: alert.CheckRuleName(),
-		})
+		origin := InferKindOrigin("prometheusrule", PrometheusAlertInferredName(name, alert.CheckRuleName()), dataset)
+		keys = append(keys, InferredKey{Kind: "checkrule", Origin: origin, Name: alert.CheckRuleName()})
 	}
 	hasRecordingRule, err := PrometheusRuleHasRecordingRule(data)
 	if err != nil {
 		return nil, false, err
 	}
 	if hasRecordingRule {
-		keys = append(keys, InferredKey{
-			Kind: "recordingrule", Origin: InferKindOrigin("recordingrule", name, dataset),
-			Name: name, DocumentKind: kind, DocumentName: name,
-		})
+		keys = append(keys, InferredKey{Kind: "recordingrule", Origin: InferKindOrigin("recordingrule", name, dataset), Name: name})
 	}
 	return keys, true, nil
 }

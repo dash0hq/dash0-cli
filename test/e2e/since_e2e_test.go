@@ -394,16 +394,10 @@ func TestE2E_ApplySince_NoIdentifierDeletion(t *testing.T) {
 		"/api/views/" + asset.InferOrigin("view", "View A", "default"),
 		"/api/views/" + asset.InferOrigin("view", "View B", "default"),
 	}
-	if !slices.Equal(sorted(deleted), sorted(wantDeleted)) {
+	if !slices.Equal(slices.Sorted(slices.Values(deleted)), slices.Sorted(slices.Values(wantDeleted))) {
 		t.Errorf("expected deletes %v, got %v. Output:\n%s", wantDeleted, deleted, output)
 	}
 	if want := []string{"/api/views/" + asset.InferOrigin("view", "View C", "default")}; !slices.Equal(written, want) {
 		t.Errorf("expected writes %v, got %v", want, written)
 	}
-}
-
-func sorted(values []string) []string {
-	values = slices.Clone(values)
-	slices.Sort(values)
-	return values
 }

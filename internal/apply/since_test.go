@@ -546,17 +546,7 @@ func TestComputeDeletionPlan_NoIdentifierHardFails(t *testing.T) {
 // the run's dataset, so --since deletes it there.
 func TestComputeDeletionPlan_NoIdentifierDeletesAtTheInferredOrigin(t *testing.T) {
 	dir := t.TempDir()
-	runGitCmd(t, dir, "init", "-q", "-b", "main")
-	runGitCmd(t, dir, "config", "user.email", "test@example.com")
-	runGitCmd(t, dir, "config", "user.name", "Test")
-	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
-	writeFileFixture(t, dir, "orphan.yaml", "kind: Dashboard\nmetadata:\n  name: no-id\n")
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "add file")
-	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
-	require.NoError(t, os.Remove(filepath.Join(dir, "orphan.yaml")))
-	runGitCmd(t, dir, "add", "-A")
-	runGitCmd(t, dir, "commit", "-q", "-m", "remove orphan")
+	before := commitRemoval(t, dir, map[string]string{"orphan.yaml": "kind: Dashboard\nmetadata:\n  name: no-id\n"}, "orphan.yaml")
 
 	dataset := "prod"
 	plan, err := computeDeletionPlan(context.Background(), &applyFlags{File: dir, Since: before}, &dataset)
@@ -716,4 +706,26 @@ func TestComputeDeletionPlan_SparseCheckoutRefuses(t *testing.T) {
 	require.Error(t, err, "hidden.yaml is still declared in git and must never become a deletion candidate")
 	assert.Contains(t, err.Error(), "sparse checkout")
 	assert.Contains(t, err.Error(), "\nHint:")
+}
+
+// commitRemoval commits each document at its own file, then removes the files
+// named in removed, and returns the first commit.
+func commitRemoval(t *testing.T, dir string, files map[string]string, removed ...string) string {
+	t.Helper()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+	for name, content := range files {
+		writeFileFixture(t, dir, name, content)
+	}
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add assets")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+	for _, name := range removed {
+		require.NoError(t, os.Remove(filepath.Join(dir, name)))
+	}
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "remove assets")
+	return before
 }

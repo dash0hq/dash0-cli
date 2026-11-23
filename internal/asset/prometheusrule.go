@@ -72,11 +72,17 @@ func ParseCheckRules(data []byte) ([]CheckRule, error) {
 			if parsed[i].Origin != "" && len(rules) > 1 {
 				parsed[i].Origin = DeriveAlertCheckRuleID(parsed[i].Origin, rule.Name)
 			}
-			// The NUL keeps CRD "a" with alert "b - c" apart from CRD "a\x00b" with alert "c".
-			parsed[i].InferredKind, parsed[i].InferredName = "prometheusrule", crd.Metadata.Name+"\x00"+rule.Name
+			parsed[i].InferredKind, parsed[i].InferredName = "prometheusrule", PrometheusAlertInferredName(crd.Metadata.Name, rule.Name)
 		}
 	}
 	return parsed, nil
+}
+
+// PrometheusAlertInferredName is what an alert of a PrometheusRule hashes into
+// its inferred origin, with kind "prometheusrule". The NUL keeps CRD "a" with
+// alert "b - c" apart from CRD "a\x00b" with alert "c".
+func PrometheusAlertInferredName(crdName, checkRuleName string) string {
+	return crdName + "\x00" + checkRuleName
 }
 
 // PrometheusRuleHasRecordingRule reports whether a PrometheusRule CRD

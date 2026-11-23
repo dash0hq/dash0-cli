@@ -99,7 +99,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			InferredOriginName: before.InferredOriginNames[key],
 			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(key.Kind), Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
-			Name:               before.Inferred[key].Name,
+			Name:               before.Inferred[key],
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
@@ -233,7 +233,11 @@ func Diff(before, after Snapshot) DeletionPlan {
 // dashboard, not a deletion. The key keeps its own
 // kind, so a real deletion is still reported under the spelling it had.
 func survives(before, after Snapshot, key IdentifierKey) bool {
-	if inferred, ok := before.Inferred[key]; ok && keepsInferredOrigin(after, inferred) {
+	// An id-only document in after is written at its inferred origin when
+	// its id is not found.
+	// ponytail: when the id is found, the asset at the inferred origin is left
+	// behind; reading the id would need the API, which --since's plan never calls.
+	if _, ok := after.Inferred[key]; ok {
 		return true
 	}
 	names := []string{key.Identifier}
@@ -252,18 +256,6 @@ func survives(before, after Snapshot, key IdentifierKey) bool {
 		}
 	}
 	return false
-}
-
-// keepsInferredOrigin reports whether after has a document of the same kind and
-// name with only an id. apply writes it at the same inferred origin when the
-// id is not found, so that asset is not a deletion.
-// ponytail: when the id is found, the asset at the inferred origin is left
-// behind; reading the id would need the API, which --since's plan never calls.
-func keepsInferredOrigin(after Snapshot, inferred asset.InferredKey) bool {
-	if !after.IDOnlyDocuments[IdentifierKey{Kind: asset.InferredOriginKind(inferred.DocumentKind), Identifier: inferred.DocumentName}] {
-		return false
-	}
-	return inferred.Alert == "" || after.InferredOriginAlerts[inferred.DocumentName][inferred.Alert]
 }
 
 // declares reports whether snapshot names key as an identifier or an alias.

@@ -105,14 +105,10 @@ type Snapshot struct {
 	InferredOriginAlerts map[string]map[string]bool
 
 	// Inferred maps the identifier of every asset that a document without an
-	// id or an origin writes at its inferred origin to where that origin
-	// comes from (see asset.ExtractInferredKeys).
-	Inferred map[IdentifierKey]asset.InferredKey
-
-	// IDOnlyDocuments holds the kind and metadata.name of every routed
-	// document with an id and no origin. apply writes it at its inferred
-	// origin when the id is not found.
-	IDOnlyDocuments map[IdentifierKey]bool
+	// origin writes at its inferred origin to its display name (see
+	// asset.ExtractInferredKeys). A document with an id writes there only when
+	// the id is not found, so only one without an id is in Identifiers too.
+	Inferred map[IdentifierKey]string
 }
 
 func newSnapshot() Snapshot {
@@ -128,8 +124,7 @@ func newSnapshot() Snapshot {
 		InferredOriginNames:                 map[IdentifierKey]string{},
 		InferredOriginDocuments:             map[IdentifierKey]bool{},
 		InferredOriginAlerts:                map[string]map[string]bool{},
-		Inferred:                            map[IdentifierKey]asset.InferredKey{},
-		IDOnlyDocuments:                     map[IdentifierKey]bool{},
+		Inferred:                            map[IdentifierKey]string{},
 	}
 }
 
@@ -322,24 +317,26 @@ func ingestDocuments(snap *Snapshot, path string, data []byte, dataset *string) 
 				}
 			}
 		}
-		if identifier == "" {
-			keys, inferred, err := asset.ExtractInferredKeys(docBytes, dataset)
+		var keys []asset.InferredKey
+		inferred := false
+		if identifier == "" || inferredOriginName != "" {
+			keys, inferred, err = asset.ExtractInferredKeys(docBytes, dataset)
 			if err != nil {
 				return fmt.Errorf("failed to infer origin: %w", err)
 			}
+		}
+		for _, inferredKey := range keys {
+			snap.Inferred[IdentifierKey{Kind: inferredKey.Kind, Identifier: inferredKey.Origin}] = inferredKey.Name
+		}
+		if identifier == "" {
 			if !inferred {
 				snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
 			}
 			// A PrometheusRule without alerts or recording rules wrote nothing.
 			for _, inferredKey := range keys {
-				key := IdentifierKey{Kind: inferredKey.Kind, Identifier: inferredKey.Origin}
-				snap.Identifiers[key] = docPath
-				snap.Inferred[key] = inferredKey
+				snap.Identifiers[IdentifierKey{Kind: inferredKey.Kind, Identifier: inferredKey.Origin}] = docPath
 			}
 			continue
-		}
-		if inferredOriginName != "" {
-			snap.IDOnlyDocuments[IdentifierKey{Kind: asset.InferredOriginKind(normalizedKind), Identifier: inferredOriginName}] = true
 		}
 		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
 		snap.Identifiers[key] = docPath
