@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
@@ -239,39 +238,41 @@ func uploadInOrder(artifacts []sourceMapArtifact, concurrency int, upload func(s
 	results := make([]uploadResult, len(artifacts))
 	errs := make([]error, len(artifacts))
 	finished := make([]bool, len(artifacts))
-	// uploadedAs holds the index of the artifact whose upload stands for this one.
-	uploadedAs := make([]int, len(artifacts))
 	firstByBuildID := map[string]int{}
 	for index, artifact := range artifacts {
-		first, seen := firstByBuildID[artifact.BuildID]
-		if !seen {
+		if first, seen := firstByBuildID[artifact.BuildID]; seen {
+			results[index] = uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped, Reason: "same source map as " + artifacts[first].Script}
+		} else {
 			firstByBuildID[artifact.BuildID] = index
-			first = index
 		}
-		uploadedAs[index] = first
-		results[index] = uploadResult{sourceMapArtifact: artifact, Status: outcomeSkipped, Reason: "same source map as " + artifacts[first].Script}
 	}
 
 	var mutex sync.Mutex
+	failed := false
 	nextToReport := 0
 	reportFinished := func() {
-		for nextToReport < len(artifacts) && finished[uploadedAs[nextToReport]] {
-			if errs[uploadedAs[nextToReport]] == nil {
+		for ; nextToReport < len(artifacts); nextToReport++ {
+			first := firstByBuildID[artifacts[nextToReport].BuildID]
+			if !finished[first] {
+				return
+			}
+			if errs[first] == nil {
 				report(results[nextToReport])
 			}
-			nextToReport++
 		}
 	}
 
-	var failed atomic.Bool
 	slots := make(chan struct{}, concurrency)
 	var running sync.WaitGroup
 	for index, artifact := range artifacts {
-		if uploadedAs[index] != index {
+		if firstByBuildID[artifact.BuildID] != index {
 			continue
 		}
 		slots <- struct{}{}
-		if failed.Load() {
+		mutex.Lock()
+		stop := failed
+		mutex.Unlock()
+		if stop {
 			break
 		}
 		running.Go(func() {
@@ -282,9 +283,7 @@ func uploadInOrder(artifacts []sourceMapArtifact, concurrency int, upload func(s
 			results[index] = uploadResult{sourceMapArtifact: artifact, Status: status, Reason: reason}
 			errs[index] = err
 			finished[index] = true
-			if err != nil {
-				failed.Store(true)
-			}
+			failed = failed || err != nil
 			reportFinished()
 		})
 	}

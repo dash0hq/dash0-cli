@@ -19,6 +19,12 @@ func artifactsWithBuildIDs(buildIDs ...string) []sourceMapArtifact {
 	return artifacts
 }
 
+func runUploadInOrder(artifacts []sourceMapArtifact, concurrency int, upload func(sourceMapArtifact) (uploadOutcome, string, error)) ([]uploadResult, error) {
+	var reported []uploadResult
+	err := uploadInOrder(artifacts, concurrency, upload, func(result uploadResult) { reported = append(reported, result) })
+	return reported, err
+}
+
 func reportedBuildIDs(results []uploadResult) []string {
 	buildIDs := make([]string, len(results))
 	for index, result := range results {
@@ -43,9 +49,7 @@ func TestUploadInOrder_UploadsConcurrentlyAndReportsInOrder(t *testing.T) {
 		mutex.Unlock()
 		return outcomeUploaded, "", nil
 	}
-	var reported []uploadResult
-
-	err := uploadInOrder(artifacts, 4, upload, func(result uploadResult) { reported = append(reported, result) })
+	reported, err := runUploadInOrder(artifacts, 4, upload)
 
 	require.NoError(t, err)
 	assert.Equal(t, 4, peak)
@@ -65,9 +69,7 @@ func TestUploadInOrder_StartsNoUploadAfterAFailure(t *testing.T) {
 		}
 		return outcomeUploaded, "", nil
 	}
-	var reported []uploadResult
-
-	err := uploadInOrder(artifacts, 1, upload, func(result uploadResult) { reported = append(reported, result) })
+	reported, err := runUploadInOrder(artifacts, 1, upload)
 
 	require.EqualError(t, err, "upload failed")
 	assert.Equal(t, []string{"a", "fails"}, started)
@@ -83,9 +85,7 @@ func TestUploadInOrder_ReportsUploadsInFlightWhenOneFails(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		return outcomeUploaded, "", nil
 	}
-	var reported []uploadResult
-
-	err := uploadInOrder(artifacts, 2, upload, func(result uploadResult) { reported = append(reported, result) })
+	reported, err := runUploadInOrder(artifacts, 2, upload)
 
 	require.EqualError(t, err, "upload failed")
 	assert.Equal(t, []string{"slow"}, reportedBuildIDs(reported))
@@ -101,9 +101,7 @@ func TestUploadInOrder_UploadsASharedBuildIDOnce(t *testing.T) {
 		mutex.Unlock()
 		return outcomeUploaded, "", nil
 	}
-	var reported []uploadResult
-
-	err := uploadInOrder(artifacts, 4, upload, func(result uploadResult) { reported = append(reported, result) })
+	reported, err := runUploadInOrder(artifacts, 4, upload)
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, uploads)
@@ -117,9 +115,7 @@ func TestUploadInOrder_ReturnsEveryFailureInFlight(t *testing.T) {
 	upload := func(artifact sourceMapArtifact) (uploadOutcome, string, error) {
 		return "", "", errors.New("upload of " + artifact.BuildID + " failed")
 	}
-	var reported []uploadResult
-
-	err := uploadInOrder(artifacts, 2, upload, func(result uploadResult) { reported = append(reported, result) })
+	reported, err := runUploadInOrder(artifacts, 2, upload)
 
 	require.EqualError(t, err, "upload of a failed\nupload of b failed")
 	assert.Empty(t, reported)
