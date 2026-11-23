@@ -30,6 +30,10 @@ const testAuthToken = "auth_test_token"
 
 var viewIDPattern = regexp.MustCompile(`^/api/views/[^/]+$`)
 
+// datasetIDPattern matches a dataset read by its slug and, after a 404, by its
+// inferred origin.
+var datasetIDPattern = regexp.MustCompile(`^/api/datasets/[^/]+$`)
+
 func withAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
 	prev := agentmode.Enabled
@@ -714,7 +718,7 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writeNewDatasetWithView(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,
@@ -726,7 +730,8 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	var pending *PendingDifferencesError
 	require.ErrorAs(t, err, &pending, output)
 	assert.Equal(t, 2, pending.Count)
-	assert.Contains(t, output, `Create Dataset "Staging" (staging)`)
+	// A dataset that does not exist is created by its origin, inferred from its slug.
+	assert.Contains(t, output, `Create Dataset "Staging" (`+asset.InferOrigin("dataset", "staging", "")+`)`)
 	// apply creates the dataset first, so the id is not found and the view is
 	// created by its inferred origin.
 	assert.Contains(t, output, `Create View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`)`)
@@ -739,7 +744,7 @@ func TestDiff_DroppedForbiddenReadWarnsOnStderr(t *testing.T) {
 	withAgentMode(t, true)
 	dir := writeNewDatasetWithView(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,
@@ -1065,7 +1070,7 @@ spec:
     rate: 1
 `), 0644))
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,
@@ -1319,7 +1324,7 @@ func TestDiff_SamplingRuleInDatasetCreatedInSameRunWarns(t *testing.T) {
 			doc := strings.Replace(samplingRuleDoc, "enabled: true", c.enabled, 1)
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "rule.yaml"), []byte(doc), 0644))
 			server := testutil.NewMockServer(t, testutil.FixturesDir())
-			server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+			server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 				StatusCode: http.StatusNotFound,
 				Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 				Validator:  testutil.RequireHeaders,
@@ -1501,7 +1506,7 @@ spec:
           expr: sum(up)
 `), 0644))
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,

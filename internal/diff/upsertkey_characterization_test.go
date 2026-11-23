@@ -291,8 +291,8 @@ func TestUpsertKey_Characterization(t *testing.T) {
 		"dataset": {
 			withNeither: {"", "", "error: dataset definition requires a slug in spec.slug or metadata.labels[\"dash0.com/id\"]"},
 			withOrigin:  {"", "", "error: dataset definition requires a slug in spec.slug or metadata.labels[\"dash0.com/id\"]"},
-			withID:      {"i", "i", "GetDataset(i)"},
-			withBoth:    {"i", "i", "GetDataset(i)"},
+			withID:      {"i", "i", "GetDataset(i) GetDataset(dash0-cli_b7e674b12c0387a6c726538139d1b7d5)"},
+			withBoth:    {"i", "i", "GetDataset(i) GetDataset(o)"},
 		},
 		"skill": {
 			withNeither: {"", "", "GetCustomSkill(dash0-cli_b0d12560acda94b0cbbc694b1a9679c6)"},
@@ -301,8 +301,8 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withBoth:    {"i", "o", "GetCustomSkill(i) GetCustomSkill(o)"},
 		},
 		"awsmetricscrapeconfig": {
-			withNeither: {"", "", "GetAwsMetricScrapeConfig() error: AWS integration not found (status: 404)"},
-			withOrigin:  {"", "", "GetAwsMetricScrapeConfig() error: AWS integration not found (status: 404)"},
+			withNeither: {"", "", "error: Dash0AwsMetricScrapeConfig requires metadata.labels[\"dash0.com/id\"]: it is the id of the AWS integration whose scrape config the document replaces"},
+			withOrigin:  {"", "", "error: Dash0AwsMetricScrapeConfig requires metadata.labels[\"dash0.com/id\"]: it is the id of the AWS integration whose scrape config the document replaces"},
 			withID:      {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
 			withBoth:    {"i", "i", "GetAwsMetricScrapeConfig(i) error: AWS integration \"i\" not found (status: 404)"},
 		},

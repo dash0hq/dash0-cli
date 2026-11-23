@@ -240,7 +240,8 @@ func createsDataset(planned []plannedDoc, dataset *string) bool {
 	}
 	for _, pd := range planned {
 		for _, p := range pd.plans {
-			if p.displayKind == "Dash0Dataset" && p.plan.Action == asset.ActionCreated && p.plan.Key == *dataset {
+			// A create writes at the dataset's origin, so compare its slug.
+			if proposed, ok := p.plan.Proposed.(*dash0api.DatasetDefinition); ok && p.plan.Action == asset.ActionCreated && dash0api.GetDatasetID(proposed) == *dataset {
 				return true
 			}
 		}

@@ -825,7 +825,7 @@ When the identifier is present, both `create` and `apply` perform an **upsert** 
 
 #### Routing rule
 
-Every kind except datasets and AWS metric scrape configs follows one routing rule in `create` and `apply`: dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, spam filters, time series aggregations, notification channels, teams, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills.
+Every kind follows one routing rule in `create` and `apply`: dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, spam filters, time series aggregations, notification channels, teams, SLOs, evals, signal-to-metrics rules, sampling rules, Agent0 skills, datasets, and AWS metric scrape configs.
 
 1. When the document has a `dash0.com/id`, the CLI reads the asset by that id, and updates it at the id when it exists.
    If the stored asset has a `dash0.com/origin` other than the one in the document, the write fails, because the CLI never changes a stored origin.
@@ -867,7 +867,15 @@ To remove a duplicate that already exists, delete it by its origin or id:
 dash0 views delete <origin-or-id> --force
 ```
 
-Datasets and AWS metric scrape configs follow the per-kind rules in the table below.
+Datasets and AWS metric scrape configs always have an id, so their inferred origin hashes the id in place of `metadata.name`:
+
+- A dataset's id is its slug.
+  A dataset whose slug is not found is created by its origin.
+  The PUT also restores a dataset deleted in the last 30 days.
+- An AWS metric scrape config's id is the id of its AWS integration.
+  An integration that is not found fails, because the CLI cannot create one.
+  The first config of an integration, and the first after `aws-metric-scrape-configs delete`, is the create, so it sends the origin.
+  Dash0 ignores the origin on later writes.
 
 If the CLI reports an invalid API response after a create or update, the server may already have applied the write.
 Check the asset in Dash0 before retrying.
@@ -878,7 +886,6 @@ A failed read by origin still allows the PUT, because the origin is the target e
 Time series aggregations are the exception: any failed read stops the write, because every endpoint for this kind needs the admin role, so the PUT would fail the same way.
 For SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills, any failed read other than "not found" also stops the write.
 A failed read by origin lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
-The reads that decide between POST and PUT, such as the dataset read, stop on errors other than 404.
 
 The identifier field location varies by asset kind:
 
@@ -899,8 +906,8 @@ The identifier field location varies by asset kind:
 | `Dash0SignalToMetrics` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). The body carries `dash0.com/id` only on a write at that id. As for time series aggregations, origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document with an explicit origin to two datasets |
 | `Dash0Sampling` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). IDs are unique across organizations, so an id that is not found is never written to; the rule is created by its origin instead. Origins are unique per **organization** while each rule belongs to one dataset, so you cannot apply one document with an explicit origin to two datasets |
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level. Follows the [routing rule](#routing-rule) |
-| `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. The slug is required, is the only identifier, and cannot change after creation. `dash0.com/origin` is optional and also works as the identifier in the API path. The CLI preflights `GET /api/datasets/{slug}`: on hit it PUTs, on 404 it POSTs, and other errors surface. `create` and `apply` therefore create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
-| `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Every AWS integration has exactly one scrape config, so the integration id is the only identifier and is required. `apply` always replaces the whole config (PUT); there is no create. `dash0.com/origin` is ignored: the CLI does not send it |
+| `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. Follows the [routing rule](#routing-rule), with the slug as the id. The slug is required and cannot change after creation. Without `dash0.com/origin`, the inferred origin hashes the slug. `create` and `apply` create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
+| `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Follows the [routing rule](#routing-rule) at the id only: every AWS integration has exactly one scrape config, so the integration id is required, and an unknown integration fails. `apply` always replaces the whole config (PUT). The first config of an integration sends `dash0.com/origin`, or the origin inferred from the integration id; later writes do not |
 | `Dash0Skill` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level Agent0 custom skill. Follows the [routing rule](#routing-rule). The inferred origin comes from the skill name in the `SKILL.md` frontmatter, not from `metadata.name`. Use a `dash0-cli_` prefix in an explicit origin so Dash0 shows the skill as managed by the CLI. The skill name is unique per organization, so a skill that an earlier CLI version created by POST, at a server-assigned origin, makes the next apply fail with a name collision. Delete that skill, or set its origin in the document, to manage it with `apply` |
 | `Dash0Team` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level. Follows the [routing rule](#routing-rule). An exported SSO/SCIM team keeps its `dash0.com/id`, so it updates at the id even though the teams endpoint cannot resolve its `saml://...` origin. `spec.members` accepts email addresses or internal member ids interchangeably |
 
@@ -1165,7 +1172,7 @@ See [Eval documents](#eval-documents-experimental) for the fields the CLI remove
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
-The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
+They follow the [routing rule](#routing-rule), with the slug as the id: on hit the CLI updates the dataset at its slug, and on 404 it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug.
 Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 `apply` prints `created` for a restore, as it does for a new dataset.
@@ -1231,8 +1238,10 @@ These checks run during the validation phase, before any document in the run is 
 - A label or annotation that the API ignores prints a warning.
   The labels and annotations that `aws-metric-scrape-configs get -o yaml` exports are not warned about.
 
-The CLI does not send `dash0.com/origin`, so it never claims ownership of a config.
-Dash0 keeps the origin of the first writer until the config is cleared.
+They follow the [routing rule](#routing-rule) at the integration id only, because the CLI cannot create an integration.
+The first config of an integration sends `dash0.com/origin`, or the origin the CLI infers from the integration id.
+Dash0 keeps the origin of the first writer until the config is cleared, and ignores it on later writes, so an update never sends it.
+A document whose `dash0.com/origin` differs from the stored one fails, as for the other kinds.
 `apply` prints `created` when the integration had no config before, and a diff otherwise.
 
 > [!NOTE]
@@ -4165,6 +4174,7 @@ Use `-o yaml` to get the full definition, suitable for editing and re-applying.
 Create a dataset from a YAML or JSON definition file.
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required and cannot change after creation.
 If a dataset with that slug already exists, the command updates it.
+Otherwise it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug, as `apply` does.
 If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 `apiVersion: dash0.com/v1alpha1` is required.

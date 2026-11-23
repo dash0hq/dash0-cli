@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -33,13 +34,6 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/timeseriesaggregations"
 	"github.com/dash0hq/dash0-cli/internal/views"
 )
-
-// notRoutedYet lists the kinds that do not go through asset.RouteDocument yet.
-// Each later change that moves a kind onto the router removes it here.
-var notRoutedYet = map[string]string{
-	"dataset":               "the slug is the id",
-	"awsmetricscrapeconfig": "the integration id is the id",
-}
 
 // routedKind is what the conformance test needs to know about a kind the
 // router serves.
@@ -68,6 +62,12 @@ type routedKind struct {
 	// inferKind and inferName override the kind and name the inferred origin
 	// is computed from, for kinds whose asset is not named after the document.
 	inferKind, inferName string
+	// cases replaces routerCases for a kind whose id is required, so the rows
+	// without an id cannot apply.
+	cases []routerCase
+	// unsetFixture answers a GET at a key stored with no origin, for a kind
+	// that always exists at its id and is created by its first write.
+	unsetFixture string
 }
 
 var routedKinds = map[string]routedKind{
@@ -173,6 +173,25 @@ var routedKinds = map[string]routedKind{
 				"spec:\n  groups:\n    - name: group\n      rules:\n        - alert: HighErrorRate\n          expr: up == 0\n"
 		},
 	},
+	"dataset": {
+		// The slug is the id and is required. The inferred origin hashes it in
+		// place of metadata.name.
+		path: "/api/datasets", fixture: "datasets/get_success.json", orgLevel: true, inferName: "i",
+		cases: datasetRouterCases,
+		document: func(labels string) string {
+			return "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: checkout\n" + labels + "spec: {}\n"
+		},
+	},
+	"awsmetricscrapeconfig": {
+		// The integration id is the only key. Every integration has a config,
+		// so a 404 is an unknown integration, which the CLI cannot create.
+		path: "/api/aws-metric-scrape-configs", fixture: "awsmetricscrapeconfigs/get_configured.json", orgLevel: true,
+		inferName: awsIntegrationID, unsetFixture: "awsmetricscrapeconfigs/get_unconfigured.json",
+		cases: awsMetricScrapeConfigRouterCases,
+		document: func(labels string) string {
+			return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + labels + "spec:\n  namespaces: []\n"
+		},
+	},
 	"spamfilter": {
 		path: "/api/spam-filters", fixture: "spamfilters/get_success.json",
 		document: func(labels string) string {
@@ -217,6 +236,9 @@ type routerCase struct {
 	wantErr string
 	// idMiss rows write at the origin after the id is not found.
 	idMiss bool
+	// createOrigin is the origin a create at the id sends, for a kind whose
+	// create keeps the id as its key.
+	createOrigin string
 }
 
 const inferredKey = "<inferred>"
@@ -265,18 +287,93 @@ var routerCases = []routerCase{
 	},
 }
 
+// datasetRouterCases are the routerCases for a dataset, whose slug is its id:
+// the rows with an id are the same, and a document without one fails
+// validation before any request.
+var datasetRouterCases = append(slices.DeleteFunc(slices.Clone(routerCases), func(tc routerCase) bool {
+	return tc.labels["dash0.com/id"] == ""
+}),
+	routerCase{
+		name:   "id and origin, id not found",
+		labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
+		want:   []string{"GET i", "GET o", "PUT o"},
+	},
+	routerCase{
+		name:    "origin only",
+		labels:  map[string]string{"dash0.com/origin": "o"},
+		wantErr: "requires a slug",
+	},
+	routerCase{
+		name:    "no identifier",
+		wantErr: "requires a slug",
+	},
+)
+
+const awsIntegrationID = "27755ed0-0009-422d-8c11-19c6dd72df98"
+
+// awsMetricScrapeConfigRouterCases are the routing rule for the one kind with
+// no create by origin: an AWS metric scrape config is written at its
+// integration id, and its first write is the create that sends the origin.
+var awsMetricScrapeConfigRouterCases = []routerCase{
+	{
+		name:   "id hit",
+		labels: map[string]string{"dash0.com/id": awsIntegrationID, "dash0.com/origin": "o"},
+		stored: map[string]string{awsIntegrationID: "o"},
+		want:   []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+	},
+	{
+		name:   "id hit, no origin in the document",
+		labels: map[string]string{"dash0.com/id": awsIntegrationID},
+		stored: map[string]string{awsIntegrationID: "o"},
+		want:   []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+	},
+	{
+		name:         "first config, origin in the document",
+		labels:       map[string]string{"dash0.com/id": awsIntegrationID, "dash0.com/origin": "o"},
+		stored:       map[string]string{awsIntegrationID: ""},
+		want:         []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+		createOrigin: "o",
+	},
+	{
+		name:         "first config, no origin in the document",
+		labels:       map[string]string{"dash0.com/id": awsIntegrationID},
+		stored:       map[string]string{awsIntegrationID: ""},
+		want:         []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+		createOrigin: inferredKey,
+	},
+	{
+		name:    "id with a differing stored origin",
+		labels:  map[string]string{"dash0.com/id": awsIntegrationID, "dash0.com/origin": "o"},
+		stored:  map[string]string{awsIntegrationID: "other"},
+		want:    []string{"GET " + awsIntegrationID},
+		wantErr: `has origin "other" in Dash0`,
+	},
+	{
+		name:    "integration not found",
+		labels:  map[string]string{"dash0.com/id": awsIntegrationID},
+		want:    []string{"GET " + awsIntegrationID},
+		wantErr: "not found",
+	},
+	{
+		name:    "no identifier",
+		labels:  map[string]string{"dash0.com/origin": "o"},
+		wantErr: `requires metadata.labels["dash0.com/id"]`,
+	},
+}
+
 // TestRouter_EveryKindFollowsTheSameOrder runs the routing rule against the
 // mock server for every kind apply accepts. A new kind fails here until it is
-// routed or listed in notRoutedYet.
+// routed.
 func TestRouter_EveryKindFollowsTheSameOrder(t *testing.T) {
 	for _, kind := range asset.ValidKinds {
 		t.Run(kind, func(t *testing.T) {
-			if reason, skip := notRoutedYet[kind]; skip {
-				t.Skip("not routed yet: " + reason)
-			}
 			spec, ok := routedKinds[kind]
-			require.True(t, ok, "kind %q is neither routed nor listed in notRoutedYet", kind)
-			for _, tc := range routerCases {
+			require.True(t, ok, "kind %q is not routed", kind)
+			cases := routerCases
+			if spec.cases != nil {
+				cases = spec.cases
+			}
+			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					runRouterCase(t, kind, spec, tc)
 				})
@@ -313,6 +410,10 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 	for key, origin := range tc.stored {
 		if spec.originIsID && origin != key {
 			t.Skip("the stored origin of this kind is its id; see TestRouter_CheckRuleOriginIsItsID")
+		}
+		if origin == "" && spec.unsetFixture != "" {
+			storedResponses[resolve(key)] = readFixture(t, spec.unsetFixture)
+			continue
 		}
 		stored[resolve(key)] = origin
 		storedResponses[resolve(key)] = storedAsset(t, fixture, spec, resolve(key), origin)
@@ -367,6 +468,8 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 			assert.Equal(t, key, bodyOrigin, "an update at the stored origin keeps it, so a read by id still shows it")
 		case update || spec.originInPath:
 			assert.Empty(t, bodyOrigin, "an update must not send the origin")
+		case tc.createOrigin != "":
+			assert.Equal(t, resolve(tc.createOrigin), bodyOrigin, "a create sends the origin it is created by")
 		default:
 			assert.Equal(t, key, bodyOrigin, "a create sends the origin it is created by")
 		}
@@ -514,14 +617,19 @@ func topLevel(labels string) string {
 // routedFixtures returns the stored-asset fixture of spec and the body that answers a write.
 func routedFixtures(t *testing.T, spec routedKind) (fixture, writeResponse []byte) {
 	t.Helper()
-	fixture, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), spec.fixture))
-	require.NoError(t, err)
+	fixture = readFixture(t, spec.fixture)
 	writeResponse = fixture
 	if spec.putFixture != "" {
-		writeResponse, err = os.ReadFile(filepath.Join(testutil.FixturesDir(), spec.putFixture))
-		require.NoError(t, err)
+		writeResponse = readFixture(t, spec.putFixture)
 	}
 	return fixture, writeResponse
+}
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	fixture, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), name))
+	require.NoError(t, err)
+	return fixture
 }
 
 type routedRequest struct {

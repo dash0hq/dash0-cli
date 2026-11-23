@@ -293,8 +293,9 @@ func WithInferredOriginWrites(ctx context.Context, writes InferredOriginWrites, 
 }
 
 // documentIdentity returns the identity apply routes the document by, and
-// false for kinds the router does not serve yet. Parse errors are reported
-// when the document is applied.
+// false for datasets and AWS metric scrape configs, whose inferred origin
+// hashes their required id, so it cannot collide with another document's.
+// Parse errors are reported when the document is applied.
 func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 	identity, _, routed, err := parseRoutedIdentity(doc.Kind, doc.Raw, dataset)
 	return identity, routed && err == nil
@@ -330,7 +331,7 @@ func IsRoutedKind(kind string) bool {
 }
 
 // DocumentCreateOrigin returns the origin apply creates the document by, or ""
-// for kinds the router does not serve.
+// for the kinds documentIdentity leaves out.
 func DocumentCreateOrigin(doc Document, dataset *string) string {
 	identity, ok := documentIdentity(doc, dataset)
 	if !ok {
@@ -340,8 +341,8 @@ func DocumentCreateOrigin(doc Document, dataset *string) string {
 }
 
 // parseRoutedIdentity returns the identity apply routes the document by, the
-// name its inferred origin comes from, and false for kinds the router does
-// not serve yet.
+// name its inferred origin comes from, and false for the kinds
+// documentIdentity leaves out.
 func parseRoutedIdentity(kind string, raw []byte, dataset *string) (identity Identity, name string, routed bool, err error) {
 	parse, routed := routedParsers[NormalizeKind(kind)]
 	if !routed {

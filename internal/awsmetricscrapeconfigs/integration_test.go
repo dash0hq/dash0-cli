@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
@@ -243,7 +244,10 @@ func TestUpdate_ReplacesConfigAndShowsDiff(t *testing.T) {
 	var sent dash0api.AwsMetricScrapeConfigDefinition
 	require.NoError(t, json.Unmarshal(puts[0].Body, &sent))
 	assert.Equal(t, "dash0.com/v1alpha1", string(sent.ApiVersion))
-	assert.Nil(t, sent.Metadata.Labels, "the CLI must not send an origin or other labels")
+	require.NotNil(t, sent.Metadata.Labels)
+	assert.Equal(t, asset.InferOrigin("awsmetricscrapeconfig", integrationID, ""), dash0api.GetAwsMetricScrapeConfigOrigin(&sent),
+		"the first config sends the origin it is created by")
+	assert.Nil(t, sent.Metadata.Labels.Dash0Comid, "no label other than the origin is sent")
 	assert.Nil(t, sent.Metadata.Name)
 	require.Len(t, sent.Spec.Namespaces, 2)
 	assert.Equal(t, "AWS/S3", sent.Spec.Namespaces[0].Namespace)

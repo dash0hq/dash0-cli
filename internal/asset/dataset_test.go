@@ -58,9 +58,10 @@ func TestValidateDatasetAPIVersion(t *testing.T) {
 		`unsupported dataset apiVersion "v1" (supported: dash0.com/v1alpha1)`)
 }
 
-// datasetRecorder records what ImportDataset sends.
+// datasetRecorder records what ImportDataset writes when nothing is stored.
 type datasetRecorder struct {
 	dash0api.Client
+	key     string
 	created *dash0api.DatasetDefinition
 }
 
@@ -68,8 +69,8 @@ func (datasetRecorder) GetDataset(context.Context, string) (*dash0api.DatasetDef
 	return nil, &dash0api.APIError{StatusCode: 404}
 }
 
-func (r *datasetRecorder) CreateDataset(_ context.Context, d *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
-	r.created = d
+func (r *datasetRecorder) UpdateDataset(_ context.Context, key string, d *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
+	r.key, r.created = key, d
 	return d, nil
 }
 
@@ -111,6 +112,10 @@ func TestImportDataset_SendsNewSpecFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ActionCreated, result.Action)
 	require.NotNil(t, rec.created)
+	inferred := InferOrigin("dataset", "prod", "")
+	assert.Equal(t, inferred, rec.key, "a dataset that does not exist is created by its origin")
+	assert.Equal(t, inferred, dash0api.GetDatasetOrigin(rec.created), "a create sends its origin")
+	assert.Equal(t, "prod", dash0api.GetDatasetID(rec.created), "the slug stays in the body")
 	assert.Equal(t, DatasetAPIVersion, rec.created.ApiVersion)
 	assert.Equal(t, dash0api.RetentionClassN90d, *rec.created.Spec.Retention.Logs)
 	assert.Equal(t, dash0api.RetentionClassN60d, *rec.created.Spec.Retention.Traces)
@@ -162,4 +167,5 @@ func TestImportDataset_DoesNotDependOnThePreviewMerge(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ActionUpdated, result.Action)
 	require.NotNil(t, stored.updated)
+	assert.Empty(t, dash0api.GetDatasetOrigin(stored.updated), "an update never sends the origin")
 }

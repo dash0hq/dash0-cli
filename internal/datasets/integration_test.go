@@ -14,6 +14,7 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
@@ -397,7 +398,9 @@ func TestGetDataset_Unauthorized(t *testing.T) {
 	assert.Contains(t, err.Error(), "authentication failed")
 }
 
-func TestCreateDataset_PostsWhenPreflightIs404(t *testing.T) {
+// A PUT creates a dataset that does not exist, and restores one deleted within
+// the last 30 days, so the create goes to the inferred origin, never by POST.
+func TestCreateDataset_PutsByOriginWhenPreflightIs404(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
@@ -405,7 +408,7 @@ func TestCreateDataset_PostsWhenPreflightIs404(t *testing.T) {
 		BodyFile:   testutil.FixtureDatasetsNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -416,14 +419,16 @@ func TestCreateDataset_PostsWhenPreflightIs404(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, `Dataset "Production" created (id: production)`)
 
-	posts := requestsFor(server, http.MethodPost, apiPathDatasets)
-	require.Len(t, posts, 1)
-	body := decodeDataset(t, posts[0])
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
+	inferred := asset.InferOrigin("dataset", "production", "")
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/"+inferred)
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
 	assert.Equal(t, dash0api.Dash0Dataset, body.Kind)
 	assert.Equal(t, "Production", body.Metadata.Name)
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assert.Equal(t, inferred, dash0api.GetDatasetOrigin(&body))
 	assertNewShapeSpec(t, &body, dash0api.RetentionClassN90d)
-	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
 }
 
 func TestCreateDataset_PutsWhenPreflightHits(t *testing.T) {
@@ -470,7 +475,7 @@ func TestCreateDataset_PreflightErrorSurfaces(t *testing.T) {
 	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
 }
 
-func TestCreateDataset_PermissionsSentInPost(t *testing.T) {
+func TestCreateDataset_PermissionsSentOnCreate(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
@@ -478,7 +483,7 @@ func TestCreateDataset_PermissionsSentInPost(t *testing.T) {
 		BodyFile:   testutil.FixtureDatasetsNotFound,
 		Validator:  testutil.RequireHeaders,
 	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -500,10 +505,10 @@ spec:
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "created")
-	posts := requestsFor(server, http.MethodPost, apiPathDatasets)
-	require.Len(t, posts, 1)
-	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
-	body := decodeDataset(t, posts[0])
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathDatasets))
+	puts := requestsFor(server, http.MethodPut, "/api/datasets/"+asset.InferOrigin("dataset", "production", ""))
+	require.Len(t, puts, 1)
+	body := decodeDataset(t, puts[0])
 	require.NotNil(t, body.Spec.Permissions)
 	require.Len(t, *body.Spec.Permissions, 1)
 	assert.Equal(t, []dash0api.DatasetAction{dash0api.DatasetRead}, (*body.Spec.Permissions)[0].Actions)
