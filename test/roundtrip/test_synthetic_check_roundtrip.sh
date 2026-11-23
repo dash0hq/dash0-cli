@@ -12,8 +12,11 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # Other scripts create assets from the same fixture in parallel, so a unique
 # name keeps the lookup by name below on this script's own synthetic check.
 FIXTURE="${TMPDIR}/synthetic-check.yaml"
-ASSET_NAME="$(yq '.spec.display.name' "${FIXTURES}/synthetic-check.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
-ASSET_NAME="$ASSET_NAME" yq '.spec.display.name = env(ASSET_NAME)' "${FIXTURES}/synthetic-check.yaml" > "$FIXTURE"
+# Every CI run shares one Dash0 organization, and the inferred origin hashes
+# metadata.name, so a unique name keeps concurrent runs off each other's asset.
+SUFFIX="$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$(yq '.spec.display.name' "${FIXTURES}/synthetic-check.yaml") $SUFFIX"
+ASSET_NAME="$ASSET_NAME" SUFFIX="$SUFFIX" yq '.spec.display.name = env(ASSET_NAME) | .metadata.name += "-" + env(SUFFIX)' "${FIXTURES}/synthetic-check.yaml" > "$FIXTURE"
 
 echo "=== Synthetic check round-trip test ==="
 echo "Asset name: $ASSET_NAME"

@@ -6,11 +6,14 @@ export DASH0_AGENT_MODE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 FIXTURES="${SCRIPT_DIR}/fixtures"
-FIXTURE="${FIXTURES}/spam-filter-v1alpha2.yaml"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-ASSET_NAME=$(yq '.metadata.name' "$FIXTURE")
+# Every CI run shares one Dash0 organization, and the inferred origin hashes
+# metadata.name, so a unique name keeps concurrent runs off each other's asset.
+FIXTURE="${TMPDIR}/spam-filter-v1alpha2.yaml"
+ASSET_NAME="$(yq '.metadata.name' "${FIXTURES}/spam-filter-v1alpha2.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$ASSET_NAME" yq '.metadata.name = env(ASSET_NAME)' "${FIXTURES}/spam-filter-v1alpha2.yaml" > "$FIXTURE"
 
 echo "=== Spam filter v1alpha2 round-trip test ==="
 echo "Asset name: $ASSET_NAME"

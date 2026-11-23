@@ -11,8 +11,11 @@ TMPDIR="$(mktemp -d)"
 # Earlier runs may have left dashboards with the fixture's name behind, so a
 # unique name keeps every lookup by name below on this run's own dashboards.
 FIXTURE="${TMPDIR}/perses-dashboard.yaml"
-ASSET_NAME="$(yq '.spec.display.name' "${FIXTURES}/perses-dashboard.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
-ASSET_NAME="$ASSET_NAME" yq '.spec.display.name = env(ASSET_NAME)' "${FIXTURES}/perses-dashboard.yaml" > "$FIXTURE"
+# Every CI run shares one Dash0 organization, and the inferred origin hashes
+# metadata.name, so a unique name keeps concurrent runs off each other's asset.
+SUFFIX="$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$(yq '.spec.display.name' "${FIXTURES}/perses-dashboard.yaml") $SUFFIX"
+ASSET_NAME="$ASSET_NAME" SUFFIX="$SUFFIX" yq '.spec.display.name = env(ASSET_NAME) | .metadata.name += "-" + env(SUFFIX)' "${FIXTURES}/perses-dashboard.yaml" > "$FIXTURE"
 
 # dashboard_ids prints the IDs of the dashboards this run created.
 dashboard_ids() {

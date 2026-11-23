@@ -12,8 +12,11 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # Other scripts create assets from the same fixture in parallel, so a unique
 # name keeps the lookup by name below on this script's own SLO.
 FIXTURE="${TMPDIR}/slo.yaml"
-ASSET_NAME="$(yq '.metadata.annotations."dash0.com/display-name"' "${FIXTURES}/slo.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
-ASSET_NAME="$ASSET_NAME" yq '.metadata.annotations."dash0.com/display-name" = env(ASSET_NAME)' "${FIXTURES}/slo.yaml" > "$FIXTURE"
+# Every CI run shares one Dash0 organization, and the inferred origin hashes
+# metadata.name, so a unique name keeps concurrent runs off each other's asset.
+SUFFIX="$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$(yq '.metadata.annotations."dash0.com/display-name"' "${FIXTURES}/slo.yaml") $SUFFIX"
+ASSET_NAME="$ASSET_NAME" SUFFIX="$SUFFIX" yq '.metadata.annotations."dash0.com/display-name" = env(ASSET_NAME) | .metadata.name += "-" + env(SUFFIX)' "${FIXTURES}/slo.yaml" > "$FIXTURE"
 
 echo "=== SLO round-trip test ==="
 echo "Asset name: $ASSET_NAME"
