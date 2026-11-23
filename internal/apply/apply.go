@@ -268,6 +268,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	if deletionPlan != nil {
+		printWarnings(deletionPlan.Warnings)
 		// The non-ancestor confirmation happens here, after every document
 		// create/update above has already gone through — never before them.
 		// Gating it earlier (inside computeDeletionPlan, as this used to

@@ -851,7 +851,9 @@ Set `dash0.com/origin` to keep the asset across a rename.
 A document read from stdin (`-f -`) gets the same inferred origin as the same document read from a file, because the hash uses no file path.
 The dataset is not part of the document: it is the `--dataset` of the run, and every document of the run uses it.
 Applying the same file with another `--dataset` creates the asset in that dataset and leaves the one in the first dataset.
-Moving a document to a directory that is applied with another `--dataset` is a removal for the first directory, so `apply --since` on it deletes the old asset.
+Moving a document without `dash0.com/origin` to a directory that is applied with another `--dataset` leaves the old asset in the first dataset.
+`apply --since` cannot tell which dataset a directory is applied with, so it does not delete at an inferred origin that a document elsewhere in the repository still writes, and prints a warning instead.
+Delete the old asset by hand in its dataset.
 Two documents in one run without `dash0.com/id` or `dash0.com/origin` that would get the same inferred origin fail validation before anything is written.
 So does a document whose `dash0.com/origin` is the inferred origin of another document in the run.
 A document with only a `dash0.com/id` writes by its inferred origin when the id is not found, so `apply` and `diff` fail at that document when another document of the run already writes there.
@@ -1442,6 +1444,16 @@ View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
 
 When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
 
+`--since` also does not delete at an inferred origin that a document anywhere else in the repository still writes for the dataset of the run, and prints a warning that names that document.
+The dataset a directory was applied with is not recorded in git, so a document moved to a directory applied with another dataset gets the same inferred origin, and deleting there would remove the asset the moved document still declares:
+
+```bash
+$ dash0 --experimental apply -f old/ --since HEAD~1 --dataset staging --force
+warning: --since does not delete View dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8: new/view.yaml still declares it in dataset "staging"; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset
+```
+
+Run `--since` with the dataset the removed document was applied to, and delete the old asset in that dataset by hand.
+
 A dataset without a slug and an AWS metric scrape config without `dash0.com/id` have no inferred origin.
 A removed document of these kinds that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
@@ -1563,6 +1575,7 @@ If any single fetch fails for a reason other than the asset simply not existing 
 `--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
 A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
 A removed document without `dash0.com/id` or `dash0.com/origin` is listed as a deletion at its inferred origin, as `apply --since` deletes it.
+When a document elsewhere in the repository still writes that inferred origin, `diff --since` leaves it out and prints the same warning as `apply --since`.
 A removed dataset without a slug, or AWS metric scrape config without `dash0.com/id`, still fails the whole command before any plan is reported, matching `apply --since`'s posture.
 A check rule that `-f`'s current contents still declare is not listed as a deletion, because `apply --since` skips it.
 When every asset definition under `-f`'s target was deleted, whether the directory is now empty or was removed, `diff --since` lists every deletion, the same as `apply --since`.

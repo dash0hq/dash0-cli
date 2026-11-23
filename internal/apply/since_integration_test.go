@@ -3,6 +3,7 @@
 package apply
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
@@ -3673,6 +3675,54 @@ func TestApply_RenamedDocumentWithoutIdentifier(t *testing.T) {
 				args = append(args, "--since", before, "--force", "--experimental")
 			}
 			assert.Equal(t, tt.want, runSinceWrites(t, args, requests))
+		})
+	}
+}
+
+// A document moved out of -f to a directory applied with another dataset still
+// declares its asset there. Running --since on the old directory with that
+// dataset, from any source, must not delete it.
+func TestApply_Since_DoesNotDeleteAnInferredOriginDeclaredOutsideTheTarget(t *testing.T) {
+	view := "kind: View\nmetadata:\n  name: checkout\nspec:\n  type: logs\n  display:\n    name: checkout\n"
+	spec := routedKinds["view"]
+	declared := asset.InferOrigin("view", "checkout", "two")
+
+	for _, source := range []string{"flag", "env", "profile"} {
+		t.Run(source, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			before := commitRemoval(t, dir, map[string]string{"old/view.yaml": view}, "old/view.yaml")
+			writeFileFixture(t, dir, "new/view.yaml", view)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "move")
+
+			fixture, writeResponse := routedFixtures(t, spec)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			requests := serveRouted(server, spec, map[string][]byte{declared: storedAsset(t, fixture, spec, declared, declared)}, writeResponse)
+
+			args := []string{"-f", filepath.Join(dir, "old"), "--since", before, "--force", "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken}
+			cmd := newSinceTestCmd()
+			switch source {
+			case "flag":
+				args = append(args, "--dataset", "two")
+			case "env":
+				t.Setenv("DASH0_DATASET", "two")
+			case "profile":
+				cmd.SetContext(profiles.WithConfiguration(context.Background(), testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
+					ApiUrl: server.URL, AuthToken: testAuthToken, Dataset: "two",
+				})))
+			}
+			cmd.SetArgs(args)
+			var cmdErr error
+			stderr := testutil.CaptureStderr(t, func() {
+				testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+			})
+			require.NoError(t, cmdErr)
+
+			for _, request := range *requests {
+				assert.NotEqual(t, "DELETE "+declared, request.line)
+			}
+			assert.Contains(t, stderr, "new/view.yaml")
 		})
 	}
 }

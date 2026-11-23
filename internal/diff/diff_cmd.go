@@ -119,6 +119,9 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 			// not the confirmation apply asks for.
 			fmt.Fprintf(os.Stderr, "warning: %s\n", sincePlan.Warning)
 		}
+		for _, warning := range sincePlan.Warnings {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
+		}
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)

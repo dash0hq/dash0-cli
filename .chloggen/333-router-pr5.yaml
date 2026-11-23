@@ -18,6 +18,8 @@ subtext: |
   Renaming `metadata.name` of such a document now deletes the asset at the old origin, and `apply` writes the new one.
   A `--since` run that used to stop with "no identifier its kind is upserted by" now deletes these assets, which is why this change is breaking.
   Datasets without a slug and AWS metric scrape configs without `dash0.com/id` still fail the run.
+  `--since` skips, with a warning, an inferred origin that a document elsewhere in the repository still writes for the run's dataset.
+  The dataset a directory was applied with is not in git, so a document moved to a directory applied with another dataset leaves the old asset in the first dataset; delete it by hand.
   `diff --since` lists the same deletions, and `diff` reads a document without an identifier at its inferred origin, so an asset `apply` already wrote shows as an update or no change.
   `diff` no longer crashes on a view without a `labels` block when the stored view has an id.
 

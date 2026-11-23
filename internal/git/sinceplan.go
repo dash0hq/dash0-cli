@@ -17,6 +17,9 @@ import (
 type SincePlan struct {
 	Plan    DeletionPlan
 	Warning string
+	// Warnings names each deletion left out because a document outside -f
+	// still writes its asset.
+	Warnings []string
 	// names best-effort maps each ByIdentifier deletion's Path (the
 	// git-recorded path, unique within one plan) to its display name,
 	// resolved by re-reading the asset's content from git history at the
@@ -194,6 +197,10 @@ func ComputeSincePlan(ctx context.Context, file, since string, dataset *string) 
 	}
 
 	plan := Diff(before, after)
+	warnings, err := keepInferredOriginsDeclaredOutsideScope(ctx, &plan, before, repoRoot, dataset)
+	if err != nil {
+		return nil, err
+	}
 	if len(plan.NoIdentifier) > 0 {
 		return nil, fmt.Errorf("--since '%s' found %s deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
 			since, asset.Pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
@@ -201,7 +208,7 @@ func ComputeSincePlan(ctx context.Context, file, since string, dataset *string) 
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
-	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+	return &SincePlan{Plan: plan, Warning: warning, Warnings: warnings, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
 
 // NameOf returns the display name of d, or "" when the lookup failed.
@@ -349,4 +356,78 @@ func StripScope(path, scope string) string {
 		return rest
 	}
 	return path
+}
+
+// keepInferredOriginsDeclaredOutsideScope removes from plan each deletion at
+// an inferred origin that a document elsewhere in the repository still writes
+// for dataset. The dataset at the ref is not recorded, so a document moved out
+// of -f to a directory applied with another dataset, then deleted with that
+// dataset, would hit the asset the moved document still declares.
+// ponytail: a same-named document applied to another dataset also matches, so
+// that deletion is skipped too and leaves an orphan; an orphan can be deleted
+// by hand, a live asset cannot be brought back.
+func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *DeletionPlan, before Snapshot, repoRoot string, dataset *string) ([]string, error) {
+	var atInferredOrigin bool
+	for _, deletion := range plan.ByIdentifier {
+		if _, ok := before.Inferred[IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}]; ok {
+			atInferredOrigin = true
+			break
+		}
+	}
+	if !atInferredOrigin {
+		return nil, nil
+	}
+
+	declared, err := inferredOriginsOnDisk(ctx, repoRoot, dataset)
+	if err != nil {
+		return nil, err
+	}
+	datasetName := "default"
+	if dataset != nil && *dataset != "" {
+		datasetName = *dataset
+	}
+	var warnings []string
+	kept := plan.ByIdentifier[:0]
+	for _, deletion := range plan.ByIdentifier {
+		key := IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}
+		if _, inferred := before.Inferred[key]; inferred {
+			if path, ok := declared[key]; ok {
+				warnings = append(warnings, fmt.Sprintf("--since does not delete %s %s: %s still declares it in dataset %q; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset", asset.KindDisplayName(deletion.Kind), deletion.Identifier, path, datasetName))
+				continue
+			}
+		}
+		kept = append(kept, deletion)
+	}
+	plan.ByIdentifier = kept
+	return warnings, nil
+}
+
+// inferredOriginsOnDisk maps every inferred origin that a YAML file in the
+// repository writes for dataset to that file. A file that does not parse is
+// not an asset to --since, so its error is ignored.
+func inferredOriginsOnDisk(ctx context.Context, repoRoot string, dataset *string) (map[IdentifierKey]string, error) {
+	var paths []string
+	if err := filepath.WalkDir(repoRoot, asset.FindNonHiddenYAMLFiles(repoRoot, &paths, nil)); err != nil {
+		return nil, fmt.Errorf("failed to scan %s: %w", repoRoot, err)
+	}
+	declared := map[IdentifierKey]string{}
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		relPath, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			continue
+		}
+		snap := newSnapshot()
+		_ = ingestDocuments(&snap, relPath, data, dataset)
+		for key := range snap.Inferred {
+			declared[key] = filepath.ToSlash(relPath)
+		}
+	}
+	return declared, nil
 }

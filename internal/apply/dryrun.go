@@ -37,6 +37,9 @@ func runDryRun(documents []asset.Document, fromDirectory bool, fileArg, since st
 	if dp != nil && dp.Warning != "" {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", dp.Warning)
 	}
+	if dp != nil {
+		printWarnings(dp.Warnings)
+	}
 
 	plan, deletionCount, validatedFileSet := buildDryRunPlan(datasetsFirst(documents), dp)
 
