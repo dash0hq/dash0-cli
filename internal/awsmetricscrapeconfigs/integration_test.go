@@ -296,6 +296,21 @@ spec:
 	assert.Empty(t, requestsFor(server, http.MethodPut))
 }
 
+func TestUpdate_DryRunFailsOnOriginMismatch(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := newServer(t)
+	server.On(http.MethodGet, apiPath, respond(http.StatusOK, fixtureConfigured))
+
+	doc := strings.Replace(configYAML, "    dash0.com/id: ", "    dash0.com/origin: other-origin\n    dash0.com/id: ", 1)
+	stdout, _, err := runCmd(t, server.URL, "update", "-f", writeYAML(t, doc), "--dry-run")
+
+	var mismatch *asset.OriginMismatchError
+	require.ErrorAs(t, err, &mismatch)
+	assert.Equal(t, "other-origin", mismatch.Document)
+	assert.NotContains(t, stdout, "no changes")
+	assert.Empty(t, requestsFor(server, http.MethodPut))
+}
+
 // The server returns a namespace without metrics as [], so leaving metrics out
 // of the file must not show up as a change.
 func TestUpdate_DryRunOmittedMetricsIsNoChange(t *testing.T) {

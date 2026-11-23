@@ -179,12 +179,24 @@ func PlanAwsMetricScrapeConfig(
 	if !AwsMetricScrapeConfigIsSet(before) {
 		return plan, nil
 	}
-	identity := AwsMetricScrapeConfigIdentity(cfg, integrationID)
-	if stored := dash0api.GetAwsMetricScrapeConfigOrigin(before); identity.Origin != "" && stored != "" && stored != identity.Origin {
-		return plan, &OriginMismatchError{ID: integrationID, Stored: stored, Document: identity.Origin}
+	if err := CheckAwsMetricScrapeConfigOrigin(cfg, integrationID, before); err != nil {
+		return plan, err
 	}
 	plan.Action, plan.Before = ActionUpdated, before
 	return plan, nil
+}
+
+// CheckAwsMetricScrapeConfigOrigin fails when the stored config has an origin
+// other than the document's, because the CLI never changes a stored origin.
+func CheckAwsMetricScrapeConfigOrigin(cfg *dash0api.AwsMetricScrapeConfigDefinition, integrationID string, before *dash0api.AwsMetricScrapeConfigDefinition) error {
+	if !AwsMetricScrapeConfigIsSet(before) {
+		return nil
+	}
+	document := AwsMetricScrapeConfigIdentity(cfg, integrationID).Origin
+	if stored := dash0api.GetAwsMetricScrapeConfigOrigin(before); document != "" && stored != "" && stored != document {
+		return &OriginMismatchError{ID: integrationID, Stored: stored, Document: document}
+	}
+	return nil
 }
 
 // AwsMetricScrapeConfigIdentity returns what an AWS metric scrape config is
