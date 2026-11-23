@@ -27,15 +27,20 @@ if ! echo "$CREATE_OUTPUT" | grep -q "$ASSET_NAME"; then
   exit 1
 fi
 
-# Step 2: List spam filters and find the created asset by name
+# Step 2: List spam filters and find the created asset by its id. Other jobs
+# create filters with the same name in the same dataset at the same time.
 echo "--- Step 2: List spam filters and find created asset ---"
+ID=$(echo "$CREATE_OUTPUT" | sed -n 's/.*(id: \([^)]*\)).*/\1/p')
+if [ -z "$ID" ]; then
+  echo "FAIL: create output does not include the spam filter id"
+  exit 1
+fi
 if ! LIST_JSON=$("$DASH0" spam-filters list --all -o json); then
   echo "FAIL: spam-filters list -o json failed"
   exit 1
 fi
-ID=$(echo "$LIST_JSON" | jq -r --arg name "$ASSET_NAME" '[.[] | select(.metadata.name == $name)][0].metadata.labels["dash0.com/id"] // empty')
-if [ -z "$ID" ]; then
-  echo "FAIL: Could not find created spam filter '$ASSET_NAME' in list"
+if ! echo "$LIST_JSON" | jq -e --arg id "$ID" 'any(.[]; .metadata.labels["dash0.com/id"] == $id)' > /dev/null; then
+  echo "FAIL: Could not find created spam filter '$ID' in list"
   exit 1
 fi
 echo "Created spam filter ID: $ID"

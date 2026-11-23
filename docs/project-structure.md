@@ -17,6 +17,7 @@
 - `/internal/diff`: The experimental `diff` command — previews what `apply` would create, update, or delete, through the same `asset.Plan*` reads `apply` runs before each write
 - `/internal/evals`: The `evals` command group — `evals list`, `get`, `create`, `update`, and `delete` for generative AI evaluations (experimental, dataset-scoped). The shared import helper lives in `internal/asset/generativeaievaluation.go`
 - `/internal/datasets`: The `datasets` command group — `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` (experimental, org-wide, no dataset). The shared import helper lives in `internal/asset/dataset.go`
+- `/internal/debuginfo`: The `debuginfo upload` command (experimental) — uploads debug information to the Dash0 debuginfo gRPC service with the upstream Parca client. Only source maps are supported yet
 - `/internal/failedchecks`: The `failed-checks query` command — queries `/api/alerting/failed-checks` for active and historical alerting issues
 - `/internal/help`: JSON help rendering for agent mode
 - `/internal/logging`: The `logs` command group (`send` and `query` subcommands)
@@ -28,7 +29,7 @@
 - `/internal/otlp`: Shared OTLP utilities (key-value pairs, trace/span ID parsing, scope defaults, log severity range constants and number-to-range mapping) used by send and query commands across signal types
 - `/internal/output`: Output format parsing and formatting (table, wide, JSON, YAML)
 - `/internal/preview`: The change list and agent-mode JSON shared by `apply --dry-run` and `diff`
-- `/internal/k8s`: The `k8s` command group. `/internal/k8s/pods` holds the experimental `k8s pods watch` command and its workload siblings (`k8s deployments watch`, `k8s statefulsets watch`, and so on) — a full-screen terminal page of a pod's or a workload's pods' CPU, memory, requests, and logs from Dash0's Prometheus API, drawn in the Ditt0 terminal style; also runs as a k9s plugin
+- `/internal/k8s`: The `k8s` command group. `/internal/k8s/pods` holds the experimental `k8s pods watch` command and its workload siblings (`k8s deployments watch`, `k8s statefulsets watch`, and so on) — a full-screen terminal page of a pod's or a workload's pods' CPU, memory, requests, and logs from Dash0's Prometheus API, drawn with Ditt0's Go package (`github.com/dash0hq/ditt0-cli-design-system/go/ditt0`); also runs as a k9s plugin
 - `/internal/query`: Shared query utilities (filter parsing, timestamp normalization, timestamp formatting) used by query commands across signal types (e.g., `logs query`, `spans query`)
 - `/internal/rawapi`: The experimental `api` command — a raw HTTP passthrough that reuses the active profile's connection settings to call any Dash0 API endpoint
 - `/internal/samplingrules`: The `sampling-rules` command group, holding the five standard CRUD subcommands. Dataset-scoped, admin-role-only for writes, and upserted by `dash0.com/origin`, with `dash0.com/id` as a fallback. The shared import helper, local validation, and the warning for a write that turns sampling on live in `internal/asset/samplingrule.go`

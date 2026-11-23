@@ -471,8 +471,9 @@ A few annotations configure how a rule evaluates rather than describing it:
 | `dash0-enabled` | whether the rule evaluates at all | |
 | `dash0-threshold-critical` | the critical threshold | `threshold-critical` |
 | `dash0-threshold-degraded` | the degraded threshold | `threshold-degraded` |
+| `dash0.com/on-no-data` | what the rule reports when its query returns no data: `ignored` (the default), `degraded`, or `critical` | |
 
-These are unprefixed, unlike the `dash0.com/`-prefixed annotations above, so they are easy to mistake for ordinary metadata.
+The `dash0-` annotations are unprefixed, unlike the `dash0.com/`-prefixed annotations above, so they are easy to mistake for ordinary metadata.
 They inherit and override like any other annotation, so a value set at the top level reaches every rule that does not name its own.
 Setting `dash0-enabled: "false"` there stops all of those rules from firing:
 
@@ -538,3 +539,44 @@ The prefixed and unprefixed spellings of a setting are different annotation keys
 That takes precedence over the rule-beats-document behavior above: a rule setting `threshold-critical` does not override a top-level `dash0-threshold-critical`.
 The losing value is not discarded either, it stays on the check rule as an ordinary annotation, which is usually how you notice.
 Use one spelling throughout a document.
+
+By default, a check rule whose query returns no data produces no failed check.
+Set `dash0.com/on-no-data` to `degraded` or `critical` to report a failed check instead, for example when a service stops sending telemetry.
+The values are lowercase, and the Dash0 API rejects any other value.
+See [No Data](https://dash0.com/docs/dash0/monitoring/alerting/alerting-model#no-data) for when Dash0 treats a query result as "no data".
+Like the other annotations, a value set at the top level reaches every rule that does not name its own.
+Below, `Checkout request rate` inherits `critical`, and `Checkout p99 latency` sets `degraded` for itself:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: checkout-no-data
+  annotations:
+    dash0.com/on-no-data: critical
+spec:
+  groups:
+    - name: Alerting
+      rules:
+        - alert: Checkout request rate
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m])) < $__threshold
+          annotations:
+            dash0-threshold-critical: "1"
+        - alert: Checkout p99 latency
+          expr: histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m]))) > $__threshold
+          annotations:
+            dash0-threshold-critical: "1"
+            dash0.com/on-no-data: degraded
+```
+
+```bash
+$ dash0 check-rules get d4e5f6a7-8901-23de-f012-456789012cde -o yaml
+annotations:
+  dash0.com/on-no-data: critical
+...
+name: Alerting - Checkout request rate
+...
+```
+
+The setting only has an effect when the expression has a comparison at the top level, like the expressions above.
+Do not set it on a query that only returns series while something is wrong, for example one that filters for failed requests: such a query returns no data whenever nothing fails, and the rule would report that as a failure.

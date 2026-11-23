@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"io"
 	"net/http"
 	"os"
@@ -183,12 +184,12 @@ func runWatch(cmd *cobra.Command, kind, name string, flags *watchFlags) error {
 		target:   target{cluster: flags.cluster, namespace: flags.namespace, kind: kind, name: name, context: flags.kubeContext, profile: profileName(ctx, flags), agg: agg},
 		rangeIdx: rangeIdx,
 		perPod:   flags.perPod,
-		theme:    dark,
+		theme:    ditt0.Dark,
 		apiURL:   client.ResolveApiUrl(ctx, flags.apiURL),
 		dataset:  client.ResolveDataset(ctx, flags.dataset),
 	}
 	if flags.light {
-		p.theme = light
+		p.theme = ditt0.Light
 	}
 
 	// Resolved before every refresh, so an OAuth access token is renewed while the page stays open
@@ -246,9 +247,9 @@ func runWatch(cmd *cobra.Command, kind, name string, flags *watchFlags) error {
 		frame, _ := p.render(w, h)
 		for _, l := range frame {
 			if color.NoColor {
-				fmt.Println(l.plain())
+				fmt.Println(plain(l))
 			} else {
-				fmt.Println(l.ansi())
+				fmt.Println(l.ANSI())
 			}
 		}
 		return p.allFailed()
@@ -361,13 +362,13 @@ func (p *page) run(ctx context.Context, size func() (int, int), refresh func(ctx
 		var sb strings.Builder
 		sb.WriteString("\x1b[H")
 		for i := 0; i < body; i++ {
-			var l line
+			var l ditt0.Line
 			if p.scroll+i < len(frame) {
 				l = frame[p.scroll+i]
 			}
-			sb.WriteString(l.cut(w).ansi() + "\x1b[K\r\n")
+			sb.WriteString(l.Cut(w).ANSI() + "\x1b[K\r\n")
 		}
-		sb.WriteString(line{{" " + hints, dimStyle}}.cut(w).ansi() + "\x1b[K")
+		sb.WriteString(ditt0.Line{{Text: " " + hints, Style: ditt0.DimStyle}}.Cut(w).ANSI() + "\x1b[K")
 		fmt.Print(sb.String())
 		return columns
 	}

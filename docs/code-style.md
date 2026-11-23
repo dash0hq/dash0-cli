@@ -14,8 +14,10 @@ Keep the [Direct production dependencies](#direct-production-dependencies) updat
 |--------|---------|
 | `github.com/cli/browser` | Cross-platform default-browser opener for the OAuth login flow |
 | `github.com/dash0hq/dash0-api-client-go` | API and OTLP client for the Dash0 backend (outbound for `otlp proxy`, all asset CRUD, send and query commands) |
+| `github.com/dash0hq/ditt0-cli-design-system/go` | Ditt0, Dash0's design system for terminal UIs: the colours, stats, charts and layout of the `k8s pods watch` page |
 | `github.com/google/uuid` | UUID generation for asset imports and the `otlp proxy` `service.instance.id` |
 | `github.com/muesli/termenv` | Semantic coloring of terminal output (severity levels, diffs, errors) |
+| `github.com/parca-dev/parca` | Generated gRPC client for the Parca-compatible Dash0 debuginfo service (`debuginfo upload`) |
 | `github.com/spf13/cobra` | CLI command structure, flag parsing, and routing |
 | `go.opentelemetry.io/collector/component` | Component lifecycle types for the `otlp proxy` receiver pipeline |
 | `go.opentelemetry.io/collector/config/configgrpc` | gRPC server configuration for the `otlp proxy` listener |

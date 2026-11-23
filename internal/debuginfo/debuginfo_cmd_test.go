@@ -1,0 +1,994 @@
+package debuginfo
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/cespare/xxhash/v2"
+	"github.com/dash0hq/dash0-cli/internal/agentmode"
+	"github.com/dash0hq/dash0-cli/internal/testutil"
+	debuginfopb "github.com/parca-dev/parca/gen/proto/go/parca/debuginfo/v1alpha1"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+)
+
+const testAuthToken = "auth_test_token"
+
+type fakeDebuginfoService struct {
+	debuginfopb.UnimplementedDebuginfoServiceServer
+
+	strategy  debuginfopb.UploadInstructions_UploadStrategy
+	signedURL string
+	// failBuildIDs makes ShouldInitiateUpload fail with that error for the build ID.
+	failBuildIDs map[string]error
+	// existingInInitiate makes InitiateUpload answer AlreadyExists, as when another upload won the race.
+	existingInInitiate bool
+	// stepErrors holds, per RPC name, the errors that the next calls of that RPC return, in order.
+	stepErrors map[string][]error
+	// putStatuses holds the HTTP statuses that the next signed URL PUTs answer, in order.
+	putStatuses []int
+	// putStatusByPath makes every signed URL PUT to that path answer the HTTP status.
+	putStatusByPath map[string]int
+	// shouldAnswer and initiateAnswer, when set and returning non-nil, replace the answer to the nth call (from 1).
+	shouldAnswer   func(call int) *debuginfopb.ShouldInitiateUploadResponse
+	initiateAnswer func(call int) *debuginfopb.InitiateUploadResponse
+	stallShould    int
+	// latency delays every RPC and signed URL PUT, like the network round trip to Dash0.
+	latency time.Duration
+
+	mutex          sync.Mutex
+	calls          map[string]int
+	puts           int
+	hashes         []string
+	putPaths       []string
+	markedIDs      []string
+	supportsMulti  []bool
+	stored         map[string][]byte
+	pending        map[string][]byte
+	authorizations []string
+	types          []debuginfopb.DebuginfoType
+	buildIDTypes   map[string]debuginfopb.BuildIDType
+}
+
+func (service *fakeDebuginfoService) record(ctx context.Context, debuginfoType debuginfopb.DebuginfoType) {
+	incoming, _ := metadata.FromIncomingContext(ctx)
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	service.authorizations = append(service.authorizations, incoming.Get("authorization")...)
+	service.types = append(service.types, debuginfoType)
+}
+
+// step counts a call of the RPC and returns the next injected error for it, if any.
+func (service *fakeDebuginfoService) step(name string) error {
+	time.Sleep(service.latency)
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	service.calls[name]++
+	if len(service.stepErrors[name]) == 0 {
+		return nil
+	}
+	err := service.stepErrors[name][0]
+	service.stepErrors[name] = service.stepErrors[name][1:]
+	return err
+}
+
+func (service *fakeDebuginfoService) ShouldInitiateUpload(ctx context.Context, request *debuginfopb.ShouldInitiateUploadRequest) (*debuginfopb.ShouldInitiateUploadResponse, error) {
+	service.record(ctx, request.GetType())
+	if err := service.step("ShouldInitiateUpload"); err != nil {
+		return nil, err
+	}
+	service.mutex.Lock()
+	stall := service.calls["ShouldInitiateUpload"] <= service.stallShould
+	service.mutex.Unlock()
+	if stall {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	service.mutex.Lock()
+	service.hashes = append(service.hashes, request.GetHash())
+	service.buildIDTypes[request.GetBuildId()] = request.GetBuildIdType()
+	defer service.mutex.Unlock()
+	if err := service.failBuildIDs[request.GetBuildId()]; err != nil {
+		return nil, err
+	}
+	if service.shouldAnswer != nil {
+		if answer := service.shouldAnswer(service.calls["ShouldInitiateUpload"]); answer != nil {
+			return answer, nil
+		}
+	}
+	if _, exists := service.stored[request.GetBuildId()]; exists && !request.GetForce() {
+		return &debuginfopb.ShouldInitiateUploadResponse{Reason: "Debuginfo already exists."}, nil
+	}
+	return &debuginfopb.ShouldInitiateUploadResponse{ShouldInitiateUpload: true}, nil
+}
+
+func (service *fakeDebuginfoService) InitiateUpload(ctx context.Context, request *debuginfopb.InitiateUploadRequest) (*debuginfopb.InitiateUploadResponse, error) {
+	service.record(ctx, request.GetType())
+	if err := service.step("InitiateUpload"); err != nil {
+		return nil, err
+	}
+	service.mutex.Lock()
+	service.hashes = append(service.hashes, request.GetHash())
+	service.supportsMulti = append(service.supportsMulti, request.GetSupportsMultipleUploads())
+	call := service.calls["InitiateUpload"]
+	service.mutex.Unlock()
+	if service.initiateAnswer != nil {
+		if answer := service.initiateAnswer(call); answer != nil {
+			return answer, nil
+		}
+	}
+	if service.existingInInitiate {
+		return nil, status.Error(codes.AlreadyExists, "already uploaded by another client")
+	}
+	return &debuginfopb.InitiateUploadResponse{UploadInstructions: &debuginfopb.UploadInstructions{
+		BuildId:        request.GetBuildId(),
+		UploadId:       "upload-" + request.GetBuildId(),
+		UploadStrategy: service.strategy,
+		SignedUrl:      service.signedURL + "/" + request.GetBuildId(),
+		Type:           request.GetType(),
+	}}, nil
+}
+
+func (service *fakeDebuginfoService) Upload(stream debuginfopb.DebuginfoService_UploadServer) error {
+	if err := service.step("Upload"); err != nil {
+		return err
+	}
+	header, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	service.record(stream.Context(), header.GetInfo().GetType())
+	var body []byte
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		body = append(body, chunk.GetChunkData()...)
+	}
+	service.mutex.Lock()
+	service.pending[header.GetInfo().GetBuildId()] = body
+	service.mutex.Unlock()
+	return stream.SendAndClose(&debuginfopb.UploadResponse{BuildId: header.GetInfo().GetBuildId(), Size: uint64(len(body))})
+}
+
+func (service *fakeDebuginfoService) MarkUploadFinished(ctx context.Context, request *debuginfopb.MarkUploadFinishedRequest) (*debuginfopb.MarkUploadFinishedResponse, error) {
+	service.record(ctx, request.GetType())
+	if err := service.step("MarkUploadFinished"); err != nil {
+		return nil, err
+	}
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	service.markedIDs = append(service.markedIDs, request.GetUploadId())
+	service.stored[request.GetBuildId()] = service.pending[request.GetBuildId()]
+	return &debuginfopb.MarkUploadFinishedResponse{}, nil
+}
+
+func startFakeDebuginfoService(t testing.TB, strategy debuginfopb.UploadInstructions_UploadStrategy) (*fakeDebuginfoService, string) {
+	t.Helper()
+	service := &fakeDebuginfoService{strategy: strategy, stored: map[string][]byte{}, pending: map[string][]byte{}, calls: map[string]int{}, buildIDTypes: map[string]debuginfopb.BuildIDType{}}
+
+	signedURLServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		if request.Method != http.MethodPut {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		time.Sleep(service.latency)
+		service.mutex.Lock()
+		defer service.mutex.Unlock()
+		service.puts++
+		service.putPaths = append(service.putPaths, request.URL.Path)
+		if code, ok := service.putStatusByPath[request.URL.Path]; ok {
+			writer.WriteHeader(code)
+			return
+		}
+		if len(service.putStatuses) > 0 {
+			code := service.putStatuses[0]
+			service.putStatuses = service.putStatuses[1:]
+			if code != http.StatusOK {
+				writer.WriteHeader(code)
+				return
+			}
+		}
+		service.pending[request.URL.Path[1:]] = body
+	}))
+	t.Cleanup(signedURLServer.Close)
+	service.signedURL = signedURLServer.URL
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	debuginfopb.RegisterDebuginfoServiceServer(server, service)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+
+	return service, "http://" + listener.Addr().String()
+}
+
+func TestMain(m *testing.M) {
+	retryBaseDelay = time.Millisecond
+	retryMaxDelay = 5 * time.Millisecond
+	m.Run()
+}
+
+func newTestRootCmd() *cobra.Command {
+	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	root.AddCommand(NewDebuginfoCmd())
+	return root
+}
+
+func runDebuginfoCmd(t testing.TB, args ...string) (string, error) {
+	t.Helper()
+	testutil.SetupTestEnv(t)
+	cmd := newTestRootCmd()
+	cmd.SetArgs(append([]string{"-X", "debuginfo", "upload"}, args...))
+	var err error
+	output := testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+	return output, err
+}
+
+func writeBuildOutput(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, dir, "assets/app.js", "console.log('app')")
+	writeFile(t, dir, "assets/app.js.map", `{"version":3,"sources":["app.ts"],"mappings":""}`)
+	return dir
+}
+
+func TestUpload_TypeSelection(t *testing.T) {
+	dir := writeBuildOutput(t)
+	cases := map[string]string{
+		"":           "--type is required",
+		"pdb":        `unknown --type "pdb"`,
+		"debuginfo":  "--type debuginfo is not supported yet",
+		"executable": "--type executable is not supported yet",
+		"sources":    "--type sources is not supported yet",
+	}
+	for debuginfoType, want := range cases {
+		_, err := runDebuginfoCmd(t, "--type", debuginfoType, dir, "--base-url", "https://app.example.com/", "--dry-run")
+		require.Error(t, err, debuginfoType)
+		assert.Contains(t, err.Error(), want, debuginfoType)
+	}
+}
+
+func TestUpload_RejectsConcurrencyBelowOne(t *testing.T) {
+	dir := writeBuildOutput(t)
+	for _, concurrency := range []string{"0", "-1"} {
+		_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--concurrency", concurrency)
+		require.Error(t, err, concurrency)
+		assert.Contains(t, err.Error(), "--concurrency must be at least 1, got "+concurrency, concurrency)
+	}
+}
+
+func TestUpload_RequiresExperimentalFlag(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	cmd := newTestRootCmd()
+	cmd.SetArgs([]string{"debuginfo", "upload", "--type", "source-map", writeBuildOutput(t), "--base-url", "https://app.example.com/", "--dry-run"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "experimental")
+}
+
+func TestUpload_SingleScriptFollowsSourceMappingURLComment(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "app.js", "x\n//# sourceMappingURL=other.js.map\n")
+	writeFile(t, dir, "other.js.map", "{}")
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", filepath.Join(dir, "app.js"), "--script-url", "https://app.example.com/app.js", "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, filepath.Join(dir, "other.js.map"))
+}
+
+func TestUpload_DryRunListsBuildIDs(t *testing.T) {
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeBuildOutput(t), "--base-url", "https://app.example.com/", "--dry-run")
+	require.NoError(t, err)
+	assert.Contains(t, output, "Dry run: 1 source map found")
+	assert.Contains(t, output, "app.example.com/assets/app.js <- ")
+}
+
+func TestUpload_SourceMaps(t *testing.T) {
+	strategies := []debuginfopb.UploadInstructions_UploadStrategy{
+		debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL,
+		debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC,
+	}
+	for _, strategy := range strategies {
+		t.Run(strategy.String(), func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, strategy)
+			dir := writeBuildOutput(t)
+			args := []string{"--type", "source-map", dir, "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken}
+
+			output, err := runDebuginfoCmd(t, args...)
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			assert.Equal(t,
+				encodeSourceMapBundle([]byte("console.log('app')"), []byte(`{"version":3,"sources":["app.ts"],"mappings":""}`)),
+				service.stored["app.example.com/assets/app.js"])
+			for _, authorization := range service.authorizations {
+				assert.Equal(t, "Bearer "+testAuthToken, authorization)
+			}
+			for _, debuginfoType := range service.types {
+				assert.Equal(t, debuginfopb.DebuginfoType_DEBUGINFO_TYPE_SOURCE_MAP, debuginfoType)
+			}
+
+			output, err = runDebuginfoCmd(t, args...)
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" skipped: Debuginfo already exists.`)
+
+			output, err = runDebuginfoCmd(t, append(args, "--force")...)
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+		})
+	}
+}
+
+func TestUpload_DryRunRejectsInvalidSourceMap(t *testing.T) {
+	dir := writeBuildOutput(t)
+	writeFile(t, dir, "assets/broken.js", "broken")
+	writeFile(t, dir, "assets/broken.js.map", "not json")
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--dry-run")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "broken.js.map is not valid JSON")
+}
+
+func TestUpload_PermissionErrorHintsAtIngestDebuginfo(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.failBuildIDs = map[string]error{"app.example.com/assets/app.js": status.Error(codes.PermissionDenied, "missing permission")}
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", writeBuildOutput(t), "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must grant the ingest:debuginfo permission")
+}
+
+func TestUpload_AlreadyExistsOnInitiateIsSkipped(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.existingInInitiate = true
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeBuildOutput(t), "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" skipped: already uploaded by another client`)
+}
+
+func TestUpload_AgentModePrintsResultsUploadedBeforeAFailure(t *testing.T) {
+	withAgentMode(t)
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.failBuildIDs = map[string]error{"app.example.com/assets/later.js": status.Error(codes.Unavailable, "down")}
+	dir := writeBuildOutput(t)
+	writeFile(t, dir, "assets/later.js", "later")
+	writeFile(t, dir, "assets/later.js.map", "{}")
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.Error(t, err)
+	var results []uploadResult
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, "app.example.com/assets/app.js", results[0].BuildID)
+	assert.Equal(t, outcomeUploaded, results[0].Status)
+}
+
+func withAgentMode(t *testing.T) {
+	t.Helper()
+	previous := agentmode.Enabled
+	agentmode.Enabled = true
+	t.Cleanup(func() { agentmode.Enabled = previous })
+}
+
+func uploadArgs(endpoint string) []string {
+	return []string{"--type", "source-map", "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken}
+}
+
+func unavailable(times int) []error {
+	errs := make([]error, times)
+	for i := range errs {
+		errs[i] = status.Error(codes.Unavailable, "try again")
+	}
+	return errs
+}
+
+func TestUpload_RetriesOnlyTheStepThatFailed(t *testing.T) {
+	for _, step := range []string{"ShouldInitiateUpload", "InitiateUpload", "Upload", "MarkUploadFinished"} {
+		t.Run(step, func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+			service.stepErrors = map[string][]error{step: unavailable(2)}
+
+			output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			want := map[string]int{"ShouldInitiateUpload": 1, "InitiateUpload": 1, "Upload": 1, "MarkUploadFinished": 1}
+			want[step] = 3
+			assert.Equal(t, want, service.calls)
+		})
+	}
+}
+
+func TestUpload_NonRetryableCodeFailsOnFirstAttempt(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stepErrors = map[string][]error{"InitiateUpload": {status.Error(codes.InvalidArgument, "bad build ID")}}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bad build ID (InvalidArgument)")
+	assert.Equal(t, 1, service.calls["InitiateUpload"])
+}
+
+func TestUpload_GivesUpAfterMaxRetriesAndNamesTheFile(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stepErrors = map[string][]error{"MarkUploadFinished": unavailable(10)}
+	dir := writeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "failed to finish the upload: try again (Unavailable)")
+	// The default of --max-retries is 3: one attempt and three retries.
+	assert.Equal(t, 4, service.calls["MarkUploadFinished"])
+}
+
+func TestUpload_RetriesRetryableGRPCCodes(t *testing.T) {
+	for _, code := range []codes.Code{codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted} {
+		t.Run(code.String(), func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+			service.stepErrors = map[string][]error{"ShouldInitiateUpload": {status.Error(code, "busy")}}
+
+			output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+		})
+	}
+}
+
+func TestUpload_SignedURLRetriesTemporaryHTTPStatuses(t *testing.T) {
+	for _, code := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+			service.putStatuses = []int{code, http.StatusOK}
+
+			output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+			require.NoError(t, err)
+			assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+			assert.Equal(t, 2, service.puts)
+		})
+	}
+}
+
+func TestUpload_SignedURLDoesNotRetryForbidden(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.putStatuses = []int{http.StatusForbidden, http.StatusOK}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP status 403 Forbidden")
+	assert.Equal(t, 1, service.puts)
+}
+
+func TestRetry_StopsWhenContextIsCancelledDuringBackoff(t *testing.T) {
+	previous := retryBaseDelay
+	retryBaseDelay, retryMaxDelay = time.Minute, time.Minute
+	t.Cleanup(func() { retryBaseDelay, retryMaxDelay = previous, 5*time.Millisecond })
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	calls := 0
+
+	started := time.Now()
+	err := (&uploader{maxRetries: 3}).retry(ctx, 0, "test", func(context.Context) error {
+		calls++
+		return status.Error(codes.Unavailable, "down")
+	})
+
+	assert.Less(t, time.Since(started), 5*time.Second)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+	assert.Equal(t, 1, calls)
+}
+
+func TestUpload_SendsTheXXHashOfTheBundle(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	bundle := encodeSourceMapBundle([]byte("console.log('app')"), []byte(`{"version":3,"sources":["app.ts"],"mappings":""}`))
+	want := fmt.Sprintf("%016x", xxhash.Sum64(bundle))
+	assert.Equal(t, []string{want, want}, service.hashes)
+}
+
+func TestUpload_RetriesAStalledRPC(t *testing.T) {
+	previous := rpcAttemptTimeout
+	rpcAttemptTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { rpcAttemptTimeout = previous })
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stallShould = 1
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_LostInitiateAnswerHintsAtForce(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	service.stepErrors = map[string][]error{"InitiateUpload": {
+		status.Error(codes.DeadlineExceeded, "answer lost"),
+		status.Error(codes.FailedPrecondition, "A previous upload is still in-progress"),
+	}}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "an earlier attempt may have started it")
+	assert.Contains(t, err.Error(), "--force")
+}
+
+func TestPutSignedURL_ErrorDoesNotContainTheSignedQuery(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	address := listener.Addr().String()
+	require.NoError(t, listener.Close())
+
+	err = putSignedURL(context.Background(), "http://"+address+"/bucket/app.js?X-Amz-Signature=secret-signature", []byte("body"))
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "secret-signature")
+	assert.Contains(t, err.Error(), address)
+	assert.True(t, isRetryable(err), "a connection failure stays retryable")
+}
+
+func TestDebuginfoTarget(t *testing.T) {
+	cases := []struct {
+		raw              string
+		explicitEndpoint bool
+		want             string
+		secure           bool
+	}{
+		{"https://ingress.eu-west-1.aws.dash0.com:4318", false, "ingress.eu-west-1.aws.dash0.com:4317", true},
+		{"https://ingress.eu-west-1.aws.dash0.com", false, "ingress.eu-west-1.aws.dash0.com:4317", true},
+		{"https://debuginfo.example.com:9443", true, "debuginfo.example.com:9443", true},
+		{"https://debuginfo.example.com", true, "debuginfo.example.com:4317", true},
+		{"http://localhost:7070", true, "localhost:7070", false},
+	}
+	for _, testCase := range cases {
+		target, transport, err := debuginfoTarget(testCase.raw, testCase.explicitEndpoint)
+		require.NoError(t, err, testCase.raw)
+		assert.Equal(t, testCase.want, target, testCase.raw)
+		assert.Equal(t, testCase.secure, transport.Info().SecurityProtocol == "tls", testCase.raw)
+	}
+	for _, raw := range []string{"ftp://ingress.example.com", "not a url", "https://"} {
+		_, _, err := debuginfoTarget(raw, true)
+		assert.Error(t, err, raw)
+	}
+}
+
+const testBuildID = "app.example.com/assets/app.js"
+
+// signedTarget is an upload target that PUTs to path on the fake signed URL server.
+func (service *fakeDebuginfoService) signedTarget(uploadID, path string) *debuginfopb.UploadInstructions {
+	return &debuginfopb.UploadInstructions{
+		BuildId:        testBuildID,
+		UploadId:       uploadID,
+		UploadStrategy: debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL,
+		SignedUrl:      service.signedURL + path,
+		Type:           debuginfopb.DebuginfoType_DEBUGINFO_TYPE_SOURCE_MAP,
+	}
+}
+
+func temporaryNo(call int) *debuginfopb.ShouldInitiateUploadResponse {
+	return &debuginfopb.ShouldInitiateUploadResponse{Reason: "upload in progress", RetryRequired: true}
+}
+
+func TestUpload_LegacyUploadInstructionsStillUpload(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, []string{"/app.example.com/assets/app.js"}, service.putPaths)
+	assert.Equal(t, []string{"upload-app.example.com/assets/app.js"}, service.markedIDs)
+}
+
+func TestUpload_UploadsToEveryTarget(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{UploadTargets: []*debuginfopb.UploadInstructions{
+			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
+		}}
+	}
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
+	assert.Equal(t, []string{"token-a", "token-b"}, service.markedIDs)
+}
+
+func TestUpload_InitiateAdvertisesMultipleUploads(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true}, service.supportsMulti)
+}
+
+func TestUpload_RejectsResponseWithBothShapes(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{
+			UploadInstructions: service.signedTarget("legacy", "/legacy"),
+			UploadTargets:      []*debuginfopb.UploadInstructions{service.signedTarget("token-a", "/backend-a")},
+		}
+	}
+
+	_, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "both upload_instructions and upload_targets")
+	assert.Empty(t, service.putPaths)
+}
+
+func TestUpload_ChecksAgainWhenTheNoIsTemporary(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.shouldAnswer = func(call int) *debuginfopb.ShouldInitiateUploadResponse {
+		if call == 1 {
+			return temporaryNo(call)
+		}
+		return nil
+	}
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_FailsWhenTheNoStaysTemporary(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.shouldAnswer = temporaryNo
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "delivery is incomplete")
+	assert.NotContains(t, output, "skipped")
+	// The default of --max-retries is 3: one check and three more.
+	assert.Equal(t, 4, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_NegotiatesAgainAfterInitiateRetryRequired(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{
+			UploadTargets: []*debuginfopb.UploadInstructions{service.signedTarget("token-a", "/backend-a")}, RetryRequired: true,
+		}
+	}
+	service.shouldAnswer = func(call int) *debuginfopb.ShouldInitiateUploadResponse {
+		if call == 2 {
+			return &debuginfopb.ShouldInitiateUploadResponse{Reason: "Debuginfo already exists."}
+		}
+		return nil
+	}
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), writeBuildOutput(t))...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, `Source map "app.example.com/assets/app.js" uploaded`)
+	assert.Equal(t, 2, service.calls["ShouldInitiateUpload"])
+	assert.Equal(t, []string{"token-a"}, service.markedIDs)
+}
+
+func TestUpload_FailsWhenInitiateStaysRetryRequired(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{
+			UploadTargets: []*debuginfopb.UploadInstructions{service.signedTarget("token-a", "/backend-a")}, RetryRequired: true,
+		}
+	}
+	service.shouldAnswer = func(int) *debuginfopb.ShouldInitiateUploadResponse {
+		return &debuginfopb.ShouldInitiateUploadResponse{ShouldInitiateUpload: true}
+	}
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "delivery is incomplete")
+	assert.NotContains(t, output, "uploaded")
+	assert.Equal(t, 4, service.calls["InitiateUpload"])
+}
+
+func TestUpload_FailsWhenOneTargetFails(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{UploadTargets: []*debuginfopb.UploadInstructions{
+			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
+		}}
+	}
+	service.putStatusByPath = map[string]int{"/backend-a": http.StatusForbidden}
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), "upload target 1 of 2")
+	assert.NotContains(t, err.Error(), "upload target 2 of 2")
+	assert.NotContains(t, output, "uploaded")
+	// Target 1 failing does not hold back target 2.
+	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
+	assert.Equal(t, []string{"token-b"}, service.markedIDs)
+}
+
+func TestUpload_ForcedUploadIsNotNegotiatedAgain(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_SIGNED_URL)
+	service.initiateAnswer = func(int) *debuginfopb.InitiateUploadResponse {
+		return &debuginfopb.InitiateUploadResponse{UploadTargets: []*debuginfopb.UploadInstructions{
+			service.signedTarget("token-a", "/backend-a"), service.signedTarget("token-b", "/backend-b"),
+		}, RetryRequired: true}
+	}
+	dir := writeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, append(uploadArgs(endpoint), dir, "--force")...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "assets/app.js"))
+	assert.Contains(t, err.Error(), `the forced upload of "app.example.com/assets/app.js" reached only some destinations`)
+	assert.NotContains(t, output, "uploaded")
+	assert.Equal(t, []string{"/backend-a", "/backend-b"}, service.putPaths)
+	assert.Equal(t, []string{"token-a", "token-b"}, service.markedIDs)
+	assert.Equal(t, 1, service.calls["ShouldInitiateUpload"])
+}
+
+const (
+	nodeScript    = "console.log('server')\n//# sourceMappingURL=server.js.map\n"
+	nodeSourceMap = `{"version":3,"sources":["server.ts"],"mappings":""}`
+)
+
+func writeNodeBuildOutput(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, dir, "server.js", nodeScript)
+	writeFile(t, dir, "server.js.map", nodeSourceMap)
+	return dir
+}
+
+func nodeUploadArgs(endpoint, dir string) []string {
+	return []string{"--type", "source-map", dir, "--endpoint", endpoint, "--auth-token", testAuthToken}
+}
+
+func assertNodeBuildUnchanged(t *testing.T, dir string) {
+	t.Helper()
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "server.js.map"))
+}
+
+func readFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join(dir, name))
+	require.NoError(t, err)
+	return string(content)
+}
+
+func TestUpload_NodeBuildIsKeyedByAnInjectedDebugID(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := writeNodeBuildOutput(t)
+	debugID := debugIDOfSourceMap([]byte(nodeSourceMap))
+	args := nodeUploadArgs(endpoint, dir)
+
+	output, err := runDebuginfoCmd(t, args...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Injected debug IDs into 1 script")
+	assert.Contains(t, output, `Source map "`+debugID+`" uploaded`)
+	wantScript := nodeScript + "//# debugId=" + debugID + "\n"
+	wantSourceMap := `{"debugId":"` + debugID + `",` + nodeSourceMap[1:]
+	assert.Equal(t, wantScript, readFile(t, dir, "server.js"))
+	assert.Equal(t, wantSourceMap, readFile(t, dir, "server.js.map"))
+	assert.Equal(t, encodeSourceMapBundle([]byte(wantScript), []byte(wantSourceMap)), service.stored[debugID])
+	assert.Equal(t, debuginfopb.BuildIDType_BUILD_ID_TYPE_SOURCE_MAP_DEBUG_ID, service.buildIDTypes[debugID])
+
+	output, err = runDebuginfoCmd(t, args...)
+
+	require.NoError(t, err)
+	assert.NotContains(t, output, "Injected")
+	assert.Contains(t, output, `Source map "`+debugID+`" skipped: Debuginfo already exists.`)
+	assert.Equal(t, wantScript, readFile(t, dir, "server.js"), "a second run changes nothing")
+}
+
+func TestUpload_BrowserBuildIsKeyedByURLAndNotChanged(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := writeNodeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--base-url", "https://app.example.com/", "--endpoint", endpoint, "--auth-token", testAuthToken)
+
+	require.NoError(t, err)
+	assertNodeBuildUnchanged(t, dir)
+	assert.Equal(t, debuginfopb.BuildIDType_BUILD_ID_TYPE_HASH, service.buildIDTypes["app.example.com/server.js"])
+}
+
+func TestUpload_DryRunListsTheDebugIDWithoutWriting(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, debugIDOfSourceMap([]byte(nodeSourceMap))+" <- "+filepath.Join(dir, "server.js"))
+	assert.Contains(t, output, "(debug ID would be injected)")
+	assertNodeBuildUnchanged(t, dir)
+}
+
+func TestUpload_NothingIsWrittenWithoutCredentials(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir)
+
+	require.Error(t, err)
+	assertNodeBuildUnchanged(t, dir)
+}
+
+func TestUpload_ReadOnlyFileFailsBeforeAnyWriteOrUpload(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := writeNodeBuildOutput(t)
+	writeFile(t, dir, "worker.js", "console.log('worker')\n")
+	writeFile(t, dir, "worker.js.map", `{"version":3}`)
+	require.NoError(t, os.Chmod(filepath.Join(dir, "worker.js"), 0o444))
+
+	_, err := runDebuginfoCmd(t, nodeUploadArgs(endpoint, dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "worker.js is read-only")
+	assert.Equal(t, nodeScript, readFile(t, dir, "server.js"), "no other file is written either")
+	assert.Zero(t, service.calls["ShouldInitiateUpload"])
+}
+
+func TestUpload_ReadOnlyDirectoryFailsBeforeAnyWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write into a read-only directory")
+	}
+	dir := t.TempDir()
+	writeFile(t, dir, "a/server.js", nodeScript)
+	writeFile(t, dir, "a/server.js.map", nodeSourceMap)
+	writeFile(t, dir, "b/worker.js", "console.log('worker')\n")
+	writeFile(t, dir, "b/worker.js.map", `{"version":3}`)
+	require.NoError(t, os.Chmod(filepath.Join(dir, "b"), 0o555))
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "b"), 0o755) })
+	_, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+
+	_, err := runDebuginfoCmd(t, nodeUploadArgs(endpoint, dir)...)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not writable")
+	assert.Equal(t, nodeScript, readFile(t, dir, "a/server.js"), "no file in another directory is written either")
+}
+
+func TestUpload_SharedSourceMapWithConflictingDebugIDsFailsBeforeAnyWrite(t *testing.T) {
+	dir := t.TempDir()
+	existingID := "11111111-2222-4333-8444-555555555555"
+	firstScript := "console.log('a')\n//# sourceMappingURL=shared.js.map\n//# debugId=" + existingID + "\n"
+	writeFile(t, dir, "a.js", firstScript)
+	writeFile(t, dir, "b.js", "console.log('b')\n//# sourceMappingURL=shared.js.map\n")
+	writeFile(t, dir, "shared.js.map", nodeSourceMap)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "share the source map")
+	assert.Contains(t, err.Error(), "//# debugId="+existingID)
+	assert.Equal(t, nodeSourceMap, readFile(t, dir, "shared.js.map"))
+}
+
+func TestUpload_CopiesOfOneScriptAreUploadedOnce(t *testing.T) {
+	service, endpoint := startFakeDebuginfoService(t, debuginfopb.UploadInstructions_UPLOAD_STRATEGY_GRPC)
+	dir := t.TempDir()
+	for _, copyDir := range []string{"a", "b"} {
+		writeFile(t, dir, copyDir+"/server.js", nodeScript)
+		writeFile(t, dir, copyDir+"/server.js.map", nodeSourceMap)
+	}
+
+	output, err := runDebuginfoCmd(t, nodeUploadArgs(endpoint, dir)...)
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Injected debug IDs into 2 scripts")
+	assert.Contains(t, output, "skipped: same source map as "+filepath.Join(dir, "a/server.js"))
+	assert.Equal(t, 1, service.calls["ShouldInitiateUpload"])
+	assert.Equal(t, readFile(t, dir, "a/server.js"), readFile(t, dir, "b/server.js"))
+}
+
+func TestUpload_AgentModeReportsInjection(t *testing.T) {
+	withAgentMode(t)
+
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeNodeBuildOutput(t), "--dry-run")
+
+	require.NoError(t, err)
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, true, results[0]["injected"])
+	assert.NotContains(t, results[0], "scriptUrl")
+}
+
+func TestUpload_OutputJSONWithoutAgentMode(t *testing.T) {
+	output, err := runDebuginfoCmd(t, "--type", "source-map", writeNodeBuildOutput(t), "--dry-run", "-o", "json")
+
+	require.NoError(t, err)
+	var results []uploadResult
+	require.NoError(t, json.Unmarshal([]byte(output), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, outcomePending, results[0].Status)
+}
+
+func TestUpload_UnknownOutputFormatFailsBeforeAnyWork(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "-o", "yaml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown --output "yaml"`)
+	assertNodeBuildUnchanged(t, dir)
+}
+
+func TestUpload_DryRunFailsOnAReadOnlyFile(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+	require.NoError(t, os.Chmod(filepath.Join(dir, "server.js"), 0o444))
+
+	_, err := runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server.js is read-only")
+}
+
+func TestUpload_WarnsWhenADebugIDUploadLooksLikeABrowserBuild(t *testing.T) {
+	dir := writeNodeBuildOutput(t)
+	writeFile(t, dir, "index.html", "<html></html>")
+
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		_, err = runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run")
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "looks like a browser build")
+
+	stderr = testutil.CaptureStderr(t, func() {
+		_, err = runDebuginfoCmd(t, "--type", "source-map", dir, "--dry-run", "--base-url", "https://app.example.com/")
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, stderr, "looks like a browser build")
+}

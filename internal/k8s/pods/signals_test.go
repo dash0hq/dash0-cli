@@ -1,6 +1,7 @@
 package pods
 
 import (
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +36,8 @@ func TestREDUnits(t *testing.T) {
 		{0.014, "percent", "0.01%"},
 	}
 	for _, c := range cases {
-		if got := formatValue(f(c.v), c.unit); got != c.want {
-			t.Errorf("formatValue(%v, %q) = %q, want %q", c.v, c.unit, got, c.want)
+		if got := ditt0.FormatValue(f(c.v), c.unit); got != c.want {
+			t.Errorf("ditt0.FormatValue(%v, %q) = %q, want %q", c.v, c.unit, got, c.want)
 		}
 	}
 }
@@ -136,22 +137,22 @@ func TestPerPodKeepsClusters(t *testing.T) {
 	}
 
 	// One cluster goes unsaid, two are told apart
-	p := &page{theme: dark, data: map[string][]*float64{"cpuPods:eu/checkout-a": {f(1)}, "cpuPods:eu/checkout-b": {f(2)}}}
-	if got, _ := p.podSeries("cpuPods", ""); got[0].name != "checkout-b" {
+	p := &page{theme: ditt0.Dark, data: map[string][]*float64{"cpuPods:eu/checkout-a": {f(1)}, "cpuPods:eu/checkout-b": {f(2)}}}
+	if got, _ := p.podSeries("cpuPods", ""); got[0].Name != "checkout-b" {
 		t.Errorf("got %+v", got)
 	}
 	p.data["cpuPods:us/checkout-a"] = []*float64{f(3)}
-	if got, _ := p.podSeries("cpuPods", ""); got[0].name != "us/checkout-a" {
+	if got, _ := p.podSeries("cpuPods", ""); got[0].Name != "us/checkout-a" {
 		t.Errorf("got %+v", got)
 	}
 }
 
 func TestPodColorFollowsTheName(t *testing.T) {
-	p := &page{theme: dark, data: map[string][]*float64{"cpuPods:checkout-a": {f(1)}, "cpuPods:checkout-b": {f(2)}}}
+	p := &page{theme: ditt0.Dark, data: map[string][]*float64{"cpuPods:checkout-a": {f(1)}, "cpuPods:checkout-b": {f(2)}}}
 	before, _ := p.podSeries("cpuPods", "")
 	p.data["cpuPods:checkout-a"] = []*float64{f(3)}
 	after, _ := p.podSeries("cpuPods", "")
-	if before[0].name != after[1].name || before[0].color != after[1].color || before[1].color != after[0].color {
+	if before[0].Name != after[1].Name || before[0].Color != after[1].Color || before[1].Color != after[0].Color {
 		t.Errorf("before %+v, after %+v", before, after)
 	}
 	for i := 0; i < maxPods; i++ {
@@ -160,7 +161,7 @@ func TestPodColorFollowsTheName(t *testing.T) {
 	got, _ := p.podSeries("cpuPods", "")
 	seen := map[string]bool{}
 	for _, s := range got {
-		seen[s.color] = true
+		seen[s.Color] = true
 	}
 	if len(seen) != len(got) {
 		t.Errorf("%d pods share %d colours", len(got), len(seen))
@@ -184,26 +185,26 @@ func TestServedWithoutErrorRate(t *testing.T) {
 }
 
 func TestSectionsHideWithoutData(t *testing.T) {
-	p := &page{theme: dark, data: map[string][]*float64{"requests": {f(0), f(0)}, "logs:INFO": {f(0)}}}
+	p := &page{theme: ditt0.Dark, data: map[string][]*float64{"requests": {f(0), f(0)}, "logs:INFO": {f(0)}}}
 	if p.redSection(60, false, 5) != nil || p.logsSection(60, 5) != nil {
 		t.Error("a pod with no spans or logs gets no RED or Logs section")
 	}
 	p.data["logs:ERROR"] = []*float64{f(3), f(0)}
 	p.win = window{time.Unix(0, 0), time.Unix(60, 0), time.Minute}
 	logs := p.logsSection(60, 5)
-	if logs == nil || !strings.Contains(logs[0][0].text, "Logs") {
+	if logs == nil || !strings.Contains(logs[0][0].Text, "Logs") {
 		t.Errorf("logs section missing")
 	}
 }
 
 func TestPodSeriesRanksBusiestFirst(t *testing.T) {
-	p := &page{theme: dark, data: map[string][]*float64{"cpu": {f(99)}}}
+	p := &page{theme: ditt0.Dark, data: map[string][]*float64{"cpu": {f(99)}}}
 	for i := 0; i < maxPods+2; i++ {
 		p.data["cpuPods:pod-"+string(rune('a'+i))] = []*float64{f(float64(i)), nil}
 	}
 	p.data["cpuPods:gone"] = []*float64{nil, nil}
 	got, n := p.podSeries("cpuPods", "")
-	if len(got) != maxPods || n != maxPods+2 || got[0].name != "pod-j" || got[maxPods-1].name != "pod-c" {
+	if len(got) != maxPods || n != maxPods+2 || got[0].Name != "pod-j" || got[maxPods-1].Name != "pod-c" {
 		t.Errorf("got %d of %d: %+v", len(got), n, got)
 	}
 
@@ -211,7 +212,7 @@ func TestPodSeriesRanksBusiestFirst(t *testing.T) {
 	p.data["cpuUtilPods:pod-a"] = []*float64{f(0.95), f(0.1)}
 	p.data["cpuUtilPods:pod-b"] = []*float64{f(0.5), nil}
 	got, _ = p.podSeries("cpuPods", "cpuUtilPods")
-	if got[0].name != "pod-a" || got[1].name != "pod-b" || got[2].name != "pod-j" {
+	if got[0].Name != "pod-a" || got[1].Name != "pod-b" || got[2].Name != "pod-j" {
 		t.Errorf("got %+v", got[:3])
 	}
 }
@@ -235,7 +236,7 @@ func TestAgainstTheBusiestPodsLimit(t *testing.T) {
 		{"deployment", f(0.95), "busiest pod at 95% of its limit", true},
 		{"deployment", nil, "no limit", false},
 	} {
-		p := &page{theme: dark, target: target{kind: c.kind}}
+		p := &page{theme: ditt0.Dark, target: target{kind: c.kind}}
 		note, ink := p.against([]*float64{f(5)}, []*float64{f(4)}, []*float64{f(10)}, []*float64{c.util}, "cores")
 		if !strings.Contains(note, c.note) || (ink != "") != c.warn {
 			t.Errorf("%s %v: %q %q", c.kind, c.util, note, ink)
@@ -243,7 +244,7 @@ func TestAgainstTheBusiestPodsLimit(t *testing.T) {
 	}
 
 	// A zero limit is none
-	p := &page{theme: dark, target: target{kind: "pod"}}
+	p := &page{theme: ditt0.Dark, target: target{kind: "pod"}}
 	if note, _ := p.against([]*float64{f(5)}, nil, []*float64{f(0)}, []*float64{f(0.5)}, "cores"); note != "no limit" {
 		t.Errorf("%q", note)
 	}

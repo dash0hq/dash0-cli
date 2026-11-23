@@ -1,6 +1,7 @@
 package pods
 
 import (
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"strings"
 	"testing"
 	"time"
@@ -21,58 +22,26 @@ func TestFormatValue(t *testing.T) {
 		{12500, "", "12.5K"},
 	}
 	for _, c := range cases {
-		if got := formatValue(f(c.v), c.unit); got != c.want {
-			t.Errorf("formatValue(%v, %q) = %q, want %q", c.v, c.unit, got, c.want)
+		if got := ditt0.FormatValue(f(c.v), c.unit); got != c.want {
+			t.Errorf("ditt0.FormatValue(%v, %q) = %q, want %q", c.v, c.unit, got, c.want)
 		}
 	}
-	if got := formatValue(nil, "bytes"); got != "no data" {
+	if got := ditt0.FormatValue(nil, "bytes"); got != "no data" {
 		t.Errorf("nil reads %q", got)
-	}
-}
-
-func TestNice(t *testing.T) {
-	cases := []struct{ in, want span }{
-		{span{6.7, 36}, span{0, 40}},
-		{span{77e9, 146e9}, span{60e9, 160e9}},
-		{span{99, 102}, span{99, 103}},
-	}
-	for _, c := range cases {
-		if got := nice(c.in); got != c.want {
-			t.Errorf("nice(%v) = %v, want %v", c.in, got, c.want)
-		}
-	}
-}
-
-func TestFitKeepsSamplesAndGaps(t *testing.T) {
-	line, _ := fit([]*float64{f(1), nil, f(3)}, 5)
-	if *line[0] != 1 || line[1] != nil || line[2] != nil || *line[4] != 3 {
-		t.Errorf("a gap must stay a gap, never a zero: %v", line)
-	}
-	line, _ = fit([]*float64{f(1), f(3), f(5), f(7)}, 2)
-	if len(line) != 2 || *line[0] != 2 || *line[1] != 6 {
-		t.Errorf("folded columns take their mean: %v", line)
 	}
 }
 
 func TestTimeseriesDrawsAxisAndLegend(t *testing.T) {
 	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
 	times := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}
-	out := timeseries([]series{{"usage", []*float64{f(1), f(2), f(3)}, "#828aff"}}, times, "cores", 40, 5)
-	var all []string
-	for _, l := range out {
-		var sb strings.Builder
-		for _, s := range l {
-			sb.WriteString(s.text)
-		}
-		all = append(all, sb.String())
-	}
-	joined := strings.Join(all, "\n")
+	out := chart([]series{{Name: "usage", Values: []*float64{f(1), f(2), f(3)}, Color: "#828aff"}}, times, "cores", 40, 5, oneAxis)
+	joined := out.String()
 	for _, want := range []string{"cores", "┤", "└┬", "━ usage", "┄"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("chart lacks %q:\n%s", want, joined)
 		}
 	}
-	if empty := timeseries([]series{{"usage", nil, "#828aff"}}, nil, "", 40, 5); !strings.Contains(empty[0][0].text, "No data") {
+	if empty := chart([]series{{Name: "usage", Color: "#828aff"}}, nil, "", 40, 5, oneAxis); !strings.Contains(empty.String(), "No data") {
 		t.Errorf("an empty series says so")
 	}
 }
@@ -84,89 +53,105 @@ func TestQueryEscapesLabelValues(t *testing.T) {
 	}
 }
 
-func TestBrailleDrawsOneJoinedLine(t *testing.T) {
-	// 0 then 1 on one row: the bottom-left dot, the midpoint joined up its right-hand column, then the top dot
-	cells := braille([][]*float64{{f(0), f(1)}}, []string{"#828aff"}, 1, span{0, 1})
-	if got := cells[0][0].sides; got != 0x40|0x20|0x10 {
-		t.Errorf("first cell %#x", got)
+// The charts are Ditt0's Dots line type: braille, a gap in the samples a gap in the line, never a zero
+func TestChartDrawsBrailleAndKeepsGaps(t *testing.T) {
+	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
+	var times []time.Time
+	values := make([]*float64, 30)
+	for i := range values {
+		times = append(times, start.Add(time.Duration(i)*time.Minute))
+		if i < 10 || i >= 20 {
+			values[i] = f(float64(i % 7))
+		}
 	}
-	if got := cells[0][1].sides; got != 0x01 {
-		t.Errorf("second cell %#x", got)
-	}
-	// The series listed first colours a shared cell
-	cells = braille([][]*float64{{f(0)}, {f(0)}}, []string{"first", "second"}, 1, span{0, 1})
-	if cells[0][0].color != "first" {
-		t.Errorf("shared cell coloured %q", cells[0][0].color)
-	}
-}
-
-func TestBrailleDrawsADescendingLine(t *testing.T) {
-	// 1 then 0: the top-left dot, the midpoint one row down the right-hand column, then down to the bottom
-	cells := braille([][]*float64{{f(1), f(0)}}, []string{"c"}, 1, span{0, 1})
-	if got := cells[0][0].sides; got != 0x01|0x10 {
-		t.Errorf("first cell %#x", got)
-	}
-	if got := cells[0][1].sides; got != 0x04|0x40 {
-		t.Errorf("second cell %#x", got)
-	}
-}
-
-func TestBrailleBreaksTheLineAtAGap(t *testing.T) {
-	cells := braille([][]*float64{{f(0), nil, f(0)}}, []string{"c"}, 1, span{0, 1})
-	if cells[0][1].sides != 0 || cells[0][1].color != "" {
-		t.Errorf("gap drawn: %+v", cells[0][1])
-	}
-	// Each end is a lone sample, so a dash along the bottom row
-	if cells[0][0].sides != 0x40|0x80 || cells[0][2].sides != 0x40|0x80 {
-		t.Errorf("ends %#x %#x", cells[0][0].sides, cells[0][2].sides)
-	}
-}
-
-func TestBrailleKeepsOnlyTheFirstSeriesDotsInASharedCell(t *testing.T) {
-	// The second series' bottom dot would show in the first series' colour if the dots were merged
-	cells := braille([][]*float64{{f(1)}, {f(0)}}, []string{"first", "second"}, 1, span{0, 1})
-	if got := cells[0][0]; got.sides != 0x01|0x08 || got.color != "first" {
-		t.Errorf("shared cell %+v", got)
-	}
-}
-
-func TestBrailleJoinsAcrossCellRows(t *testing.T) {
-	// 0 then 1 over two rows: up the right-hand column of the bottom cell, on into the top one
-	cells := braille([][]*float64{{f(0), f(1)}}, []string{"c"}, 2, span{0, 1})
-	want := [2][2]int{{0x80, 0x07}, {0x78, 0}}
-	for r := range want {
-		for c := range want[r] {
-			if got := cells[r][c].sides; got != want[r][c] {
-				t.Errorf("cell %d,%d %#x, want %#x", r, c, got, want[r][c])
+	out := chart([]series{{Name: "usage", Values: values, Color: "#828aff"}}, times, "cores", 60, 5, oneAxis)
+	dots, gap := 0, 0
+	for _, l := range out {
+		col := 0
+		for _, s := range l {
+			for _, r := range s.Text {
+				if r > 0x2800 && r <= 0x28ff {
+					dots++
+					// The samples 10 to 19 of 30 are missing: the middle third of the plot, past the 4 cells of y axis
+					if plot := col - 4; plot > 20 && plot < 32 {
+						gap++
+					}
+				}
+				col++
 			}
 		}
 	}
-}
-
-func TestBrailleDrawsALoneSampleAsADash(t *testing.T) {
-	cells := braille([][]*float64{{nil, f(0.5), nil}}, []string{"c"}, 3, span{0, 1})
-	// 0.5 on 12 dot rows lands on dot row 5: the second row of the middle cell, both columns
-	if got := cells[1][1].sides; got != 0x02|0x10 {
-		t.Errorf("lone sample %#x", got)
+	if dots == 0 {
+		t.Fatalf("no braille in the chart:\n%s", out.String())
+	}
+	if gap != 0 {
+		t.Errorf("%d cells drawn inside the gap:\n%s", gap, out.String())
 	}
 }
 
-func TestBrailleClampsValuesOutsideTheSpan(t *testing.T) {
-	cells := braille([][]*float64{{f(-1), f(2)}}, []string{"c"}, 1, span{0, 1})
-	if cells[0][0].sides&0x40 == 0 || cells[0][1].sides&0x01 == 0 {
-		t.Errorf("clamped %#x %#x", cells[0][0].sides, cells[0][1].sides)
+// Small multiples only where the page asks for them and a series would flatten; CPU and memory keep one axis
+func TestChartSplitsOnlyWhenASeriesFlattens(t *testing.T) {
+	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
+	times := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}
+	ss := []series{
+		{Name: "UNKNOWN", Values: []*float64{f(30000), f(31000), f(29000)}, Color: "#939396"},
+		{Name: "ERROR", Values: []*float64{f(900), f(905), f(910)}, Color: "#e33238"},
+	}
+	if out := chart(ss, times, "/s", 60, 8, multiples).String(); !strings.Contains(out, "━ ERROR · /s") {
+		t.Errorf("a flat series gets a panel of its own:\n%s", out)
+	}
+	if out := chart(ss, times, "/s", 60, 8, oneAxis).String(); strings.Contains(out, "━ ERROR · /s") || !strings.Contains(out, "━ UNKNOWN") {
+		t.Errorf("one axis when the page asks for it:\n%s", out)
+	}
+	five := []series{}
+	for i, name := range []string{"pod-a", "pod-b", "pod-c", "pod-d", "pod-e"} {
+		five = append(five, series{Name: name, Values: []*float64{f(float64(i)), f(float64(5 - i)), f(float64(i))}, Color: ditt0.Dark.ManagedSeriesColor(i)})
+	}
+	if out := chart(five, times, "cores", 60, 8, multiples).String(); strings.Contains(out, " · cores") || !strings.Contains(out, "━ pod-e") {
+		t.Errorf("five pods that move stay on one axis:\n%s", out)
 	}
 }
 
 func TestFlattensCountsDotRows(t *testing.T) {
 	// Errors moving 0 to 15 beside requests up to 100 cross three of the 19 dot-row steps, so they stay on one axis
-	ss := []series{{values: []*float64{f(0), f(100)}}, {values: []*float64{f(0), f(15)}}}
+	ss := []series{{Values: []*float64{f(0), f(100)}}, {Values: []*float64{f(0), f(15)}}}
 	if flattens(ss, 5) {
 		t.Error("errors that move three dot rows sent to small multiples")
 	}
 	// Moving 4 of 100 is under one dot row
-	ss[1].values = []*float64{f(0), f(4)}
+	ss[1].Values = []*float64{f(0), f(4)}
 	if !flattens(ss, 5) {
 		t.Error("a line flat to the dot kept on the shared axis")
+	}
+}
+
+// Cards in a row end up equally tall: one axis, small multiples that split their rows, and a card that can't grow.
+// The charts grow to that height themselves, with no blank lines padded under them
+func TestFillMatchesHeights(t *testing.T) {
+	start := time.Date(2026, 11, 11, 18, 0, 0, 0, time.UTC)
+	times := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}
+	big, small, tiny := []*float64{f(1200), f(1300), f(1250)}, []*float64{f(1), f(3), f(2)}, []*float64{f(0.004), f(0.006), f(0.005)}
+	card := func(ss []series, a axes) func(int) ditt0.Block {
+		return func(rows int) ditt0.Block {
+			return ditt0.Border(chart(ss, times, "seconds", 40, rows, a), 44, 1, ditt0.DimStyle)
+		}
+	}
+	fixed := func(int) ditt0.Block {
+		return ditt0.Border(ditt0.Block{ditt0.Text("loading", ditt0.DimStyle)}, 44, 1, ditt0.DimStyle)
+	}
+	for _, rows := range []int{5, 8, 12} {
+		got := fill(rows,
+			card([]series{{Name: "requests", Values: big}, {Name: "errors", Values: small}}, fitMultiples),
+			card([]series{{Values: small}}, oneAxis),
+			card([]series{{Name: "p99", Values: big}, {Name: "p95", Values: small}, {Name: "p50", Values: tiny}}, fitMultiples),
+			fixed)
+		for i, b := range got {
+			if len(b) != len(got[0]) {
+				t.Errorf("rows %d: card %d is %d lines, card 0 %d", rows, i, len(b), len(got[0]))
+			}
+			if last := strings.Trim(plain(b[len(b)-2]), "│ "); i < 3 && last == "" {
+				t.Errorf("rows %d: chart card %d padded with blank lines instead of growing", rows, i)
+			}
+		}
 	}
 }

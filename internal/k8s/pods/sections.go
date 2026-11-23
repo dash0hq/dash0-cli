@@ -2,6 +2,7 @@ package pods
 
 import (
 	"fmt"
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"sort"
 	"strings"
 	"time"
@@ -36,7 +37,7 @@ func (p *page) podSeries(key, rankKey string) ([]series, int) {
 		}
 		r := ranked{name: pod, values: v, mean: mean(v)}
 		if u := p.data[rankKey+":"+pod]; rankKey != "" && hasSamples(u) {
-			r.limited, r.peak = true, peakOf([]series{{values: u}})
+			r.limited, r.peak = true, peakOf([]series{{Values: u}})
 		}
 		all = append(all, r)
 	}
@@ -73,7 +74,7 @@ func (p *page) podSeries(key, rankKey string) ([]series, int) {
 		if _, pod, ok := strings.Cut(name, "/"); ok && len(clusters) == 1 {
 			name = pod
 		}
-		out = append(out, series{name, r.values, p.theme.series[sort.SearchStrings(names, r.name)%len(p.theme.series)]})
+		out = append(out, series{Name: name, Values: r.values, Color: p.theme.ManagedSeriesColor(sort.SearchStrings(names, r.name))})
 	}
 	return out, len(all)
 }
@@ -92,12 +93,12 @@ func mean(values []*float64) float64 {
 }
 
 // A per-pod card, its title saying when it shows only the busiest pods
-func (p *page) podCard(title, key, rankKey, unit string, width, rows int) block {
+func (p *page) podCard(title, key, rankKey, unit string, width, rows int) ditt0.Block {
 	ss, n := p.podSeries(key, rankKey)
 	if n > len(ss) {
 		title += fmt.Sprintf(" · busiest %d of %d", len(ss), n)
 	}
-	return p.cardOf(title, unit, ss, width, rows, false)
+	return p.cardOf(title, unit, ss, width, rows, oneAxis)
 }
 
 // Whether the target served any request in the window. Under min the requests can be all zeros while other pods
@@ -131,66 +132,94 @@ func sum(values []*float64) float64 {
 }
 
 // The section's heading, bold over a dim line saying what it counts (Heading, level 'heading')
-func heading(title, note string) block {
-	return block{line{{title, style{bold: true}}, {"  " + note, dimStyle}}}
+func heading(title, note string) ditt0.Block {
+	return ditt0.Block{ditt0.Line{{Text: title, Style: ditt0.Style{Bold: true}}, {Text: "  " + note, Style: ditt0.DimStyle}}}
 }
 
 // Requests, errors and duration of the spans the pod serves: nil when it served none in the window
-func (p *page) redSection(cardW int, side bool, rows int) block {
+// Laid out as Dash0's service catalog: requests, the error percentage and duration side by side
+func (p *page) redSection(width int, side bool, rows int) ditt0.Block {
 	if !p.served() {
 		return nil
 	}
 	requests, errors := p.data["requests"], p.data["errors"]
 	since := "vs " + clock(p.win.start)
 	errTitle := "Errors"
-	if p.aggNote() != "" {
+	if p.aggNote() != "" || p.perPod {
 		errTitle += " · all pods"
 	}
-	stats := hjoin(6,
+	stats := ditt0.Row(6,
 		stat("Requests"+p.aggNote(), requests, "/s", "", since, "", true, p.theme),
 		stat(errTitle, p.data["errorRate"], "percent", "", since, "", false, p.theme),
 		stat("Duration p95", p.data["p95"], "seconds", "", since, "", false, p.theme),
 	)
 
-	var req, dur block
+	cardW := width
+	if side {
+		cardW = (width - 2) / 3
+	}
+	// The share of all the target's requests, in every view: one pod's errors over another's requests mean nothing.
+	// No failed request reads as that, not as a flat line on a made-up axis
+	errCard := func(rows int) ditt0.Block {
+		rate := p.data["errorRate"]
+		if hasSamples(rate) && !active(rate) {
+			return box(errTitle, ditt0.Block{ditt0.Text("No errors in this time range.", ditt0.DimStyle)}, cardW)
+		}
+		var errs []series
+		if hasSamples(rate) {
+			errs = []series{{Values: rate, Color: p.theme.Error.Inline}}
+		}
+		return p.cardOf(errTitle, "percent", errs, cardW, rows, oneAxis)
+	}
+	a := multiples
+	if side {
+		a = fitMultiples
+	}
+
+	var req, dur func(rows int) ditt0.Block
 	if p.perPod {
-		// One axis for every pod: comparing them is the point
-		req = p.podCard("Requests by pod", "requestsPods", "", "/s", cardW, rows)
-		dur = p.podCard("Duration p95 by pod", "p95Pods", "", "seconds", cardW, rows)
+		req = func(rows int) ditt0.Block { return p.podCard("Requests by pod", "requestsPods", "", "/s", cardW, rows) }
+		dur = func(rows int) ditt0.Block {
+			return p.podCard("Duration p95 by pod", "p95Pods", "", "seconds", cardW, rows)
+		}
 	} else {
 		var reqSeries []series
-		reqSeries = append(reqSeries, series{"requests", requests, p.theme.series[0]})
+		reqSeries = append(reqSeries, series{Name: "requests", Values: requests, Color: p.theme.ManagedSeriesColor(0)})
 		if active(errors) {
 			// ERROR takes the error red wherever it sits, as Ditt0's color manager colours it by meaning
-			reqSeries = append(reqSeries, series{"errors", errors, p.theme.errorInk})
+			reqSeries = append(reqSeries, series{Name: "errors", Values: errors, Color: p.theme.Error.Inline})
 		}
 		var durSeries []series
 		for i, q := range []string{"p99", "p95", "p50"} {
 			if v := p.data[q]; hasSamples(v) {
-				durSeries = append(durSeries, series{q, v, p.theme.series[i]})
+				durSeries = append(durSeries, series{Name: q, Values: v, Color: p.theme.ManagedSeriesColor(i)})
 			}
 		}
-		req = p.cardOf("Requests"+p.aggNote(), "/s", reqSeries, cardW, rows, true)
-		dur = p.cardOf("Duration", "seconds", durSeries, cardW, rows, true)
+		req = func(rows int) ditt0.Block {
+			return p.cardOf("Requests"+p.aggNote(), "/s", reqSeries, cardW, rows, a)
+		}
+		dur = func(rows int) ditt0.Block { return p.cardOf("Duration", "seconds", durSeries, cardW, rows, a) }
 	}
-	charts := vjoin(1, req, dur)
+	var charts ditt0.Block
 	if side {
-		charts = hjoin(1, req, dur)
+		charts = ditt0.Row(1, fill(rows, req, errCard, dur)...)
+	} else {
+		charts = ditt0.Column(1, req(rows), errCard(rows), dur(rows))
 	}
-	return vjoin(1, heading("Requests", "SERVER spans"), stats, charts)
+	return ditt0.Column(1, heading("Requests", "SERVER spans"), stats, charts)
 }
 
 // The severities in the order a log chart lists them, worst first, each in its status colour
 func (p *page) severities() []struct{ name, color string } {
 	t := p.theme
 	return []struct{ name, color string }{
-		{"FATAL", t.errorInk}, {"ERROR", t.errorInk}, {"WARN", t.warningInk}, {"INFO", t.infoInk},
-		{"DEBUG", t.debugInk}, {"TRACE", t.debugInk}, {"UNKNOWN", t.unknownInk},
+		{"FATAL", t.Error.Inline}, {"ERROR", t.Error.Inline}, {"WARN", t.Warning.Inline}, {"INFO", t.Info.Inline},
+		{"DEBUG", t.Debug.Inline}, {"TRACE", t.Debug.Inline}, {"UNKNOWN", t.Unknown.Inline},
 	}
 }
 
 // Log record counts by severity: nil when the pod wrote none in the window
-func (p *page) logsSection(width, rows int) block {
+func (p *page) logsSection(width, rows int) ditt0.Block {
 	var ss []series
 	var total, errs, warns []*float64
 	for _, sev := range p.severities() {
@@ -198,7 +227,7 @@ func (p *page) logsSection(width, rows int) block {
 		if !ok || !active(v) {
 			continue
 		}
-		ss = append(ss, series{sev.name, v, sev.color})
+		ss = append(ss, series{Name: sev.name, Values: v, Color: sev.color})
 		total = addSeries(total, v)
 		switch sev.name {
 		case "FATAL", "ERROR":
@@ -211,34 +240,34 @@ func (p *page) logsSection(width, rows int) block {
 		return nil
 	}
 	span := ranges[p.rangeIdx].label
-	count := func(label string, v []*float64, ink string) block {
+	count := func(label string, v []*float64, ink string) ditt0.Block {
 		n := sum(v)
-		out := block{text(label, dimStyle)}
+		out := ditt0.Block{ditt0.Text(label, ditt0.DimStyle)}
 		if n > 0 || v != nil {
-			txt := formatValue(&n, "")
-			st := style{bold: true}
+			txt := ditt0.FormatValue(&n, "")
+			st := ditt0.Style{Bold: true}
 			if n > 0 && ink != "" {
-				st.fg = ink
+				st.Fg = ink
 			}
-			out = append(out, text(txt, st))
+			out = append(out, ditt0.Text(txt, st))
 		} else {
-			out = append(out, text("0", style{bold: true, dim: true}))
+			out = append(out, ditt0.Text("0", ditt0.Style{Bold: true, Dim: true}))
 		}
 		if active(v) {
-			out = append(out, text(sparkline(v, 20), style{fg: ink, dim: ink == ""}))
+			out = append(out, ditt0.Text(ditt0.Sparkline(v, 20), ditt0.Style{Fg: ink, Dim: ink == ""}))
 		} else {
 			// As wide as a sparkline, so the stats beside it keep their places
-			out = append(out, text(strings.Repeat(" ", 20), style{}))
+			out = append(out, ditt0.Text(strings.Repeat(" ", 20), ditt0.Style{}))
 		}
 		return out
 	}
-	stats := hjoin(6,
+	stats := ditt0.Row(6,
 		count("Log records · "+span, total, ""),
-		count("Errors", errs, p.theme.errorInk),
-		count("Warnings", warns, p.theme.warningInk),
+		count("Errors", errs, p.theme.Error.Inline),
+		count("Warnings", warns, p.theme.Warning.Inline),
 	)
-	chart := p.cardOf("Log records per "+stepLabel(p.win.step), "", ss, width, rows, true)
-	return vjoin(1, heading("Logs", "records by severity"), stats, chart)
+	chart := p.cardOf("Log records per "+stepLabel(p.win.step), "", ss, width, rows, multiples)
+	return ditt0.Column(1, heading("Logs", "records by severity"), stats, chart)
 }
 
 // Series added step by step; a step none of them has stays none

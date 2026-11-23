@@ -3,6 +3,7 @@ package pods
 import (
 	"context"
 	"fmt"
+	"github.com/dash0hq/ditt0-cli-design-system/go/ditt0"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,7 +46,7 @@ type page struct {
 	at        time.Time
 	loading   bool
 	gen       int
-	theme     theme
+	theme     ditt0.Theme
 	scroll    int
 	perPod    bool
 	apiURL    string
@@ -140,18 +141,18 @@ func (p *page) fetch(ctx context.Context, c promClient, columns int) {
 }
 
 // What the freshness line says (live-parts.jsx freshnessOf)
-func (p *page) freshness() line {
+func (p *page) freshness() ditt0.Line {
 	if p.at.IsZero() {
 		if len(p.failed) > 0 {
-			return line{{"Couldn't reach Dash0. Trying again in 30 seconds.", style{fg: p.theme.errorInk}}, {"  " + p.lastError, dimStyle}}
+			return ditt0.Line{{Text: "Couldn't reach Dash0. Trying again in 30 seconds.", Style: ditt0.Style{Fg: p.theme.Error.Inline}}, {Text: "  " + p.lastError, Style: ditt0.DimStyle}}
 		}
-		return text("◌ Loading from Dash0…", dimStyle)
+		return ditt0.Text("◌ Loading from Dash0…", ditt0.DimStyle)
 	}
 	at := p.at.Local().Format("15:04:05") + " (" + zoneOf(p.at) + ")"
 	if len(p.failed) > 0 {
-		return text(fmt.Sprintf("Updated %s · %d of %d panels show older data", at, len(p.failed), len(panelsFor(p.target, p.perPod))), dimStyle)
+		return ditt0.Text(fmt.Sprintf("Updated %s · %d of %d panels show older data", at, len(p.failed), len(panelsFor(p.target, p.perPod))), ditt0.DimStyle)
 	}
-	return text("Updated "+at, dimStyle)
+	return ditt0.Text("Updated "+at, ditt0.DimStyle)
 }
 
 func (p *page) metricsLink(query string) string {
@@ -189,45 +190,45 @@ func (p *page) links() []dash0Link {
 }
 
 // A row of bordered toggles, the selected one's border in the accent colour, the others dim (ChartControls)
-func (p *page) toggles() block {
-	var parts []block
+func (p *page) toggles() ditt0.Block {
+	var parts []ditt0.Block
 	for i, r := range ranges {
-		st, label := style{fg: p.theme.selected}, style{}
+		st, label := ditt0.Style{Fg: p.theme.Selected}, ditt0.Style{}
 		if i != p.rangeIdx {
-			st, label = dimStyle, dimStyle
+			st, label = ditt0.DimStyle, ditt0.DimStyle
 		}
-		parts = append(parts, border(block{text(r.label, label)}, len(r.label)+4, 1, st))
+		parts = append(parts, ditt0.Border(ditt0.Block{ditt0.Text(r.label, label)}, len(r.label)+4, 1, st))
 	}
 	// A workload's views: how its pods add up, then a line per pod
 	if !p.target.isPod() {
 		toggle := func(m string, on bool) {
-			st, label := style{fg: p.theme.selected}, style{}
+			st, label := ditt0.Style{Fg: p.theme.Selected}, ditt0.Style{}
 			if !on {
-				st, label = dimStyle, dimStyle
+				st, label = ditt0.DimStyle, ditt0.DimStyle
 			}
-			parts = append(parts, border(block{text(m, label)}, len(m)+4, 1, st))
+			parts = append(parts, ditt0.Border(ditt0.Block{ditt0.Text(m, label)}, len(m)+4, 1, st))
 		}
-		parts = append(parts, block{text("  ", style{})})
+		parts = append(parts, ditt0.Block{ditt0.Text("  ", ditt0.Style{})})
 		for _, m := range aggs {
 			toggle(m, m == p.target.agg)
 		}
-		parts = append(parts, block{text("  ", style{})})
+		parts = append(parts, ditt0.Block{ditt0.Text("  ", ditt0.Style{})})
 		toggle("per pod", p.perPod)
 	}
-	return hjoin(0, parts...)
+	return ditt0.Row(0, parts...)
 }
 
 // Tags: each key dim, its value at full strength (Tag)
-func (p *page) tags() line {
-	var l line
+func (p *page) tags() ditt0.Line {
+	var l ditt0.Line
 	add := func(k, v string) {
 		if v == "" {
 			return
 		}
 		if len(l) > 0 {
-			l = append(l, seg{"   ", style{}})
+			l = append(l, ditt0.Segment{Text: "   ", Style: ditt0.Style{}})
 		}
-		l = append(l, seg{k + " ", dimStyle}, seg{v, style{}})
+		l = append(l, ditt0.Segment{Text: k + " ", Style: ditt0.DimStyle}, ditt0.Segment{Text: v, Style: ditt0.Style{}})
 	}
 	add("profile", p.target.profile)
 	add("cluster", p.target.cluster)
@@ -258,13 +259,13 @@ func (p *page) against(usage, request, limit, util []*float64, unit string) (str
 	var parts []string
 	// Under avg, min or max the usage and the request can be different pods'
 	if x, ok := ratio(u, r); ok && p.target.isTotal() {
-		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", x*100, formatValue(r, unit)))
+		parts = append(parts, fmt.Sprintf("%.0f%% of %s requested", x*100, ditt0.FormatValue(r, unit)))
 	}
 	switch {
 	case f == nil || (l == nil && p.target.isPod()):
 		return strings.Join(append(parts, "no limit"), " · "), ""
 	case p.target.isPod():
-		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", *f*100, formatValue(l, unit)))
+		parts = append(parts, fmt.Sprintf("%.0f%% of %s limit", *f*100, ditt0.FormatValue(l, unit)))
 	case l == nil:
 		// Some pods have no limit, so the workload has none, but those that do can still run out
 		parts = append(parts, "not every pod has a limit", fmt.Sprintf("busiest limited pod at %.0f%% of its limit", *f*100))
@@ -273,9 +274,9 @@ func (p *page) against(usage, request, limit, util []*float64, unit string) (str
 	}
 	ink := ""
 	if *f > 0.9 {
-		ink = p.theme.errorInk
+		ink = p.theme.Error.Inline
 	} else if *f > 0.8 {
-		ink = p.theme.warningInk
+		ink = p.theme.Warning.Inline
 	}
 	return strings.Join(parts, " · "), ink
 }
@@ -289,34 +290,38 @@ func (p *page) chartSeries(keys [3]string) []series {
 		if first(v) == nil {
 			continue
 		}
-		out = append(out, series{names[i], v, p.theme.series[i]})
+		out = append(out, series{Name: names[i], Values: v, Color: p.theme.ManagedSeriesColor(i)})
 	}
 	return out
 }
 
-func (p *page) card(title, unit string, ss []series, width, rows int) block {
-	return p.cardOf(title, unit, ss, width, rows, false)
+func (p *page) card(title, unit string, ss []series, width, rows int) ditt0.Block {
+	return p.cardOf(title, unit, ss, width, rows, oneAxis)
 }
 
 // multiples: series that would flatten on one axis draw as small multiples (chart)
-func (p *page) cardOf(title, unit string, ss []series, width, rows int, multiples bool) block {
-	head := text(title, style{bold: true})
-	var body block
+func (p *page) cardOf(title, unit string, ss []series, width, rows int, a axes) ditt0.Block {
+	var body ditt0.Block
 	switch {
 	case p.data == nil && len(p.failed) > 0:
-		body = block{text("Couldn't load "+strings.ToLower(title), style{fg: p.theme.errorInk}), text("Dash0 didn't answer. The page asks again on the next refresh.", dimStyle)}
+		body = ditt0.Block{ditt0.Text("Couldn't load "+strings.ToLower(title), ditt0.Style{Fg: p.theme.Error.Inline}), ditt0.Text("Dash0 didn't answer. The page asks again on the next refresh.", ditt0.DimStyle)}
 	case p.data == nil:
-		body = block{text("◌ Loading "+strings.ToLower(title)+"…", dimStyle)}
+		body = ditt0.Block{ditt0.Text("◌ Loading "+strings.ToLower(title)+"…", ditt0.DimStyle)}
 	case len(ss) == 0:
-		body = block{text("No data in this time range.", dimStyle)}
+		body = ditt0.Block{ditt0.Text("No data in this time range.", ditt0.DimStyle)}
 	default:
-		body = chart(ss, p.win.times(), unit, width-4, rows, multiples)
+		body = chart(ss, p.win.times(), unit, width-4, rows, a)
 	}
-	return border(vjoin(1, block{head}, body), width, 1, dimStyle)
+	return box(title, body, width)
+}
+
+// A card: its title in bold over its body, in a dim border width cells wide
+func box(title string, body ditt0.Block, width int) ditt0.Block {
+	return ditt0.Border(ditt0.Column(1, ditt0.Block{ditt0.Text(title, ditt0.Style{Bold: true})}, body), width, 1, ditt0.DimStyle)
 }
 
 // layout: the page for a terminal w × h, and the plot columns its charts get
-func (p *page) render(w, h int) (block, int) {
+func (p *page) render(w, h int) (ditt0.Block, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	inner := w - 2
@@ -325,33 +330,33 @@ func (p *page) render(w, h int) (block, int) {
 	if side {
 		cardW = (inner - 1) / 2
 	}
-	header := block{
-		text(p.target.namespace+"/"+p.target.name, style{bold: true}),
+	header := ditt0.Block{
+		ditt0.Text(p.target.namespace+"/"+p.target.name, ditt0.Style{Bold: true}),
 		p.tags(),
 		p.freshness(),
 	}
 
 	// The CTAs: Dash0's purple fill, each label in the CTA ink (Link, variant 'cta'), top right beside the header,
 	// else beside the range toggles, else under them
-	edge := style{fg: p.theme.ctaBg}
-	var buttons []block
+	edge := ditt0.Style{Fg: p.theme.CTA.Bg}
+	var buttons []ditt0.Block
 	for _, l := range p.links() {
 		label := " " + l.label + " "
-		buttons = append(buttons, block{
-			text("╭"+strings.Repeat("─", len(label))+"╮", edge),
-			line{{"│", edge}, {label, style{fg: p.theme.ctaText, bg: p.theme.ctaBg, bold: true, link: l.url}}, {"│", edge}},
-			text("╰"+strings.Repeat("─", len(label))+"╯", edge),
+		buttons = append(buttons, ditt0.Block{
+			ditt0.Text("╭"+strings.Repeat("─", len(label))+"╮", edge),
+			ditt0.Line{{Text: "│", Style: edge}, {Text: label, Style: ditt0.Style{Fg: p.theme.CTA.Text, Bg: p.theme.CTA.Bg, Bold: true, Link: l.url}}, {Text: "│", Style: edge}},
+			ditt0.Text("╰"+strings.Repeat("─", len(label))+"╯", edge),
 		})
 	}
-	cta := hjoin(1, buttons...)
+	cta := ditt0.Row(1, buttons...)
 	toggles := p.toggles()
 	switch {
-	case inner-header.width()-cta.width() >= 2:
-		header = hjoin(inner-header.width()-cta.width(), header, cta)
-	case inner-toggles.width()-cta.width() >= 2:
-		toggles = hjoin(inner-toggles.width()-cta.width(), toggles, cta)
+	case inner-header.Width()-cta.Width() >= 2:
+		header = ditt0.Row(inner-header.Width()-cta.Width(), header, cta)
+	case inner-toggles.Width()-cta.Width() >= 2:
+		toggles = ditt0.Row(inner-toggles.Width()-cta.Width(), toggles, cta)
 	default:
-		toggles = vjoin(0, toggles, cta)
+		toggles = ditt0.Column(0, toggles, cta)
 	}
 	// header 3, toggles 3, stats 7, hints 1, the gaps between them 3; each card's chrome 9
 	cards := 1
@@ -360,13 +365,13 @@ func (p *page) render(w, h int) (block, int) {
 	}
 	rows := max(5, min(12, (h-17-9*cards)/cards))
 
-	var stats block
+	var stats ditt0.Block
 	if p.data != nil {
 		d := p.data
 		cpuNote, cpuInk := p.against(d["cpu"], d["cpuRequest"], d["cpuLimit"], d["cpuUtil"], "cores")
 		memNote, memInk := p.against(d["mem"], d["memRequest"], d["memLimit"], d["memUtil"], "bytes")
 		since := "vs " + clock(p.win.start)
-		stats = hjoin(6,
+		stats = ditt0.Row(6,
 			stat("CPU"+p.aggNote(), d["cpu"], "cores", cpuInk, since, cpuNote, false, p.theme),
 			stat("Memory"+p.aggNote(), d["mem"], "bytes", memInk, since, memNote, false, p.theme),
 		)
@@ -378,18 +383,23 @@ func (p *page) render(w, h int) (block, int) {
 		cpu = p.podCard("CPU by pod", "cpuPods", "cpuUtilPods", "cores", cardW, rows)
 		mem = p.podCard("Memory by pod", "memPods", "memUtilPods", "bytes", cardW, rows)
 	}
-	charts := vjoin(1, cpu, mem)
+	charts := ditt0.Column(1, cpu, mem)
 	if side {
-		charts = hjoin(1, cpu, mem)
+		charts = ditt0.Row(1, cpu, mem)
 	}
 
-	var red, logs block
+	var red, logs ditt0.Block
 	if p.data != nil {
-		red = p.redSection(cardW, side, rows)
+		red = p.redSection(inner, side, rows)
 		logs = p.logsSection(inner, rows)
 	}
 
-	page := vjoin(1, header, toggles, stats, charts, red, logs)
-	plotColumns := cardW - 4 - 8 - rightGap
-	return indent(1, page), plotColumns
+	page := ditt0.Column(1, header, toggles, stats, charts, red, logs)
+	// The window's samples fit the narrowest chart: side by side, the Requests row's third of the page
+	chartW := cardW
+	if side {
+		chartW = (inner - 2) / 3
+	}
+	plotColumns := chartW - 4 - 8 - rightGap
+	return ditt0.Indent(1, page), plotColumns
 }

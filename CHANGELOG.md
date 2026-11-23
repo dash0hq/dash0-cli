@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.23.0
+
+
+### New Components
+
+
+- `debuginfo`: `dash0 -X debuginfo upload --type source-map` uploads JavaScript source maps, so Dash0 can resolve Node.js and browser profile frames to the original source. (#424)
+  For Node.js, the command keys each source map by a debug ID, which it writes into the script and its source map when they have none.
+  The debug ID is the same one `@polarsignals/sourcemap-cli` computes, and a debug ID that the files already carry is reused.
+  For browser builds, pass a build output directory and `--base-url`, the public URL it is served from, or one script and `--script-url`; no file is changed.
+  `--dry-run` lists the key of each source map without uploading, and source maps Dash0 already has are skipped unless you pass `--force`.
+  The other debuginfo types (`debuginfo`, `executable`, `sources`) fail with a "not supported yet" error.
+  
+
+
+### Enhancements
+
+
+- `dashboards`: `apply`, `diff`, and `dashboards create|update` accept `kind: EphemeralDashboard`, and the experimental `dashboards preview` prints a preview URL for each dashboard in a file or directory. (#375)
+  Dash0 deletes an ephemeral dashboard once `spec.ttl` has passed since its latest write.
+  `preview` upserts each preview with `--ttl` (default `1d`) under an id derived from the dashboard's id, so it never replaces the dashboard itself, and running it again updates the same previews and starts their ttl again.
+  Like `percli dac preview`, `--prefix` prefixes each preview's name and keeps the previews of different prefixes apart, and the output links to the dashboard a preview comes from when it exists.
+  
+
+- `k8s`: Spot error spikes in a pod or workload: `k8s pods watch` and the workload watch commands chart the percentage of failed requests next to request rate and latency (#419)
+  The chart plots the error rate over the time range, so you can see when failures started.
+  It always covers all of the workload's pods, also with `--aggregate` or `--per-pod`.
+  
+
 ## 1.22.1
 
 

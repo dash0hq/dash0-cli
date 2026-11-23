@@ -23,6 +23,7 @@ import (
 	"github.com/dash0hq/dash0-cli/internal/config"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/datasets"
+	"github.com/dash0hq/dash0-cli/internal/debuginfo"
 	"github.com/dash0hq/dash0-cli/internal/diff"
 	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/failedchecks"
@@ -96,6 +97,7 @@ func init() {
 	rootCmd.AddCommand(dashboards.NewDashboardsCmd())
 	rootCmd.AddCommand(diff.NewDiffCmd())
 	rootCmd.AddCommand(datasets.NewDatasetsCmd())
+	rootCmd.AddCommand(debuginfo.NewDebuginfoCmd())
 	rootCmd.AddCommand(evals.NewEvalsCmd())
 	rootCmd.AddCommand(logging.NewLogsCmd())
 	rootCmd.AddCommand(login.NewLoginCmd())
