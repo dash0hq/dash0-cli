@@ -843,6 +843,12 @@ A document with only a `dash0.com/id` writes by its inferred origin when the id 
 `apply --since` deletes a removed document with only a `dash0.com/id` at that id, or at its inferred origin when the id is not found, because that is where `apply` wrote it.
 A removed document with both labels is deleted at its `dash0.com/id`, or at its `dash0.com/origin` when the id is not found, for the same reason.
 
+> [!NOTE]
+> An earlier CLI version created these kinds by POST when the document had no identifier, so Dash0 assigned the asset an id that the document does not carry.
+> The CLI does not adopt such an asset: the first `apply` after upgrading creates one more copy at the inferred origin, and the old copy stays.
+> An old notification channel keeps notifying, and an old spam filter keeps dropping telemetry.
+> Delete the old copy, or add its `dash0.com/id` to the document so `apply` updates it instead.
+
 The other kinds follow the per-kind rules in the table below.
 For those kinds, a document without an identifier is created by POST, and the server assigns a fresh ID on each invocation, so repeated runs produce duplicate assets.
 Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent for them, which is what GitOps and CI/CD workflows need.

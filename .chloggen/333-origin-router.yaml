@@ -1,13 +1,18 @@
 change_type: breaking
 component: apply, dashboards, teams, notification-channels, time-series-aggregations, spam-filters
-note: "`apply` and `create` read `dash0.com/id` before `dash0.com/origin` for dashboards and teams, and never create a dashboard, team, notification channel, time series aggregation, or spam filter by POST."
+note: "`apply` and `create` read `dash0.com/id` before `dash0.com/origin` for dashboards, teams, notification channels, time series aggregations, and spam filters, and never create them by POST."
 issues: [333]
 subtext: |
   When a document has `dash0.com/id`, the CLI updates the asset at that id, and fails when the stored origin differs from the origin in the file.
   When the id is not found, or the document has none, the CLI writes by `dash0.com/origin`, or by an origin it infers from the kind, `metadata.name`, and the dataset.
   Applying the same document again therefore updates the same asset, also without an identifier, and a time series aggregation no longer needs `dash0.com/origin`.
   The CLI sends the origin only when it creates an asset.
-  Before, dashboards and teams were read by origin first, so a document whose origin and id named two different assets now updates the asset at the id.
+  Before, dashboards, teams, and spam filters were read by origin first, and notification channels and time series aggregations ignored `dash0.com/id`.
+  So a document whose origin and id name two different assets now updates the asset at the id.
+  A document copied from an export, with its origin removed and its `dash0.com/id` kept, now updates the exported asset instead of creating a new one.
+  A failed read by id now stops the write; dashboards and spam filters used to write anyway.
+  Assets that an earlier version created by POST from a document without an identifier are not adopted, so the first `apply` after upgrading creates one more copy.
+  Delete the old copy, or add its `dash0.com/id` to the file so `apply` updates it.
   `update -f` without an argument reads `dash0.com/id` first, then `dash0.com/origin`, as `apply` does.
   It does not try the inferred origin.
   So it fails for a file with neither label, and for a file with only an id that is not found.
