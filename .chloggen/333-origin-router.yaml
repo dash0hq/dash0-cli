@@ -8,7 +8,7 @@ subtext: |
   Applying the same document again therefore updates the same asset, also without an identifier, and a time series aggregation no longer needs `dash0.com/origin`.
   The CLI sends the origin only when it creates an asset.
   Before, dashboards, teams, and spam filters were read by origin first, and notification channels and time series aggregations ignored `dash0.com/id`.
-  So a document whose origin and id name two different assets now updates the asset at the id.
+  So a document whose origin and id name two different assets now fails when the asset at the id has another origin, and updates that asset when it has none.
   A document copied from an export, with its origin removed and its `dash0.com/id` kept, now updates the exported asset instead of creating a new one.
   A failed read by id now stops the write; dashboards and spam filters used to write anyway.
   Assets that an earlier version created by POST from a document without an identifier are not adopted, so the first `apply` after upgrading creates one more copy.

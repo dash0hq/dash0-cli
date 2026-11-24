@@ -51,6 +51,7 @@ Each preview gets its own identifier, a UUIDv5 derived from the dashboard's iden
 So a preview never replaces the dashboard it comes from, and `apply` of that dashboard still works while the preview exists.
 A second run updates the same previews and starts their ttl again.
 A dashboard without an identifier gets a preview at an origin inferred from its name, so a second run updates that preview too.
+Two dashboards without an identifier and with the same `metadata.name` fail before any write, because their previews would share that origin.
 If a write fails, `preview` still prints the previews it wrote before the error, then fails.
 With `--prefix`, the prefix is part of the derived identifier, so previews with different prefixes, such as one per pull request, do not replace each other.
 
