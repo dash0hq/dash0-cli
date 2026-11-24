@@ -16,9 +16,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dash0hq/dash0-cli/internal/agent0"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
+	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
+	"github.com/dash0hq/dash0-cli/internal/samplingrules"
+	"github.com/dash0hq/dash0-cli/internal/signaltometricsrules"
+	"github.com/dash0hq/dash0-cli/internal/slos"
 	"github.com/dash0hq/dash0-cli/internal/spamfilters"
 	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
@@ -28,13 +33,13 @@ import (
 // notRoutedYet lists the kinds that do not go through asset.RouteDocument yet.
 // Each later change that moves a kind onto the router removes it here.
 var notRoutedYet = map[string]string{
-	"persesdashboard":        "the Perses conversion drops dash0.com/origin",
-	"checkrule":              "creates by POST without an identifier",
-	"prometheusrule":         "creates by POST without an identifier",
-	"syntheticcheck":         "creates by POST without an identifier",
-	"view":                   "creates by POST without an identifier",
-	"dataset":                "the slug is the id",
-	"awsmetricscrapeconfig":  "the integration id is the id",
+	"persesdashboard":       "the Perses conversion drops dash0.com/origin",
+	"checkrule":             "creates by POST without an identifier",
+	"prometheusrule":        "creates by POST without an identifier",
+	"syntheticcheck":        "creates by POST without an identifier",
+	"view":                  "creates by POST without an identifier",
+	"dataset":               "the slug is the id",
+	"awsmetricscrapeconfig": "the integration id is the id",
 }
 
 // routedKind is what the conformance test needs to know about a kind the
@@ -295,12 +300,17 @@ type routedUpdateCommand struct {
 
 // routedUpdateCommands is the `update -f` command of each kind in routedKinds.
 var routedUpdateCommands = map[string]routedUpdateCommand{
-	"dashboard":             {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
-	"ephemeraldashboard":    {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
-	"team":                  {teams.NewTeamsCmd, []string{"-X", "teams", "update"}},
-	"notificationchannel":   {notificationchannels.NewNotificationChannelsCmd, []string{"-X", "notification-channels", "update"}},
-	"timeseriesaggregation": {timeseriesaggregations.NewTimeSeriesAggregationsCmd, []string{"time-series-aggregations", "update"}},
-	"spamfilter":            {spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}},
+	"dashboard":              {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"ephemeraldashboard":     {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"team":                   {teams.NewTeamsCmd, []string{"-X", "teams", "update"}},
+	"notificationchannel":    {notificationchannels.NewNotificationChannelsCmd, []string{"-X", "notification-channels", "update"}},
+	"timeseriesaggregation":  {timeseriesaggregations.NewTimeSeriesAggregationsCmd, []string{"time-series-aggregations", "update"}},
+	"spamfilter":             {spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}},
+	"slo":                    {slos.NewSlosCmd, []string{"slos", "update"}},
+	"generativeaievaluation": {evals.NewEvalsCmd, []string{"-X", "evals", "update"}},
+	"signaltometrics":        {signaltometricsrules.NewSignalToMetricsRulesCmd, []string{"signal-to-metrics-rules", "update"}},
+	"sampling":               {samplingrules.NewSamplingRulesCmd, []string{"sampling-rules", "update"}},
+	"skill":                  {agent0.NewAgent0Cmd, []string{"-X", "agent0", "skills", "update"}},
 }
 
 // TestRouter_UpdateNeverSendsTheOrigin checks that `update -f` sends the body
