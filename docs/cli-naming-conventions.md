@@ -48,6 +48,7 @@ The API has no list endpoint and no create, so `aws-metric-scrape-configs` has o
 
 `update` doubles as create, because a PUT replaces the config whether or not one exists, so there is no `create` alias to keep in sync.
 Success messages say `cleared`, not `deleted`, because the integration survives.
+
 ## AutoMerge Settings Subcommands (experimental)
 AutoMerge settings sit under `automerge settings`, named after the product, so that later AutoMerge commands have a parent to join.
 Each repository AutoMerge observes has exactly one settings document, addressed by its `owner/repo` slug or its id, so there are only two subcommands:
