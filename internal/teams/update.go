@@ -142,6 +142,7 @@ func runUpdateFromFile(ctx context.Context, args []string, flags *updateFlags) e
 		return asset.PrintDiff(os.Stdout, "Team", displayName, before, &team)
 	}
 
+	asset.ClearUpdateOrigin(&team)
 	result, err := apiClient.UpsertTeam(ctx, addressor, &team)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

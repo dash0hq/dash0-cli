@@ -113,3 +113,20 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 	stored, err = get(ctx, identity.Origin)
 	return identity.Origin, stored, err
 }
+
+// ClearUpdateOrigin removes dash0.com/origin from the body of an update, as
+// apply does, so an update never tries to change a stored origin.
+func ClearUpdateOrigin(document dash0api.AssetMetadata) {
+	switch d := document.(type) {
+	case *dash0api.DashboardDefinition:
+		setDashboardOrigin(d, "")
+	case *dash0api.TeamDefinitionV1Alpha1:
+		setTeamOrigin(d, "")
+	case *dash0api.NotificationChannelDefinition:
+		setNotificationChannelOrigin(d, "")
+	case *dash0api.SpamFilter:
+		setSpamFilterOrigin(&d.Metadata, "")
+	case *dash0api.SpamFilterV1Alpha2:
+		setSpamFilterOrigin(&d.Metadata, "")
+	}
+}

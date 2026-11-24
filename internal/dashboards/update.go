@@ -110,6 +110,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	dash0api.ClearDashboardID(dashboard)
+	asset.ClearUpdateOrigin(dashboard)
 	result, err := apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

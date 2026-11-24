@@ -92,6 +92,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return asset.PrintDiff(os.Stdout, "Notification channel", channel.Metadata.Name, before, &channel)
 	}
 
+	asset.ClearUpdateOrigin(&channel)
 	result, err := apiClient.UpdateNotificationChannel(ctx, id, &channel)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

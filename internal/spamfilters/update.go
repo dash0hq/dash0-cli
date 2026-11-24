@@ -105,6 +105,7 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 		return asset.PrintDiff(os.Stdout, "Spam filter", dash0api.GetSpamFilterName(filter), before, filter)
 	}
 
+	asset.ClearUpdateOrigin(filter)
 	result, err := apiClient.UpdateSpamFilter(ctx, key, filter, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
@@ -136,6 +137,7 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 		return asset.PrintDiff(os.Stdout, "Spam filter", filter.Metadata.Name, before, filter)
 	}
 
+	asset.ClearUpdateOrigin(filter)
 	result, err := apiClient.UpdateSpamFilterV1Alpha2(ctx, key, filter, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

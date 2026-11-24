@@ -12,11 +12,17 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	"github.com/dash0hq/dash0-cli/internal/dashboards"
+	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
+	"github.com/dash0hq/dash0-cli/internal/spamfilters"
+	"github.com/dash0hq/dash0-cli/internal/teams"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
+	"github.com/dash0hq/dash0-cli/internal/timeseriesaggregations"
 )
 
 // notRoutedYet lists the kinds that do not go through asset.RouteDocument yet.
@@ -249,6 +255,59 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 			assert.Empty(t, bodyOrigin, "an update must not send the origin")
 		} else {
 			assert.Equal(t, key, bodyOrigin, "a create sends the origin it is created by")
+		}
+	}
+}
+
+type routedUpdateCommand struct {
+	newCmd func() *cobra.Command
+	args   []string
+}
+
+// routedUpdateCommands is the `update -f` command of each kind in routedKinds.
+var routedUpdateCommands = map[string]routedUpdateCommand{
+	"dashboard":             {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"ephemeraldashboard":    {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"team":                  {teams.NewTeamsCmd, []string{"-X", "teams", "update"}},
+	"notificationchannel":   {notificationchannels.NewNotificationChannelsCmd, []string{"-X", "notification-channels", "update"}},
+	"timeseriesaggregation": {timeseriesaggregations.NewTimeSeriesAggregationsCmd, []string{"time-series-aggregations", "update"}},
+	"spamfilter":            {spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}},
+}
+
+// TestRouter_UpdateNeverSendsTheOrigin checks that `update -f` sends the body
+// apply sends on an update, which never carries the origin.
+func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
+	for kind, spec := range routedKinds {
+		command, ok := routedUpdateCommands[kind]
+		require.True(t, ok, "routed kind %q has no update command", kind)
+		specs := map[string]routedKind{kind: spec}
+		for version, variant := range routedVariants[kind] {
+			specs[kind+"/"+version] = variant
+		}
+		for name, spec := range specs {
+			t.Run(name, func(t *testing.T) {
+				testutil.SetupTestEnv(t)
+				fixture, putResponse := routedFixtures(t, spec)
+				server := testutil.NewMockServer(t, testutil.FixturesDir())
+				requests := serveRouted(server, spec, map[string][]byte{"o": storedAsset(t, fixture, spec, "o")}, putResponse)
+
+				file := filepath.Join(t.TempDir(), "asset.yaml")
+				require.NoError(t, os.WriteFile(file, []byte(spec.document("  labels:\n    dash0.com/origin: o\n")), 0o600))
+				root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+				root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+				root.AddCommand(command.newCmd())
+				root.SetArgs(append(append([]string{}, command.args...), "-f", file, "--api-url", server.URL, "--auth-token", "auth_test-token-12345"))
+				var err error
+				testutil.CaptureStderr(t, func() {
+					testutil.CaptureStdout(t, func() { err = root.Execute() })
+				})
+				require.NoError(t, err)
+
+				require.NotEmpty(t, *requests)
+				last := (*requests)[len(*requests)-1]
+				require.Equal(t, "PUT o", last.line)
+				assert.Empty(t, labelOf(t, last.body, "dash0.com/origin"), "an update must not send the origin")
+			})
 		}
 	}
 }
