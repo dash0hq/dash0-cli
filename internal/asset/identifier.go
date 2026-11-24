@@ -166,9 +166,13 @@ func ExtractInferredKeys(data []byte, dataset *string) ([]InferredKey, bool, err
 		return []InferredKey{{Kind: kind, Origin: identity.Inferred}}, true, nil
 	}
 
-	alerts, err := ExtractPrometheusAlertNames(data)
-	if err != nil {
-		return nil, false, err
+	var alerts []PrometheusAlertName
+	if identity.ID == "" {
+		// An alert with an id is created at that id when it is not found.
+		alerts, err = ExtractPrometheusAlertNames(data)
+		if err != nil {
+			return nil, false, err
+		}
 	}
 	var keys []InferredKey
 	for _, alert := range alerts {

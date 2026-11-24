@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -572,5 +573,13 @@ func TestDiff_PrometheusRuleWithoutIdentifierIsDeletedAtEachInferredOrigin(t *te
 	t.Run("recording rules removed", func(t *testing.T) {
 		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, crd(false, "A")))
 		assert.Equal(t, []Deletion{{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules"}}, plan.ByIdentifier)
+	})
+	t.Run("gained only an id", func(t *testing.T) {
+		// apply creates an alert at its id when the id is not found, so the
+		// alert at the inferred origin is abandoned. The recording rules still
+		// fall back to their inferred origin.
+		withID := []byte(strings.Replace(string(crd(true, "A")), "  name: rules\n", "  name: rules\n  labels:\n    dash0.com/id: crd-1\n", 1))
+		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, withID))
+		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A"}}, plan.ByIdentifier)
 	})
 }
