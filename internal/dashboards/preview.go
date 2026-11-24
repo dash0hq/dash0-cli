@@ -88,7 +88,8 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 		return fmt.Errorf("--ttl must not be empty")
 	}
 
-	dashboards, err := readPreviewDashboards(flags.File)
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
+	dashboards, err := readPreviewDashboards(flags.File, dataset)
 	if err != nil {
 		return err
 	}
@@ -98,7 +99,6 @@ func runPreview(ctx context.Context, flags *previewFlags) error {
 	if err != nil {
 		return err
 	}
-	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
 	results := make([]previewResult, 0, len(dashboards))
 	for _, dashboard := range dashboards {
@@ -210,11 +210,12 @@ func linkPreviews(ctx context.Context, apiClient dash0api.Client, apiUrl string,
 // readPreviewDashboards parses every Dashboard and PersesDashboard in file
 // before any write, so a malformed document stops the run before the first
 // preview is created.
-func readPreviewDashboards(file string) ([]*dash0api.DashboardDefinition, error) {
+func readPreviewDashboards(file string, dataset *string) ([]*dash0api.DashboardDefinition, error) {
 	documents, _, _, err := asset.ReadInput(file, false)
 	if err != nil {
 		return nil, err
 	}
+	var previewed []asset.Document
 	var dashboards []*dash0api.DashboardDefinition
 	for _, doc := range documents {
 		switch asset.NormalizeKind(doc.Kind) {
@@ -223,11 +224,17 @@ func readPreviewDashboards(file string) ([]*dash0api.DashboardDefinition, error)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", doc.Location(), err)
 			}
+			previewed = append(previewed, doc)
 			dashboards = append(dashboards, dashboard)
 		}
 	}
 	if len(dashboards) == 0 {
 		return nil, fmt.Errorf("no Dashboard or PersesDashboard found in %s", file)
+	}
+	// Previews of dashboards without an identifier share an inferred origin
+	// when their names match, so the second would replace the first.
+	if collisions := asset.CheckInferredOriginCollisions(previewed, dataset); len(collisions) > 0 {
+		return nil, asset.FormatValidationError(collisions...)
 	}
 	return dashboards, nil
 }

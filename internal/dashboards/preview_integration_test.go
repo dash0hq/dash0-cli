@@ -424,6 +424,22 @@ func TestPreviewDashboards_FailsWithoutDashboardsBeforeAnyRequest(t *testing.T) 
 	assert.Empty(t, server.Requests())
 }
 
+func TestPreviewDashboards_FailsForTwoDashboardsAtOneInferredOriginBeforeAnyRequest(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	unnamed := "kind: Dashboard\nmetadata:\n  name: orders\nspec:\n  display:\n    name: Orders\n"
+	dir := writePreviewFiles(t, map[string]string{"a.yaml": unnamed, "b.yaml": unnamed})
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "2 documents have no dash0.com/origin")
+	assert.Empty(t, server.Requests())
+}
+
 func TestPreviewDashboards_RequiresExperimental(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writePreviewFiles(t, map[string]string{"orders.yaml": previewDashboardYAML})
