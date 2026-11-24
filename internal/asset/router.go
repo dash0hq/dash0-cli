@@ -109,11 +109,23 @@ func InferOrigin(kind, name, dataset string) string {
 // named name. Teams and notification channels are organization-level, so
 // theirs has no dataset.
 func InferKindOrigin(kind, name string, dataset *string) string {
-	switch NormalizeKind(kind) {
+	kind = InferredOriginKind(kind)
+	switch kind {
 	case "team", "notificationchannel":
 		return InferOrigin(kind, name, "")
 	}
 	return InferOrigin(kind, name, DatasetName(dataset))
+}
+
+// InferredOriginKind returns the normalized kind an inferred origin hashes,
+// so documents of two kinds that write the same origin compare equal.
+func InferredOriginKind(kind string) string {
+	kind = NormalizeKind(kind)
+	if kind == "persesdashboard" {
+		// apply converts a PersesDashboard to a Dashboard before it routes it.
+		return "dashboard"
+	}
+	return kind
 }
 
 // DatasetName returns the dataset an asset lives in. Without --dataset the API

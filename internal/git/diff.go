@@ -93,7 +93,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			Path:               path,
 			Alias:              before.Aliases[key],
 			InferredOriginName: before.InferredOriginNames[key],
-			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: key.Kind, Identifier: before.InferredOriginNames[key]}],
+			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(key.Kind), Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
 		}
 		if key.Kind == "prometheusrule" {

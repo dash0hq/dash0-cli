@@ -3209,3 +3209,50 @@ func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testi
 		}
 	}
 }
+
+// A PersesDashboard is applied as a Dashboard, so a file that turns an id-only
+// Dashboard into a PersesDashboard of the same name keeps its inferred origin.
+func TestApply_Since_DashboardRewrittenAsPersesDashboardKeepsTheInferredOrigin(t *testing.T) {
+	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+	spec := routedKinds["dashboard"]
+	inferred := inferredOrigin("dashboard", spec)
+	fixture, writeResponse := routedFixtures(t, spec)
+
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
+	writeFileFixture(t, dir, "asset.yaml", spec.document("  labels:\n    dash0.com/id: "+id+"\n"))
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "add dashboard")
+	before := strings.TrimSpace(runGitCmd(t, dir, "rev-parse", "HEAD"))
+	writeFileFixture(t, dir, "asset.yaml", "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: checkout\n  duration: 5m\n  panels: {}\n")
+	runGitCmd(t, dir, "add", "-A")
+	runGitCmd(t, dir, "commit", "-q", "-m", "convert to perses")
+
+	testutil.SetupTestEnv(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	requests := serveRouted(server, spec, map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred)}, writeResponse)
+
+	cmd := newSinceTestCmd()
+	cmd.SetArgs([]string{
+		"-f", dir, "--since", before, "--force", "--experimental",
+		"--api-url", server.URL, "--auth-token", testAuthToken,
+	})
+	var cmdErr error
+	_ = testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+
+	require.NoError(t, cmdErr)
+	var writes []string
+	for _, request := range *requests {
+		if !strings.HasPrefix(request.line, http.MethodGet) {
+			writes = append(writes, request.line)
+		}
+	}
+	assert.Equal(t, []string{"PUT " + inferred}, writes)
+}

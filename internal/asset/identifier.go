@@ -118,7 +118,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 // kinds the router does not serve.
 func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
-	if err != nil || NormalizeKind(kind) == "persesdashboard" {
+	if err != nil {
 		return "", "", err
 	}
 	identity, name, _, err := parseRoutedIdentity(kind, data, nil)

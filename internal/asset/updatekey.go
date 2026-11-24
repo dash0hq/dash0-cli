@@ -85,9 +85,9 @@ func CheckRouteUpdate(args []string, k UpdateKey, identity Identity) error {
 
 // RouteUpdate returns the key and the stored asset that `update -f` writes for
 // a kind RouteDocument routes. Without an argument it reads the file's id
-// first, then its origin, like apply, so update and apply of the same file
-// address the same asset. update never creates, so a missing asset is get's
-// not-found error.
+// first, then its origin, as apply reads those labels. update never creates
+// and never tries the inferred origin, so a missing asset is get's not-found
+// error.
 func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identity Identity, get func(context.Context, string) (T, error)) (string, T, error) {
 	var zero T
 	if len(args) > 0 || identity.ID == "" {

@@ -287,7 +287,7 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 			return fmt.Errorf("failed to read fallback identifiers: %w", err)
 		}
 		if inferredOriginName != "" {
-			snap.InferredOriginDocuments[IdentifierKey{Kind: normalizedKind, Identifier: inferredOriginName}] = true
+			snap.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(normalizedKind), Identifier: inferredOriginName}] = true
 		}
 		if identifier == "" {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
