@@ -47,8 +47,8 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read SLO definition: %w", err)
 	}
 
-	fileID := dash0api.GetSLOID(&slo)
-	fileOrigin := dash0api.GetSLOOrigin(&slo)
+	identity := asset.SLOIdentity(&slo, nil)
+	fileID, fileOrigin := identity.ID, identity.Origin
 
 	if len(args) == 1 {
 		// Only enforceable when the document pins both handles, in which case
@@ -64,7 +64,6 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	updateKey := asset.UpdateKey{Noun: "SLO", Upsert: &slo}
-	identity := asset.Identity{ID: fileID, Origin: fileOrigin}
 	if len(args) == 0 {
 		if err := asset.CheckRouteUpdate(nil, updateKey, identity); err != nil {
 			return err

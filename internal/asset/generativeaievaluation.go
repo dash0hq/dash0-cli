@@ -198,9 +198,10 @@ func GenerativeAiEvaluationDeletedAt(evaluation *dash0api.GenerativeAiEvaluation
 	return evaluation.Metadata.Annotations.Dash0ComdeletedAt
 }
 
-// ExplainGenerativeAiEvaluationError adds the cause and the fix to the two 400s a write to an
-// existing eval hits when the document changes a field that is fixed at create: metadata.name
-// and spec.judge.output.kind. It returns nil for any other error, so the caller falls back to
+// ExplainGenerativeAiEvaluationError adds the cause and the fix to the 400 for a metadata.name
+// that another eval in the dataset already uses, and to the two 400s a write to an existing eval
+// hits when the document changes a field that is fixed at create: metadata.name and
+// spec.judge.output.kind. It returns nil for any other error, so the caller falls back to
 // client.HandleAPIError.
 //
 // The advice goes behind "\nHint:" so agent mode lifts it into the JSON error's hint field.
@@ -211,6 +212,14 @@ func ExplainGenerativeAiEvaluationError(err error, name string) error {
 	}
 	// Matching on the text is unavoidable, because the errors carry no machine-readable discriminator.
 	haystack := strings.ToLower(apiErr.Message + " " + apiErr.Body)
+	if strings.Contains(haystack, "already uses") {
+		return fmt.Errorf(
+			"another eval in this dataset is already named %q:\n  %w"+
+				"\nHint: metadata.name is unique per dataset. Rename the eval, delete the other one, "+
+				"or set the other eval's %s or metadata.labels[\"dash0.com/id\"] in this document to update it instead",
+			name, err, OriginLabel,
+		)
+	}
 	if !strings.Contains(haystack, "cannot change after create") {
 		return nil
 	}

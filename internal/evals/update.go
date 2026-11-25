@@ -108,7 +108,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	}
 
 	// The origin is sent only on create, so an update never changes it.
-	asset.SetGenerativeAiEvaluationOrigin(evaluation, "")
+	asset.ClearUpdateOrigin(evaluation)
 	result, err := apiClient.UpdateGenerativeAiEvaluation(ctx, key, evaluation, dataset)
 	if err != nil {
 		if explained := asset.ExplainGenerativeAiEvaluationError(err, name); explained != nil {

@@ -132,6 +132,10 @@ func ClearUpdateOrigin(document dash0api.AssetMetadata) {
 		setSpamFilterOrigin(&d.Metadata, "")
 	case *dash0api.SpamFilterV1Alpha2:
 		setSpamFilterOrigin(&d.Metadata, "")
+	case *dash0api.GenerativeAiEvaluationDefinition:
+		SetGenerativeAiEvaluationOrigin(d, "")
+	case *dash0api.SkillDefinition:
+		SetCustomSkillOrigin(d, "")
 	}
 }
 

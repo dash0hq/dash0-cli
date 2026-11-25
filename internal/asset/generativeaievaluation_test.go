@@ -1,8 +1,11 @@
 package asset
 
 import (
+	"net/http"
 	"strings"
 	"testing"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,4 +79,38 @@ func TestParseGenerativeAiEvaluation(t *testing.T) {
 	// A document with only a kind fails on the first required field.
 	_, err := ParseGenerativeAiEvaluation([]byte("kind: Dash0GenerativeAiEvaluation\n"))
 	assert.EqualError(t, err, "eval definition requires metadata.name")
+}
+
+func TestExplainGenerativeAiEvaluationError(t *testing.T) {
+	cases := map[string]struct {
+		message string
+		want    string
+	}{
+		// The messages are the control-plane-api's, verbatim.
+		"duplicate name": {
+			`Bad Request: The submitted generative AI evaluation has a metadata.name ("helpfulness") that another generative AI evaluation in this dataset already uses. Evaluation results are keyed on the name, so it has to be unique per dataset.`,
+			`another eval in this dataset is already named "helpfulness"`,
+		},
+		"name changed": {
+			"Bad Request: The metadata.name of a generative AI evaluation cannot change after create.",
+			"metadata.name cannot change after the eval is created",
+		},
+		"output kind changed": {
+			"Bad Request: The spec.judge.output.kind of a generative AI evaluation cannot change after create. Create a new evaluation for a different output kind.",
+			"spec.judge.output.kind cannot change after the eval is created",
+		},
+		"other bad request": {"Bad Request: invalid sample rate", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			explained := ExplainGenerativeAiEvaluationError(&dash0api.APIError{StatusCode: http.StatusBadRequest, Message: c.message}, "helpfulness")
+			if c.want == "" {
+				assert.NoError(t, explained)
+				return
+			}
+			require.Error(t, explained)
+			assert.Contains(t, explained.Error(), c.want)
+			assert.Contains(t, explained.Error(), "\nHint: ")
+		})
+	}
 }

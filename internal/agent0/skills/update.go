@@ -120,7 +120,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 	}
 
 	// The origin is sent only on create, so an update never changes it.
-	asset.SetCustomSkillOrigin(&skill, "")
+	asset.ClearUpdateOrigin(&skill)
 	result, err := apiClient.UpdateCustomSkill(ctx, key, &skill)
 	if err != nil {
 		if explained := asset.ExplainCustomSkillError(err, name); explained != nil {

@@ -54,6 +54,7 @@ An SLO exported from another organization has an id that is not found there, so 
 
 `Dash0GenerativeAiEvaluation` documents are evals, dispatched to the dataset-scoped generative AI evaluations endpoint.
 They follow the [routing rule](#routing-rule), the same as `SLO` documents above.
+`metadata.name` is unique per dataset, so an eval that an earlier CLI version created by POST, at a server-assigned origin, makes the next apply fail with a name collision until you delete that eval or set its origin in the document.
 See [Eval documents](#eval-documents-experimental) for the fields the CLI removes before it writes and the fields that cannot change after create.
 
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
