@@ -152,6 +152,9 @@ func CheckStoredOrigin(key string, identity Identity, stored any) error {
 		origin = GetSamplingRuleOrigin(asset)
 	case interface{ GetOrigin() string }:
 		origin = asset.GetOrigin()
+	default:
+		// Fail loudly, so a routed kind without an origin accessor cannot skip the check.
+		return fmt.Errorf("cannot read the stored origin of %T", stored)
 	}
 	return checkStoredOrigin(identity, origin)
 }

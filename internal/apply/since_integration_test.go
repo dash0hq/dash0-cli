@@ -3062,10 +3062,12 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 		for _, tt := range []struct {
 			name       string
 			idFound    bool
+			idFails    bool
 			wantDelete string
 		}{
-			{"id not found deletes at the inferred origin", false, "DELETE " + inferred},
-			{"id found deletes at the id", true, "DELETE " + id},
+			{"id not found deletes at the inferred origin", false, false, "DELETE " + inferred},
+			{"id found deletes at the id", true, false, "DELETE " + id},
+			{"id read fails deletes nothing", false, true, ""},
 		} {
 			t.Run(kind+"/"+tt.name, func(t *testing.T) {
 				testutil.SetupTestEnv(t)
@@ -3089,6 +3091,9 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 				if tt.idFound {
 					stored[id] = storedAsset(t, fixture, spec, "")
 				}
+				if tt.idFails {
+					stored[id] = nil
+				}
 				server := testutil.NewMockServer(t, testutil.FixturesDir())
 				requests := serveRouted(server, spec, stored, writeResponse)
 
@@ -3105,13 +3110,18 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 					})
 				})
 
-				require.NoError(t, cmdErr)
 				var deletes []string
 				for _, request := range *requests {
 					if strings.HasPrefix(request.line, http.MethodDelete) {
 						deletes = append(deletes, request.line)
 					}
 				}
+				if tt.idFails {
+					require.Error(t, cmdErr)
+					assert.Empty(t, deletes)
+					return
+				}
+				require.NoError(t, cmdErr)
 				assert.Equal(t, []string{tt.wantDelete}, deletes)
 			})
 		}

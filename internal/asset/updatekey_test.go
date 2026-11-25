@@ -235,3 +235,12 @@ func TestRouteUpdate(t *testing.T) {
 type storedOrigin struct{ origin string }
 
 func (s storedOrigin) GetOrigin() string { return s.origin }
+
+func TestCheckStoredOrigin(t *testing.T) {
+	identity := Identity{ID: "i", Origin: "o"}
+
+	assert.NoError(t, CheckStoredOrigin("i", identity, fakeKeys{origin: "o"}))
+	assert.Error(t, CheckStoredOrigin("i", identity, fakeKeys{origin: "other"}))
+	assert.NoError(t, CheckStoredOrigin("o", identity, fakeKeys{origin: "other"}), "a write by origin is not checked")
+	assert.ErrorContains(t, CheckStoredOrigin("i", identity, struct{}{}), "cannot read the stored origin")
+}

@@ -116,4 +116,6 @@ spec:
     rate: 0.25
 ```
 
+`create` and `apply` read `dash0.com/id` first and update the eval at that id when it exists. Otherwise they PUT to `dash0.com/origin`, or to an origin inferred from the kind, `metadata.name`, and the dataset, so applying the same document again updates the same eval and never creates a second one. The server assigns ids, so a hand-written document pins `dash0.com/origin` or relies on the inferred one. See the `apply` topic for the routing rule.
+
 `evals get` also returns a deleted eval: the table output shows a `Deleted:` line, and `-o yaml` and `-o json` carry the `dash0.com/deleted-at` annotation under `metadata.annotations`. `evals list` does not show deleted evals. `apply`, `evals create`, and `evals update` with the origin of a deleted eval bring it back and print `restored`; `apply` and `evals update` then show a diff of any other fields that changed. `evals update --dry-run` prints `would be restored` instead, and the eval stays deleted.

@@ -330,16 +330,7 @@ func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
 				server := testutil.NewMockServer(t, testutil.FixturesDir())
 				requests := serveRouted(server, spec, map[string][]byte{"o": storedAsset(t, fixture, spec, "o")}, putResponse)
 
-				file := filepath.Join(t.TempDir(), "asset.yaml")
-				require.NoError(t, os.WriteFile(file, []byte(spec.document("  labels:\n    dash0.com/origin: o\n")), 0o600))
-				root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
-				root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
-				root.AddCommand(command.newCmd())
-				root.SetArgs(append(append([]string{}, command.args...), "-f", file, "--api-url", server.URL, "--auth-token", "auth_test-token-12345"))
-				var err error
-				testutil.CaptureStderr(t, func() {
-					testutil.CaptureStdout(t, func() { err = root.Execute() })
-				})
+				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/origin: o\n"), server.URL)
 				require.NoError(t, err)
 
 				require.NotEmpty(t, *requests)
@@ -349,6 +340,49 @@ func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestRouter_UpdateFailsWhenTheStoredOriginDiffers checks that `update -f`, with
+// and without the id as argument, fails before the write when the asset at the
+// file's id has another origin, as apply does.
+func TestRouter_UpdateFailsWhenTheStoredOriginDiffers(t *testing.T) {
+	for kind, spec := range routedKinds {
+		command, ok := routedUpdateCommands[kind]
+		require.True(t, ok, "routed kind %q has no update command", kind)
+		for name, args := range map[string][]string{"without argument": nil, "with the id as argument": {"i"}} {
+			t.Run(kind+"/"+name, func(t *testing.T) {
+				testutil.SetupTestEnv(t)
+				fixture, putResponse := routedFixtures(t, spec)
+				server := testutil.NewMockServer(t, testutil.FixturesDir())
+				requests := serveRouted(server, spec, map[string][]byte{"i": storedAsset(t, fixture, spec, "other")}, putResponse)
+
+				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n"), server.URL, args...)
+
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "the CLI never changes a stored origin")
+				for _, r := range *requests {
+					assert.True(t, strings.HasPrefix(r.line, http.MethodGet), "unexpected write %q", r.line)
+				}
+			})
+		}
+	}
+}
+
+// executeUpdate runs command with document as its -f file, against apiURL.
+func executeUpdate(t *testing.T, command routedUpdateCommand, document, apiURL string, args ...string) error {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "asset.yaml")
+	require.NoError(t, os.WriteFile(file, []byte(document), 0o600))
+	root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+	root.PersistentFlags().BoolP("experimental", "X", false, "Enable experimental features")
+	root.AddCommand(command.newCmd())
+	cmdArgs := append(append(append([]string{}, command.args...), args...), "-f", file, "--api-url", apiURL, "--auth-token", "auth_test-token-12345")
+	root.SetArgs(cmdArgs)
+	var err error
+	testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() { err = root.Execute() })
+	})
+	return err
 }
 
 // inferredOrigin is the origin the CLI infers for a document of kind named checkout.
@@ -379,7 +413,7 @@ type routedRequest struct {
 }
 
 // serveRouted answers a GET under spec.path with the stored asset at that key,
-// or 404, and any write with writeResponse. It records every request under spec.path.
+// 500 when the stored asset is nil, or 404, and any write with writeResponse. It records every request under spec.path.
 func serveRouted(server *testutil.MockServer, spec routedKind, stored map[string][]byte, writeResponse []byte) *[]routedRequest {
 	var requests []routedRequest
 	server.OnDefault(func(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +430,9 @@ func serveRouted(server *testutil.MockServer, spec routedKind, stored map[string
 		case r.Method == http.MethodGet && !found:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found"}}`))
+		case r.Method == http.MethodGet && response == nil:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"code":500,"message":"internal error"}}`))
 		case r.Method == http.MethodGet:
 			_, _ = w.Write(response)
 		default:

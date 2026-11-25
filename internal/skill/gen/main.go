@@ -148,7 +148,7 @@ var topics = []topicSpec{
 		includeQuickRef: true,
 		sections:        []string{"eval documents"},
 		assetYAMLLabels: []string{"Eval (generative AI evaluation"},
-		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
+		extraNote:       routedKeyNote("eval") + "\n\n" + deletedAssetNote("evals", "eval", "evals", "origin"),
 	},
 	{
 		name:            "sampling-rules",
