@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -68,11 +69,7 @@ func PlanTimeSeriesAggregation(ctx context.Context, apiClient dash0api.Client, a
 	route, err := RouteDocument(ctx, identity, get, (*dash0api.TimeSeriesAggregationDefinition).GetOrigin)
 	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: aggregation}
 	if err != nil {
-		readKey := route.Key
-		if readKey == "" {
-			readKey = identity.ID
-		}
-		return plan, wrapIfWrongDataset(err, readKey)
+		return plan, wrapIfWrongDataset(err, cmp.Or(route.Key, identity.ID))
 	}
 	if !route.Create {
 		plan.Action, plan.Before = actionForExisting(TimeSeriesAggregationDeletedAt(route.Stored)), route.Stored

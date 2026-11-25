@@ -225,63 +225,77 @@ func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 	return identity, routed && err == nil
 }
 
-var routedKinds = map[string]bool{
-	"dashboard":             true,
-	"ephemeraldashboard":    true,
-	"persesdashboard":       true,
-	"team":                  true,
-	"notificationchannel":   true,
-	"timeseriesaggregation": true,
-	"spamfilter":            true,
+type routedParser func(raw []byte, dataset *string) (identity Identity, name string, err error)
+
+// routedParsers holds every kind RouteDocument serves. A kind not in it is not
+// routed yet.
+var routedParsers = map[string]routedParser{
+	"dashboard":             parseRoutedDashboard,
+	"ephemeraldashboard":    parseRoutedDashboard,
+	"persesdashboard":       parseRoutedDashboard,
+	"team":                  parseRoutedTeam,
+	"notificationchannel":   parseRoutedNotificationChannel,
+	"timeseriesaggregation": parseRoutedTimeSeriesAggregation,
+	"spamfilter":            parseRoutedSpamFilter,
 }
 
 // IsRoutedKind reports whether RouteDocument serves kind.
 func IsRoutedKind(kind string) bool {
-	return routedKinds[NormalizeKind(kind)]
+	_, routed := routedParsers[NormalizeKind(kind)]
+	return routed
 }
 
 // parseRoutedIdentity returns the identity apply routes the document by, the
 // name its inferred origin comes from, and false for kinds the router does
 // not serve yet.
 func parseRoutedIdentity(kind string, raw []byte, dataset *string) (identity Identity, name string, routed bool, err error) {
-	kind = NormalizeKind(kind)
-	if !routedKinds[kind] {
+	parse, routed := routedParsers[NormalizeKind(kind)]
+	if !routed {
 		return Identity{}, "", false, nil
 	}
-	switch kind {
-	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, inferredName, err := ParseDashboard(raw)
-		if err != nil {
-			return Identity{}, "", true, err
-		}
-		return DashboardIdentity(dashboard, inferredName, dataset), inferredName, true, nil
-	case "team":
-		var team dash0api.TeamDefinitionV1Alpha1
-		if err := dash0yaml.Unmarshal(raw, &team); err != nil {
-			return Identity{}, "", true, err
-		}
-		return TeamIdentity(&team), team.Metadata.Name, true, nil
-	case "notificationchannel":
-		var channel dash0api.NotificationChannelDefinition
-		if err := dash0yaml.Unmarshal(raw, &channel); err != nil {
-			return Identity{}, "", true, err
-		}
-		return NotificationChannelIdentity(&channel), channel.Metadata.Name, true, nil
-	case "timeseriesaggregation":
-		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := dash0yaml.Unmarshal(raw, &aggregation); err != nil {
-			return Identity{}, "", true, err
-		}
-		return TimeSeriesAggregationIdentity(&aggregation, dataset), aggregation.Metadata.Name, true, nil
-	case "spamfilter":
-		// Both apiVersions share the metadata shape.
-		var filter dash0api.SpamFilter
-		if err := dash0yaml.Unmarshal(raw, &filter); err != nil {
-			return Identity{}, "", true, err
-		}
-		return SpamFilterIdentity(&filter, dataset), filter.GetName(), true, nil
+	identity, name, err = parse(raw, dataset)
+	return identity, name, true, err
+}
+
+func parseRoutedDashboard(raw []byte, dataset *string) (Identity, string, error) {
+	dashboard, inferredName, err := ParseDashboard(raw)
+	if err != nil {
+		return Identity{}, "", err
 	}
-	return Identity{}, "", false, nil
+	return DashboardIdentity(dashboard, inferredName, dataset), inferredName, nil
+}
+
+func parseRoutedTeam(raw []byte, _ *string) (Identity, string, error) {
+	var team dash0api.TeamDefinitionV1Alpha1
+	if err := dash0yaml.Unmarshal(raw, &team); err != nil {
+		return Identity{}, "", err
+	}
+	return TeamIdentity(&team), team.Metadata.Name, nil
+}
+
+func parseRoutedNotificationChannel(raw []byte, _ *string) (Identity, string, error) {
+	var channel dash0api.NotificationChannelDefinition
+	if err := dash0yaml.Unmarshal(raw, &channel); err != nil {
+		return Identity{}, "", err
+	}
+	return NotificationChannelIdentity(&channel), channel.Metadata.Name, nil
+}
+
+func parseRoutedTimeSeriesAggregation(raw []byte, dataset *string) (Identity, string, error) {
+	var aggregation dash0api.TimeSeriesAggregationDefinition
+	if err := dash0yaml.Unmarshal(raw, &aggregation); err != nil {
+		return Identity{}, "", err
+	}
+	return TimeSeriesAggregationIdentity(&aggregation, dataset), aggregation.Metadata.Name, nil
+}
+
+func parseRoutedSpamFilter(raw []byte, dataset *string) (Identity, string, error) {
+	// Both apiVersions share the metadata shape.
+	var filter dash0api.SpamFilter
+	if err := dash0yaml.Unmarshal(raw, &filter); err != nil {
+		return Identity{}, "", err
+	}
+	return SpamFilterIdentity(&filter, dataset), filter.GetName(), nil
 }
 
 // optionalString returns nil for "", so an empty label is left out of the body.
