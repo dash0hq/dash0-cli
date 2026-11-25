@@ -1,0 +1,8 @@
+change_type: enhancement
+component: debuginfo
+note: "`debuginfo upload` help and docs now say that uploaded source maps also resolve browser errors"
+issues: []
+subtext: |
+  Dash0 resolves browser error stack traces with source maps keyed by debug ID or by script URL.
+  A browser build uploaded without `--base-url` still resolves errors, but not browser profiles, and the warning says so.
+change_logs: [user]
