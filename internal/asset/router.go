@@ -225,17 +225,30 @@ func documentIdentity(doc Document, dataset *string) (Identity, bool) {
 	return identity, routed && err == nil
 }
 
+var routedKinds = map[string]bool{
+	"dashboard":             true,
+	"ephemeraldashboard":    true,
+	"persesdashboard":       true,
+	"team":                  true,
+	"notificationchannel":   true,
+	"timeseriesaggregation": true,
+	"spamfilter":            true,
+}
+
 // IsRoutedKind reports whether RouteDocument serves kind.
 func IsRoutedKind(kind string) bool {
-	_, _, routed, _ := parseRoutedIdentity(kind, nil, nil)
-	return routed
+	return routedKinds[NormalizeKind(kind)]
 }
 
 // parseRoutedIdentity returns the identity apply routes the document by, the
 // name its inferred origin comes from, and false for kinds the router does
 // not serve yet.
 func parseRoutedIdentity(kind string, raw []byte, dataset *string) (identity Identity, name string, routed bool, err error) {
-	switch NormalizeKind(kind) {
+	kind = NormalizeKind(kind)
+	if !routedKinds[kind] {
+		return Identity{}, "", false, nil
+	}
+	switch kind {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
 		dashboard, inferredName, err := ParseDashboard(raw)
 		if err != nil {
