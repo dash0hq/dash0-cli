@@ -19,8 +19,10 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/agent0"
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	"github.com/dash0hq/dash0-cli/internal/awsmetricscrapeconfigs"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
+	"github.com/dash0hq/dash0-cli/internal/datasets"
 	"github.com/dash0hq/dash0-cli/internal/evals"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
 	"github.com/dash0hq/dash0-cli/internal/recordingrules"
@@ -502,6 +504,8 @@ var routedUpdateCommands = map[string]routedUpdateCommand{
 	"checkrule":              {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
 	"persesdashboard":        {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
 	"prometheusrule":         {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
+	"dataset":                {datasets.NewDatasetsCmd, []string{"-X", "datasets", "update"}},
+	"awsmetricscrapeconfig":  {awsmetricscrapeconfigs.NewAwsMetricScrapeConfigsCmd, []string{"-X", "aws-metric-scrape-configs", "update"}},
 	// A variant whose writes go to another endpoint has its own command.
 	"prometheusrule/recording": {recordingrules.NewRecordingRulesCmd, []string{"recording-rules", "update"}},
 }
@@ -525,14 +529,20 @@ func TestRouter_UpdateNeverSendsTheOrigin(t *testing.T) {
 				testutil.SetupTestEnv(t)
 				fixture, putResponse := routedFixtures(t, spec)
 				server := testutil.NewMockServer(t, testutil.FixturesDir())
-				requests := serveRouted(server, spec, map[string][]byte{"o": storedAsset(t, fixture, spec, "o", "o")}, putResponse)
+				// A kind whose id is required cannot update by its origin alone.
+				key, labels := "o", "  labels:\n    dash0.com/origin: o\n"
+				if spec.cases != nil {
+					key = updateTestID(kind)
+					labels = "  labels:\n    dash0.com/id: " + key + "\n    dash0.com/origin: o\n"
+				}
+				requests := serveRouted(server, spec, map[string][]byte{key: storedAsset(t, fixture, spec, key, "o")}, putResponse)
 
-				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/origin: o\n"), server.URL)
+				err := executeUpdate(t, command, spec.document(labels), server.URL)
 				require.NoError(t, err)
 
 				require.NotEmpty(t, *requests)
 				last := (*requests)[len(*requests)-1]
-				require.Equal(t, "PUT o", last.line)
+				require.Equal(t, "PUT "+key, last.line)
 				bodyOrigin := labelOf(t, last.body, spec, "dash0.com/origin")
 				if keepsOriginOnUpdateAtOrigin[kind] && !spec.originIsID {
 					assert.Equal(t, "o", bodyOrigin, "an update at the stored origin keeps it, so a read by id still shows it")
@@ -551,14 +561,15 @@ func TestRouter_UpdateFailsWhenTheStoredOriginDiffers(t *testing.T) {
 	for kind, spec := range routedKinds {
 		command, ok := routedUpdateCommands[kind]
 		require.True(t, ok, "routed kind %q has no update command", kind)
-		for name, args := range map[string][]string{"without argument": nil, "with the id as argument": {"i"}} {
+		id := updateTestID(kind)
+		for name, args := range map[string][]string{"without argument": nil, "with the id as argument": {id}} {
 			t.Run(kind+"/"+name, func(t *testing.T) {
 				testutil.SetupTestEnv(t)
 				fixture, putResponse := routedFixtures(t, spec)
 				server := testutil.NewMockServer(t, testutil.FixturesDir())
-				requests := serveRouted(server, spec, map[string][]byte{"i": storedAsset(t, fixture, spec, "i", "other")}, putResponse)
+				requests := serveRouted(server, spec, map[string][]byte{id: storedAsset(t, fixture, spec, id, "other")}, putResponse)
 
-				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n"), server.URL, args...)
+				err := executeUpdate(t, command, spec.document("  labels:\n    dash0.com/id: "+id+"\n    dash0.com/origin: o\n"), server.URL, args...)
 
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "the CLI never changes a stored origin")
@@ -568,6 +579,15 @@ func TestRouter_UpdateFailsWhenTheStoredOriginDiffers(t *testing.T) {
 			})
 		}
 	}
+}
+
+// updateTestID is the id the update tests store an asset at. An AWS
+// integration id must be a UUID.
+func updateTestID(kind string) string {
+	if kind == "awsmetricscrapeconfig" {
+		return awsIntegrationID
+	}
+	return "i"
 }
 
 // executeUpdate runs command with document as its -f file, against apiURL.

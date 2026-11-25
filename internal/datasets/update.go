@@ -104,7 +104,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return fmt.Errorf("%s is dataset %q, but the file names dataset %q", keySource, dash0api.GetDatasetID(before), slug)
 	}
 	if origin, stored := asset.DatasetOrigin(&dataset), asset.DatasetOrigin(before); origin != "" && stored != "" && origin != stored {
-		return fmt.Errorf("%s is dataset %q with origin %q, but the file's origin is %q", keySource, dash0api.GetDatasetID(before), stored, origin)
+		return fmt.Errorf("%s: %w", keySource, &asset.OriginMismatchError{ID: dash0api.GetDatasetID(before), Stored: stored, Document: origin})
 	}
 
 	// A file without the slug label still sends it. The slug comes from the stored dataset,
@@ -138,6 +138,10 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return asset.PrintDiff(os.Stdout, "Dataset", dash0api.GetDatasetName(preview), before, preview)
 	}
 
+	// An update never sends the origin, as apply does.
+	if dataset.Metadata.Labels != nil {
+		dataset.Metadata.Labels.Dash0Comorigin = nil
+	}
 	result, err := apiClient.UpdateDataset(ctx, id, &dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

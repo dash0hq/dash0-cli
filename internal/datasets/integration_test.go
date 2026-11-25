@@ -684,7 +684,7 @@ func TestUpdateDataset_OriginMismatchWithoutArgumentNamesTheFile(t *testing.T) {
 	_, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", writeYAML(t, withOrigin))
 
 	require.Error(t, err)
-	assert.Equal(t, `"production" from the file is dataset "production" with origin "dash0-cli", but the file's origin is "other"`, err.Error())
+	assert.Contains(t, err.Error(), `"production" from the file: the asset with id "production" has origin "dash0-cli" in Dash0, but the document sets origin "other"`)
 	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
 }
 
