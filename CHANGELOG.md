@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 <!-- next version -->
 
+## 1.24.0
+
+
+### Enhancements
+
+
+- `debuginfo`: `debuginfo upload` uploads up to 8 source maps at the same time instead of one after another (#433)
+  Set `--concurrency` to change how many uploads run at once.
+  Each upload in flight holds its script and source map in memory, so lower it when memory is tight.
+  
+
 ## 1.23.0
 
 
