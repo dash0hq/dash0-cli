@@ -82,6 +82,11 @@ func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0a
 		setDatasetOrigin(dataset, route.Key)
 		return plan, err
 	}
+	// The slug cannot change after creation, so a hit by origin with another
+	// slug means a renamed slug or a copied origin.
+	if stored := dash0api.GetDatasetID(route.Stored); stored != identity.ID {
+		return ImportPlan{}, &DatasetSlugChangeError{Origin: route.Key, Stored: stored, Document: identity.ID}
+	}
 	// The stored origin keeps the diff to what changes; ImportDataset clears
 	// it before the write.
 	setDatasetOrigin(dataset, dash0api.GetDatasetOrigin(route.Stored))
@@ -95,6 +100,18 @@ func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0a
 func DatasetIdentity(dataset *dash0api.DatasetDefinition) Identity {
 	slug := dash0api.GetDatasetID(dataset)
 	return Identity{ID: slug, Origin: dash0api.GetDatasetOrigin(dataset), Inferred: InferOrigin("dataset", slug, "")}
+}
+
+// DatasetSlugChangeError reports a document whose origin belongs to a dataset
+// with another slug.
+type DatasetSlugChangeError struct {
+	Origin   string
+	Stored   string
+	Document string
+}
+
+func (e *DatasetSlugChangeError) Error() string {
+	return fmt.Sprintf("origin %q belongs to dataset %q, and a dataset slug cannot change; set the slug back to %q, or remove dash0.com/origin to create dataset %q", e.Origin, e.Stored, e.Stored, e.Document)
 }
 
 func setDatasetOrigin(dataset *dash0api.DatasetDefinition, origin string) {

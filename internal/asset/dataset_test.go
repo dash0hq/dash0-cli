@@ -169,3 +169,39 @@ func TestImportDataset_DoesNotDependOnThePreviewMerge(t *testing.T) {
 	require.NotNil(t, stored.updated)
 	assert.Empty(t, dash0api.GetDatasetOrigin(stored.updated), "an update never sends the origin")
 }
+
+// datasetAtOrigin stores the dataset "prdo" at origin "o" only.
+type datasetAtOrigin struct {
+	dash0api.Client
+	updated bool
+}
+
+func (datasetAtOrigin) GetDataset(_ context.Context, key string) (*dash0api.DatasetDefinition, error) {
+	if key != "o" {
+		return nil, &dash0api.APIError{StatusCode: 404}
+	}
+	return &dash0api.DatasetDefinition{
+		ApiVersion: DatasetAPIVersion,
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("prdo"), Dash0Comorigin: strPtr("o")}},
+	}, nil
+}
+
+func (c *datasetAtOrigin) UpdateDataset(_ context.Context, _ string, d *dash0api.DatasetDefinition) (*dash0api.DatasetDefinition, error) {
+	c.updated = true
+	return d, nil
+}
+
+func TestImportDataset_SlugChangeAtTheSameOriginFailsBeforeTheWrite(t *testing.T) {
+	client := &datasetAtOrigin{}
+	d := &dash0api.DatasetDefinition{
+		ApiVersion: DatasetAPIVersion,
+		Metadata:   dash0api.DatasetMetadata{Name: "Prod", Labels: &dash0api.DatasetLabels{Dash0Comid: strPtr("prod"), Dash0Comorigin: strPtr("o")}},
+	}
+
+	_, err := ImportDataset(context.Background(), client, d)
+
+	var slugChange *DatasetSlugChangeError
+	require.ErrorAs(t, err, &slugChange)
+	assert.Equal(t, DatasetSlugChangeError{Origin: "o", Stored: "prdo", Document: "prod"}, *slugChange)
+	assert.False(t, client.updated, "no write may reach the API")
+}

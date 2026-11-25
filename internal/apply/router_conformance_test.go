@@ -68,6 +68,9 @@ type routedKind struct {
 	// unsetFixture answers a GET at a key stored with no origin, for a kind
 	// that always exists at its id and is created by its first write.
 	unsetFixture string
+	// storedID is the dash0.com/id of every stored asset, for a kind whose
+	// id cannot differ from the document's, as a dataset's slug.
+	storedID string
 }
 
 var routedKinds = map[string]routedKind{
@@ -176,7 +179,7 @@ var routedKinds = map[string]routedKind{
 	"dataset": {
 		// The slug is the id and is required. The inferred origin hashes it in
 		// place of metadata.name.
-		path: "/api/datasets", fixture: "datasets/get_success.json", orgLevel: true, inferName: "i",
+		path: "/api/datasets", fixture: "datasets/get_success.json", orgLevel: true, inferName: "i", storedID: "i",
 		cases: datasetRouterCases,
 		document: func(labels string) string {
 			return "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: checkout\n" + labels + "spec: {}\n"
@@ -311,8 +314,8 @@ var datasetRouterCases = append(slices.DeleteFunc(slices.Clone(routerCases), fun
 
 const awsIntegrationID = "27755ed0-0009-422d-8c11-19c6dd72df98"
 
-// awsMetricScrapeConfigRouterCases are the routing rule for the one kind with
-// no create by origin: an AWS metric scrape config is written at its
+// awsMetricScrapeConfigRouterCases are the own rule of the one kind with no
+// create by origin: an AWS metric scrape config is written at its
 // integration id, and its first write is the create that sends the origin.
 var awsMetricScrapeConfigRouterCases = []routerCase{
 	{
@@ -694,6 +697,9 @@ func storedAsset(t *testing.T, fixture []byte, spec routedKind, key, origin stri
 	if labels == nil {
 		labels = map[string]any{}
 		parent["labels"] = labels
+	}
+	if spec.storedID != "" {
+		labels["dash0.com/id"] = spec.storedID
 	}
 	if origin == "" {
 		delete(labels, "dash0.com/origin")

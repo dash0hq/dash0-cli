@@ -17,6 +17,7 @@ subtext: |
   A dataset is still addressed by its slug, and an AWS metric scrape config by its integration id.
   Without `dash0.com/origin`, the CLI infers one from the slug or the integration id, so the same file gets the same origin in every run.
   A dataset whose slug is not found is created by its origin, which also restores a dataset deleted in the last 30 days.
+  A file whose `dash0.com/origin` belongs to a dataset with another slug fails before the write, because a slug cannot change.
   An AWS integration that is not found still fails, because the CLI cannot create one.
   Before, a new dataset or a first scrape config got a server-assigned `api-` origin, and a differing origin in the file was ignored.
   Remove `dash0.com/origin` from the file, or set it to the stored value, to keep applying an existing dataset or scrape config.

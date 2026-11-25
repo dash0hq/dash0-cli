@@ -158,9 +158,9 @@ func ImportAwsMetricScrapeConfig(
 }
 
 // PlanAwsMetricScrapeConfig reads the stored config that
-// ImportAwsMetricScrapeConfig would replace. It follows the routing rule at
-// the integration id only: an unknown integration fails, because the CLI
-// cannot create one. An integration that never had a config, or had it
+// ImportAwsMetricScrapeConfig would replace. It does not use RouteDocument:
+// the integration id is the only key, and an unknown integration fails,
+// because the CLI cannot create one. An integration that never had a config, or had it
 // cleared, makes the write a create.
 func PlanAwsMetricScrapeConfig(
 	ctx context.Context,

@@ -126,7 +126,7 @@ These checks run during the validation phase, before any document in the run is 
 - A label or annotation that the API ignores prints a warning.
   The labels and annotations that `aws-metric-scrape-configs get -o yaml` exports are not warned about.
 
-They follow the [routing rule](#routing-rule) at the integration id only, because the CLI cannot create an integration.
+They do not follow the [routing rule](#routing-rule): the integration id is the only key, and an unknown integration fails, because the CLI cannot create an integration.
 The first config of an integration sends `dash0.com/origin`, or the origin the CLI infers from the integration id.
 Dash0 keeps the origin of the first writer until the config is cleared, and ignores it on later writes, so an update never sends it.
 A document whose `dash0.com/origin` differs from the stored one fails, as for the other kinds.
