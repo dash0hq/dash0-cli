@@ -168,6 +168,8 @@ func TestUpdate_SendsSpecAndVersionAndShowsDiff(t *testing.T) {
 	assert.Contains(t, stdout, `AutoMerge settings "acme/api" updated (version 3)`)
 	sent := sentSettings(t, server)
 	assert.Equal(t, dash0api.RepositorySettingsRequestKind("DarkplaneRepositorySettings"), sent.Kind)
+	require.NotNil(t, sent.ApiVersion)
+	assert.Equal(t, dash0api.RepositorySettingsApiVersionDash0Comv1alpha1, *sent.ApiVersion)
 	require.NotNil(t, sent.Metadata)
 	assert.Equal(t, "2", *sent.Metadata.Labels.Dash0Comversion)
 	assert.Equal(t, float32(80), sent.Spec.SoftThreshold)

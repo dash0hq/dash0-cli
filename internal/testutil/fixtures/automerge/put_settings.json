@@ -1,4 +1,5 @@
 {
+  "apiVersion": "dash0.com/v1alpha1",
   "kind": "DarkplaneRepositorySettings",
   "metadata": {
     "annotations": {
