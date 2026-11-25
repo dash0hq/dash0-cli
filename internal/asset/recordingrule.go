@@ -86,11 +86,8 @@ func ImportRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *d
 	if plan.Key == "" {
 		return ImportResult{}, err
 	}
-	// An update at the id never sends the origin, which the API rejects there.
-	// An update at the stored origin sends it back: without it, Dash0 leaves
-	// the origin out of a later read by id.
-	if plan.Action != ActionCreated && rule.GetOrigin() != plan.Key {
-		setRecordingRuleLabel(rule, dash0api.LabelOrigin, "")
+	if plan.Action != ActionCreated {
+		SetRecordingRuleOrigin(rule, UpdateOrigin(rule.GetOrigin(), plan.Key))
 	}
 	result, err := apiClient.UpdateRecordingRule(ctx, plan.Key, rule, dataset)
 	if err != nil {
@@ -118,12 +115,12 @@ func PlanRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *das
 	route, err := RouteDocument(ctx, identity, get, (*dash0api.RecordingRule).GetOrigin)
 	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: rule}
 	if route.Key == "" || route.Create {
-		setRecordingRuleLabel(rule, dash0api.LabelOrigin, route.Key)
+		SetRecordingRuleOrigin(rule, route.Key)
 		return plan, err
 	}
 	// The stored origin keeps the diff to what changes; the import clears it
 	// before a write at the id.
-	setRecordingRuleLabel(rule, dash0api.LabelOrigin, route.Stored.GetOrigin())
+	SetRecordingRuleOrigin(rule, route.Stored.GetOrigin())
 	plan.Action, plan.Before = actionForExisting(RecordingRuleDeletedAt(route.Stored)), route.Stored
 	CarryRecordingRuleVersion(route.Stored, rule)
 	return plan, nil
@@ -134,6 +131,11 @@ func PlanRecordingRule(ctx context.Context, apiClient dash0api.Client, rule *das
 // from the CRD's metadata.name alone.
 func RecordingRuleIdentity(rule *dash0api.RecordingRule, dataset *string) Identity {
 	return identityOf("recordingrule", rule.Metadata.Name, dataset, rule)
+}
+
+// SetRecordingRuleOrigin sets the dash0.com/origin label, and removes it when origin is empty.
+func SetRecordingRuleOrigin(rule *dash0api.RecordingRule, origin string) {
+	setRecordingRuleLabel(rule, dash0api.LabelOrigin, origin)
 }
 
 func setRecordingRuleLabel(rule *dash0api.RecordingRule, key, value string) {

@@ -51,7 +51,7 @@ Detailed guidelines are split into focused documents:
   When an asset has a user-defined ID, `apply` and the individual import functions route to PUT (which has upsert semantics) instead of POST for most asset types.
 - **One routing rule** (`asset.RouteDocument` in `internal/asset/router.go`) serves dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, teams, notification channels, time series aggregations, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills.
   A document with `dash0.com/id` is read by that id; on hit the CLI PUTs at the id, and fails when the stored origin differs from an explicit origin in the file.
-  Views, synthetic checks, and recording rules send the stored origin back on an update at that origin (`asset.KeepStoredOrigin`), because Dash0 echoes the body's labels on a read by id; an update at the id cannot send it, since the API rejects a body origin there.
+  Views, synthetic checks, and recording rules send the stored origin back on an update at that origin (`asset.UpdateOrigin`), because Dash0 echoes the body's labels on a read by id; an update at the id cannot send it, since the API rejects a body origin there.
   On 404, or without an id, the CLI PUTs by the file's origin or the inferred one, never by the id and never with POST.
   Check rules and PrometheusRule alerting rules are the exception: an id that is not found is created at that id (`Identity.CreatesAtID`), so the file keeps its id.
   There is no lookup by name.

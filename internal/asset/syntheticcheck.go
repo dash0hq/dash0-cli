@@ -16,11 +16,8 @@ func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check 
 	if plan.Key == "" {
 		return ImportResult{}, err
 	}
-	// An update at the id never sends the origin, which the API rejects there.
-	// An update at the stored origin sends it back: without it, Dash0 leaves
-	// the origin out of a later read by id.
-	if plan.Action != ActionCreated && check.GetOrigin() != plan.Key {
-		setSyntheticCheckOrigin(check, "")
+	if plan.Action != ActionCreated {
+		SetSyntheticCheckOrigin(check, UpdateOrigin(check.GetOrigin(), plan.Key))
 	}
 	result, err := apiClient.UpdateSyntheticCheck(ctx, plan.Key, check, dataset)
 	if err != nil {
@@ -51,12 +48,12 @@ func PlanSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *d
 		dash0api.ClearSyntheticCheckID(check)
 	}
 	if route.Key == "" || route.Create {
-		setSyntheticCheckOrigin(check, route.Key)
+		SetSyntheticCheckOrigin(check, route.Key)
 		return plan, err
 	}
 	// The stored origin keeps the diff to what changes; the import clears it
 	// before a write at the id.
-	setSyntheticCheckOrigin(check, route.Stored.GetOrigin())
+	SetSyntheticCheckOrigin(check, route.Stored.GetOrigin())
 	plan.Action, plan.Before = actionForExisting(SyntheticCheckDeletedAt(route.Stored)), route.Stored
 	return plan, nil
 }
@@ -66,7 +63,7 @@ func SyntheticCheckIdentity(check *dash0api.SyntheticCheckDefinition, dataset *s
 	return identityOf("syntheticcheck", check.Metadata.Name, dataset, check)
 }
 
-func setSyntheticCheckOrigin(check *dash0api.SyntheticCheckDefinition, origin string) {
+func SetSyntheticCheckOrigin(check *dash0api.SyntheticCheckDefinition, origin string) {
 	if check.Metadata.Labels == nil {
 		if origin == "" {
 			return

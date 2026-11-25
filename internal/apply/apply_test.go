@@ -166,6 +166,30 @@ spec:
 			want: []string{`check rule origin "shared-origin" is used more than once, so only the last one would be kept:` + "\n    " + `a.yaml: "Rule A"` + "\n    " + `b.yaml: "Rule B"`},
 		},
 		{
+			name: "single-alert PrometheusRules with the same origin and no id",
+			files: map[string]string{
+				"a.yaml": strings.Replace(singleAlertPrometheusRule, "dash0.com/id: shared-id", "dash0.com/origin: shared-origin", 1),
+				"b.yaml": strings.Replace(strings.Replace(singleAlertPrometheusRule, "dash0.com/id: shared-id", "dash0.com/origin: shared-origin", 1), "Alert A", "Alert B", 1),
+			},
+			want: []string{`check rule origin "shared-origin" is used more than once, so only the last one would be kept:` + "\n    " + `a.yaml: "group - Alert A"` + "\n    " + `b.yaml: "group - Alert B"`},
+		},
+		{
+			name: "single-alert PrometheusRule and check rule with the same origin",
+			files: map[string]string{
+				"a.yaml": strings.Replace(singleAlertPrometheusRule, "dash0.com/id: shared-id", "dash0.com/origin: shared-origin", 1),
+				"b.yaml": "kind: CheckRule\nname: Rule B\nlabels:\n  dash0.com/origin: shared-origin\nexpression: up == 1\n",
+			},
+			want: []string{`check rule origin "shared-origin" is used more than once, so only the last one would be kept:` + "\n    " + `a.yaml: "group - Alert A"` + "\n    " + `b.yaml: "Rule B"`},
+		},
+		{
+			name: "check rule id equal to another check rule's origin",
+			files: map[string]string{
+				"a.yaml": checkRuleA,
+				"b.yaml": "kind: CheckRule\nname: Rule B\nlabels:\n  dash0.com/origin: shared-id\nexpression: up == 1\n",
+			},
+			want: []string{`check rule id and origin "shared-id" is used more than once, so only the last one would be kept:` + "\n    " + `a.yaml: "Rule A"` + "\n    " + `b.yaml: "Rule B"`},
+		},
+		{
 			name: "check rules without id",
 			files: map[string]string{
 				"a.yaml": "kind: CheckRule\nname: Rule A\nexpression: up == 0\n",

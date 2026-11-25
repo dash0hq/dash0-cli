@@ -179,20 +179,13 @@ type routedKeys struct{ dash0api.AssetMetadata }
 
 func (routedKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }
 
-// KeepStoredOrigin puts the stored origin back on a view, synthetic check, or
-// recording rule that update writes at that origin: without it,
-// Dash0 leaves the origin out of a later read by id. An update at the id
-// never sends it, because the API rejects a body origin there.
-func KeepStoredOrigin(proposed any, storedOrigin, key string) {
-	if storedOrigin == "" || storedOrigin != key {
-		return
+// UpdateOrigin returns the origin that an update of a view, synthetic check,
+// or recording rule at key sends. An update at the stored origin sends it
+// back, because without it Dash0 leaves the origin out of a later read by id.
+// An update at the id sends none, because the API rejects a body origin there.
+func UpdateOrigin(storedOrigin, key string) string {
+	if storedOrigin == key {
+		return key
 	}
-	switch asset := proposed.(type) {
-	case *dash0api.ViewDefinition:
-		setViewOrigin(asset, key)
-	case *dash0api.SyntheticCheckDefinition:
-		setSyntheticCheckOrigin(asset, key)
-	case *dash0api.RecordingRule:
-		setRecordingRuleLabel(asset, dash0api.LabelOrigin, key)
-	}
+	return ""
 }
