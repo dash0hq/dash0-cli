@@ -666,6 +666,26 @@ func TestCreateTimeSeriesAggregationFromFile_WrongDatasetHint(t *testing.T) {
 	assertNoPOST(t, server.Requests())
 }
 
+func TestCreateTimeSeriesAggregationFromFile_WrongDatasetHintNamesTheIDThatFailed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, originPattern, testutil.MockResponse{
+		StatusCode: http.StatusBadRequest,
+		BodyFile:   fixtureWrongDataset,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"tsa", "create", "-f", writeDoc(t, docWithOriginAndID), "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"`+testID+`" already exists in another dataset`)
+	assert.NotContains(t, err.Error(), `"`+testOrigin+`"`)
+}
+
 // TestUpdateTimeSeriesAggregation_UnchangedDocumentReportsNoChanges proves
 // marshalForDiff strips the server-managed labels. dash0.com/version is
 // incremented on every PUT, so without the strip a reapply of unchanged

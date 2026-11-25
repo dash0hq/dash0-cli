@@ -68,7 +68,11 @@ func PlanTimeSeriesAggregation(ctx context.Context, apiClient dash0api.Client, a
 	route, err := RouteDocument(ctx, identity, get, (*dash0api.TimeSeriesAggregationDefinition).GetOrigin)
 	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: aggregation}
 	if err != nil {
-		return plan, wrapIfWrongDataset(err, identity.CreateOrigin())
+		readKey := route.Key
+		if readKey == "" {
+			readKey = identity.ID
+		}
+		return plan, wrapIfWrongDataset(err, readKey)
 	}
 	if !route.Create {
 		plan.Action, plan.Before = actionForExisting(TimeSeriesAggregationDeletedAt(route.Stored)), route.Stored
