@@ -92,7 +92,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetCheckRuleName(&rule)
-		id = PreferredKey(RoutedKeys(&rule))
+		id = idThenOrigin(&rule)
 
 	case "view":
 		var view dash0api.ViewDefinition
@@ -100,7 +100,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetViewName(&view)
-		id = PreferredKey(RoutedKeys(&view))
+		id = idThenOrigin(&view)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -108,7 +108,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSyntheticCheckName(&check)
-		id = PreferredKey(RoutedKeys(&check))
+		id = idThenOrigin(&check)
 
 	case "slo":
 		var slo dash0api.SloDefinition
@@ -128,9 +128,9 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = partial.Metadata.Name
-		id = partial.Metadata.Labels[dash0api.LabelOrigin]
+		id = partial.Metadata.Labels[dash0api.LabelID]
 		if id == "" {
-			id = partial.Metadata.Labels[dash0api.LabelID]
+			id = partial.Metadata.Labels[dash0api.LabelOrigin]
 		}
 
 	case "persesdashboard":
@@ -139,9 +139,9 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetPersesDashboardName(&perses)
-		id = perses.Metadata.Labels[dash0api.LabelOrigin]
+		id = dash0api.GetPersesDashboardID(&perses)
 		if id == "" {
-			id = dash0api.GetPersesDashboardID(&perses)
+			id = perses.Metadata.Labels[dash0api.LabelOrigin]
 		}
 
 	case "spamfilter":
@@ -465,4 +465,13 @@ func ReadInput(file string, sinceFlagSet bool) (documents []Document, fromDirect
 		return nil, false, false, FormatValidationError(err.Error())
 	}
 	return documents, false, false, nil
+}
+
+// idThenOrigin returns the key apply reads first, so validation messages and
+// the dry run name the same key as the write.
+func idThenOrigin(definition dash0api.AssetMetadata) string {
+	if id := definition.GetID(); id != "" {
+		return id
+	}
+	return definition.GetOrigin()
 }

@@ -674,9 +674,9 @@ func TestRouter_CheckRuleOriginIsItsID(t *testing.T) {
 			want:   []string{"GET i", "PUT i"},
 		},
 		{
-			name:   "id not found with an origin",
-			labels: map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
-			want:   []string{"GET i", "PUT i"},
+			name:    "id not found with another origin",
+			labels:  map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
+			wantErr: `sets id "i" and dash0.com/origin "o"`,
 		},
 		{
 			name:   "id hit without an origin",
@@ -694,8 +694,7 @@ func TestRouter_CheckRuleOriginIsItsID(t *testing.T) {
 			name:    "id hit with another origin",
 			labels:  map[string]string{"dash0.com/id": "i", "dash0.com/origin": "o"},
 			stored:  map[string]string{"i": "i"},
-			want:    []string{"GET i"},
-			wantErr: `has origin "i" in Dash0`,
+			wantErr: `sets id "i" and dash0.com/origin "o"`,
 		},
 	}
 	for _, kind := range []string{"checkrule", "prometheusrule"} {

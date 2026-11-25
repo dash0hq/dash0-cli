@@ -55,6 +55,9 @@ type Route[T any] struct {
 // read leaves Key empty, because the write has no target; a failed origin read
 // keeps Key, because the origin is the target either way.
 func RouteDocument[T any](ctx context.Context, identity Identity, get func(context.Context, string) (T, error), storedOrigin func(T) string) (Route[T], error) {
+	if err := checkIDOrigin(identity); err != nil {
+		return Route[T]{}, err
+	}
 	if identity.ID != "" {
 		stored, err := get(ctx, identity.ID)
 		if err == nil {
@@ -82,6 +85,25 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 	}
 	route.Create, route.Stored = false, stored
 	return route, nil
+}
+
+// IDOriginConflictError reports a check rule whose id and origin differ. The
+// rule is created at the id, and Dash0 returns no origin label for it, so
+// every later apply would fail the stored-origin check.
+type IDOriginConflictError struct {
+	ID     string
+	Origin string
+}
+
+func (e *IDOriginConflictError) Error() string {
+	return fmt.Sprintf("the check rule sets id %q and dash0.com/origin %q, which differ, so only the first apply would succeed; remove dash0.com/origin or the id", e.ID, e.Origin)
+}
+
+func checkIDOrigin(identity Identity) error {
+	if identity.CreatesAtID && identity.ID != "" && identity.Origin != "" && identity.Origin != identity.ID {
+		return &IDOriginConflictError{ID: identity.ID, Origin: identity.Origin}
+	}
+	return nil
 }
 
 // OriginMismatchError reports a document whose id names an asset that Dash0

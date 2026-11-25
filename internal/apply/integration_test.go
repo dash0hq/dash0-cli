@@ -1805,66 +1805,127 @@ expression: up == 0
 }
 
 func TestApply_CheckRule_RoundTrip(t *testing.T) {
-	testutil.SetupTestEnv(t)
-
-	// A check rule YAML with a user-defined ID. Applying it twice must be
-	// idempotent: the first apply creates the rule (GET returns 404), and the
-	// second apply updates it (GET returns 200).
+	// Applying the same check rule twice must be idempotent: the first apply
+	// creates the rule (GET returns 404), and the second apply updates it
+	// (GET returns 200).
 	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
 	const getPath = "/api/alerting/check-rules/" + ruleID
-
-	tmpDir := t.TempDir()
-	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
-	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
+	documents := map[string]string{
+		"id only": `kind: CheckRule
 id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
 name: test-check-rule
 expression: up == 0
-`), 0644)
-	require.NoError(t, err)
+`,
+		"id and the same origin": `kind: CheckRule
+id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+name: test-check-rule
+expression: up == 0
+labels:
+  dash0.com/origin: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+`,
+	}
+	for name, document := range documents {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			tmpDir := t.TempDir()
+			yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
+			err := os.WriteFile(yamlFile, []byte(document), 0644)
+			require.NoError(t, err)
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
 
-	// --- First apply: rule does not exist yet ---
-	server.On(http.MethodGet, getPath, testutil.MockResponse{
-		StatusCode: http.StatusNotFound,
-		BodyFile:   testutil.FixtureCheckRulesNotFound,
-	})
-	// The id is not found, so the first apply creates the rule at the id.
-	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+			// --- First apply: rule does not exist yet ---
+			server.On(http.MethodGet, getPath, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureCheckRulesNotFound,
+			})
+			// The id is not found, so the first apply creates the rule at the id.
+			server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
-	cmd1 := NewApplyCmd()
-	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+			cmd1 := NewApplyCmd()
+			cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	var err1 error
-	output1 := testutil.CaptureStdout(t, func() {
-		err1 = cmd1.Execute()
-	})
-	require.NoError(t, err1)
-	assert.Contains(t, output1, "created")
+			var err1 error
+			output1 := testutil.CaptureStdout(t, func() {
+				err1 = cmd1.Execute()
+			})
+			require.NoError(t, err1)
+			assert.Contains(t, output1, "created")
 
-	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, getPath), "expected a PUT at the id on first apply")
+			require.NotNil(t, findRequest(server.Requests(), http.MethodPut, getPath), "expected a PUT at the id on first apply")
 
-	// --- Second apply: rule now exists under the same user-defined ID ---
-	server.Reset()
-	server.On(http.MethodGet, getPath, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureCheckRulesImportSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+			// --- Second apply: rule now exists under the same user-defined ID ---
+			server.Reset()
+			server.On(http.MethodGet, getPath, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
-	cmd2 := NewApplyCmd()
-	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+			cmd2 := NewApplyCmd()
+			cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	var err2 error
-	output2 := testutil.CaptureStdout(t, func() {
-		err2 = cmd2.Execute()
-	})
-	require.NoError(t, err2)
-	// Must update, not create again
-	assert.NotContains(t, output2, "created")
-	// GET and Update return the same fixture, so no diff → "no changes"
-	assert.Contains(t, output2, "no changes")
+			var err2 error
+			output2 := testutil.CaptureStdout(t, func() {
+				err2 = cmd2.Execute()
+			})
+			require.NoError(t, err2)
+			// Must update, not create again
+			assert.NotContains(t, output2, "created")
+			// GET and Update return the same fixture, so no diff → "no changes"
+			assert.Contains(t, output2, "no changes")
+		})
+	}
+}
+
+func TestApply_CheckRule_IDAndAnotherOriginFailsValidation(t *testing.T) {
+	// Each apply of these documents would fail, so validation rejects them
+	// before any request, on the first apply as on every later one.
+	documents := map[string]string{
+		"check rule": `kind: CheckRule
+id: rule-id
+name: test-check-rule
+expression: up == 0
+labels:
+  dash0.com/origin: rule-origin
+`,
+		"multi-alert PrometheusRule": `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: rules-id
+    dash0.com/origin: rules-origin
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: up == 0
+        - alert: DiskFull
+          expr: up == 0
+`,
+	}
+	for name, document := range documents {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(document), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+			for range 2 {
+				cmd := NewApplyCmd()
+				cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+				var err error
+				testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "validation failed")
+				assert.Contains(t, err.Error(), "remove dash0.com/origin or the id")
+			}
+			assert.Empty(t, server.Requests())
+		})
+	}
 }
 
 func TestApply_View_Updated(t *testing.T) {

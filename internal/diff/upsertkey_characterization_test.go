@@ -238,7 +238,7 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withNeither: {"", "", "GetSyntheticCheck(dash0-cli_5d001689d30e63de937bf0bd6185d1e5)"},
 			withOrigin:  {"o", "o", "GetSyntheticCheck(o)"},
 			withID:      {"i", "i", "GetSyntheticCheck(i) GetSyntheticCheck(dash0-cli_5d001689d30e63de937bf0bd6185d1e5)"},
-			withBoth:    {"i", "o", "GetSyntheticCheck(i) GetSyntheticCheck(o)"},
+			withBoth:    {"i", "i", "GetSyntheticCheck(i) GetSyntheticCheck(o)"},
 		},
 		"slo": {
 			withNeither: {"", "", "GetSLO(dash0-cli_ccd8d2fa6938a28d0b9fe487b335cfd2)"},
@@ -250,19 +250,19 @@ func TestUpsertKey_Characterization(t *testing.T) {
 			withNeither: {"", "", "GetView(dash0-cli_c2cd79b14cacc84c35f2891bf455de45)"},
 			withOrigin:  {"o", "o", "GetView(o)"},
 			withID:      {"i", "i", "GetView(i) GetView(dash0-cli_c2cd79b14cacc84c35f2891bf455de45)"},
-			withBoth:    {"i", "o", "GetView(i) GetView(o)"},
+			withBoth:    {"i", "i", "GetView(i) GetView(o)"},
 		},
 		"prometheusrule": {
 			withNeither: {"", "", "GetCheckRule(dash0-cli_c8b5205e526cbeb9cb5fc77fad4e09f6) GetRecordingRule(dash0-cli_87a69fbd04c8b6bb51abb4e7465c67f6)"},
 			withOrigin:  {"o", "o", "GetCheckRule(o) GetRecordingRule(o)"},
 			withID:      {"i", "i", "GetCheckRule(i) GetRecordingRule(i) GetRecordingRule(dash0-cli_87a69fbd04c8b6bb51abb4e7465c67f6)"},
-			withBoth:    {"i", "o", "GetCheckRule(i) GetRecordingRule(i) GetRecordingRule(o)"},
+			withBoth:    {"i", "i", `error: the check rule sets id "i" and dash0.com/origin "o", which differ, so only the first apply would succeed; remove dash0.com/origin or the id`},
 		},
 		"persesdashboard": {
 			withNeither: {"", "", "GetDashboard(dash0-cli_8c3789eb30701c9e4d02c5b21660f40d)"},
 			withOrigin:  {"o", "o", "GetDashboard(o)"},
 			withID:      {"i", "i", "GetDashboard(i) GetDashboard(dash0-cli_8c3789eb30701c9e4d02c5b21660f40d)"},
-			withBoth:    {"i", "o", "GetDashboard(i) GetDashboard(o)"},
+			withBoth:    {"i", "i", "GetDashboard(i) GetDashboard(o)"},
 		},
 		"spamfilter": {
 			withNeither: {"", "", "GetSpamFilter(dash0-cli_c5d82d7d40200dc8059d794895be053f)"},

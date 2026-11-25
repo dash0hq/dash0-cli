@@ -108,6 +108,7 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 		}
 	}
 	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
+	validationErrors = append(validationErrors, checkRuleIDOriginConflicts(documents)...)
 	return validationErrors, validationWarnings
 }
 
@@ -130,6 +131,26 @@ func checkRuleIDCollisions(documents []Document) []string {
 		}
 	}
 	return collisions
+}
+
+func checkRuleIDOriginConflicts(documents []Document) []string {
+	var conflicts []string
+	for _, doc := range documents {
+		kind := NormalizeKind(doc.Kind)
+		if kind != "checkrule" && kind != "prometheusrule" {
+			continue
+		}
+		rules, err := ParseCheckRules(doc.Raw)
+		if err != nil {
+			continue
+		}
+		for _, rule := range rules {
+			if err := checkIDOrigin(rule.Identity(nil)); err != nil {
+				conflicts = append(conflicts, fmt.Sprintf("%s: %q: %s", doc.Location(), rule.Name, err))
+			}
+		}
+	}
+	return conflicts
 }
 
 type checkRuleWriteKey struct {

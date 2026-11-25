@@ -6,7 +6,7 @@ subtext: |
   Applying the same document again now updates the same asset, also when the document has no identifier.
   Without `dash0.com/origin`, the CLI infers one from the kind, `metadata.name`, and the dataset.
   A check rule uses its top-level `name`, and reads its origin from its top-level `labels`.
-  A CheckRule file whose `id` exists and whose `dash0.com/origin` label differs from it now fails, because Dash0 stores a check rule's origin as its id; before, the CLI dropped the label.
+  A check rule whose `id` and `dash0.com/origin` label differ now fails, because the CLI would create it at the id and could not match the origin on a later apply; before, the CLI dropped the label.
   Each alert of a PrometheusRule uses `metadata.name` and `<group name> - <alert name>`, and the recording rules use `metadata.name`.
   A PersesDashboard keeps its `dash0.com/id` and `dash0.com/origin` labels, which the conversion to a dashboard used to drop.
   Before, these kinds were written at the file's id, so a document whose id is not found now creates the asset at its origin or inferred origin, with a server-assigned id.
