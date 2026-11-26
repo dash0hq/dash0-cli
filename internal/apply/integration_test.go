@@ -3680,15 +3680,21 @@ func TestApply_Skill_IDFallbackUpdatesOnly(t *testing.T) {
 		assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, idPath))
 	})
 
-	t.Run("unknown id is not created", func(t *testing.T) {
+	t.Run("unknown id is created by the inferred origin", func(t *testing.T) {
+		inferredPath := apiPathSkills + "/" + asset.InferKindOrigin("skill", "incident-triage", nil)
 		server := testutil.NewMockServer(t, testutil.FixturesDir())
 		server.On(http.MethodGet, idPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders})
+		server.On(http.MethodGet, inferredPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders})
+		server.On(http.MethodPut, inferredPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsUpdateSuccess, Validator: testutil.RequireHeaders})
 
 		_, err := runApplyDoc(t, server.URL, doc)
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `Agent0 skill with id "cskl_01jb8k3m4n5p6q7r8s9t0v1w2x" not found`)
-		assert.Contains(t, err.Error(), "dash0.com/id only addresses an existing skill")
+		require.NoError(t, err)
+		put := findRequest(server.Requests(), http.MethodPut, inferredPath)
+		require.NotNil(t, put)
+		var body dash0api.SkillDefinition
+		require.NoError(t, json.Unmarshal(put.Body, &body))
+		assert.Empty(t, dash0api.GetCustomSkillID(&body), "the path selects the skill, so the body carries no foreign id")
 		assert.Nil(t, findRequest(server.Requests(), http.MethodPut, idPath))
 		assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSkills))
 	})

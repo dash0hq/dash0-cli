@@ -5,6 +5,7 @@ package evals
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -301,21 +302,28 @@ func TestCreateEval_UpsertByOrigin_SurfacesNon404PreflightError(t *testing.T) {
 	assert.Empty(t, requestsFor(server, http.MethodPut, pathByOrigin))
 }
 
-// An id from another organization is not found, so the eval is created with POST,
-// and the foreign id is not sent.
-func TestCreateEval_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) {
+// An id from another organization is not found, so the eval is created by its
+// inferred origin, never by POST, and the foreign id is not sent. The next
+// apply then updates the same eval.
+func TestCreateEval_UpsertByID_UnknownIDCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
+	inferred := asset.InferKindOrigin("generativeaievaluation", "answer-relevance", nil)
+	pathByInferred := apiPathEvals + "/" + inferred
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.On(http.MethodGet, pathByID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureEvalsNotFound, Validator: testutil.RequireHeaders})
-	server.On(http.MethodPost, apiPathEvals, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsCreateSuccess, Validator: testutil.RequireHeaders})
+	server.On(http.MethodGet, pathByInferred, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureEvalsNotFound, Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, pathByInferred, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureEvalsCreateSuccess, Validator: testutil.RequireHeaders})
 
 	out, _, err := runCmd(t, server.URL, "create", "-f", writeYAML(t, evalYAML("    dash0.com/id: "+evalID+"\n")))
 	require.NoError(t, err)
 	assert.Contains(t, out, `Eval "Answer relevance" created`)
 
-	posts := requestsFor(server, http.MethodPost, apiPathEvals)
-	require.Len(t, posts, 1)
-	assert.NotContains(t, decodeLabels(t, posts[0]), "dash0.com/id")
+	puts := requestsFor(server, http.MethodPut, pathByInferred)
+	require.Len(t, puts, 1)
+	labels := decodeLabels(t, puts[0])
+	assert.NotContains(t, labels, "dash0.com/id")
+	assert.Equal(t, inferred, labels["dash0.com/origin"], "the body carries the origin on create")
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathEvals))
 	assert.Empty(t, requestsFor(server, http.MethodPut, pathByID))
 }
 

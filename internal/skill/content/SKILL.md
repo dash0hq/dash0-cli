@@ -56,21 +56,20 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `PrometheusRule` (alerting or recording) | `metadata.labels["dash0.com/id"]` (a CRD with 2+ alerting rules derives a distinct id per alert instead: `<label>--<slug of "<group> - <alert>">`) |
 | `SyntheticCheck` | `metadata.labels["dash0.com/id"]` |
 | `View` | `metadata.labels["dash0.com/id"]` |
-| `SLO` | `metadata.labels["dash0.com/origin"]` — SLO IDs are server-assigned (`slo_<ulid>`), so origin is the only client-settable key; `metadata.labels["dash0.com/id"]` is used only when origin is absent |
+| `SLO` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. SLO IDs are server-assigned, so pin origin in a hand-written document |
 | `Dash0SpamFilter` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
 | `Dash0NotificationChannel` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug — required and immutable; `spec.slug` wins when both are set); `dash0.com/origin` is optional |
 | `Dash0Team` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]`, the AWS integration id — **required**. One config per integration; `apply` replaces it (PUT), there is no create. `spec.namespaces` is required (`[]` stops all scraping). `dash0.com/origin` is never sent |
-| `Dash0Skill` | `metadata.labels["dash0.com/origin"]`; `metadata.labels["dash0.com/id"]` only updates an existing skill when origin is absent |
-| `Dash0SignalToMetrics` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent). Rule IDs are server-assigned, so pin origin. An id-only document updates the rule with that ID, or creates a new rule when no rule has it, which is not idempotent. Origins are unique per organization while each rule belongs to one dataset, so one document cannot serve two datasets |
-| `Dash0Sampling` | `metadata.labels["dash0.com/origin"]` (`metadata.labels["dash0.com/id"]` when origin is absent). Rule IDs are server-assigned, so pin origin. An id-only document updates the rule with that ID, or creates a new rule when no rule has it, which is not idempotent. Origins are unique per organization while each rule belongs to one dataset, so one document cannot serve two datasets |
+| `Dash0Skill` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. The inferred origin hashes the skill name from the `SKILL.md` frontmatter, not `metadata.name` |
+| `Dash0SignalToMetrics` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. Origins are unique per organization while each rule belongs to one dataset, so one document with an explicit origin cannot serve two datasets |
+| `Dash0Sampling` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. Origins are unique per organization while each rule belongs to one dataset, so one document with an explicit origin cannot serve two datasets |
 | `Dash0TimeSeriesAggregation` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. Origins are unique per organization while each aggregation belongs to one dataset, so one document with an explicit origin cannot serve two datasets |
 
 **Origin vs ID — do not conflate them.** *ID* is the user-defined external identifier described above. *Origin* (`dash0.com/origin` label) records which system is the authoritative source of truth for an asset (`dash0-cli`, `terraform`, `ui`, `operator`). Which of the two is the upsert key depends on the kind, and the split follows the shape of the underlying API rather than being a list of exceptions:
 
-- **The routing rule** serves dashboards, ephemeral dashboards, spam filters, time series aggregations, notification channels, and teams. With `dash0.com/id`, the CLI reads the asset by id and updates it there; it fails when the stored origin differs from an explicit origin in the file. When the id is not found, or there is none, it PUTs by `dash0.com/origin`, or by an inferred origin: `dash0-cli_` plus a hash of the kind, `metadata.name`, and the dataset. These kinds are never created by POST, and the origin is sent only on create. Renaming `metadata.name` without an explicit origin creates a new asset. Two documents without an id or an origin that get the same inferred origin fail validation, and a document whose id is not found fails when another document of the run already writes its inferred origin.
-- **Origin is the upsert key** for SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills. The CLI reads the origin label off the document and upserts against it (`PUT /api/<kind>/{origin}`). For SLOs origin is recommended: the server assigns SLO IDs, so `dash0.com/origin` is the only way to make a hand-written SLO document idempotent.
+- **The routing rule** serves dashboards, ephemeral dashboards, spam filters, time series aggregations, notification channels, teams, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills. With `dash0.com/id`, the CLI reads the asset by id and updates it there; it fails when the stored origin differs from an explicit origin in the file. When the id is not found, or there is none, it PUTs by `dash0.com/origin`, or by an inferred origin: `dash0-cli_` plus a hash of the kind, `metadata.name` (the `SKILL.md` name for an Agent0 skill), and the dataset. These kinds are never created by POST, and the origin is sent only on create. Renaming `metadata.name` without an explicit origin creates a new asset. Two documents without an id or an origin that get the same inferred origin fail validation, and a document whose id is not found fails when another document of the run already writes its inferred origin.
 - **ID is the upsert key, and origin is provenance only** for views, check rules, recording rules, and synthetic checks. The CLI strips `dash0.com/origin` before sending these documents, so an `apply` never claims ownership of an asset managed by Terraform or the Kubernetes operator.
 - **Dashboards** follow the routing rule. Never use the deprecated `metadata.dash0Extensions.origin` field.
 
@@ -192,7 +191,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `debuginfo` | Upload source maps so Dash0 can symbolize Node.js and browser profiles (`debuginfo upload`, experimental) |
 | `diff` | Preview what `apply` would do (create, update, delete), without mutating anything |
 | `datasets` | Dataset CRUD (organization-level, experimental; deleting keeps its assets for 30 days; telemetry follows its retention) |
-| `evals` | Generative AI evaluation (eval) CRUD (dataset-scoped, experimental; `kind: Dash0GenerativeAiEvaluation`; `dash0.com/origin` is the upsert key; `metadata.name` and the judge output kind cannot change) |
+| `evals` | Generative AI evaluation (eval) CRUD (dataset-scoped, experimental; `kind: Dash0GenerativeAiEvaluation`; `metadata.name` and the judge output kind cannot change) |
 | `failed-checks` | Query active and historical alerting issues |
 | `k8s` | A pod's or workload's CPU, memory, requests, and logs as a terminal page or JSON (`k8s pods watch`, `k8s deployments watch`, and the other kinds, experimental; also a k9s plugin) |
 | `login` | OAuth 2.0 login/logout and profile authentication states |
@@ -204,7 +203,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `recording-rules` | Recording rule CRUD (PrometheusRule CRD format) |
 | `sampling-rules` | Sampling rule CRUD (decides which traces Dash0 keeps; the first enabled rule of a dataset turns sampling on; admin role required for writes) |
 | `signal-to-metrics-rules` | Signal-to-metrics rule CRUD and `test` (alias `s2m`; turns logs or spans into metrics) |
-| `slos` | SLO CRUD (`apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1, not upstream-identical; `dash0.com/origin` is the upsert key) |
+| `slos` | SLO CRUD (`apiVersion: openslo.com/v1`, `kind: SLO` — a supported subset of OpenSLO v1, not upstream-identical) |
 | `spam-filters` | Spam filter CRUD (v1alpha1 and v1alpha2) |
 | `spans` | Query and send spans |
 | `synthetic-checks` | Synthetic check CRUD |

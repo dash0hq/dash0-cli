@@ -96,14 +96,18 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 			return "", zero, err
 		}
 		stored, err := get(ctx, key)
-		return key, stored, err
+		if err != nil {
+			return key, zero, err
+		}
+		if err := CheckStoredOrigin(key, identity, stored); err != nil {
+			return key, zero, err
+		}
+		return key, stored, nil
 	}
 	stored, err := get(ctx, identity.ID)
 	if err == nil {
-		if asset, ok := any(stored).(interface{ GetOrigin() string }); ok {
-			if err := checkStoredOrigin(identity, asset.GetOrigin()); err != nil {
-				return identity.ID, zero, err
-			}
+		if err := CheckStoredOrigin(identity.ID, identity, stored); err != nil {
+			return identity.ID, zero, err
 		}
 		return identity.ID, stored, nil
 	}
@@ -128,5 +132,29 @@ func ClearUpdateOrigin(document dash0api.AssetMetadata) {
 		setSpamFilterOrigin(&d.Metadata, "")
 	case *dash0api.SpamFilterV1Alpha2:
 		setSpamFilterOrigin(&d.Metadata, "")
+	case *dash0api.GenerativeAiEvaluationDefinition:
+		SetGenerativeAiEvaluationOrigin(d, "")
+	case *dash0api.SkillDefinition:
+		SetCustomSkillOrigin(d, "")
 	}
+}
+
+// CheckStoredOrigin fails when key is the file's id and the asset stored there
+// has an origin other than the file's, as apply does.
+func CheckStoredOrigin(key string, identity Identity, stored any) error {
+	if key != identity.ID || identity.Origin == "" {
+		return nil
+	}
+	var origin string
+	switch asset := stored.(type) {
+	case *dash0api.SamplingDefinition:
+		// The client gives SamplingDefinition no GetOrigin method.
+		origin = GetSamplingRuleOrigin(asset)
+	case interface{ GetOrigin() string }:
+		origin = asset.GetOrigin()
+	default:
+		// Fail loudly, so a routed kind without an origin accessor cannot skip the check.
+		return fmt.Errorf("cannot read the stored origin of %T", stored)
+	}
+	return checkStoredOrigin(identity, origin)
 }

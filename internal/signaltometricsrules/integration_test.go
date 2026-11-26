@@ -4,6 +4,7 @@ package signaltometricsrules
 
 import (
 	"encoding/json"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"net/http"
 	"net/url"
 	"os"
@@ -96,12 +97,14 @@ metadata:
     dash0.com/id: signal_to_metrics_01kq3m8x2v7d9f4h6j1n5p0r2t
 ` + docSpec
 
+const foreignID = "signal_to_metrics_01kq3mcz9y8x7w6v5t4s3r2q1p"
+
 const docWithOriginAndForeignID = `kind: Dash0SignalToMetrics
 metadata:
   name: checkout-errors
   labels:
     dash0.com/origin: dash0-cli_checkout-errors
-    dash0.com/id: signal_to_metrics_01kq3mcz9y8x7w6v5t4s3r2q1p
+    dash0.com/id: ` + foreignID + `
 ` + docSpec
 
 const docWithoutIdentifier = `kind: Dash0SignalToMetrics
@@ -384,12 +387,16 @@ func TestCreateSignalToMetricsRule_ByOrigin_Creates(t *testing.T) {
 func TestCreateSignalToMetricsRule_ByOrigin_DoesNotSendID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// The id belongs to another organization, so it is not found here and the
+	// origin is read next.
+	server.On(http.MethodGet, apiPath+"/"+foreignID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
 
 	_, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithOriginAndForeignID), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
+	findRequest(t, server.Requests(), http.MethodGet, apiPath+"/"+foreignID)
 	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin).Body)
 	if body.Metadata.Labels != nil {
 		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
@@ -520,21 +527,22 @@ func TestCreateSignalToMetricsRule_ByIDOnly_ExistingRuleIsUpdatedInPlace(t *test
 	assert.Zero(t, countMethod(server.Requests(), http.MethodPost))
 }
 
-// A PUT to an unknown id would create a rule whose origin is that id, so a
-// missing id must fall back to POST without the id, which the server rejects
-// in a POST body.
-func TestCreateSignalToMetricsRule_ByIDOnly_UnknownIDFallsBackToPOSTWithoutID(t *testing.T) {
+// An id from another organization is not found, so the rule is created by
+// its inferred origin, never by POST, and the next apply updates the same rule.
+// The id is not sent, because the path names the rule.
+func TestCreateSignalToMetricsRule_ByIDOnly_UnknownIDCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
 
 	out, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithIDOnly), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "created (id: signal_to_metrics_01kq3m9a4b6c8d0e2f4g6h8j0k)")
-	assert.Zero(t, countMethod(server.Requests(), http.MethodPut), "an unknown id must never be PUT")
-	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPost, apiPath).Body)
+	inferred := apiPath + "/" + asset.InferKindOrigin("signaltometrics", "checkout-errors", nil)
+	assert.Equal(t, []string{"GET " + apiPath + "/" + testID, "GET " + inferred, "PUT " + inferred}, describe(server.Requests()))
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, inferred).Body)
 	if body.Metadata.Labels != nil {
 		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
 	}
@@ -552,16 +560,22 @@ func TestCreateSignalToMetricsRule_ByIDOnly_SurfacesNon404PreflightError(t *test
 	assert.Zero(t, countMethod(server.Requests(), http.MethodPut))
 }
 
-func TestCreateSignalToMetricsRule_WithoutIdentifierPOSTs(t *testing.T) {
+func TestCreateSignalToMetricsRule_WithoutIdentifierPUTsByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
+	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureCreateResponse, Validator: testutil.RequireHeaders})
 
 	out, err := execute(t, "s2m", "create", "-f", writeDoc(t, docWithoutIdentifier), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "created")
-	assert.Equal(t, []string{"POST " + apiPath}, describe(server.Requests()))
+	inferred := apiPath + "/" + asset.InferKindOrigin("signaltometrics", "checkout-errors", nil)
+	assert.Equal(t, []string{"GET " + inferred, "PUT " + inferred}, describe(server.Requests()))
+	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, inferred).Body)
+	if body.Metadata.Labels != nil {
+		assert.Nil(t, body.Metadata.Labels.Dash0Comorigin, "the path carries the origin")
+	}
 }
 
 func TestCreateSignalToMetricsRule_DryRunMakesNoRequests(t *testing.T) {
@@ -594,12 +608,16 @@ func TestUpdateSignalToMetricsRule_UnchangedDocumentReportsNoChanges(t *testing.
 func TestUpdateSignalToMetricsRule_ByOrigin_DoesNotSendID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// The id belongs to another organization, so it is not found here and the
+	// origin is read next.
+	server.On(http.MethodGet, apiPath+"/"+foreignID, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: fixtureNotFound, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodGet, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureGetSuccess, Validator: testutil.RequireHeaders})
 	server.OnPattern(http.MethodPut, originOrIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: fixtureUpdateResponse, Validator: testutil.RequireHeaders})
 
 	_, err := execute(t, "s2m", "update", "-f", writeDoc(t, docWithOriginAndForeignID), "--api-url", server.URL, "--auth-token", testAuthToken)
 
 	require.NoError(t, err)
+	findRequest(t, server.Requests(), http.MethodGet, apiPath+"/"+foreignID)
 	body := decodeRule(t, findRequest(t, server.Requests(), http.MethodPut, apiPath+"/"+testOrigin).Body)
 	if body.Metadata.Labels != nil {
 		assert.Nil(t, body.Metadata.Labels.Dash0Comid)
