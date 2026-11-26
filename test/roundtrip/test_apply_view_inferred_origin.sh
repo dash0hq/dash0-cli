@@ -32,7 +32,7 @@ if [ "$COUNT" -ne 1 ]; then
   echo "$MATCHES"
   exit 1
 fi
-ORIGIN=$(cut -d, -f4 <<< "$MATCHES")
+ORIGIN=$(cut -d, -f5 <<< "$MATCHES")
 if [[ "$ORIGIN" != dash0-cli_* ]]; then
   echo "FAIL: expected an inferred dash0-cli_ origin, got '$ORIGIN'"
   exit 1
