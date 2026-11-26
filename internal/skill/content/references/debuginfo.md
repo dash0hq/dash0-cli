@@ -4,7 +4,7 @@
 
 ### `debuginfo upload` (experimental)
 
-Upload debug information to Dash0, so that Dash0 can resolve the frames of profiles to function names, files, and lines when you read them.
+Upload debug information to Dash0, so that Dash0 can resolve the frames of profiles and browser errors to function names, files, and lines when you read them.
 Requires the `-X` (or `--experimental`) flag, plus `otlp-url` and `auth-token`.
 The auth token must grant the `ingest:debuginfo` permission; an ingest token works.
 
@@ -17,13 +17,16 @@ Only `source-map` is supported yet; the other types fail with a "not supported y
 
 _For the exact, always-current flag list, run `dash0 --agent-mode debuginfo upload --help`._
 
-Dash0 finds the source map of a profile frame by one of two keys:
+Dash0 finds the source map of a frame by one of two keys:
 
-- Node.js profiles use a debug ID, a UUID that the profiler reads from the `//# debugId=<uuid>` comment at the end of the script.
+- A debug ID, a UUID read from the `//# debugId=<uuid>` comment at the end of the script.
   This is the default, used when you pass neither `--base-url` nor `--script-url`.
-- Browser profiles use the URL the script is served from.
+  Node.js profiles and browser errors use it.
+  For browser errors, Dash0 downloads the script from the URL in the stack trace to read the comment, so Dash0 must be able to download the script.
+- The URL the script is served from.
   Pass `--base-url` or `--script-url` to key source maps this way.
-  When a directory has an `index.html` and you pass neither, the command warns on stderr, because a browser build uploaded by debug ID cannot be found.
+  Browser profiles and browser errors use it.
+  When a directory has an `index.html` and you pass neither, the command warns on stderr, because browser profiles cannot find a source map uploaded by debug ID.
 
 For Node.js, collect profiles with the Parca Agent v0.47.0 or later, or another profiler that reads the debug ID.
 A script and its source map that already carry the same debug ID are uploaded as they are, so debug IDs that a bundler or another upload tool already wrote are kept.
