@@ -1678,7 +1678,7 @@ func TestDiff_Since_NothingAtTheInferredOriginIsNotListed(t *testing.T) {
 	require.NoError(t, err, output)
 	assert.NotContains(t, output, "Delete")
 	assert.Contains(t, output, "No differences")
-	assert.Contains(t, stderr, "no asset at inferred origin "+inferred)
+	assert.Contains(t, stderr, "nothing to delete at inferred origin "+inferred)
 }
 
 // After apply --since deleted the asset, the read at the inferred origin finds

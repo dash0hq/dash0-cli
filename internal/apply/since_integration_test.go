@@ -3667,7 +3667,7 @@ func TestApply_Since_NothingAtTheInferredOriginIsNotReportedAsDeleted(t *testing
 			assert.Equal(t, "GET "+inferred, request.line)
 		}
 		assert.NotContains(t, stdout, "deleted")
-		assert.Contains(t, stderr, "no asset at inferred origin "+inferred)
+		assert.Contains(t, stderr, "nothing to delete at inferred origin "+inferred)
 	}
 	for _, kind := range asset.ValidKinds {
 		spec := routedKinds[kind]
@@ -3714,7 +3714,7 @@ func TestApply_Since_SoftDeletedAtTheInferredOriginIsAlreadyDeleted(t *testing.T
 			}
 			assert.NotContains(t, stdout, "deleted")
 			assert.Contains(t, stderr, "was already deleted")
-			assert.NotContains(t, stderr, "no asset at inferred origin")
+			assert.NotContains(t, stderr, "nothing to delete at inferred origin")
 		})
 	}
 }

@@ -62,5 +62,5 @@ func GetRoutedAsset(ctx context.Context, apiClient dash0api.Client, kind, key st
 // WarnNothingAtInferredOrigin reports a --since deletion that is skipped,
 // because nothing is stored at the inferred origin.
 func WarnNothingAtInferredOrigin(w io.Writer, origin string) {
-	fmt.Fprintf(w, "warning: no asset at inferred origin %s; an asset created by an earlier dash0 version or in another dataset is not deleted\n", origin)
+	fmt.Fprintf(w, "warning: nothing to delete at inferred origin %s; an asset that an earlier dash0 version created, or that is in another dataset, is not found by this origin\n", origin)
 }
