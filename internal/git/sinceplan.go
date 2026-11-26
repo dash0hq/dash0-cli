@@ -310,7 +310,8 @@ func declaredCheckRuleIDs(after Snapshot) map[string]bool {
 func declaredRoutedKeys(after Snapshot) map[string]bool {
 	declared := map[string]bool{}
 	for key := range after.Identifiers {
-		if !asset.IsRoutedKind(key.Kind) {
+		// Check rules and PrometheusRules are tracked by declaredCheckRuleIDs.
+		if !asset.IsRoutedKind(key.Kind) || key.Kind == "checkrule" || key.Kind == "prometheusrule" {
 			continue
 		}
 		declared[key.Identifier] = true

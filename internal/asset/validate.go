@@ -108,32 +108,72 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 		}
 	}
 	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
+	validationErrors = append(validationErrors, checkRuleIDOriginConflicts(documents)...)
 	return validationErrors, validationWarnings
 }
 
 func checkRuleIDCollisions(documents []Document) []string {
-	var ids []string
-	usesByID := make(map[string][]string)
+	var keys []string
+	usesByKey := make(map[string][]string)
+	fieldsByKey := make(map[string]map[string]bool)
 	for _, doc := range documents {
-		for _, rule := range checkRulesWithID(doc) {
-			id := *rule.Id
-			if _, seen := usesByID[id]; !seen {
-				ids = append(ids, id)
+		for _, key := range checkRuleWriteKeys(doc) {
+			if _, seen := usesByKey[key.key]; !seen {
+				keys = append(keys, key.key)
+				fieldsByKey[key.key] = map[string]bool{}
 			}
-			usesByID[id] = append(usesByID[id], fmt.Sprintf("%s: %q", doc.Location(), rule.Name))
+			usesByKey[key.key] = append(usesByKey[key.key], fmt.Sprintf("%s: %q", doc.Location(), key.name))
+			fieldsByKey[key.key][key.field] = true
 		}
 	}
 
 	var collisions []string
-	for _, id := range ids {
-		if uses := usesByID[id]; len(uses) > 1 {
-			collisions = append(collisions, fmt.Sprintf("check rule id %q is used more than once, so only the last one would be kept:\n    %s", id, strings.Join(uses, "\n    ")))
+	for _, key := range keys {
+		if uses := usesByKey[key]; len(uses) > 1 {
+			field := "id"
+			switch fields := fieldsByKey[key]; {
+			case fields["id"] && fields["origin"]:
+				field = "id and origin"
+			case fields["origin"]:
+				field = "origin"
+			}
+			collisions = append(collisions, fmt.Sprintf("check rule %s %q is used more than once, so only the last one would be kept:\n    %s", field, key, strings.Join(uses, "\n    ")))
 		}
 	}
 	return collisions
 }
 
-func checkRulesWithID(doc Document) []*dash0api.PrometheusAlertRule {
+func checkRuleIDOriginConflicts(documents []Document) []string {
+	var conflicts []string
+	for _, doc := range documents {
+		kind := NormalizeKind(doc.Kind)
+		if kind != "checkrule" && kind != "prometheusrule" {
+			continue
+		}
+		rules, err := ParseCheckRules(doc.Raw)
+		if err != nil {
+			continue
+		}
+		for _, rule := range rules {
+			if err := checkIDOrigin(rule.Identity(nil)); err != nil {
+				conflicts = append(conflicts, fmt.Sprintf("%s: %q: %s", doc.Location(), rule.Name, err))
+			}
+		}
+	}
+	return conflicts
+}
+
+type checkRuleWriteKey struct {
+	key   string
+	field string
+	name  string
+}
+
+// checkRuleWriteKeys returns the explicit key each check rule of doc is
+// written at: its id, else its origin. A check rule is created at its id, so
+// an id and another rule's origin with the same value are one key. Inferred
+// origins are checked by CheckInferredOriginCollisions.
+func checkRuleWriteKeys(doc Document) []checkRuleWriteKey {
 	kind := NormalizeKind(doc.Kind)
 	if kind != "checkrule" && kind != "prometheusrule" {
 		return nil
@@ -144,13 +184,17 @@ func checkRulesWithID(doc Document) []*dash0api.PrometheusAlertRule {
 	if err != nil {
 		return nil
 	}
-	var withID []*dash0api.PrometheusAlertRule
+	var keys []checkRuleWriteKey
 	for _, rule := range rules {
-		if rule.Id != nil && *rule.Id != "" {
-			withID = append(withID, rule)
+		// rule.Origin, not rule.GetOrigin(): a PrometheusRule keeps its origin
+		// in metadata.labels, which the conversion does not copy to the alerts.
+		if id := rule.GetID(); id != "" {
+			keys = append(keys, checkRuleWriteKey{key: id, field: "id", name: rule.Name})
+		} else if rule.Origin != "" {
+			keys = append(keys, checkRuleWriteKey{key: rule.Origin, field: "origin", name: rule.Name})
 		}
 	}
-	return withID
+	return keys
 }
 
 // FormatValidationError formats one or more validation issues into a consistent

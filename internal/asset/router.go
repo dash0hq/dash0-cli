@@ -23,10 +23,16 @@ type Identity struct {
 	Origin string
 	// Inferred is the origin a document without one is created by.
 	Inferred string
+	// CreatesAtID is set for kinds that keep the id in the file, as check
+	// rules: an id that is not found is created at that id.
+	CreatesAtID bool
 }
 
 // CreateOrigin is the origin the asset is created by.
 func (i Identity) CreateOrigin() string {
+	if i.CreatesAtID && i.ID != "" {
+		return i.ID
+	}
 	if i.Origin != "" {
 		return i.Origin
 	}
@@ -49,6 +55,9 @@ type Route[T any] struct {
 // read leaves Key empty, because the write has no target; a failed origin read
 // keeps Key, because the origin is the target either way.
 func RouteDocument[T any](ctx context.Context, identity Identity, get func(context.Context, string) (T, error), storedOrigin func(T) string) (Route[T], error) {
+	if err := checkIDOrigin(identity); err != nil {
+		return Route[T]{}, err
+	}
 	if identity.ID != "" {
 		stored, err := get(ctx, identity.ID)
 		if err == nil {
@@ -59,6 +68,9 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 		}
 		if !dash0api.IsNotFound(err) {
 			return Route[T]{}, err
+		}
+		if identity.CreatesAtID {
+			return Route[T]{Key: identity.ID, Create: true}, nil
 		}
 	}
 	route := Route[T]{Key: identity.CreateOrigin(), Create: true}
@@ -73,6 +85,25 @@ func RouteDocument[T any](ctx context.Context, identity Identity, get func(conte
 	}
 	route.Create, route.Stored = false, stored
 	return route, nil
+}
+
+// IDOriginConflictError reports a check rule whose id and origin differ. The
+// rule is created at the id, and Dash0 returns no origin label for it, so
+// every later apply would fail the stored-origin check.
+type IDOriginConflictError struct {
+	ID     string
+	Origin string
+}
+
+func (e *IDOriginConflictError) Error() string {
+	return fmt.Sprintf("the check rule sets id %q and dash0.com/origin %q, which differ, so only the first apply would succeed; remove dash0.com/origin or the id", e.ID, e.Origin)
+}
+
+func checkIDOrigin(identity Identity) error {
+	if identity.CreatesAtID && identity.ID != "" && identity.Origin != "" && identity.Origin != identity.ID {
+		return &IDOriginConflictError{ID: identity.ID, Origin: identity.Origin}
+	}
+	return nil
 }
 
 // OriginMismatchError reports a document whose id names an asset that Dash0
@@ -147,33 +178,77 @@ func identityOf(kind, name string, dataset *string, asset routedAsset) Identity 
 	return Identity{ID: asset.GetID(), Origin: asset.GetOrigin(), Inferred: InferKindOrigin(kind, name, dataset)}
 }
 
-// CheckInferredOriginCollisions fails documents without an id or an origin
-// that would get the same inferred origin, because the second would replace
-// the first. A document with an id writes by the inferred origin only when the
-// id is not found, which only the run knows; InferredOriginWrites checks that.
+// CheckInferredOriginCollisions fails documents without an id that would
+// write the same origin: two that get the same inferred origin, or one whose
+// explicit origin is another's inferred origin, because the second would
+// replace the first. A document with an id writes by the inferred origin only
+// when the id is not found, which only the run knows; InferredOriginWrites
+// checks that.
 func CheckInferredOriginCollisions(documents []Document, dataset *string) []string {
-	var origins []string
-	locations := make(map[string][]string)
+	type use struct {
+		location string
+		explicit bool
+	}
+	var keys []string
+	uses := make(map[string][]use)
+	add := func(key string, u use) {
+		if _, seen := uses[key]; !seen {
+			keys = append(keys, key)
+		}
+		uses[key] = append(uses[key], u)
+	}
 	for _, doc := range documents {
 		identity, ok := documentIdentity(doc, dataset)
-		if !ok || identity.ID != "" || identity.Origin != "" {
+		if !ok || identity.ID != "" {
 			continue
 		}
-		if _, seen := locations[identity.Inferred]; !seen {
-			origins = append(origins, identity.Inferred)
+		group := writeGroup(doc.Kind)
+		if identity.Origin == "" {
+			add(group+"\x00"+identity.Inferred, use{location: doc.Location()})
+		} else if group != "prometheusrule" {
+			// A PrometheusRule writes each alert at an origin derived from its own.
+			add(group+"\x00"+identity.Origin, use{location: doc.Location(), explicit: true})
 		}
-		locations[identity.Inferred] = append(locations[identity.Inferred], doc.Location())
 	}
 
 	var collisions []string
-	for _, origin := range origins {
-		if uses := locations[origin]; len(uses) > 1 {
+	for _, key := range keys {
+		list := uses[key]
+		origin := key[strings.IndexByte(key, 0)+1:]
+		var locations []string
+		inferred, explicit := 0, 0
+		for _, u := range list {
+			locations = append(locations, u.location)
+			if u.explicit {
+				explicit++
+			} else {
+				inferred++
+			}
+		}
+		switch {
+		case inferred == 0 || len(list) < 2:
+			// Only check rules check equal explicit origins (checkRuleIDCollisions).
+		case explicit == 0:
 			collisions = append(collisions, fmt.Sprintf(
 				"%d documents have no dash0.com/origin and the same kind, metadata.name, and dataset, so any of them created by inferred origin %q would replace the others; set dash0.com/origin on each:\n    %s",
-				len(uses), origin, strings.Join(uses, "\n    ")))
+				len(list), origin, strings.Join(locations, "\n    ")))
+		default:
+			collisions = append(collisions, fmt.Sprintf(
+				"origin %q is set as dash0.com/origin and is also the origin the CLI infers for a document without one, so one would replace the other's asset; set another dash0.com/origin:\n    %s",
+				origin, strings.Join(locations, "\n    ")))
 		}
 	}
 	return collisions
+}
+
+// writeGroup returns the kind whose endpoint a document writes to, so
+// origins compare only between documents that write the same assets.
+func writeGroup(kind string) string {
+	switch kind = NormalizeKind(kind); kind {
+	case "dashboard", "ephemeraldashboard", "persesdashboard":
+		return "dashboard"
+	}
+	return kind
 }
 
 // InferredOriginWrites maps each inferred origin a run writes to the document
@@ -242,12 +317,26 @@ var routedParsers = map[string]routedParser{
 	"signaltometrics":        parseRoutedSignalToMetricsRule,
 	"sampling":               parseRoutedSamplingRule,
 	"skill":                  parseRoutedCustomSkill,
+	"view":                   parseRoutedView,
+	"syntheticcheck":         parseRoutedSyntheticCheck,
+	"checkrule":              parseRoutedCheckRule,
+	"prometheusrule":         parseRoutedPrometheusRule,
 }
 
 // IsRoutedKind reports whether RouteDocument serves kind.
 func IsRoutedKind(kind string) bool {
 	_, routed := routedParsers[NormalizeKind(kind)]
 	return routed
+}
+
+// DocumentCreateOrigin returns the origin apply creates the document by, or ""
+// for kinds the router does not serve.
+func DocumentCreateOrigin(doc Document, dataset *string) string {
+	identity, ok := documentIdentity(doc, dataset)
+	if !ok {
+		return ""
+	}
+	return identity.CreateOrigin()
 }
 
 // parseRoutedIdentity returns the identity apply routes the document by, the
@@ -341,6 +430,40 @@ func parseRoutedCustomSkill(raw []byte, _ *string) (Identity, string, error) {
 		return Identity{}, "", err
 	}
 	return CustomSkillIdentity(&skill), CustomSkillName(&skill), nil
+}
+
+func parseRoutedView(raw []byte, dataset *string) (Identity, string, error) {
+	var view dash0api.ViewDefinition
+	if err := dash0yaml.Unmarshal(raw, &view); err != nil {
+		return Identity{}, "", err
+	}
+	return ViewIdentity(&view, dataset), view.Metadata.Name, nil
+}
+
+func parseRoutedSyntheticCheck(raw []byte, dataset *string) (Identity, string, error) {
+	var check dash0api.SyntheticCheckDefinition
+	if err := dash0yaml.Unmarshal(raw, &check); err != nil {
+		return Identity{}, "", err
+	}
+	return SyntheticCheckIdentity(&check, dataset), check.Metadata.Name, nil
+}
+
+func parseRoutedCheckRule(raw []byte, dataset *string) (Identity, string, error) {
+	var rule dash0api.PrometheusAlertRule
+	if err := dash0yaml.Unmarshal(raw, &rule); err != nil {
+		return Identity{}, "", err
+	}
+	return CheckRule{PrometheusAlertRule: &rule, Origin: rule.GetOrigin(), InferredKind: "checkrule", InferredName: rule.Name}.Identity(dataset), rule.Name, nil
+}
+
+func parseRoutedPrometheusRule(raw []byte, dataset *string) (Identity, string, error) {
+	// The CRD's own labels. Each alert and the recording rules route by
+	// keys derived from them, which deletePrometheusRuleCRD recomputes.
+	crd, err := ParsePrometheusRuleCRD(raw)
+	if err != nil {
+		return Identity{}, "", err
+	}
+	return identityOf("prometheusrule", crd.Metadata.Name, dataset, crd), crd.Metadata.Name, nil
 }
 
 // optionalString returns nil for "", so an empty label is left out of the body.

@@ -37,7 +37,7 @@ Recording rules (entries with `record:`) are sent to the recording-rule endpoint
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
 
-Two check rules in one run that resolve to the same ID fail validation up front, because only the last one applied would be kept.
+Two check rules in one run that resolve to the same ID, or without an ID to the same `dash0.com/origin`, fail validation up front, because only the last one applied would be kept.
 This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
@@ -72,7 +72,8 @@ A dataset document has no telemetry filters: spam filters own them, and creating
 A document without a `SKILL.md` file in `spec.files` fails during the validation phase.
 They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
 Without an origin, the CLI infers one from the skill name in the `SKILL.md` frontmatter, so renaming the skill there creates a new skill.
-A skill that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with a name collision until you delete that skill or set its origin in the document.
+A skill that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with a name collision.
+Find that skill's origin with `dash0 -X agent0 skills list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it, or delete that skill.
 `apply` never sends `spec.source`, `metadata.annotations["dash0.com/enabled"]`, or the server-managed `metadata.name`, version, and timestamps, so a `get -o yaml` export applies as is.
 `spec.permissions` is sent as written, `defaultEnabled` included; when it is absent, the stored grants stay unchanged.
 The `admin` grant the server adds to every skill is left out of the request and the diff, unless it sets `defaultEnabled: false`.
@@ -95,7 +96,7 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 
 > [!IMPORTANT]
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
-> You therefore cannot apply one document to two datasets, as you can for every other asset kind.
+> You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
 
@@ -284,7 +285,8 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
-A removed SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed view, check rule, synthetic check, SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed check rule with an `id` is always deleted at that id, because `apply` creates a check rule whose id is not found at that id.
 Each uses the same API call as its `delete` command.
 For an SLO, eval, signal-to-metrics rule, or sampling rule identified by `dash0.com/id` alone, `--since` prints a warning, because one that an earlier CLI version created by POST sits at a server-assigned id that the delete misses.
 
@@ -326,7 +328,9 @@ alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
 Check rule "service-alerts - HighLatency" deleted
 ```
 
-Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with:
+Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with.
+Each alert and the recording rule are deleted where `apply` wrote them.
+An alert with an id is deleted at that id, found or not, and the recording rule at its id, or at its origin or inferred origin when the id is not found.
 
 The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
 

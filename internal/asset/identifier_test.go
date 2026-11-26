@@ -34,22 +34,26 @@ func TestExtractIdentifier_NonStringIdentifierLabelFails(t *testing.T) {
 // printed "was already deleted" while the asset stayed live. Returning ""
 // instead routes it to the NoIdentifier hard-fail written for this case.
 //
-// Only SLO, Dash0Team, and Dash0SpamFilter genuinely accept either field.
+// Only datasets and AWS metric scrape configs read a single field; every
+// other kind reads the id, then the origin.
 func TestExtractIdentifier_ReadsOnlyTheKindsUpsertField(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		doc  string
 		want string
 	}{
-		{"View ignores origin", "kind: View\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
-		{"SyntheticCheck ignores origin", "kind: SyntheticCheck\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
-		{"PersesDashboard ignores origin", "kind: PersesDashboard\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
-		{"PrometheusRule ignores origin", "kind: PrometheusRule\nmetadata:\n  labels:\n    dash0.com/origin: o\n", ""},
+		{"View reads origin", "kind: View\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
+		{"SyntheticCheck reads origin", "kind: SyntheticCheck\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
+		{"PersesDashboard reads origin", "kind: PersesDashboard\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
+		{"PrometheusRule reads origin", "kind: PrometheusRule\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
 		{"Dashboard falls back to the id label", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 		{"Dashboard reads origin", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/origin: o\n", "o"},
 		{"Dashboard prefers the id label over dash0Extensions.id, as apply does", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: uuid\n  dash0Extensions:\n    id: i\n", "uuid"},
 		{"Dashboard prefers the id label over origin, as apply does", "kind: Dashboard\nmetadata:\n  labels:\n    dash0.com/id: uuid\n    dash0.com/origin: o\n", "uuid"},
 		{"CheckRule ignores the id label", "kind: CheckRule\nmetadata:\n  labels:\n    dash0.com/id: i\n", ""},
+		{"CheckRule reads its top-level origin label", "kind: CheckRule\nlabels:\n  dash0.com/origin: o\n", "o"},
+		{"CheckRule prefers the top-level id over origin, as apply does", "kind: CheckRule\nid: i\nlabels:\n  dash0.com/origin: o\n", "i"},
+		{"PersesDashboard prefers the id label over origin, as apply does", "kind: PersesDashboard\nmetadata:\n  labels:\n    dash0.com/id: i\n    dash0.com/origin: o\n", "i"},
 		{"Dash0NotificationChannel falls back to id", "kind: Dash0NotificationChannel\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},
 
 		{"Dash0Team falls back to id", "kind: Dash0Team\nmetadata:\n  labels:\n    dash0.com/id: i\n", "i"},

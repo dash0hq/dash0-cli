@@ -122,10 +122,13 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if !crdSurvives || hasRecordingRuleNow {
 			continue
 		}
+		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
 		plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-			Kind:       "recordingrule",
-			Identifier: identifier,
-			Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
+			Kind:               "recordingrule",
+			Identifier:         identifier,
+			Path:               before.Identifiers[crd],
+			Alias:              before.Aliases[crd],
+			InferredOriginName: before.InferredOriginNames[crd],
 		})
 	}
 
@@ -145,6 +148,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 		// address and leaves the old one live.
 		occupiedNow := asset.CheckRuleIDsOccupiedByCRD(identifier, afterAlerts)
 		occupiedBefore := asset.CheckRuleIDsOccupiedByCRD(identifier, beforeAlerts)
+		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
 		for i, name := range beforeAlerts {
 			if !afterSet[name] {
 				plan.AlertsByName = append(plan.AlertsByName, AlertDeletion{
@@ -154,11 +158,8 @@ func Diff(before, after Snapshot) DeletionPlan {
 				continue
 			}
 			if id := occupiedBefore[i]; !slices.Contains(occupiedNow, id) {
-				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-					Kind:       "checkrule",
-					Identifier: id,
-					Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
-				})
+				// apply wrote the alert at its id, found or not.
+				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{Kind: "checkrule", Identifier: id, Path: before.Identifiers[crd]})
 			}
 		}
 	}

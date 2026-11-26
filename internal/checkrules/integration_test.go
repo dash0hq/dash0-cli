@@ -24,6 +24,8 @@ const (
 
 var checkRuleIDPattern = regexp.MustCompile(`^/api/alerting/check-rules/[a-f0-9-]+$`)
 
+var checkRuleInferredOriginPattern = regexp.MustCompile(`^/api/alerting/check-rules/dash0-cli_[a-f0-9]+$`)
+
 func TestListCheckRules_JSONFormat(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

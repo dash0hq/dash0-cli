@@ -3,12 +3,15 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,7 +93,12 @@ var updateCommands = []updateCommand{
 		if v.hasID() {
 			id = "id: " + characterizationID + "\n"
 		}
-		return "apiVersion: dash0.com/v1alpha1\nkind: CheckRule\n" + id + "name: n\nexpression: up == 0\nmetadata:\n" + v.labelBlock(false)
+		// A check rule keeps its origin in the top-level labels.
+		labels := ""
+		if v.hasOrigin() {
+			labels = "labels:\n  dash0.com/origin: o\n"
+		}
+		return "apiVersion: dash0.com/v1alpha1\nkind: CheckRule\n" + id + "name: n\nexpression: up == 0\n" + labels
 	}},
 	{"synthetic-checks", syntheticchecks.NewSyntheticChecksCmd, []string{"synthetic-checks", "update"}, func(v updateIdentifiers) string {
 		return "apiVersion: dash0.com/v1alpha1\nkind: SyntheticCheck\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec: {}\n"
@@ -198,14 +206,14 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/dashboards/" + characterizationID,
 		},
 		"check-rules": {
-			updateWithNeither: "error: no check rule id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no check rule id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no check rule origin or id given: pass one as an argument, or set labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/alerting/check-rules/o",
 			updateWithID:      "GET /api/alerting/check-rules/" + characterizationID,
 			updateWithBoth:    "GET /api/alerting/check-rules/" + characterizationID,
 		},
 		"synthetic-checks": {
-			updateWithNeither: "error: no synthetic check id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no synthetic check id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no synthetic check origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/synthetic-checks/o",
 			updateWithID:      "GET /api/synthetic-checks/" + characterizationID,
 			updateWithBoth:    "GET /api/synthetic-checks/" + characterizationID,
 		},
@@ -216,14 +224,14 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithBoth:    "GET /api/slos/" + characterizationID,
 		},
 		"views": {
-			updateWithNeither: "error: no view id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no view id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no view origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/views/o",
 			updateWithID:      "GET /api/views/" + characterizationID,
 			updateWithBoth:    "GET /api/views/" + characterizationID,
 		},
 		"recording-rules": {
-			updateWithNeither: "error: no recording rule id given: pass one as an argument, or set the id in the file",
-			updateWithOrigin:  "error: no recording rule id given: pass one as an argument, or set the id in the file",
+			updateWithNeither: `error: no recording rule origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/recording-rules/o",
 			updateWithID:      "GET /api/recording-rules/" + characterizationID,
 			updateWithBoth:    "GET /api/recording-rules/" + characterizationID,
 		},
@@ -310,5 +318,79 @@ func TestUpdateKey_Characterization(t *testing.T) {
 				assert.Equal(t, expected, got)
 			})
 		}
+	}
+}
+
+// putIdentity reads the identifiers a PUT body carries: a check rule keeps
+// them at the top level, every other kind under metadata.
+type putIdentity struct {
+	ID       *string           `json:"id"`
+	Labels   map[string]string `json:"labels"`
+	Metadata struct {
+		Labels map[string]string `json:"labels"`
+	} `json:"metadata"`
+}
+
+// A file with an id that is not found updates the asset at its origin, so the
+// body must not carry the id, which names another asset. It carries the stored
+// origin, the path's key: without it, Dash0 leaves the origin out of a later
+// read by id. A check rule whose id is not found fails instead, see
+// TestUpdateCheckRule_IDNotFoundFails.
+func TestUpdate_IDNotFound_PutsAtOriginWithTheStoredOrigin(t *testing.T) {
+	for _, command := range updateCommands {
+		switch command.name {
+		case "views", "synthetic-checks", "recording-rules":
+		default:
+			continue
+		}
+		t.Run(command.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+
+			// Quoted, because YAML decoded into a map reads a plain n as false.
+			storedYAML := strings.ReplaceAll(command.document(updateWithOrigin), "name: n\n", "name: \"n\"\n")
+			var document map[string]any
+			require.NoError(t, dash0yaml.Unmarshal([]byte(storedYAML), &document))
+			stored, err := json.Marshal(document)
+			require.NoError(t, err)
+
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnDefault(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/o"):
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(stored)
+				case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/o"):
+					body, _ := io.ReadAll(r.Body)
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(body)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+
+			file := filepath.Join(t.TempDir(), "asset.yaml")
+			require.NoError(t, os.WriteFile(file, []byte(command.document(updateWithBoth)), 0o600))
+
+			root := &cobra.Command{Use: "dash0", SilenceUsage: true, SilenceErrors: true}
+			root.AddCommand(command.newCmd())
+			root.SetArgs(append(command.args, "-f", file, "--api-url", server.URL, "--auth-token", "auth_test_token"))
+			testutil.CaptureStdout(t, func() { err = root.Execute() })
+			require.NoError(t, err)
+
+			var puts []testutil.RecordedRequest
+			for _, request := range server.Requests() {
+				if request.Method == http.MethodPut {
+					puts = append(puts, request)
+				}
+			}
+			require.Len(t, puts, 1)
+			assert.True(t, strings.HasSuffix(puts[0].Path, "/o"), puts[0].Path)
+
+			var body putIdentity
+			require.NoError(t, json.Unmarshal(puts[0].Body, &body))
+			assert.Nil(t, body.ID)
+			assert.NotContains(t, body.Metadata.Labels, "dash0.com/id")
+			assert.Equal(t, "o", body.Metadata.Labels["dash0.com/origin"])
+		})
 	}
 }

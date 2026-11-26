@@ -69,6 +69,9 @@ dash0 --experimental evals delete dash0-cli_answer-relevance --force
 > The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `answer-relevance-staging`.
 
+An eval that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with `metadata.name ... already uses`, and the CLI adds a hint.
+Find that eval's origin with `dash0 -X evals list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it.
+
 **`metadata.name` and `spec.judge.output.kind` cannot change after create.**
 `metadata.name` identifies the eval and its results within the dataset and must be unique there; rename the eval in Dash0 with `spec.display.name` instead.
 Results are stored per output kind (`boolean`, `numeric`, or `categorical`), so a different output kind needs a new eval with a new `metadata.name` and origin.

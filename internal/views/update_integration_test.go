@@ -66,7 +66,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no view id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no view origin or id given: pass one as an argument")
 }
 
 func TestCreateAndUpdateView_Deleted(t *testing.T) {

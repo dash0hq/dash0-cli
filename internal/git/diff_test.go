@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -398,5 +399,55 @@ func TestDiff_RoutedDocumentThatGainsOrDropsALabelIsNotADeletion(t *testing.T) {
 				assert.Empty(t, plan.ByIdentifier)
 			})
 		}
+	}
+}
+
+// A PersesDashboard and a Dashboard with the same metadata.name write the same
+// inferred origin, so switching kinds keeps the asset there.
+func TestDiff_PersesDashboardSwitchedToDashboardKeepsItsInferredOrigin(t *testing.T) {
+	before := newSnapshot()
+	require.NoError(t, ingestDocuments(&before, "dashboard.yaml", []byte(
+		"apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: old-id\nspec:\n  display:\n    name: Checkout\n")))
+	after := newSnapshot()
+	require.NoError(t, ingestDocuments(&after, "dashboard.yaml", []byte(
+		"kind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n")))
+
+	plan := Diff(before, after)
+
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, "old-id", plan.ByIdentifier[0].Identifier)
+	assert.True(t, plan.ByIdentifier[0].InferredOriginKept, "the Dashboard writes the origin the PersesDashboard fell back to")
+}
+
+// When the id was not found, apply wrote the alert by the CRD's origin or its
+// inferred origin, so the deletion of the abandoned id carries that fallback.
+func TestDiff_PrometheusAlertThresholdCrossingDeletesAtTheID(t *testing.T) {
+	alerts := func(names ...string) []byte {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: rules\n  labels:\n    dash0.com/id: crd-1\n%s\nspec:\n  groups:\n    - name: g\n      rules:\n"
+		for _, name := range names {
+			doc += "        - alert: " + name + "\n          expr: up == 0\n"
+		}
+		return []byte(doc)
+	}
+	for _, tc := range []struct {
+		name        string
+		originLabel string
+	}{
+		{name: "explicit origin", originLabel: "    dash0.com/origin: crd-origin"},
+		{name: "inferred origin"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before, after := newSnapshot(), newSnapshot()
+			require.NoError(t, ingestDocuments(&before, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A")), tc.originLabel))))
+			require.NoError(t, ingestDocuments(&after, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A", "B")), tc.originLabel))))
+
+			plan := Diff(before, after)
+
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, "crd-1", plan.ByIdentifier[0].Identifier)
+			// apply writes an alert at its id whether or not it was found.
+			assert.Empty(t, plan.ByIdentifier[0].Alias)
+			assert.False(t, plan.ByIdentifier[0].InferredOriginKept)
+		})
 	}
 }

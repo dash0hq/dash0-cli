@@ -684,8 +684,9 @@ Aliases: `add`
 Update an existing asset from a YAML or JSON file.
 If the ID argument is omitted, `update` takes the identifier from the file that `apply` upserts the asset by (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
 For the kinds that follow the [routing rule](#routing-rule), `update` reads `dash0.com/id` first, then `dash0.com/origin` when the id is not found, as `apply` does.
+For check rules, an id that is not found fails, because `apply` would create the check rule at that id.
 `update` never creates an asset, so it fails when neither exists.
-For the other kinds, a file without that identifier fails, even when it carries the other one.
+For datasets and AWS metric scrape configs, a file without that identifier fails, even when it carries the other one.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
 
@@ -824,46 +825,59 @@ When the identifier is present, both `create` and `apply` perform an **upsert** 
 
 #### Routing rule
 
-Dashboards, ephemeral dashboards, spam filters, time series aggregations, notification channels, teams, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills follow one routing rule in `create` and `apply`:
+Every kind except datasets and AWS metric scrape configs follows one routing rule in `create` and `apply`: dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, spam filters, time series aggregations, notification channels, teams, SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills.
 
 1. When the document has a `dash0.com/id`, the CLI reads the asset by that id, and updates it at the id when it exists.
    If the stored asset has a `dash0.com/origin` other than the one in the document, the write fails, because the CLI never changes a stored origin.
 2. When the id is not found, or the document has no id, the CLI writes by the document's `dash0.com/origin`, or else by the origin it infers.
    A PUT to an origin that does not exist yet creates the asset with that origin.
+   Check rules and the alerting rules of a PrometheusRule are the exception: when the id is not found, the CLI creates the check rule at that id, so the id in the file is kept.
+   A check rule whose id and `dash0.com/origin` differ fails validation, because the CLI creates it at the id, and a later apply could not match the origin.
 
 These kinds are never created by POST, so applying the same document again updates the same asset.
-The CLI sends `dash0.com/origin` only when it creates an asset, never on an update.
+The CLI sends `dash0.com/origin` when it creates an asset, and never sends another origin on an update.
+An update of a view, synthetic check, or recording rule at its stored origin sends that same origin back, so a later read by id still shows it.
 
 For a document without `dash0.com/origin`, the CLI infers `dash0-cli_` followed by a hash of the kind, `metadata.name`, and the dataset.
 For an Agent0 skill, the hash uses the skill name from the `SKILL.md` frontmatter instead of `metadata.name`.
+For a check rule, it uses the top-level `name`.
+For a PrometheusRule, each alert hashes `metadata.name` together with its check rule name, `<group name> - <alert name>`, and the recording rules hash `metadata.name`; see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds).
+A PersesDashboard hashes the kind `Dashboard`, because `apply` converts it to a dashboard first.
 The same document gets the same origin from every checkout, and a different one in every dataset.
 Renaming `metadata.name` changes the inferred origin, so the next apply creates a new asset.
 Set `dash0.com/origin` to keep the asset across a rename.
+A document read from stdin (`-f -`) gets the same inferred origin as the same document read from a file, because the hash uses no file path.
 Two documents in one run without `dash0.com/id` or `dash0.com/origin` that would get the same inferred origin fail validation before anything is written.
+So does a document whose `dash0.com/origin` is the inferred origin of another document in the run.
 A document with only a `dash0.com/id` writes by its inferred origin when the id is not found, so `apply` and `diff` fail at that document when another document of the run already writes there.
 `apply --since` deletes a removed document with only a `dash0.com/id` at that id, or at its inferred origin when the id is not found, because that is where `apply` wrote it.
 A removed document with both labels is deleted at its `dash0.com/id`, or at its `dash0.com/origin` when the id is not found, for the same reason.
 
-> [!NOTE]
-> An earlier CLI version created these kinds by POST when the document had no identifier, so Dash0 assigned the asset an id that the document does not carry.
-> The CLI does not adopt such an asset: the first `apply` after upgrading creates one more copy at the inferred origin, and the old copy stays.
-> An old notification channel keeps notifying, and an old spam filter keeps dropping telemetry.
-> Delete the old copy, or add its `dash0.com/id` to the document so `apply` updates it instead.
+Origins are unique per organization, while each dataset-scoped asset belongs to one dataset.
+So a document with an explicit `dash0.com/origin` applies to one dataset only, and the apply to a second dataset fails, for every dataset-scoped kind except spam filters.
+To apply one document to several datasets, leave `dash0.com/origin` out: the inferred origin includes the dataset, so each dataset gets its own asset.
 
-The other kinds follow the per-kind rules in the table below.
-For those kinds, a document without an identifier is created by POST, and the server assigns a fresh ID on each invocation, so repeated runs produce duplicate assets.
-Pinning a stable identifier in the source document is the supported way to make `apply` and `create` idempotent for them, which is what GitOps and CI/CD workflows need.
+An earlier dash0 version created an asset from a document without an identifier by POST, at a server-assigned origin such as `api-<uuid>`.
+The inferred origin misses that asset, so the first apply after the upgrade creates a second one.
+For evals and Agent0 skills, whose names are unique, that apply fails with a name collision instead.
+To keep updating the old asset, find its origin with `list -o wide`, set it as `dash0.com/origin` in the document, and apply again.
+To remove a duplicate that already exists, delete it by its origin or id:
+
+```bash
+dash0 views delete <origin-or-id> --force
+```
+
+Datasets and AWS metric scrape configs follow the per-kind rules in the table below.
 
 If the CLI reports an invalid API response after a create or update, the server may already have applied the write.
-Check the asset in Dash0 before retrying: a document without an identifier can create a second asset even though the first invocation reported an error.
+Check the asset in Dash0 before retrying.
 The error identifies the asset type and endpoint, includes decoding details when available, and warns about this possibility for POST and PUT responses.
 
 For the kinds that follow the routing rule, a failed read by id stops the write, because that read decides where the write goes.
 A failed read by origin still allows the PUT, because the origin is the target either way.
 Time series aggregations are the exception: any failed read stops the write, because every endpoint for this kind needs the admin role, so the PUT would fail the same way.
 For SLOs, evals, signal-to-metrics rules, sampling rules, and Agent0 skills, any failed read other than "not found" also stops the write.
-For check rules, views, synthetic checks, and recording rules, a failed preliminary GET also still allows the PUT.
-This lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
+A failed read by origin lets a valid local document replace an asset whose current response cannot be decoded, although the CLI cannot show a before/after diff when that read fails.
 The reads that decide between POST and PUT, such as the dataset read, stop on errors other than 404.
 
 The identifier field location varies by asset kind:
@@ -872,13 +886,13 @@ The identifier field location varies by asset kind:
 |------|------------------|-------|
 | `Dashboard` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` or `metadata.dash0Extensions.id` | Follows the [routing rule](#routing-rule). `dash0.com/id` is the server UUID that `get -o yaml` exports, so an exported file updates the dashboard it came from. `metadata.dash0Extensions.id` names the origin too, but Kubernetes drops this unknown field from a custom resource, so prefer `dash0.com/origin`. When both `dash0.com/origin` and `dash0Extensions.id` are set, they must be equal, or the document fails validation before anything is written. An origin that is a UUID is stored as the dashboard's id. `apply --since` deletes a dashboard at its `dash0.com/id`, or at its origin when the id is not found, and a dashboard with only a `dash0.com/id` that is not found at its inferred origin. When the file keeps the dashboard under the same `metadata.name` without a `dash0.com/id`, `apply` writes it at that inferred origin, so `--since` does not delete it there |
 | `EphemeralDashboard` | Same as `Dashboard` | Shares its identifiers with `Dashboard` and `PersesDashboard`, and the API does not change the kind of an existing dashboard. Its inferred origin differs from that of a `Dashboard` with the same name |
-| `PersesDashboard` | `metadata.labels["dash0.com/id"]` | |
-| `CheckRule` | top-level `id` | |
-| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]` | For a single-alert CRD, this label is the alert's check-rule id directly. For a CRD with two or more alerting rules, each alert gets its own derived id (the CRD's label plus a slug of the alert's own composed name) instead of sharing the CRD's label directly — see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds) |
-| `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]` | |
-| `SyntheticCheck` | `metadata.labels["dash0.com/id"]` | |
+| `PersesDashboard` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule), as a dashboard |
+| `CheckRule` | top-level `id`, then `labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). A check rule keeps its labels at the top level, not under `metadata`. These labels are the labels of its alerts, so the CLI reads the origin from them but never sends it there. A document whose `id` and `dash0.com/origin` differ fails validation. An `id` that is not found creates the check rule at that id |
+| `PrometheusRule` (alerting rules) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule) per alert. For a single-alert CRD, the labels are the alert's id and origin directly. For a CRD with two or more alerting rules, each alert derives its own id and origin from them (the label plus a slug of the alert's own composed name), see [Multi-alert PrometheusRule CRDs](#multi-alert-prometheusrule-crds). An alert whose id is not found is created at that id, and an alert whose id and origin differ fails validation |
+| `PrometheusRule` (recording rules) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). A CRD's recording rules are one asset |
+| `SyntheticCheck` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule) |
 | `SLO` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | OpenSLO v1 document (`apiVersion: openslo.com/v1`). Follows the [routing rule](#routing-rule). SLO IDs are server-assigned (`slo_<ulid>`), so a hand-written document pins `dash0.com/origin`, or relies on the inferred origin. An exported SLO keeps its `dash0.com/id`, so reapplying a YAML downloaded from the Dash0 platform UI updates the SLO it came from. A `dash0.com/id` from another organization is not found, so the SLO is created by its origin, and the next apply updates the same SLO |
-| `View` | `metadata.labels["dash0.com/id"]` | |
+| `View` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule) |
 | `Dash0GenerativeAiEvaluation` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Eval (experimental). Follows the [routing rule](#routing-rule). `PUT /api/generative-ai-evaluations/{origin}` creates the eval when the origin is new, replaces it otherwise, and restores it when it was deleted. `metadata.name` is unique per dataset, so an eval that an earlier CLI version created by POST, at a server-assigned origin, makes the next apply fail with a name collision. Delete that eval, or set its origin in the document, to manage it with `apply` |
 | `Dash0SpamFilter` (v1alpha1 and v1alpha2) | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). `apply --since` prints a warning before it deletes a spam filter identified by `dash0.com/id` alone, because a filter that an earlier CLI version created by POST has a server-assigned id that the delete misses. Use `dash0.com/origin` for spam filters you intend to manage with `--since` |
 | `Dash0TimeSeriesAggregation` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Follows the [routing rule](#routing-rule). The body never carries the origin, because the API reads it from the URL path. Origins are unique per **organization** while each aggregation belongs to exactly one dataset, so you cannot apply one document with an explicit origin to two datasets. See [`apply`](#apply) |
@@ -895,8 +909,7 @@ Which of the two is the upsert key depends on the asset kind, and the split is n
 
 For the kinds that follow the [routing rule](#routing-rule), `dash0.com/origin` is the key a create writes by, in the request path (for example `PUT /api/slos/{origin}`).
 
-For the remaining kinds — views, check rules, recording rules, and synthetic checks — the server treats origin as provenance only, so the CLI strips `dash0.com/origin` from outbound payloads and upserts against `dash0.com/id` (or the kind's equivalent ID field) instead.
-Stripping origin keeps an `apply` from claiming ownership of an asset that Terraform or the Kubernetes operator manages.
+An update never sends an origin other than the stored one, so an `apply` never changes the owner of an asset that Terraform or the Kubernetes operator manages.
 The kinds that follow the [routing rule](#routing-rule) read `dash0.com/id` first and `dash0.com/origin` second.
 The deprecated `metadata.dash0Extensions.origin` field is never used as a key.
 
@@ -907,7 +920,10 @@ When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assig
 A `PrometheusRule` CRD's `dash0.com/id` label is the CRD's own identifier, not one specific alert's.
 For a single alerting rule, that label unambiguously names its one check rule, so it's used verbatim.
 For two or more alerting rules, each one instead gets its own identifier: the CRD's label, plus `--`, plus a slug of that alert's own composed name (`<group name> - <alert name>`, lowercased, with every run of non-alphanumeric characters collapsed to a single hyphen).
-For example, a CRD labeled `dash0.com/id: app-rules` with alerts `HighErrorRate` and `DiskFull` in a group named `test-group` upserts check rules `app-rules--test-group-higherrorrate` and `app-rules--test-group-diskfull`.
+For example, a CRD labeled `dash0.com/id: app-rules` with alerts `HighErrorRate` and `DiskFull` in a group named `test-group` reads check rules `app-rules--test-group-higherrorrate` and `app-rules--test-group-diskfull`.
+A `dash0.com/origin` label is derived per alert the same way.
+Each alert follows the [routing rule](#routing-rule): it updates the check rule at its id when that exists, and creates it at that id when it does not.
+Without `dash0.com/origin`, each alert's inferred origin hashes the CRD's `metadata.name` and the alert's composed name, so it stays the same when the CRD gains or loses alerts.
 
 This derivation exists because upsert is PUT (create-or-*replace*), and the CRD-level label is the only identifier a multi-alert CRD has to work with — reusing it verbatim for every alert would upsert them all to the exact same check rule, so only the last alert applied in document order would end up with a real check rule at all, silently losing every other one.
 The derived id is stable across repeated applies of unchanged content (neither the CRD's label nor an unrenamed alert's composed name changes) and across reordering the CRD's rules (it depends on the alert's name, not its position), so upsert idempotency holds the same way it does for a single-alert CRD.
@@ -1126,7 +1142,7 @@ Recording rules (entries with `record:`) are sent to the recording-rule endpoint
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
 
-Two check rules in one run that resolve to the same ID fail validation up front, because only the last one applied would be kept.
+Two check rules in one run that resolve to the same ID, or without an ID to the same `dash0.com/origin`, fail validation up front, because only the last one applied would be kept.
 This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
@@ -1161,7 +1177,8 @@ A dataset document has no telemetry filters: spam filters own them, and creating
 A document without a `SKILL.md` file in `spec.files` fails during the validation phase.
 They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
 Without an origin, the CLI infers one from the skill name in the `SKILL.md` frontmatter, so renaming the skill there creates a new skill.
-A skill that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with a name collision until you delete that skill or set its origin in the document.
+A skill that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with a name collision.
+Find that skill's origin with `dash0 -X agent0 skills list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it, or delete that skill.
 `apply` never sends `spec.source`, `metadata.annotations["dash0.com/enabled"]`, or the server-managed `metadata.name`, version, and timestamps, so a `get -o yaml` export applies as is.
 `spec.permissions` is sent as written, `defaultEnabled` included; when it is absent, the stored grants stay unchanged.
 The `admin` grant the server adds to every skill is left out of the request and the diff, unless it sets `defaultEnabled: false`.
@@ -1184,7 +1201,7 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 
 > [!IMPORTANT]
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
-> You therefore cannot apply one document to two datasets, as you can for every other asset kind.
+> You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
 
@@ -1373,7 +1390,8 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
-A removed SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed view, check rule, synthetic check, SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed check rule with an `id` is always deleted at that id, because `apply` creates a check rule whose id is not found at that id.
 Each uses the same API call as its `delete` command.
 For an SLO, eval, signal-to-metrics rule, or sampling rule identified by `dash0.com/id` alone, `--since` prints a warning, because one that an earlier CLI version created by POST sits at a server-assigned id that the delete misses.
 
@@ -1415,7 +1433,9 @@ alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
 Check rule "service-alerts - HighLatency" deleted
 ```
 
-Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with:
+Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with.
+Each alert and the recording rule are deleted where `apply` wrote them.
+An alert with an id is deleted at that id, found or not, and the recording rule at its id, or at its origin or inferred origin when the id is not found.
 
 The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
 
@@ -1609,7 +1629,7 @@ Pinning `apiVersion` on every user-authored file is a defense against silent mig
 
 The user-defined identifier lives in `metadata.labels["dash0.com/origin"]`; files that set `metadata.dash0Extensions.id` instead keep working (see [asset identifiers](#asset-identifiers-and-idempotent-upsert)).
 `metadata.name` is the CRD-style metadata name and is independent of `spec.display.name`, which is the title shown in the UI.
-A document with no identifier is written at an origin the CLI infers from its kind, `metadata.name`, and dataset (see [routing rule](#routing-rule)), so renaming `metadata.name` moves it to a new dashboard.
+A document with no identifier is written at an origin the CLI infers from its kind, `metadata.name`, and dataset (see [routing rule](#routing-rule)), so renaming `metadata.name` moves it to a new dashboard; set `dash0.com/origin` to keep it across a rename.
 
 PersesDashboard (Perses CRD, converted to a Dashboard on import):
 
@@ -2202,6 +2222,9 @@ dash0 --experimental evals delete dash0-cli_answer-relevance --force
 > You therefore cannot apply one document to two datasets.
 > The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
 > Use a distinct origin per dataset, for example `answer-relevance-staging`.
+
+An eval that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with `metadata.name ... already uses`, and the CLI adds a hint.
+Find that eval's origin with `dash0 -X evals list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it.
 
 **`metadata.name` and `spec.judge.output.kind` cannot change after create.**
 `metadata.name` identifies the eval and its results within the dataset and must be unique there; rename the eval in Dash0 with `spec.display.name` instead.

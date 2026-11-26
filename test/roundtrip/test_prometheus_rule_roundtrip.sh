@@ -6,10 +6,16 @@ export DASH0_AGENT_MODE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 FIXTURES="${SCRIPT_DIR}/fixtures"
-FIXTURE="${FIXTURES}/prometheus-rule.yaml"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# Every CI run shares one Dash0 organization, and the inferred origin hashes
+# metadata.name, so a unique name keeps concurrent runs off each other's asset.
+# A unique group name also keeps the check rule name, which the lookups below
+# use, apart from other runs.
+FIXTURE="${TMPDIR}/prometheus-rule.yaml"
+SUFFIX="$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+SUFFIX="$SUFFIX" yq '.metadata.name += "-" + env(SUFFIX) | .spec.groups[0].name += " " + env(SUFFIX)' "${FIXTURES}/prometheus-rule.yaml" > "$FIXTURE"
 ALERT_NAME=$(yq '.spec.groups[0].rules[0].alert' "$FIXTURE")
 GROUP_NAME=$(yq '.spec.groups[0].name' "$FIXTURE")
 # The CLI names check rules imported from a PrometheusRule CRD as

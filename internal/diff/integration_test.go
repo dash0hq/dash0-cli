@@ -727,7 +727,9 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	require.ErrorAs(t, err, &pending, output)
 	assert.Equal(t, 2, pending.Count)
 	assert.Contains(t, output, `Create Dataset "Staging" (staging)`)
-	assert.Contains(t, output, `Create View "my-view" (view-id)`)
+	// apply creates the dataset first, so the id is not found and the view is
+	// created by its inferred origin.
+	assert.Contains(t, output, `Create View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`)`)
 }
 
 // A token without access to an existing dataset also gets a 404 for the
@@ -755,7 +757,7 @@ func TestDiff_DroppedForbiddenReadWarnsOnStderr(t *testing.T) {
 	assert.Equal(t, 2, pending.Count)
 	assert.True(t, json.Valid([]byte(output)), "stdout must stay valid JSON in agent mode: %s", output)
 	assert.Contains(t, stderr,
-		`warning: View "my-view" (view-id): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
+		`warning: View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
 }
 
 // A 403 is only read as "nothing stored" for the dataset this run creates.
@@ -1464,4 +1466,81 @@ func TestDiff_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing
 	assert.Contains(t, cmdErr.Error(), "a.yaml")
 	assert.Contains(t, cmdErr.Error(), "b.yaml")
 	assert.Contains(t, cmdErr.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
+}
+
+// In a dataset the same run creates, a PrometheusRule alert is created at its
+// id, and recording rules by their own inferred origin, never by the CRD's.
+func TestDiff_PrometheusRuleInDatasetCreatedInSameRunUsesItsOwnKeys(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writeNewDatasetWithView(t)
+	require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "alerts.yaml"), []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alerts
+  labels:
+    dash0.com/id: alerts-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: Down
+          expr: up == 0
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "records.yaml"), []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: records
+  labels:
+    dash0.com/id: records-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - record: up:sum
+          expr: sum(up)
+`), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), forbiddenResponse)
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), forbiddenResponse)
+
+	output, err := runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	dataset := "staging"
+	assert.Contains(t, output, "(alerts-id)")
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", &dataset))
+	assert.Contains(t, output, "("+asset.InferOrigin("recordingrule", "records", "staging")+")")
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts", &dataset))
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "records", &dataset))
+}
+
+// Two PrometheusRules whose ids are not found create the same alert at their
+// own ids, so they never collide at the alert's inferred origin.
+func TestDiff_PrometheusRuleAlertsWithIDsNotFoundCreateAtTheirIDs(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: alerts\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  groups:\n    - name: g\n      rules:\n        - alert: Down\n          expr: up == 0\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, err := runDiffCmd(t, "-f", tmpDir, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, output, "(id-a)")
+	assert.Contains(t, output, "(id-b)")
 }

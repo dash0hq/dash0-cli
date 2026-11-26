@@ -4,7 +4,7 @@ set -euo pipefail
 # Exercises `dash0 apply` for PrometheusRule CRDs that contain recording rules.
 # Confirms that:
 #   - apply -f <record-only CRD> creates a recording rule (not a check rule);
-#   - apply is idempotent on a second run when dash0.com/id is set;
+#   - apply is idempotent on a second run when dash0.com/origin is set;
 #   - get shows a deleted recording rule as deleted, and apply restores it;
 #   - apply -f <mixed CRD> creates both a check rule and a recording rule;
 #   - apply -f <empty CRD> fails validation before any API call.
@@ -17,13 +17,12 @@ TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 # Stage 1: Recording-only CRD — apply creates, then upserts.
-# The recording-rules API assigns its own server-side ID; the user-provided
-# `dash0.com/id` label is honored as the upsert lookup key, but the canonical
-# stored ID is server-assigned (so the value echoed in the apply output differs
-# from the label). The roundtrip identifies the stored record by metadata.name,
+# The recording-rules API assigns its own server-side ID, so the test sets
+# `dash0.com/origin`, the key apply creates the rule by, and gets and deletes
+# the rule by it. The roundtrip identifies the stored record by metadata.name,
 # which is preserved verbatim. The unique suffix on the name keeps this test
 # isolated from any other recording rules in the dataset.
-RECORDING_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+RECORDING_ORIGIN="cli-roundtrip-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 RECORDING_NAME="Apply Roundtrip Recording Rule $(uuidgen | tr '[:upper:]' '[:lower:]')"
 RECORDING_YAML="${TMPDIR}/recording-rule.yaml"
 cat > "$RECORDING_YAML" <<EOF
@@ -32,7 +31,7 @@ kind: PrometheusRule
 metadata:
   name: ${RECORDING_NAME}
   labels:
-    dash0.com/id: ${RECORDING_ID}
+    dash0.com/origin: ${RECORDING_ORIGIN}
 spec:
   groups:
     - name: apply-roundtrip-group
@@ -93,17 +92,17 @@ if [ "$COUNT" != "1" ]; then
 fi
 
 echo "--- Step 1.4: Delete ---"
-DELETE14=$("$DASH0" recording-rules delete "$RECORDING_ID" --force)
+DELETE14=$("$DASH0" recording-rules delete "$RECORDING_ORIGIN" --force)
 echo "$DELETE14"
 if ! echo "$DELETE14" | grep -q "deleted"; then
   echo "FAIL: expected 'deleted' in delete output"
   exit 1
 fi
 
-# The API soft-deletes recording rules, so GET by the dash0.com/id label still
+# The API soft-deletes recording rules, so GET by the dash0.com/origin label still
 # returns the record after delete. `recording-rules get` must show it as deleted.
 echo "--- Step 1.5: Get after delete (expect: Deleted line) ---"
-GET15=$("$DASH0" recording-rules get "$RECORDING_ID")
+GET15=$("$DASH0" recording-rules get "$RECORDING_ORIGIN")
 echo "$GET15"
 if ! echo "$GET15" | grep -q "^Deleted: "; then
   echo "FAIL: expected a 'Deleted:' line in recording-rules get output after delete"
@@ -121,12 +120,12 @@ if ! echo "$APPLY16" | grep -qE 'restored[[:space:]]*$'; then
 fi
 
 echo "--- Step 1.7: Verify restored asset is active ---"
-if ! GET17=$("$DASH0" recording-rules get "$RECORDING_ID"); then
-  echo "FAIL: recording-rules get '$RECORDING_ID' failed after re-apply"
+if ! GET17=$("$DASH0" recording-rules get "$RECORDING_ORIGIN"); then
+  echo "FAIL: recording-rules get '$RECORDING_ORIGIN' failed after re-apply"
   exit 1
 fi
 if echo "$GET17" | grep -q "^Deleted: "; then
-  echo "FAIL: recording-rules get still shows '$RECORDING_ID' as deleted after re-apply"
+  echo "FAIL: recording-rules get still shows '$RECORDING_ORIGIN' as deleted after re-apply"
   exit 1
 fi
 
@@ -134,15 +133,14 @@ echo "--- Step 1.8: Cleanup ---"
 cleanup_recording
 
 # Stage 2: Mixed PrometheusRule CRD — apply hits both endpoints.
-# The CRD's `dash0.com/id` label is honored as the check-rule ID directly (check
-# rules accept user-defined IDs). The recording-rules API assigns its own
-# server-side ID; the user-provided value is used only as an upsert lookup key.
+# The CRD's `dash0.com/origin` label is the origin of its one alert's check
+# rule and of its recording rule, and both APIs assign their own ids.
 # We therefore identify each side by what the API guarantees to preserve:
-#   - check rule: by its `id` (= MIXED_ID, the alert rule's ID echoed from the
-#     CRD's dash0.com/id label).
+#   - check rule: by its origin (= MIXED_ORIGIN, the CRD's dash0.com/origin
+#     label).
 #   - recording rule: by its metadata.name (which is the CRD's metadata.name,
 #     suffixed with a UUID to keep this test isolated).
-MIXED_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+MIXED_ORIGIN="cli-roundtrip-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 MIXED_NAME="Apply Roundtrip Mixed Rule $(uuidgen | tr '[:upper:]' '[:lower:]')"
 MIXED_YAML="${TMPDIR}/mixed-rule.yaml"
 cat > "$MIXED_YAML" <<EOF
@@ -151,7 +149,7 @@ kind: PrometheusRule
 metadata:
   name: ${MIXED_NAME}
   labels:
-    dash0.com/id: ${MIXED_ID}
+    dash0.com/origin: ${MIXED_ORIGIN}
 spec:
   groups:
     - name: apply-roundtrip-mixed
@@ -169,7 +167,7 @@ spec:
 EOF
 
 cleanup_mixed() {
-  "$DASH0" check-rules delete "$MIXED_ID" --force > /dev/null 2>&1 || true
+  "$DASH0" check-rules delete "$MIXED_ORIGIN" --force > /dev/null 2>&1 || true
   local list
   list=$("$DASH0" recording-rules list --all -o json 2>/dev/null || echo "[]")
   local ids
@@ -181,7 +179,7 @@ cleanup_mixed() {
 trap 'cleanup_recording; cleanup_mixed; rm -rf "$TMPDIR"' EXIT
 
 echo "=== Stage 2: Mixed PrometheusRule apply idempotency ==="
-echo "Check rule ID: $MIXED_ID"
+echo "Check rule origin: $MIXED_ORIGIN"
 echo "Recording rule name: $MIXED_NAME"
 
 echo "--- Step 2.1: First apply (expect: Check rule + Recording rule created) ---"
@@ -203,8 +201,8 @@ if [ "$CREATED_COUNT" -lt 2 ]; then
 fi
 
 echo "--- Step 2.2: Verify both assets exist ---"
-if ! "$DASH0" check-rules get "$MIXED_ID" > /dev/null; then
-  echo "FAIL: check-rules get '$MIXED_ID' failed after mixed apply"
+if ! "$DASH0" check-rules get "$MIXED_ORIGIN" > /dev/null; then
+  echo "FAIL: check-rules get '$MIXED_ORIGIN' failed after mixed apply"
   exit 1
 fi
 RECORDING_COUNT=$("$DASH0" recording-rules list --all -o json | jq --arg n "$MIXED_NAME" '[.[] | select(.metadata.name == $n)] | length')
@@ -227,9 +225,11 @@ if [ "$RECORDING_COUNT" != "1" ]; then
   echo "FAIL: expected exactly 1 recording rule with name '$MIXED_NAME' after second apply, got $RECORDING_COUNT"
   exit 1
 fi
-CHECK_COUNT=$("$DASH0" check-rules list --all -o json | jq --arg id "$MIXED_ID" '[.[] | select(.id == $id)] | length')
+# Count by the list's origin column: after an update, which sends no origin,
+# Dash0 leaves the origin out of each rule's labels, but the list still has it.
+CHECK_COUNT=$("$DASH0" check-rules list --all -o csv | grep -c ",${MIXED_ORIGIN},")
 if [ "$CHECK_COUNT" != "1" ]; then
-  echo "FAIL: expected exactly 1 check rule with ID '$MIXED_ID' after second apply, got $CHECK_COUNT"
+  echo "FAIL: expected exactly 1 check rule with origin '$MIXED_ORIGIN' after second apply, got $CHECK_COUNT"
   exit 1
 fi
 

@@ -21,6 +21,10 @@ type UpdateKey struct {
 	// Upsert is the document. Read it before a Strip*ServerFields call, which
 	// can clear both labels.
 	Upsert dash0api.AssetMetadata
+
+	// OriginLabel is where the document sets its origin, when that is not
+	// metadata.labels, as for check rules.
+	OriginLabel string
 }
 
 // ResolveUpdateKey returns the originOrId to update. Without an argument it is
@@ -65,9 +69,13 @@ func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
 		return key, nil
 	}
 	if byOrigin {
+		label := OriginLabel
+		if k.OriginLabel != "" {
+			label = k.OriginLabel
+		}
 		return "", fmt.Errorf(
 			"no %s origin or id given: pass one as an argument, or set %s in the file",
-			k.Noun, OriginLabel,
+			k.Noun, label,
 		)
 	}
 	return "", fmt.Errorf("no %s id given: pass one as an argument, or set the id in the file", k.Noun)
@@ -111,7 +119,7 @@ func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identit
 		}
 		return identity.ID, stored, nil
 	}
-	if !dash0api.IsNotFound(err) || identity.Origin == "" || identity.Origin == identity.ID {
+	if !dash0api.IsNotFound(err) || identity.Origin == "" || identity.Origin == identity.ID || identity.CreatesAtID {
 		return identity.ID, zero, err
 	}
 	stored, err = get(ctx, identity.Origin)
@@ -150,6 +158,8 @@ func CheckStoredOrigin(key string, identity Identity, stored any) error {
 	case *dash0api.SamplingDefinition:
 		// The client gives SamplingDefinition no GetOrigin method.
 		origin = GetSamplingRuleOrigin(asset)
+	case *dash0api.PrometheusAlertRule:
+		origin = CheckRuleStoredOrigin(asset)
 	case interface{ GetOrigin() string }:
 		origin = asset.GetOrigin()
 	default:
@@ -157,4 +167,25 @@ func CheckStoredOrigin(key string, identity Identity, stored any) error {
 		return fmt.Errorf("cannot read the stored origin of %T", stored)
 	}
 	return checkStoredOrigin(identity, origin)
+}
+
+// RoutedKeys lets the shared key rules read the origin of a routed kind whose
+// client type reports that it upserts by id only.
+func RoutedKeys(upsert dash0api.AssetMetadata) dash0api.AssetMetadata {
+	return routedKeys{upsert}
+}
+
+type routedKeys struct{ dash0api.AssetMetadata }
+
+func (routedKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }
+
+// UpdateOrigin returns the origin that an update of a view, synthetic check,
+// or recording rule at key sends. An update at the stored origin sends it
+// back, because without it Dash0 leaves the origin out of a later read by id.
+// An update at the id sends none, because the API rejects a body origin there.
+func UpdateOrigin(storedOrigin, key string) string {
+	if storedOrigin == key {
+		return key
+	}
+	return ""
 }

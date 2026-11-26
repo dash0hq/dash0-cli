@@ -170,7 +170,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared, declaredRouted map[string]bool) (alreadyDeleted bool, err error) {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
-		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusAlerts, declared)
+		return deletePrometheusRuleCRD(ctx, apiClient, dataset, d, declared)
 	}
 
 	switch kind {
@@ -189,9 +189,25 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", identifier))
 			return true, nil
 		}
-		err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetCheckRule(ctx, key, dataset)
+			return err
+		})
+		if err == nil && declared[identifier] {
+			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", d.Identifier))
+			return true, nil
+		}
+		if err == nil {
+			err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
+		}
 	case "syntheticcheck":
-		err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetSyntheticCheck(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
+		}
 	case "slo":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
 			_, err := apiClient.GetSLO(ctx, key, dataset)
@@ -205,9 +221,21 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// disappeared entirely (see Diff's PrometheusRecordingRoleByIdentifier
 		// handling) -- distinct from the whole-CRD "prometheusrule" case
 		// above, which already attempts this endpoint unconditionally.
-		err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetRecordingRule(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
+		}
 	case "view":
-		err = apiClient.DeleteView(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
+			_, err := apiClient.GetView(ctx, key, dataset)
+			return err
+		})
+		if err == nil {
+			err = apiClient.DeleteView(ctx, identifier, dataset)
+		}
 	case "spamfilter":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
 			_, err := apiClient.GetSpamFilter(ctx, key, dataset)
@@ -355,7 +383,9 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // rule id and the recording rule all 404), so a mixed outcome -- anything
 // genuinely deleted, the rest already gone -- is reported as a real
 // deletion, matching the fact that something was.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []asset.PrometheusAlertName, declared map[string]bool) (alreadyDeleted bool, err error) {
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (alreadyDeleted bool, err error) {
+	identifier, alerts := d.Identifier, d.PrometheusAlerts
+	// apply writes each alert at its id whether or not the id was found.
 	checkRuleIDs := asset.CheckRuleIDsOccupiedByCRD(identifier, alerts)
 	if len(alerts) > 1 {
 		// A multi-alert CRD applied before per-alert derivation existed left
@@ -384,10 +414,19 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 		lastCheckRuleNotFoundErr = checkRuleErr
 	}
 
-	recordingRuleErr := apiClient.DeleteRecordingRule(ctx, identifier, dataset)
+	recordingRuleKey, recordingRuleErr := routedDeleteKey(dataset, gitutil.Deletion{
+		Kind: "recordingrule", Identifier: identifier, Alias: d.Alias,
+		InferredOriginName: d.InferredOriginName, InferredOriginKept: d.InferredOriginKept,
+	}, nil, func(key string) error {
+		_, err := apiClient.GetRecordingRule(ctx, key, dataset)
+		return err
+	})
+	if recordingRuleErr == nil {
+		recordingRuleErr = apiClient.DeleteRecordingRule(ctx, recordingRuleKey, dataset)
+	}
 	recordingRuleNotFound := recordingRuleErr != nil && dash0api.IsNotFound(recordingRuleErr)
 	if recordingRuleErr != nil && !recordingRuleNotFound {
-		return false, client.HandleAPIError(recordingRuleErr, client.ErrorContext{AssetType: "recording rule", AssetID: identifier})
+		return false, client.HandleAPIError(recordingRuleErr, client.ErrorContext{AssetType: "recording rule", AssetID: recordingRuleKey})
 	}
 
 	// "Genuinely gone" means 404 on every check-rule id attempted and on

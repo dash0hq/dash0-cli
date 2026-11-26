@@ -92,7 +92,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetCheckRuleName(&rule)
-		id = dash0api.GetCheckRuleID(&rule)
+		id = idThenOrigin(&rule)
 
 	case "view":
 		var view dash0api.ViewDefinition
@@ -100,7 +100,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetViewName(&view)
-		id = dash0api.GetViewID(&view)
+		id = idThenOrigin(&view)
 
 	case "syntheticcheck":
 		var check dash0api.SyntheticCheckDefinition
@@ -108,7 +108,7 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
 		}
 		name = dash0api.GetSyntheticCheckName(&check)
-		id = dash0api.GetSyntheticCheckID(&check)
+		id = idThenOrigin(&check)
 
 	case "slo":
 		var slo dash0api.SloDefinition
@@ -129,6 +129,9 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = partial.Metadata.Name
 		id = partial.Metadata.Labels[dash0api.LabelID]
+		if id == "" {
+			id = partial.Metadata.Labels[dash0api.LabelOrigin]
+		}
 
 	case "persesdashboard":
 		var perses dash0api.PersesDashboard
@@ -137,6 +140,9 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		}
 		name = dash0api.GetPersesDashboardName(&perses)
 		id = dash0api.GetPersesDashboardID(&perses)
+		if id == "" {
+			id = perses.Metadata.Labels[dash0api.LabelOrigin]
+		}
 
 	case "spamfilter":
 		// Metadata fields (name + dash0.com/id label) are identical across
@@ -459,4 +465,13 @@ func ReadInput(file string, sinceFlagSet bool) (documents []Document, fromDirect
 		return nil, false, false, FormatValidationError(err.Error())
 	}
 	return documents, false, false, nil
+}
+
+// idThenOrigin returns the key apply reads first, so validation messages and
+// the dry run name the same key as the write.
+func idThenOrigin(definition dash0api.AssetMetadata) string {
+	if id := definition.GetID(); id != "" {
+		return id
+	}
+	return definition.GetOrigin()
 }

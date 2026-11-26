@@ -20,6 +20,9 @@ type docPlan struct {
 	// readDenied reports that the read answered 403 and the plan assumes a
 	// create, because this run creates the dataset.
 	readDenied bool
+	// identity is what the write routes by, when it is not the document's
+	// own, as for each asset of a PrometheusRule.
+	identity *asset.Identity
 }
 
 // planDocument reads the stored state of every asset doc would write, through
@@ -263,12 +266,17 @@ func planCheckRules(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 	}
 	var plans []docPlan
 	for _, rule := range rules {
+		// PlanCheckRule clears the id and origin, so read the identity first.
+		identity := rule.Identity(dataset)
 		plan, err := asset.PlanCheckRule(ctx, apiClient, rule, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return plans, client.HandleAPIError(err, client.ErrorContext{AssetType: "check rule", AssetID: plan.Key, AssetName: rule.Name})
 		}
-		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied})
+		if denied && plan.Key == "" {
+			plan.Key = identity.CreateOrigin()
+		}
+		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied, identity: &identity})
 	}
 	return plans, nil
 }
@@ -292,12 +300,17 @@ func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asse
 
 	if recordingOnly := asset.RecordingOnlyPrometheusRule(crd); recordingOnly != nil {
 		name := dash0api.GetRecordingRuleName(recordingOnly)
+		// PlanRecordingRule clears the id and origin, so read the identity first.
+		identity := asset.RecordingRuleIdentity(recordingOnly, dataset)
 		plan, err := asset.PlanRecordingRule(ctx, apiClient, recordingOnly, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return plans, client.HandleAPIError(err, client.ErrorContext{AssetType: "recording rule", AssetID: plan.Key, AssetName: name})
 		}
-		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied})
+		if denied && plan.Key == "" {
+			plan.Key = identity.CreateOrigin()
+		}
+		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied, identity: &identity})
 	}
 	return plans, nil
 }

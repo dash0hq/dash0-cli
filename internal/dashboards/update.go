@@ -6,7 +6,6 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -53,7 +52,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	dashboard, err := dash0yaml.ParseAsDashboard(data)
+	dashboard, inferredName, err := asset.ParseDashboard(data)
 	if err != nil {
 		return err
 	}
@@ -65,7 +64,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 	key := asset.UpdateKey{Noun: "dashboard", Upsert: asset.DashboardKeys(dashboard)}
-	identity := asset.DashboardIdentity(dashboard, "", nil)
+	identity := asset.DashboardIdentity(dashboard, inferredName, nil)
 	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}

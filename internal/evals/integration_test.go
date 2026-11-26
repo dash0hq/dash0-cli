@@ -438,6 +438,8 @@ func TestUpdateEval_ImmutableFieldErrorsAreExplained(t *testing.T) {
 	}{
 		{testutil.FixtureEvalsNameImmutable, "metadata.name cannot change after the eval is created", "metadata.name identifies the eval and its results"},
 		{testutil.FixtureEvalsOutputKindImmutable, "spec.judge.output.kind cannot change after the eval is created", "results are stored per output kind"},
+		// An eval that an earlier CLI version created by POST sits at a server-assigned origin.
+		{testutil.FixtureEvalsNameTaken, "another eval in this dataset is already named", "metadata.name is unique per dataset"},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			testutil.SetupTestEnv(t)

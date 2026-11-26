@@ -356,8 +356,9 @@ func TestCreateRecordingRule_DatasetQueryParam(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathRecordingRules, testutil.MockResponse{
-		StatusCode: http.StatusCreated,
+	// No identifier, so create PUTs by the inferred origin.
+	server.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/recording-rules/dash0-cli_[a-f0-9]+$`), testutil.MockResponse{
+		StatusCode: http.StatusOK,
 		BodyFile:   fixtureCreateSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
@@ -387,7 +388,7 @@ spec:
 
 	req := server.LastRequest()
 	require.NotNil(t, req)
-	assert.Equal(t, http.MethodPost, req.Method)
+	assert.Equal(t, http.MethodPut, req.Method)
 	assert.Contains(t, req.Query, "dataset=my-dataset")
 }
 
