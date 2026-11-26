@@ -43,12 +43,12 @@ Detailed guidelines are split into focused documents:
 **Origin** and **ID** are distinct concepts — do not conflate them.
 
 - **Origin** identifies which system is the authoritative source of truth for an asset (e.g., `dash0-cli`, `terraform`, `ui`).
-  It is provenance/ownership metadata, not a lookup key.
+  It records provenance, and the CLI never changes a stored origin.
   It is stored as the label `dash0.com/origin`; check rules keep it in their top-level `labels`.
   For the routed kinds below, the origin is also the key a create writes by, so the CLI sends it on a create and clears it before an update at the id.
 
 - **ID** is the user-defined external identifier used for upsert (create-or-replace) operations.
-  When an asset has a user-defined ID, `apply` and the individual import functions route to PUT (which has upsert semantics) instead of POST for most asset types.
+  `apply` and `create` read an asset by its ID first. Every kind `apply` accepts is written by PUT; only `auth-tokens create` and the flag-based `teams create <name>` still POST.
 - **One routing rule** (`asset.RouteDocument` in `internal/asset/router.go`) serves dashboards, ephemeral dashboards, PersesDashboards, check rules, PrometheusRules (alerting and recording rules), synthetic checks, views, teams, notification channels, time series aggregations, spam filters, SLOs, evals, signal-to-metrics rules, sampling rules, Agent0 skills, and datasets.
   AWS metric scrape configs do not use `RouteDocument`. They have their own rule (`asset.PlanAwsMetricScrapeConfig`): read at the integration id, and fail on 404, because an unknown integration cannot be created.
   A document with `dash0.com/id` is read by that id; on hit the CLI PUTs at the id, and fails when the stored origin differs from an explicit origin in the file.
@@ -79,6 +79,7 @@ Detailed guidelines are split into focused documents:
   - Agent0 skills (`Dash0Skill`): routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`; organization-level, so the inferred origin uses no dataset. The inferred origin hashes the skill name from the `SKILL.md` frontmatter (`asset.CustomSkillName`), not `metadata.name`, because the frontmatter name is what the server keys a skill by. Read the origin and ID before `StripCustomSkillServerFields`, which drops `spec.source`, `metadata.name`, and the per-user `dash0.com/enabled` annotation that a write must never send.
   - Signal-to-metrics rules (`Dash0SignalToMetrics`): routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. The CLI clears `dash0.com/id` from the body of a PUT that is not at that id. The GET ignores the dataset, so the CLI compares the stored rule's dataset with `--dataset` before the write (`asset.CheckSignalToMetricsRuleDataset`).
   - Sampling rules (`Dash0Sampling`): routed, with the same keys as signal-to-metrics rules, through `GET /api/sampling-rules/{id}`. IDs are unique across organizations, so an unknown id is never PUT; the rule is created by its origin instead. Read the origin and ID before `StripSamplingRuleServerFields`, which also drops the `dash0.com/dataset` label: on writes that label wins over the `dataset` query parameter. Unlike signal-to-metrics rules, the GET honors the dataset, so a rule in another dataset fails the read with a 400, which is not "not found" and which `delete --force` must not treat as already deleted. Deletes are permanent, so there is no `restored` action.
+  - Time series aggregations: routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`; a document without either is written at its inferred origin, so the origin is no longer required.
   - Teams: routed. `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`; organization-level, so the inferred origin uses no dataset. An exported SSO/SCIM team updates at its id even though its `saml://...` origin does not resolve.
 
   The user-facing documentation of these fields, including the rationale for idempotent upsert, lives in the [Asset identifiers and idempotent upsert](docs/commands.md#asset-identifiers-and-idempotent-upsert) section of `docs/commands.md`.

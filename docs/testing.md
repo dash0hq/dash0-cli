@@ -22,6 +22,8 @@ The OpenAPI specification of the Dash0 API is available at `https://api-docs.das
 - Always use `testutil.RequireHeaders` as the validator to ensure auth token and user agent validation
 - Use constants for API paths and fixture filenames to avoid duplication
 - Use `http.MethodGet`, `http.StatusOK`, etc. instead of string/numeric literals
+- A new kind in `apply` needs an entry in `routedKinds` and `routedUpdateCommands` in `internal/apply/router_conformance_test.go`.
+  `TestRouter_EveryKindFollowsTheSameOrder` replays the routing order (id, then origin, then inferred origin) against a mock server for every kind in `ValidKinds`, and `TestRouter_UpdateNeverSendsTheOrigin` checks `update -f`.
 
 ## When to Update Fixtures
 - When the Dash0 API response format changes

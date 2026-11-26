@@ -231,3 +231,16 @@ func TestInferredOriginWrites_Claim(t *testing.T) {
 	assert.Contains(t, err.Error(), "a.yaml")
 	assert.Contains(t, err.Error(), inferred)
 }
+
+// A kind left out of routedParsers skips the inferred-origin collision check
+// during validation. This test names the missing kind.
+func TestRoutedParsers_CoverEveryValidKind(t *testing.T) {
+	notRouted := map[string]bool{"dataset": true, "awsmetricscrapeconfig": true}
+	for _, kind := range ValidKinds {
+		if notRouted[kind] {
+			assert.False(t, IsRoutedKind(kind), "kind %q has its own rule and must not be in routedParsers", kind)
+			continue
+		}
+		assert.True(t, IsRoutedKind(kind), "kind %q is in ValidKinds but has no parser in routedParsers", kind)
+	}
+}
