@@ -71,6 +71,7 @@ Use `-o yaml` to get the full definition, suitable for editing and re-applying.
 Create a dataset from a YAML or JSON definition file.
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required and cannot change after creation.
 If a dataset with that slug already exists, the command updates it.
+Otherwise it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug, as `apply` does.
 If the slug belongs to a dataset deleted in the last 30 days, the command restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 `apiVersion: dash0.com/v1alpha1` is required.

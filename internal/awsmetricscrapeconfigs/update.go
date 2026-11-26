@@ -91,6 +91,9 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		if err != nil {
 			return client.HandleAPIError(err, errorContext(integrationID))
 		}
+		if err := asset.CheckAwsMetricScrapeConfigOrigin(cfg, integrationID, before); err != nil {
+			return err
+		}
 		return asset.PrintDiff(os.Stdout, displayKind, dash0api.GetAwsMetricScrapeConfigName(before), before, cfg)
 	}
 

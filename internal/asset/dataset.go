@@ -48,48 +48,78 @@ func DatasetOrigin(dataset *dash0api.DatasetDefinition) string {
 	return ""
 }
 
-// ImportDataset creates or updates a dataset, keyed by its slug (the dash0.com/id label).
-//
-// A preflight GET decides the route: on hit, PUT updates in place; on a genuine 404, POST creates.
-// PUT is not used for the miss path because the server upserts on PUT for most tokens, so POST is the
-// explicit create. A mistyped slug therefore creates a new dataset here; only `datasets update`
-// refuses an unknown slug.
-// A dataset deleted within the last 30 days answers 404, so the POST restores it.
-// Any other preflight error surfaces instead of creating a duplicate.
+// ImportDataset creates or updates a dataset by the routing rule, with the
+// slug as its id. A PUT creates a dataset that does not exist, and restores
+// one deleted within the last 30 days, so a dataset is never created by POST.
 func ImportDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0api.DatasetDefinition) (ImportResult, error) {
 	plan, err := PlanDataset(ctx, apiClient, dataset)
+	// A failed origin read does not block the write: the PUT reports the same error.
+	if plan.Key == "" {
+		return ImportResult{}, err
+	}
+	if plan.Action != ActionCreated {
+		setDatasetOrigin(dataset, "")
+	}
+	result, err := apiClient.UpdateDataset(ctx, plan.Key, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
-
-	var result *dash0api.DatasetDefinition
-	if plan.Action == ActionUpdated {
-		result, err = apiClient.UpdateDataset(ctx, plan.Key, dataset)
-	} else {
-		result, err = apiClient.CreateDataset(ctx, dataset)
-	}
-	if err != nil {
-		return ImportResult{}, err
-	}
-
 	return ImportResult{Name: dash0api.GetDatasetName(result), ID: dash0api.GetDatasetID(result), Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanDataset reads the stored dataset that ImportDataset would write, keyed by
-// its slug. Any preflight error other than "not found" is returned, because it
-// decides between PUT and POST.
+// PlanDataset routes the dataset with RouteDocument and reads the stored
+// dataset that ImportDataset would write. Key is empty when the document is
+// invalid or the slug read failed, because the write has no target.
 func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0api.DatasetDefinition) (ImportPlan, error) {
 	if err := ValidateDataset(dataset); err != nil {
 		return ImportPlan{}, err
 	}
-	slug := dash0api.GetDatasetID(dataset)
+	identity := DatasetIdentity(dataset)
 	dash0api.StripDatasetServerFields(dataset)
-
-	plan := ImportPlan{Key: slug, Action: ActionCreated, Proposed: dataset}
-	existing, err := apiClient.GetDataset(ctx, slug)
-	if err != nil {
-		return plan, ignoreNotFound(err)
+	route, err := RouteDocument(ctx, identity, apiClient.GetDataset, dash0api.GetDatasetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: dataset}
+	if route.Key == "" || route.Create {
+		setDatasetOrigin(dataset, route.Key)
+		return plan, err
 	}
-	plan.Action, plan.Before = ActionUpdated, existing
+	// The slug cannot change after creation, so a hit by origin with another
+	// slug means a renamed slug or a copied origin.
+	if stored := dash0api.GetDatasetID(route.Stored); stored != identity.ID {
+		return ImportPlan{}, &DatasetSlugChangeError{Origin: route.Key, Stored: stored, Document: identity.ID}
+	}
+	// The stored origin keeps the diff to what changes; ImportDataset clears
+	// it before the write.
+	setDatasetOrigin(dataset, dash0api.GetDatasetOrigin(route.Stored))
+	plan.Action, plan.Before = ActionUpdated, route.Stored
 	return plan, nil
+}
+
+// DatasetIdentity returns what RouteDocument routes a dataset by. The slug is
+// the id, and the inferred origin hashes it in place of metadata.name, because
+// the slug is required and names the dataset for good.
+func DatasetIdentity(dataset *dash0api.DatasetDefinition) Identity {
+	slug := dash0api.GetDatasetID(dataset)
+	return Identity{ID: slug, Origin: dash0api.GetDatasetOrigin(dataset), Inferred: InferOrigin("dataset", slug, ""), IDRequired: true}
+}
+
+// DatasetSlugChangeError reports a document whose origin belongs to a dataset
+// with another slug.
+type DatasetSlugChangeError struct {
+	Origin   string
+	Stored   string
+	Document string
+}
+
+func (e *DatasetSlugChangeError) Error() string {
+	return fmt.Sprintf("origin %q belongs to dataset %q, and a dataset slug cannot change; set the slug back to %q, or remove dash0.com/origin to create dataset %q", e.Origin, e.Stored, e.Stored, e.Document)
+}
+
+func setDatasetOrigin(dataset *dash0api.DatasetDefinition, origin string) {
+	if dataset.Metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		dataset.Metadata.Labels = &dash0api.DatasetLabels{}
+	}
+	dataset.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }

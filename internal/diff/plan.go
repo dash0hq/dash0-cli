@@ -23,6 +23,9 @@ type docPlan struct {
 	// identity is what the write routes by, when it is not the document's
 	// own, as for each asset of a PrometheusRule.
 	identity *asset.Identity
+	// reportID names the asset in the report when the write key does not, as
+	// a dataset created by its origin, which apply --dry-run names by its slug.
+	reportID string
 }
 
 // planDocument reads the stored state of every asset doc would write, through
@@ -156,7 +159,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "dataset", AssetID: plan.Key})
 		}
-		return []docPlan{{displayKind: "Dash0Dataset", name: dash0api.GetDatasetName(&ds), plan: plan}}, nil
+		return []docPlan{{displayKind: "Dash0Dataset", name: dash0api.GetDatasetName(&ds), plan: plan, reportID: dash0api.GetDatasetID(&ds)}}, nil
 
 	case "view":
 		var view dash0api.ViewDefinition

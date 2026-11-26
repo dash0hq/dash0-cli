@@ -3423,7 +3423,7 @@ func TestApply_Dataset_Created(t *testing.T) {
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDatasetsNotFound,
 	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -3440,12 +3440,15 @@ func TestApply_Dataset_Created(t *testing.T) {
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, `Dataset "Production" (production) created`)
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDatasets)
-	require.NotNil(t, createReq, "expected a create request for the dataset")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathDatasets), "a dataset is never created by POST")
+	inferred := asset.InferOrigin("dataset", "production", "")
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDatasets+"/"+inferred)
+	require.NotNil(t, createReq, "a dataset that does not exist is created by its inferred origin")
 	assert.NotContains(t, createReq.Query, "dataset=", "datasets are org-level and must not carry a dataset query parameter")
 	var body dash0api.DatasetDefinition
 	require.NoError(t, json.Unmarshal([]byte(createReq.Body), &body))
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assert.Equal(t, inferred, dash0api.GetDatasetOrigin(&body), "a create sends its origin")
 	assert.Equal(t, "dash0.com/v1alpha1", body.ApiVersion)
 	require.NotNil(t, body.Spec.Retention)
 	require.NotNil(t, body.Spec.Retention.Traces)
@@ -3579,7 +3582,7 @@ func TestApply_Dataset_AppliedBeforeAssetsThatSortFirst(t *testing.T) {
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDatasetsNotFound,
 	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -3600,7 +3603,7 @@ func TestApply_Dataset_AppliedBeforeAssetsThatSortFirst(t *testing.T) {
 	require.NoError(t, cmdErr)
 	datasetAt, viewAt := -1, -1
 	for i, req := range server.Requests() {
-		if req.Method == http.MethodPost && req.Path == apiPathDatasets && datasetAt < 0 {
+		if req.Method == http.MethodPut && strings.HasPrefix(req.Path, apiPathDatasets+"/") && datasetAt < 0 {
 			datasetAt = i
 		}
 		if strings.HasPrefix(req.Path, "/api/views") && viewAt < 0 {
@@ -3829,7 +3832,10 @@ func TestApply_AwsMetricScrapeConfig_PutsByIntegrationID(t *testing.T) {
 	assert.Empty(t, put.Query, "the config is organization-level, so no dataset is sent")
 	var sent dash0api.AwsMetricScrapeConfigDefinition
 	require.NoError(t, json.Unmarshal(put.Body, &sent))
-	assert.Nil(t, sent.Metadata.Labels, "the CLI must not claim ownership with an origin")
+	require.NotNil(t, sent.Metadata.Labels)
+	assert.Equal(t, asset.InferOrigin("awsmetricscrapeconfig", awsScrapeIntegrationID, ""), dash0api.GetAwsMetricScrapeConfigOrigin(&sent),
+		"the first config sends the origin it is created by")
+	assert.Nil(t, sent.Metadata.Labels.Dash0Comid, "only the origin is sent")
 	require.Len(t, sent.Spec.Namespaces, 1)
 	assert.Equal(t, "AWS/S3", sent.Spec.Namespaces[0].Namespace)
 }

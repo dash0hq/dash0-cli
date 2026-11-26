@@ -104,7 +104,7 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		return fmt.Errorf("%s is dataset %q, but the file names dataset %q", keySource, dash0api.GetDatasetID(before), slug)
 	}
 	if origin, stored := asset.DatasetOrigin(&dataset), asset.DatasetOrigin(before); origin != "" && stored != "" && origin != stored {
-		return fmt.Errorf("%s is dataset %q with origin %q, but the file's origin is %q", keySource, dash0api.GetDatasetID(before), stored, origin)
+		return fmt.Errorf("%s: %w", keySource, &asset.OriginMismatchError{ID: dash0api.GetDatasetID(before), Stored: stored, Document: origin, IDRequired: true})
 	}
 
 	// A file without the slug label still sends it. The slug comes from the stored dataset,
@@ -127,6 +127,11 @@ func runUpdate(ctx context.Context, args []string, flags *updateFlags) error {
 		dataset.Metadata.Name = before.Metadata.Name
 	}
 	dash0api.StripDatasetServerFields(&dataset)
+
+	// An update never sends the origin, as apply does, so the preview keeps the stored one.
+	if dataset.Metadata.Labels != nil {
+		dataset.Metadata.Labels.Dash0Comorigin = nil
+	}
 
 	if flags.DryRun {
 		// A spec field left out of the file keeps its stored value, so the preview

@@ -27,8 +27,8 @@ var ErrAwsMetricScrapeConfigMissingID = errors.New(
 )
 
 // awsMetricScrapeConfigMetadataKeys lists the metadata a document exported with
-// `get -o yaml` carries. The server ignores all of it on write, and the CLI does
-// not send dash0.com/origin, so these round-trip without a warning. Anything
+// `get -o yaml` carries. The server ignores all of it on write, except
+// dash0.com/origin on the first write, so these round-trip without a warning. Anything
 // else is user intent the API would drop, so ParseAwsMetricScrapeConfig warns.
 var awsMetricScrapeConfigMetadataKeys = map[string]map[string]bool{
 	"labels":      {"dash0.com/id": true, "dash0.com/origin": true, "dash0.com/source": true, "dash0.com/dataset": true},
@@ -124,10 +124,9 @@ func AwsMetricScrapeConfigIsSet(cfg *dash0api.AwsMetricScrapeConfigDefinition) b
 
 // ImportAwsMetricScrapeConfig replaces the scrape config of an AWS integration.
 //
-// The metadata is not sent. The server ignores all of it except
-// dash0.com/origin, and the CLI does not claim ownership by sending an origin.
-// The preflight GET supplies the diff, and fails with a 404 for an unknown
-// integration before anything is written.
+// The metadata is not sent, because the server ignores all of it except
+// dash0.com/origin. The origin is sent only by the first write, the create,
+// because the server stores it then and ignores it afterwards.
 func ImportAwsMetricScrapeConfig(
 	ctx context.Context,
 	apiClient dash0api.Client,
@@ -141,6 +140,9 @@ func ImportAwsMetricScrapeConfig(
 
 	body := *cfg
 	body.Metadata = dash0api.AwsMetricScrapeConfigMetadata{}
+	if plan.Action == ActionCreated {
+		dash0api.SetAwsMetricScrapeConfigOrigin(&body, AwsMetricScrapeConfigIdentity(cfg, integrationID).CreateOrigin())
+	}
 	result, err := apiClient.UpdateAwsMetricScrapeConfig(ctx, integrationID, &body)
 	if err != nil {
 		return ImportResult{}, err
@@ -156,28 +158,62 @@ func ImportAwsMetricScrapeConfig(
 }
 
 // PlanAwsMetricScrapeConfig reads the stored config that
-// ImportAwsMetricScrapeConfig would replace. An integration that never had a
-// config, or had it cleared, makes the write a create.
+// ImportAwsMetricScrapeConfig would replace. It does not use RouteDocument:
+// the integration id is the only key, and an unknown integration fails,
+// because the CLI cannot create one. An integration that never had a config, or had it
+// cleared, makes the write a create.
 func PlanAwsMetricScrapeConfig(
 	ctx context.Context,
 	apiClient dash0api.Client,
 	cfg *dash0api.AwsMetricScrapeConfigDefinition,
 	integrationID string,
 ) (ImportPlan, error) {
+	if integrationID == "" {
+		return ImportPlan{}, ErrAwsMetricScrapeConfigMissingID
+	}
 	plan := ImportPlan{Key: integrationID, Action: ActionCreated, Proposed: cfg}
 	before, err := apiClient.GetAwsMetricScrapeConfig(ctx, integrationID)
 	if err != nil {
 		return plan, err
 	}
-	if AwsMetricScrapeConfigIsSet(before) {
-		plan.Action, plan.Before = ActionUpdated, before
+	if !AwsMetricScrapeConfigIsSet(before) {
+		return plan, nil
 	}
+	if err := CheckAwsMetricScrapeConfigOrigin(cfg, integrationID, before); err != nil {
+		return plan, err
+	}
+	plan.Action, plan.Before = ActionUpdated, before
 	return plan, nil
+}
+
+// CheckAwsMetricScrapeConfigOrigin fails when the stored config has an origin
+// other than the document's, because the CLI never changes a stored origin.
+func CheckAwsMetricScrapeConfigOrigin(cfg *dash0api.AwsMetricScrapeConfigDefinition, integrationID string, before *dash0api.AwsMetricScrapeConfigDefinition) error {
+	if !AwsMetricScrapeConfigIsSet(before) {
+		return nil
+	}
+	document := AwsMetricScrapeConfigIdentity(cfg, integrationID).Origin
+	if stored := dash0api.GetAwsMetricScrapeConfigOrigin(before); document != "" && stored != "" && stored != document {
+		return &OriginMismatchError{ID: integrationID, Stored: stored, Document: document, IDRequired: true}
+	}
+	return nil
+}
+
+// AwsMetricScrapeConfigIdentity returns what an AWS metric scrape config is
+// routed by. The integration id is the id, and the inferred origin hashes it
+// in place of metadata.name, which is the integration's name and read-only.
+func AwsMetricScrapeConfigIdentity(cfg *dash0api.AwsMetricScrapeConfigDefinition, integrationID string) Identity {
+	return Identity{
+		ID:         integrationID,
+		Origin:     dash0api.GetAwsMetricScrapeConfigOrigin(cfg),
+		Inferred:   InferOrigin("awsmetricscrapeconfig", integrationID, ""),
+		IDRequired: true,
+	}
 }
 
 // normalizeAwsMetricScrapeConfigForDiff keeps only what the CLI writes: the
 // spec, sorted the way the server returns it. The origin is dropped too,
-// because the CLI never sends it, so it would only show up as phantom drift.
+// because an update never sends it, so it would only show up as phantom drift.
 func normalizeAwsMetricScrapeConfigForDiff(cfg *dash0api.AwsMetricScrapeConfigDefinition) {
 	cfg.Metadata = dash0api.AwsMetricScrapeConfigMetadata{}
 	sort.SliceStable(cfg.Spec.Namespaces, func(i, j int) bool {

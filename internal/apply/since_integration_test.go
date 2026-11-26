@@ -3091,12 +3091,22 @@ func TestApply_Since_DocumentWithOriginAndIDDeletesWhereApplyWrote(t *testing.T)
 	}
 }
 
+// idRequired reports a kind whose id is required, so no document of it is
+// written at its inferred origin for lack of an id, and --since deletes it at
+// its id.
+func (k routedKind) idRequired() bool {
+	return k.cases != nil
+}
+
 // A routed document with only a dash0.com/id was created by its inferred
 // origin when the id was not found, or at the id for kinds that create an id
 // that is not found at that id. Removing the file must delete it there.
 func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	for kind, spec := range routedKinds {
+		if spec.idRequired() {
+			continue
+		}
 		inferred := inferredOrigin(kind, spec)
 		fixture, writeResponse := routedFixtures(t, spec)
 		for _, tt := range []struct {
@@ -3179,6 +3189,9 @@ func TestApply_Since_DocumentWithOnlyIDDeletesWhereApplyWrote(t *testing.T) {
 func TestApply_Since_DocumentWithOnlyIDStopsWhenTheReadFails(t *testing.T) {
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	for kind, spec := range routedKinds {
+		if spec.idRequired() {
+			continue
+		}
 		for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
 			t.Run(fmt.Sprintf("%s/%d", kind, status), func(t *testing.T) {
 				testutil.SetupTestEnv(t)
@@ -3243,6 +3256,9 @@ func TestApply_Since_RoutedDocumentThatDropsItsIDKeepsTheInferredOrigin(t *testi
 	const id = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	const otherID = "b2c3d4e5-6789-01bc-def0-234567890abc"
 	for kind, spec := range routedKinds {
+		if spec.idRequired() {
+			continue
+		}
 		inferred := inferredOrigin(kind, spec)
 		fixture, writeResponse := routedFixtures(t, spec)
 		for _, current := range []struct {

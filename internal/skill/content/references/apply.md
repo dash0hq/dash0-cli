@@ -60,7 +60,7 @@ See [Eval documents](#eval-documents-experimental) for the fields the CLI remove
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
-The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
+They follow the [routing rule](#routing-rule), with the slug as the id: on hit the CLI updates the dataset at its slug, and on 404 it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug.
 Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 `apply` prints `created` for a restore, as it does for a new dataset.
@@ -126,8 +126,10 @@ These checks run during the validation phase, before any document in the run is 
 - A label or annotation that the API ignores prints a warning.
   The labels and annotations that `aws-metric-scrape-configs get -o yaml` exports are not warned about.
 
-The CLI does not send `dash0.com/origin`, so it never claims ownership of a config.
-Dash0 keeps the origin of the first writer until the config is cleared.
+They do not follow the [routing rule](#routing-rule): the integration id is the only key, and an unknown integration fails, because the CLI cannot create an integration.
+The first config of an integration sends `dash0.com/origin`, or the origin the CLI infers from the integration id.
+Dash0 keeps the origin of the first writer until the config is cleared, and ignores it on later writes, so an update never sends it.
+A document whose `dash0.com/origin` differs from the stored one fails, as for the other kinds.
 `apply` prints `created` when the integration had no config before, and a diff otherwise.
 
 > [!NOTE]

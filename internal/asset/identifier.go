@@ -99,7 +99,7 @@ func ExtractIdentifier(data []byte) (string, error) {
 // deletes in that order. inferredOriginName is the metadata.name of a document
 // without an origin: apply writes it at its inferred origin when it has no id
 // or the id is not found, so --since must delete it there. Both are "" for
-// kinds the router does not serve.
+// datasets and AWS metric scrape configs, which --since deletes at their id.
 func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
 	if err != nil {
