@@ -105,12 +105,6 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 			for _, warning := range warnings {
 				validationWarnings = append(validationWarnings, fmt.Sprintf("%s: %s", doc.Location(), warning))
 			}
-		} else if NormalizeKind(doc.Kind) == "timeseriesaggregation" && doc.ID == "" {
-			// Origin is mandatory for this kind and there is no fallback create
-			// path, so a document missing it fails here rather than after the
-			// run has written its other documents. parseDocumentHeader already
-			// stored the origin in doc.ID, so there is nothing to re-parse.
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), ErrTimeSeriesAggregationMissingOrigin.Error()))
 		}
 	}
 	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)

@@ -39,12 +39,12 @@ var idOnlyDeleteWarnings = map[string]*idOnlyDeleteWarning{
 	"team": {
 		noun:       "team",
 		usesOrigin: TeamUsesOrigin,
-		format:     "warning: team %s was identified by dash0.com/id alone; team ids are server-assigned, so if this document was first applied to an organization without that id the live team now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+		format:     "warning: team %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a team that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on teams you manage with --since",
 	},
 	"spamfilter": {
 		noun:       "spam filter",
 		usesOrigin: SpamFilterUsesOrigin,
-		format:     "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter",
+		format:     "warning: spam filter %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a spam filter that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on spam filters you manage with --since",
 	},
 	"dashboard":             nil,
 	"checkrule":             nil,

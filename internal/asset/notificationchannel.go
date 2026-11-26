@@ -23,22 +23,18 @@ func RoutingAssetsWarning(channel *dash0api.NotificationChannelDefinition) strin
 		"the synthetic check."
 }
 
-// ImportNotificationChannel creates or updates a notification channel via the standard CRUD APIs.
-// When the input has a user-defined ID (via dash0.com/origin label), UPDATE is always used — PUT has
-// create-or-replace semantics, so this is idempotent regardless of whether the
-// channel already exists.
-// When the input has no origin, CREATE is used and the server assigns an ID.
+// ImportNotificationChannel creates or updates a notification channel through
+// RouteDocument.
 func ImportNotificationChannel(ctx context.Context, apiClient dash0api.Client, channel *dash0api.NotificationChannelDefinition) (ImportResult, error) {
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := PlanNotificationChannel(ctx, apiClient, channel)
-
-	var result *dash0api.NotificationChannelDefinition
-	var err error
-	if plan.Key != "" {
-		result, err = apiClient.UpdateNotificationChannel(ctx, plan.Key, channel)
-	} else {
-		result, err = apiClient.CreateNotificationChannel(ctx, channel)
+	plan, err := PlanNotificationChannel(ctx, apiClient, channel)
+	// A failed origin read does not block the write: the PUT reports the same error.
+	if plan.Key == "" {
+		return ImportResult{}, err
 	}
+	if plan.Action != ActionCreated {
+		setNotificationChannelOrigin(channel, "")
+	}
+	result, err := apiClient.UpdateNotificationChannel(ctx, plan.Key, channel)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -47,20 +43,38 @@ func ImportNotificationChannel(ctx context.Context, apiClient dash0api.Client, c
 	return ImportResult{Name: dash0api.GetNotificationChannelName(result), ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanNotificationChannel reads the stored channel that
-// ImportNotificationChannel would write, keyed by origin. It returns any
-// preflight error other than "not found".
+// PlanNotificationChannel routes the channel with RouteDocument and reads the
+// stored channel that ImportNotificationChannel would write. It returns any
+// preflight error other than "not found"; an empty Key means the write has no
+// target.
 func PlanNotificationChannel(ctx context.Context, apiClient dash0api.Client, channel *dash0api.NotificationChannelDefinition) (ImportPlan, error) {
+	// The strip clears the dash0.com/id label, so read it first.
+	identity := NotificationChannelIdentity(channel)
 	dash0api.StripNotificationChannelServerFields(channel)
-	origin := dash0api.GetNotificationChannelOrigin(channel)
-	plan := ImportPlan{Key: origin, Action: ActionCreated, Proposed: channel}
-	if origin == "" {
-		return plan, nil
+	route, err := RouteDocument(ctx, identity, apiClient.GetNotificationChannel, (*dash0api.NotificationChannelDefinition).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: channel}
+	if route.Key == "" || route.Create {
+		setNotificationChannelOrigin(channel, route.Key)
+		return plan, err
 	}
-	existing, err := apiClient.GetNotificationChannel(ctx, origin)
-	if err != nil {
-		return plan, ignoreNotFound(err)
+	setNotificationChannelOrigin(channel, route.Stored.GetOrigin())
+	plan.Action, plan.Before = ActionUpdated, route.Stored
+	return plan, err
+}
+
+// NotificationChannelIdentity returns what RouteDocument routes a notification
+// channel by. Channels are organization-level, so the inferred origin has no
+// dataset.
+func NotificationChannelIdentity(channel *dash0api.NotificationChannelDefinition) Identity {
+	return identityOf("notificationchannel", channel.Metadata.Name, nil, channel)
+}
+
+func setNotificationChannelOrigin(channel *dash0api.NotificationChannelDefinition, origin string) {
+	if channel.Metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		channel.Metadata.Labels = &dash0api.NotificationChannelLabels{}
 	}
-	plan.Action, plan.Before = ActionUpdated, existing
-	return plan, nil
+	channel.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }

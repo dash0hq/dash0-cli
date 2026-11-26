@@ -39,6 +39,10 @@ type SincePlan struct {
 	// declare, so a deletion dispatched by identifier never removes an asset
 	// this same run created or updated. See declaredCheckRuleIDs.
 	DeclaredCheckRuleIDs map[string]bool
+	// DeclaredRoutedKeys is every origin or id of a routed kind that -f's
+	// current contents still declare, so --since never falls back to deleting
+	// an asset that this same run writes.
+	DeclaredRoutedKeys map[string]bool
 	// targetWasDirectoryAtRef reports whether -f's target was a directory
 	// (rather than a single file) the last time it existed, per git history
 	// at --since's ref. apply uses this to correct its own fromDirectory
@@ -195,7 +199,7 @@ func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, erro
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
-	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that
@@ -298,6 +302,20 @@ func declaredCheckRuleIDs(after Snapshot) map[string]bool {
 			for _, id := range asset.CheckRuleIDsOccupiedByCRD(key.Identifier, after.PrometheusAlertsByIdentifier[key.Identifier]) {
 				declared[id] = true
 			}
+		}
+	}
+	return declared
+}
+
+func declaredRoutedKeys(after Snapshot) map[string]bool {
+	declared := map[string]bool{}
+	for key := range after.Identifiers {
+		if !asset.IsRoutedKind(key.Kind) {
+			continue
+		}
+		declared[key.Identifier] = true
+		if alias := after.Aliases[key]; alias != "" {
+			declared[alias] = true
 		}
 	}
 	return declared

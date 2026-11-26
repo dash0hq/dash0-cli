@@ -15,7 +15,7 @@
 | Recording rules | `dash0 recording-rules <subcommand>` | Uses PrometheusRule CRD format |
 | Notification channels | `dash0 notification-channels <subcommand>` | Organization-level (no `--dataset`) |
 | Spam filters | `dash0 spam-filters <subcommand>` | Dataset-scoped; `create`/`update` accept v1alpha1 (`spec.contexts`) and v1alpha2 (`spec.context`). The `dash0.com/enabled` annotation turns a filter off; see [Spam filters](#spam-filters) |
-| Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
+| Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `dash0.com/id` is read first, then `dash0.com/origin`; without an origin, the CLI infers one |
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `metadata.labels["dash0.com/origin"]` is the upsert key. Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
 | Sampling rules | `dash0 sampling-rules <subcommand>` | Dataset-scoped. `kind: Dash0Sampling`; `metadata.labels["dash0.com/origin"]` is the upsert key. Writes require the organization admin role. The first enabled rule in a dataset turns sampling on; see [Sampling rules](#sampling-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
@@ -47,7 +47,7 @@ The command is also available under the shorter alias `tsa`, so `dash0 tsa list`
 
 Every time series aggregation endpoint requires the organization admin role, which is stricter than any other asset type. A non-admin token gets a 403 naming the role.
 
-`metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key. `create` and `apply` both PUT to that origin, so they are create-or-replace; a document without the label fails before any API call. A `dash0.com/id` in a document body is ignored, which is what makes an exported definition reapply cleanly.
+`create` and `apply` follow the routing rule: `dash0.com/id` first, then `metadata.labels["dash0.com/origin"]`. A document without an origin gets an inferred `dash0-cli_` origin, so applying it again updates the same aggregation. The CLI never POSTs, and the body never carries the origin, because the API reads it from the path.
 
 Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document therefore cannot be applied to two datasets the way it can for every other asset kind — the second dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.
 

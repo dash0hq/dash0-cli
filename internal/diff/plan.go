@@ -30,11 +30,11 @@ type docPlan struct {
 func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
+		dashboard, inferredName, err := asset.ParseDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
 		}
-		plan, err := asset.PlanDashboard(ctx, apiClient, dashboard, dataset)
+		plan, err := asset.PlanDashboard(ctx, apiClient, dashboard, inferredName, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "dashboard", AssetID: plan.Key})

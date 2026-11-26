@@ -368,15 +368,6 @@ func PlanSamplingRule(ctx context.Context, apiClient dash0api.Client, rule *dash
 	return plan, nil
 }
 
-// samplingRuleDatasetName returns the dataset name for messages. The CLI
-// represents the default dataset as nil.
-func samplingRuleDatasetName(dataset *string) string {
-	if dataset == nil || *dataset == "" {
-		return "default"
-	}
-	return *dataset
-}
-
 // SamplingTurnOnWarning returns a warning when writing rule would turn
 // sampling on for the dataset: the rule ends up enabled, it was not enabled
 // before, and no other rule in the dataset is enabled. Sampling is off for a
@@ -386,7 +377,7 @@ func SamplingTurnOnWarning(ctx context.Context, apiClient dash0api.Client, rule,
 	if !rule.Spec.Enabled || (existing != nil && existing.Spec.Enabled) {
 		return ""
 	}
-	target := samplingRuleDatasetName(dataset)
+	target := DatasetName(dataset)
 	name := dash0api.GetSamplingRuleName(rule)
 
 	rules, err := apiClient.ListSamplingRules(ctx, dataset)
@@ -414,7 +405,7 @@ func SamplingTurnOnWarningInNewDataset(rule *dash0api.SamplingDefinition, datase
 	if !rule.Spec.Enabled {
 		return ""
 	}
-	return samplingTurnsOnMessage(dash0api.GetSamplingRuleName(rule), samplingRuleDatasetName(dataset))
+	return samplingTurnsOnMessage(dash0api.GetSamplingRuleName(rule), DatasetName(dataset))
 }
 
 func samplingTurnsOnMessage(name, dataset string) string {

@@ -5,8 +5,8 @@ set -euo pipefail
 #   - apply creates the aggregation on the first run;
 #   - a second apply of the same file reports "no changes" and creates no
 #     duplicate;
-#   - a document without dash0.com/origin fails during validation, before any
-#     API call;
+#   - a document without dash0.com/origin is created by the origin the CLI
+#     infers, and a second apply updates it instead of creating a duplicate;
 #   - applying the same document to a second dataset fails with the
 #     cross-dataset explanation rather than a bare 400;
 #   - get shows a deleted aggregation as deleted, and apply restores it.
@@ -52,6 +52,9 @@ ORIGIN="$ORIGIN" yq '
 
 cleanup() {
   "$DASH0" tsa delete "$ORIGIN" --force > /dev/null 2>&1 || true
+  if [ -n "${INFERRED_ORIGIN:-}" ]; then
+    "$DASH0" tsa delete "$INFERRED_ORIGIN" --force > /dev/null 2>&1 || true
+  fi
   # If the API ever accepts the cross-dataset apply in step 5, the aggregation
   # lands in the other dataset, out of reach of the delete above. Origins are
   # visible org-wide, so a leak is everyone's problem. OTHER_DATASET is set
@@ -96,19 +99,32 @@ if [ "$COUNT" != "1" ]; then
   exit 1
 fi
 
-echo "--- Step 4: A document without an origin fails validation ---"
+echo "--- Step 4: A document without an origin is created once, by its inferred origin ---"
 NO_ORIGIN_FILE="${TMPDIR}/no-origin.yaml"
 yq 'del(.metadata.labels)' "$YAML_FILE" > "$NO_ORIGIN_FILE"
-if BAD_OUT=$("$DASH0" apply -f "$NO_ORIGIN_FILE" --dry-run 2>&1); then
-  echo "FAIL: expected apply --dry-run to fail without an origin, got:"
-  echo "$BAD_OUT"
+NO_ORIGIN_APPLY1=$("$DASH0" apply -f "$NO_ORIGIN_FILE")
+echo "$NO_ORIGIN_APPLY1"
+if ! echo "$NO_ORIGIN_APPLY1" | grep -q "created"; then
+  echo "FAIL: expected 'created' when applying a document without an origin"
   exit 1
 fi
-echo "$BAD_OUT"
-if ! echo "$BAD_OUT" | grep -q "dash0.com/origin"; then
-  echo "FAIL: error message did not name the missing origin label"
+INFERRED_ORIGIN=$("$DASH0" tsa list --all -o json | jq -r --arg n "$ORIGIN" '.[] | select(.metadata.name == $n) | .metadata.labels["dash0.com/origin"] | select(startswith("dash0-cli_"))')
+if [ "$(echo "$INFERRED_ORIGIN" | grep -c .)" != "1" ]; then
+  echo "FAIL: expected exactly 1 aggregation with an inferred dash0-cli_ origin, got: '$INFERRED_ORIGIN'"
   exit 1
 fi
+echo "Inferred origin: $INFERRED_ORIGIN"
+NO_ORIGIN_APPLY2=$("$DASH0" apply -f "$NO_ORIGIN_FILE")
+echo "$NO_ORIGIN_APPLY2"
+if echo "$NO_ORIGIN_APPLY2" | grep -q "created"; then
+  echo "FAIL: the second apply of a document without an origin created a duplicate"
+  exit 1
+fi
+if ! echo "$NO_ORIGIN_APPLY2" | grep -q "no changes"; then
+  echo "FAIL: expected 'no changes' on the second apply of a document without an origin"
+  exit 1
+fi
+"$DASH0" tsa delete "$INFERRED_ORIGIN" --force
 
 echo "--- Step 5: The same document in another dataset is rejected ---"
 # Origins are unique per organization while each aggregation belongs to one

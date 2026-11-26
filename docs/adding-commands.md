@@ -64,7 +64,10 @@ Concretely:
 3. Add a `case` in `applyDocument` in `internal/apply/apply.go` that parses the raw bytes, calls the corresponding `asset.Import<Asset>(...)` helper, and returns an `applyResult`.
 4. Update the human-readable list of supported kinds in the `Long` description of `NewApplyCmd` in `internal/apply/apply.go`, and in the "unsupported kind" error message of `ValidateDocuments` in `internal/asset/validate.go`.
 5. If the asset has multiple schema versions (e.g., `apiVersion: v1alpha1` vs `v1alpha2`), validate the apiVersion during the validation phase using a `Detect<Asset>APIVersion` helper from `internal/asset/`, so a typo fails up front rather than mid-apply.
-6. Add a matching `case` in `planDocument` in `internal/diff/plan.go` that calls the asset's `asset.Plan<Asset>(...)` step, so `diff` previews the new kind.
+6. Route the kind through `asset.RouteDocument` in `internal/asset/router.go`: build its `Identity` (`dash0.com/id`, `dash0.com/origin`, and the origin from `asset.InferOrigin`), add a `case` in `documentIdentity` so `apply` and `diff` check inferred origin collisions, and add the kind to `routedKinds` in `internal/apply/router_conformance_test.go`.
+   The plan step sets the origin on a create and clears it before an update, and the import never POSTs.
+   `TestRouter_EveryKindFollowsTheSameOrder` fails for a kind in `ValidKinds` that is neither routed nor listed in `notRoutedYet`.
+7. Add a matching `case` in `planDocument` in `internal/diff/plan.go` that calls the asset's `asset.Plan<Asset>(...)` step, so `diff` previews the new kind.
    `TestPlanDocument_PlansEveryKindApplyAccepts` fails when a kind in `ValidKinds` has no case there.
    `TestParseDocumentHeader_DecodesEveryValidKind` and `TestApplyDocument_AppliesEveryValidKind` do the same for steps 2 and 3.
 

@@ -30,6 +30,7 @@ type identifierProbe struct {
 	Kind     string `json:"kind"`
 	ID       string `json:"id"`
 	Metadata struct {
+		Name string `json:"name"`
 		// Values are not all strings: sampling rules nest custom labels
 		// under labels.custom, so only string values are read.
 		Labels map[string]any `json:"labels"`
@@ -41,24 +42,22 @@ type identifierProbe struct {
 // per the "Asset identifiers and idempotent upsert" table in the command
 // reference:
 //
-//   - Dashboard, EphemeralDashboard: dash0.com/origin, then metadata.dash0Extensions.id, then
-//     dash0.com/id
+//   - Dashboard, EphemeralDashboard: dash0.com/id, then dash0.com/origin, then
+//     metadata.dash0Extensions.id (see DashboardIdentity)
+//   - Dash0SpamFilter, Dash0Team, Dash0NotificationChannel,
+//     Dash0TimeSeriesAggregation: dash0.com/id, then dash0.com/origin
 //   - CheckRule: top-level id
-//   - Dash0NotificationChannel, Dash0TimeSeriesAggregation: dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - SLO, Dash0SpamFilter, Dash0Team, Dash0Skill, Dash0GenerativeAiEvaluation,
-//     Dash0SignalToMetrics, Dash0Sampling:
-//     dash0.com/origin, then dash0.com/id
+//   - SLO, Dash0Skill, Dash0GenerativeAiEvaluation, Dash0SignalToMetrics,
+//     Dash0Sampling: dash0.com/origin, then dash0.com/id
 //   - everything else (PersesDashboard, PrometheusRule, SyntheticCheck, View,
 //     Dash0AwsMetricScrapeConfig):
 //     dash0.com/id
 //
-// Each kind reads only the field its Import helper actually upserts by. A
-// fallback onto some other field would return an identifier no live asset can
-// match, which --since would then "delete" to a 404 and report as already
-// deleted -- returning "" instead routes the document to the NoIdentifier
-// hard-fail. Only SLOs, teams, spam filters, Agent0 skills, evals,
-// signal-to-metrics rules, and sampling rules genuinely accept either field.
+// The kinds RouteDocument routes read the id first, as apply does, so --since
+// deletes where apply wrote. For the other kinds, a fallback onto another
+// field would return an identifier no live asset matches, so they return ""
+// and the document hits the NoIdentifier hard-fail.
 func ExtractIdentifier(data []byte) (string, error) {
 	var probe identifierProbe
 	if err := dash0yaml.Unmarshal(data, &probe); err != nil {
@@ -74,19 +73,24 @@ func ExtractIdentifier(data []byte) (string, error) {
 		}
 	}
 
-	origin := probe.label("dash0.com/origin")
-
-	switch NormalizeKind(probe.Kind) {
-	case "dashboard", "ephemeraldashboard":
-		var dashboard dash0api.DashboardDefinition
-		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
+	kind := NormalizeKind(probe.Kind)
+	// A PersesDashboard is upserted by dash0.com/id alone; see the table above.
+	if kind != "persesdashboard" {
+		identity, _, routed, err := parseRoutedIdentity(kind, data, nil)
+		if err != nil {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
-		return DashboardKey(&dashboard), nil
+		if routed {
+			if identity.ID != "" {
+				return identity.ID, nil
+			}
+			return identity.Origin, nil
+		}
+	}
+
+	switch kind {
 	case "checkrule":
 		return probe.ID, nil
-	case "notificationchannel", "timeseriesaggregation":
-		return origin, nil
 	case "dataset":
 		// The client's own helper, so spec.slug wins over the label exactly as it
 		// does on create, update, and apply.
@@ -95,8 +99,8 @@ func ExtractIdentifier(data []byte) (string, error) {
 			return "", fmt.Errorf("failed to extract identifier: %w", err)
 		}
 		return dash0api.GetDatasetID(&dataset), nil
-	case "slo", "spamfilter", "team", "skill", "generativeaievaluation", "signaltometrics", "sampling":
-		if origin != "" {
+	case "slo", "skill", "generativeaievaluation", "signaltometrics", "sampling":
+		if origin := probe.label("dash0.com/origin"); origin != "" {
 			return origin, nil
 		}
 		return probe.label("dash0.com/id"), nil
@@ -105,19 +109,26 @@ func ExtractIdentifier(data []byte) (string, error) {
 	}
 }
 
-// ExtractAlias returns a second identifier that names the same asset as the
-// one ExtractIdentifier returns, or "". Only dashboards have one: see
-// DashboardAlias.
-func ExtractAlias(data []byte) (string, error) {
+// ExtractDeleteFallbacks returns the other keys --since may have to delete a
+// routed document at. alias is the origin of a document that also has an id:
+// apply writes at the id when it exists, else at the origin, so --since
+// deletes in that order. inferredOriginName is the metadata.name of a document
+// without an origin: apply writes it at its inferred origin when it has no id
+// or the id is not found, so --since must delete it there. Both are "" for
+// kinds the router does not serve.
+func ExtractDeleteFallbacks(data []byte) (alias, inferredOriginName string, err error) {
 	kind, err := dash0yaml.DetectKind(data)
-	if err != nil || (NormalizeKind(kind) != "dashboard" && NormalizeKind(kind) != "ephemeraldashboard") {
-		return "", err
+	if err != nil {
+		return "", "", err
 	}
-	var dashboard dash0api.DashboardDefinition
-	if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
-		return "", fmt.Errorf("failed to extract alias: %w", err)
+	identity, name, _, err := parseRoutedIdentity(kind, data, nil)
+	if err != nil {
+		return "", "", err
 	}
-	return DashboardAlias(&dashboard), nil
+	if identity.Origin == "" {
+		inferredOriginName = name
+	}
+	return originAlias(identity.ID, identity.Origin), inferredOriginName, nil
 }
 
 // label returns the string value of a metadata label, or "" when it is absent
@@ -125,4 +136,13 @@ func ExtractAlias(data []byte) (string, error) {
 func (p identifierProbe) label(key string) string {
 	s, _ := p.Metadata.Labels[key].(string)
 	return s
+}
+
+// originAlias returns the origin --since falls back to when the id is not
+// found, or "" when the document has no id, so its identifier is the origin.
+func originAlias(id, origin string) string {
+	if id == "" || origin == id {
+		return ""
+	}
+	return origin
 }

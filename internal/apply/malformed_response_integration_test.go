@@ -16,6 +16,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
@@ -246,7 +247,10 @@ func TestMalformedResponse_Apply(t *testing.T) {
 					require.NoError(t, err)
 					require.NoError(t, os.WriteFile(file, data, 0600))
 					path, method := asset.path+"/"+malformedAssetID, http.MethodGet
-					if create {
+					routedKind, routed := routedByInferredOrigin[asset.fixture]
+					if create && routed {
+						path, method = asset.path+"/"+inferredOriginOf(input, routedKind), http.MethodPut
+					} else if create {
 						path, method = asset.path, http.MethodPost
 					} else if stage == "update" {
 						method = http.MethodPut
@@ -273,7 +277,8 @@ func TestMalformedResponse_Apply(t *testing.T) {
 					}
 					assertMalformedCommand(t, apply.NewApplyCmd(), []string{"-f", file}, server, asset, method, path, kind)
 					wantRequests := 1
-					if stage == "update" {
+					if stage == "update" || (create && routed) {
+						// A routed create reads its origin first, and that read is a 404.
 						wantRequests = 2
 					}
 					assert.Len(t, server.Requests(), wantRequests, "no retries or writes after failed preflight")
@@ -281,6 +286,23 @@ func TestMalformedResponse_Apply(t *testing.T) {
 			}
 		}
 	}
+}
+
+// routedByInferredOrigin maps the fixtures whose kinds the router creates by
+// their inferred origin to that kind. Later kinds join as they are routed.
+var routedByInferredOrigin = map[string]string{
+	"dashboards":           "Dashboard",
+	"notificationchannels": "notificationchannel",
+	"spamfilters":          "spamfilter",
+	"teams":                "team",
+}
+
+func inferredOriginOf(input map[string]any, kind string) string {
+	dataset := "default"
+	if kind == "notificationchannel" || kind == "team" {
+		dataset = ""
+	}
+	return asset.InferOrigin(kind, input["metadata"].(map[string]any)["name"].(string), dataset)
 }
 
 func assertMalformedCommand(t *testing.T, cmd *cobra.Command, args []string, server *testutil.MockServer, asset malformedAssetCase, method, path, kind string) {

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -299,8 +300,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	// Import succeeds
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -313,6 +313,16 @@ spec:
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created")
+
+	// Without an identifier, the dashboard is created by its inferred origin,
+	// so a second apply updates it instead of creating another.
+	origin := asset.InferOrigin("Dashboard", "test-dashboard", "default")
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+origin)
+	require.NotNil(t, createReq, "expected a PUT by the inferred origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathDashboards), "apply never creates by POST")
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
+	assert.Equal(t, origin, dashboard.GetOrigin(), "a create sends the origin")
 }
 
 func TestApply_Dashboard_Updated(t *testing.T) {
@@ -1111,7 +1121,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1127,7 +1137,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the create request contains the Perses spec fields
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "test-perses-dashboard", "default"))
 	require.NotNil(t, createReq, "expected a create request for dashboard")
 	var dashboard dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
@@ -1159,7 +1169,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1174,7 +1184,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the spec.config wrapper was unwrapped
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "v1alpha2-dashboard", "default"))
 	require.NotNil(t, createReq, "expected a create request for dashboard")
 	var dashboard dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
@@ -1652,29 +1662,33 @@ spec:
 }
 
 // Adding an origin to an exported dashboard must update that dashboard, not
-// create a second one at the origin.
-func TestApply_Dashboard_OriginNotFoundUpdatesAtID(t *testing.T) {
+// create a second one at the origin. The id is read first, and the update does
+// not send the origin, so the stored origin stays as it was created.
+func TestApply_Dashboard_IDFoundUpdatesAtIDWithoutOrigin(t *testing.T) {
 	requests := applyExportedDashboardWithNewOrigin(t, http.StatusOK)
 
 	assert.Equal(t, []string{
-		"GET /api/dashboards/" + exportedDashboardOrigin,
 		"GET /api/dashboards/" + exportedDashboardID,
 		"PUT /api/dashboards/" + exportedDashboardID,
 	}, methodsAndPaths(requests))
 
 	var body dash0api.DashboardDefinition
-	require.NoError(t, json.Unmarshal(requests[2].Body, &body))
-	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "the PUT carries the origin, which the API ignores on an update")
+	require.NoError(t, json.Unmarshal(requests[1].Body, &body))
+	assert.Empty(t, body.GetOrigin(), "an update never sends the origin")
 }
 
-func TestApply_Dashboard_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
+func TestApply_Dashboard_IDNotFoundCreatesAtOrigin(t *testing.T) {
 	requests := applyExportedDashboardWithNewOrigin(t, http.StatusNotFound)
 
 	assert.Equal(t, []string{
-		"GET /api/dashboards/" + exportedDashboardOrigin,
 		"GET /api/dashboards/" + exportedDashboardID,
+		"GET /api/dashboards/" + exportedDashboardOrigin,
 		"PUT /api/dashboards/" + exportedDashboardOrigin,
 	}, methodsAndPaths(requests))
+
+	var body dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(requests[2].Body, &body))
+	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "a create sends the origin")
 }
 
 func TestApply_Dashboard_RoundTrip(t *testing.T) {
@@ -2664,7 +2678,8 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathNotificationChannels, testutil.MockResponse{
+	origin := asset.InferOrigin("notificationchannel", "Slack Alerts", "")
+	server.On(http.MethodPut, apiPathNotificationChannels+"/"+origin, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureNotificationChannelsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -2682,8 +2697,12 @@ spec:
 	assert.Contains(t, output, "Notification channel")
 	assert.Contains(t, output, "created")
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathNotificationChannels)
-	require.NotNil(t, createReq, "expected a create request for notification channel")
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathNotificationChannels+"/"+origin)
+	require.NotNil(t, createReq, "expected a PUT by the inferred origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathNotificationChannels), "apply never creates by POST")
+	var channel dash0api.NotificationChannelDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &channel))
+	assert.Equal(t, origin, dash0api.GetNotificationChannelOrigin(&channel), "a create sends the origin")
 	assert.NotContains(t, createReq.Query, "dataset=", "notification channels are org-level and must not carry a dataset query parameter")
 }
 
@@ -2977,22 +2996,13 @@ func TestApply_TimeSeriesAggregation_UpsertByOrigin(t *testing.T) {
 	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathTimeSeriesAggs), "did not expect POST")
 }
 
-// The document must be rejected during validation, so a multi-document apply
-// never writes anything before reaching it.
-func TestApply_TimeSeriesAggregation_MissingOriginFailsValidation(t *testing.T) {
+// Without an origin, the aggregation is created by its inferred origin instead
+// of failing validation.
+func TestApply_TimeSeriesAggregation_WithoutOriginUpsertsByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	tmpDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "dashboard.yaml"), []byte(`kind: Dashboard
-metadata:
-  name: Test Dashboard
-  dash0Extensions:
-    id: dash-1
-spec:
-  display:
-    name: Test Dashboard
-`), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aggregation.yaml"), []byte(`apiVersion: dash0.com/v1alpha1
+	yamlFile := filepath.Join(t.TempDir(), "aggregation.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:
   name: no-origin
@@ -3009,15 +3019,109 @@ spec:
 `), 0644))
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	path := apiPathTimeSeriesAggs + "/" + asset.InferOrigin("timeseriesaggregation", "no-origin", "default")
+	server.On(http.MethodPut, path, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   "timeseriesaggregations/create_response.json",
+		Validator:  testutil.RequireHeaders,
+	})
 
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+
+	require.NoError(t, cmdErr)
+	assert.Equal(t, []string{"GET " + path, "PUT " + path}, methodsAndPaths(server.Requests()))
+}
+
+// Two documents without an identifier and with the same kind, name, and
+// dataset would get the same origin, so the run fails before any write.
+func TestApply_InferredOriginCollisionFailsValidation(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	dashboard := []byte("kind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.yaml"), dashboard, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "b.yaml"), dashboard, 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
 
 	err := cmd.Execute()
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dash0.com/origin")
-	assert.Empty(t, server.Requests(), "validation must fail before the dashboard in the same directory is written")
+	assert.Contains(t, err.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), "b.yaml")
+	assert.Empty(t, server.Requests(), "validation must fail before anything is written")
+}
+
+// Two documents with the same name and different ids write at their ids when
+// both ids exist, so validation must not fail them.
+func TestApply_DocumentsWithIDsAndTheSameNameWriteAtTheirIDs(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := writeIDOnlyCheckoutDashboards(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, id := range []string{"id-a", "id-b"} {
+		server.On(http.MethodGet, apiPathDashboards+"/"+id, testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   testutil.FixtureDashboardsImportSuccess,
+			Validator:  testutil.RequireHeaders,
+		})
+	}
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+
+	require.NoError(t, err)
+	assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/id-a"))
+	assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/id-b"))
+}
+
+// When neither id exists, both documents fall back to the same inferred
+// origin, and the second must fail instead of replacing the first.
+func TestApply_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := writeIDOnlyCheckoutDashboards(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+
+	origin := asset.InferOrigin("Dashboard", "checkout", "default")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), "b.yaml")
+	assert.Contains(t, err.Error(), origin)
+	var puts int
+	for _, r := range server.Requests() {
+		if r.Method == http.MethodPut {
+			puts++
+		}
+	}
+	assert.Equal(t, 1, puts, "the second document must not write")
+}
+
+func writeIDOnlyCheckoutDashboards(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+	return tmpDir
 }
 
 // The cross-dataset 400 must keep its explanation instead of being flattened
@@ -3885,11 +3989,10 @@ func methodsAndPaths(requests []testutil.RecordedRequest) []string {
 
 // An exported SSO/SCIM team carries an origin the teams endpoint cannot
 // resolve, and an id it can. Writing at the origin would create a second team.
-func TestApply_Team_OriginNotFoundUpdatesAtID(t *testing.T) {
+func TestApply_Team_IDFoundUpdatesAtID(t *testing.T) {
 	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusOK)
 
 	assert.Equal(t, []string{
-		"GET /api/teams/" + unresolvableTeamOrigin,
 		"GET /api/teams/" + unresolvableTeamID,
 		"PUT /api/teams/" + unresolvableTeamID,
 	}, methodsAndPaths(requests))
@@ -3897,13 +4000,13 @@ func TestApply_Team_OriginNotFoundUpdatesAtID(t *testing.T) {
 	assert.NotContains(t, output, "created")
 }
 
-// When neither label names a stored team, the origin stays the write key.
+// When the id names no stored team, the origin is the write key.
 func TestApply_Team_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
 	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusNotFound)
 
 	assert.Equal(t, []string{
-		"GET /api/teams/" + unresolvableTeamOrigin,
 		"GET /api/teams/" + unresolvableTeamID,
+		"GET /api/teams/" + unresolvableTeamOrigin,
 		"PUT /api/teams/" + unresolvableTeamOrigin,
 	}, methodsAndPaths(requests))
 	assert.Contains(t, output, `Team "Dash0PushGroup" created`)

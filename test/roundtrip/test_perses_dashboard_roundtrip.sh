@@ -108,7 +108,9 @@ if [ "$POST_UPDATE_NAME2" != "$ASSET_NAME" ]; then
 fi
 echo "Display name after update (ID from file): $POST_UPDATE_NAME2"
 
-# Step 6: Also test dashboards create with the CRD file (parity check).
+# Step 6: dashboards create with the same CRD file (parity check). The file has
+# no identifier, so apply and create both write to the same inferred origin and
+# create updates the dashboard instead of adding a second one.
 echo "--- Step 6: Create via dashboards create (parity check) ---"
 CREATE_OUTPUT=$("$DASH0" dashboards create -f "$FIXTURE")
 echo "$CREATE_OUTPUT"
@@ -116,9 +118,13 @@ if ! echo "$CREATE_OUTPUT" | grep -q "$ASSET_NAME"; then
   echo "FAIL: dashboards create output does not mention asset name '$ASSET_NAME'"
   exit 1
 fi
+if echo "$CREATE_OUTPUT" | grep -q "created"; then
+  echo "FAIL: dashboards create of an already applied file created a second dashboard"
+  exit 1
+fi
 
-if [ "$(dashboard_ids | wc -l | tr -d ' ')" != "2" ]; then
-  echo "FAIL: expected 2 dashboards named '$ASSET_NAME' after apply and create, got:"
+if [ "$(dashboard_ids | wc -l | tr -d ' ')" != "1" ]; then
+  echo "FAIL: expected 1 dashboard named '$ASSET_NAME' after apply and create, got:"
   dashboard_ids
   exit 1
 fi

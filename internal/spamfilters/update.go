@@ -28,10 +28,9 @@ and update through the same handler, so 'apply' is idempotent on origin
 but not on user-supplied IDs (the server assigns the ID server-side on
 create).
 
-When the positional argument is omitted, the upsert key is taken from
-the file in this order:
-  1. 'dash0.com/origin' under metadata.labels (preferred)
-  2. 'dash0.com/id'     under metadata.labels (fallback)
+When the positional argument is omitted, the filter is taken from the
+file as apply takes it: 'dash0.com/id' under metadata.labels when that
+filter exists, else 'dash0.com/origin'.
 
 The apiVersion field on the document selects the schema: v1alpha1 uses
 spec.contexts (array); v1alpha2 uses spec.context (scalar).` + internal.CONFIG_HINT,
@@ -93,15 +92,7 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 		return err
 	}
 
-	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "spam filter",
-		Upsert: filter,
-	})
-	if err != nil {
-		return err
-	}
-
-	before, err := apiClient.GetSpamFilter(ctx, key, dataset)
+	key, before, err := routeUpdate(ctx, args, apiClient, filter, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "spam filter",
@@ -114,6 +105,7 @@ func runUpdateV1Alpha1(ctx context.Context, raw []byte, args []string, apiClient
 		return asset.PrintDiff(os.Stdout, "Spam filter", dash0api.GetSpamFilterName(filter), before, filter)
 	}
 
+	asset.ClearUpdateOrigin(filter)
 	result, err := apiClient.UpdateSpamFilter(ctx, key, filter, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
@@ -132,15 +124,7 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 		return err
 	}
 
-	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "spam filter",
-		Upsert: filter,
-	})
-	if err != nil {
-		return err
-	}
-
-	before, err := apiClient.GetSpamFilter(ctx, key, dataset)
+	key, before, err := routeUpdate(ctx, args, apiClient, filter, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "spam filter",
@@ -153,6 +137,7 @@ func runUpdateV1Alpha2(ctx context.Context, raw []byte, args []string, apiClient
 		return asset.PrintDiff(os.Stdout, "Spam filter", filter.Metadata.Name, before, filter)
 	}
 
+	asset.ClearUpdateOrigin(filter)
 	result, err := apiClient.UpdateSpamFilterV1Alpha2(ctx, key, filter, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
@@ -178,4 +163,15 @@ func warnOnVersionMismatch(id, inputVersion, serverVersion string) {
 		"Note: server-stored spam filter %q is %s; replacing with %s definition from input.\n",
 		id, serverVersion, inputVersion,
 	)
+}
+
+func routeUpdate(ctx context.Context, args []string, apiClient dash0api.Client, filter interface {
+	dash0api.AssetMetadata
+	GetName() string
+}, dataset *string) (string, dash0api.SpamFilterObject, error) {
+	key := asset.UpdateKey{Noun: "spam filter", Upsert: filter}
+	get := func(ctx context.Context, key string) (dash0api.SpamFilterObject, error) {
+		return apiClient.GetSpamFilter(ctx, key, dataset)
+	}
+	return asset.RouteUpdate(ctx, args, key, asset.SpamFilterIdentity(filter, dataset), get)
 }

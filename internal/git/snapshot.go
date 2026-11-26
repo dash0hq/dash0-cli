@@ -86,9 +86,18 @@ type Snapshot struct {
 	RawContent map[string][]byte
 
 	// Aliases maps an identifier to a second identifier of the same asset
-	// (see asset.ExtractAlias), so an asset still declared under either one
+	// (see asset.ExtractDeleteFallbacks), so an asset still declared under either one
 	// is not a deletion.
 	Aliases map[IdentifierKey]string
+
+	// InferredOriginNames maps the identifier of a routed document that names
+	// only a dash0.com/id to its metadata.name (see asset.ExtractDeleteFallbacks).
+	InferredOriginNames map[IdentifierKey]string
+
+	// InferredOriginDocuments holds the kind and metadata.name of every routed
+	// document without an origin, which apply writes at its inferred origin
+	// when it has no id or the id is not found.
+	InferredOriginDocuments map[IdentifierKey]bool
 }
 
 func newSnapshot() Snapshot {
@@ -101,6 +110,8 @@ func newSnapshot() Snapshot {
 		Paths:                               map[string]bool{},
 		RawContent:                          map[string][]byte{},
 		Aliases:                             map[IdentifierKey]string{},
+		InferredOriginNames:                 map[IdentifierKey]string{},
+		InferredOriginDocuments:             map[IdentifierKey]bool{},
 	}
 }
 
@@ -271,6 +282,13 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		}
 
 		normalizedKind := asset.NormalizeKind(kind)
+		alias, inferredOriginName, err := asset.ExtractDeleteFallbacks(docBytes)
+		if err != nil {
+			return fmt.Errorf("failed to read fallback identifiers: %w", err)
+		}
+		if inferredOriginName != "" {
+			snap.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(normalizedKind), Identifier: inferredOriginName}] = true
+		}
 		if identifier == "" {
 			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
 			continue
@@ -278,12 +296,11 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
 		snap.Identifiers[key] = docPath
 
-		alias, err := asset.ExtractAlias(docBytes)
-		if err != nil {
-			return fmt.Errorf("failed to extract alias: %w", err)
-		}
 		if alias != "" {
 			snap.Aliases[key] = alias
+		}
+		if inferredOriginName != "" {
+			snap.InferredOriginNames[key] = inferredOriginName
 		}
 
 		if normalizedKind == "prometheusrule" {

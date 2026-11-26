@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"fmt"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -70,4 +71,62 @@ func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
 		)
 	}
 	return "", fmt.Errorf("no %s id given: pass one as an argument, or set the id in the file", k.Noun)
+}
+
+// CheckRouteUpdate fails when RouteUpdate has no key to read, so a command can
+// report a bad file or argument before it builds an API client.
+func CheckRouteUpdate(args []string, k UpdateKey, identity Identity) error {
+	if len(args) == 0 && identity.ID != "" {
+		return nil
+	}
+	_, err := ResolveUpdateKey(args, k)
+	return err
+}
+
+// RouteUpdate returns the key and the stored asset that `update -f` writes for
+// a kind RouteDocument routes. Without an argument it reads the file's id
+// first, then its origin, as apply reads those labels. update never creates
+// and never tries the inferred origin, so a missing asset is get's not-found
+// error.
+func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identity Identity, get func(context.Context, string) (T, error)) (string, T, error) {
+	var zero T
+	if len(args) > 0 || identity.ID == "" {
+		key, err := ResolveUpdateKey(args, k)
+		if err != nil {
+			return "", zero, err
+		}
+		stored, err := get(ctx, key)
+		return key, stored, err
+	}
+	stored, err := get(ctx, identity.ID)
+	if err == nil {
+		if asset, ok := any(stored).(interface{ GetOrigin() string }); ok {
+			if err := checkStoredOrigin(identity, asset.GetOrigin()); err != nil {
+				return identity.ID, zero, err
+			}
+		}
+		return identity.ID, stored, nil
+	}
+	if !dash0api.IsNotFound(err) || identity.Origin == "" || identity.Origin == identity.ID {
+		return identity.ID, zero, err
+	}
+	stored, err = get(ctx, identity.Origin)
+	return identity.Origin, stored, err
+}
+
+// ClearUpdateOrigin removes dash0.com/origin from the body of an update, as
+// apply does, so an update never tries to change a stored origin.
+func ClearUpdateOrigin(document dash0api.AssetMetadata) {
+	switch d := document.(type) {
+	case *dash0api.DashboardDefinition:
+		setDashboardOrigin(d, "")
+	case *dash0api.TeamDefinitionV1Alpha1:
+		setTeamOrigin(d, "")
+	case *dash0api.NotificationChannelDefinition:
+		setNotificationChannelOrigin(d, "")
+	case *dash0api.SpamFilter:
+		setSpamFilterOrigin(&d.Metadata, "")
+	case *dash0api.SpamFilterV1Alpha2:
+		setSpamFilterOrigin(&d.Metadata, "")
+	}
 }

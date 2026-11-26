@@ -29,8 +29,9 @@ func newCreateCmd() *cobra.Command {
 		Short:   "[experimental] Create a notification channel from a file",
 		Long: `Create a new notification channel from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-If the definition contains a dash0.com/origin label, the channel is created or replaced (PUT).
-Otherwise, a new channel is created (POST) and the server assigns an ID.` + internal.CONFIG_HINT,
+The CLI reads dash0.com/id first and updates the channel at the id when it exists.
+Otherwise it creates or replaces the channel by dash0.com/origin, or by an origin
+it infers from metadata.name, so creating the same file again updates the same channel.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 --experimental notification-channels create -f channel.yaml
 

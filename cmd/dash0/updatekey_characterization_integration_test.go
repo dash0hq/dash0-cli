@@ -82,6 +82,9 @@ var updateCommands = []updateCommand{
 		}
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: n\n" + v.labelBlock(false) + extensions + "spec:\n  display:\n    name: n\n"
 	}},
+	{"dashboards with dash0.com/id", dashboards.NewDashboardsCmd, []string{"dashboards", "update"}, func(v updateIdentifiers) string {
+		return "apiVersion: dash0.com/v1alpha1\nkind: Dashboard\nmetadata:\n  name: n\n" + v.labelBlock(true) + "spec:\n  display:\n    name: n\n"
+	}},
 	{"check-rules", checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}, func(v updateIdentifiers) string {
 		id := ""
 		if v.hasID() {
@@ -188,6 +191,12 @@ func TestUpdateKey_Characterization(t *testing.T) {
 			updateWithID:      "GET /api/dashboards/" + characterizationID,
 			updateWithBoth:    `error: metadata.labels["dash0.com/origin"] ("o") and metadata.dash0Extensions.id ("` + characterizationID + `") must be equal; set only metadata.labels["dash0.com/origin"], and move "` + characterizationID + `" to metadata.labels["dash0.com/id"] if it is the id of an existing dashboard`,
 		},
+		"dashboards with dash0.com/id": {
+			updateWithNeither: `error: no dashboard origin or id given: pass one as an argument, or set metadata.labels["dash0.com/origin"] in the file`,
+			updateWithOrigin:  "GET /api/dashboards/o",
+			updateWithID:      "GET /api/dashboards/" + characterizationID,
+			updateWithBoth:    "GET /api/dashboards/" + characterizationID,
+		},
 		"check-rules": {
 			updateWithNeither: "error: no check rule id given: pass one as an argument, or set the id in the file",
 			updateWithOrigin:  "error: no check rule id given: pass one as an argument, or set the id in the file",
@@ -221,32 +230,32 @@ func TestUpdateKey_Characterization(t *testing.T) {
 		"notification-channels": {
 			updateWithNeither: "error: no notification channel origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/notification-channels/o",
-			updateWithID:      "error: no notification channel origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
-			updateWithBoth:    "GET /api/notification-channels/o",
+			updateWithID:      "GET /api/notification-channels/" + characterizationID,
+			updateWithBoth:    "GET /api/notification-channels/" + characterizationID,
 		},
 		"spam-filters v1alpha1": {
 			updateWithNeither: "error: no spam filter origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/spam-filters/o",
 			updateWithID:      "GET /api/spam-filters/" + characterizationID,
-			updateWithBoth:    "GET /api/spam-filters/o",
+			updateWithBoth:    "GET /api/spam-filters/" + characterizationID,
 		},
 		"spam-filters v1alpha2": {
 			updateWithNeither: "error: no spam filter origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/spam-filters/o",
 			updateWithID:      "GET /api/spam-filters/" + characterizationID,
-			updateWithBoth:    "GET /api/spam-filters/o",
+			updateWithBoth:    "GET /api/spam-filters/" + characterizationID,
 		},
 		"teams": {
 			updateWithNeither: "error: no team origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/teams/o",
 			updateWithID:      "GET /api/teams/" + characterizationID,
-			updateWithBoth:    "GET /api/teams/o",
+			updateWithBoth:    "GET /api/teams/" + characterizationID,
 		},
 		"time-series-aggregations": {
 			updateWithNeither: "error: no time series aggregation origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
 			updateWithOrigin:  "GET /api/time-series-aggregations/o",
-			updateWithID:      "error: no time series aggregation origin or id given: pass one as an argument, or set metadata.labels[\"dash0.com/origin\"] in the file",
-			updateWithBoth:    "GET /api/time-series-aggregations/o",
+			updateWithID:      "GET /api/time-series-aggregations/" + characterizationID,
+			updateWithBoth:    "GET /api/time-series-aggregations/" + characterizationID,
 		},
 		"datasets": {
 			updateWithNeither: "error: no dataset id given: pass one as an argument, or set the id in the file",

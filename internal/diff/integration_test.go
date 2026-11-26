@@ -20,6 +20,7 @@ import (
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1437,4 +1438,30 @@ spec:
 	assert.Contains(t, output, "Ephemeral dashboard")
 	assert.Contains(t, output, "1d")
 	assert.Contains(t, output, "7d")
+}
+
+// diff must report the collision apply fails on: both ids are not found, so
+// both documents would write the same inferred origin.
+func TestDiff_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	cmd := NewDiffCmd()
+	withExperimentalFlag(cmd)
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken, "--experimental"})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+
+	require.Error(t, cmdErr)
+	var pending *PendingDifferencesError
+	assert.False(t, errors.As(cmdErr, &pending), "a collision is an error, not a pending difference")
+	assert.Contains(t, cmdErr.Error(), "a.yaml")
+	assert.Contains(t, cmdErr.Error(), "b.yaml")
+	assert.Contains(t, cmdErr.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
 }

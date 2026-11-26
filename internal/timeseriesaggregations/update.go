@@ -21,8 +21,9 @@ func newUpdateCmd() *cobra.Command {
 		Long: `Update an existing time series aggregation from a YAML or JSON definition
 file. Use '-f -' to read from stdin.
 
-When the positional argument is omitted, the target is taken from the
-document's 'dash0.com/origin' label. When it is given, it must match that
+When the positional argument is omitted, the target is the document's
+'dash0.com/id' label, or its 'dash0.com/origin' label when the id is not
+found, as apply does. When the argument is given, it must match the origin
 label. An id is accepted only when the document also carries that id, which
 is the case for a definition exported with 'tsa get -o yaml'; a hand-written
 document normally carries only the origin, because ids are server-assigned.
@@ -60,11 +61,9 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return err
 	}
 
-	key, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   assetType,
-		Upsert: aggregation,
-	})
-	if err != nil {
+	updateKey := asset.UpdateKey{Noun: assetType, Upsert: aggregation}
+	identity := asset.TimeSeriesAggregationIdentity(aggregation, nil)
+	if err := asset.CheckRouteUpdate(args, updateKey, identity); err != nil {
 		return err
 	}
 
@@ -75,7 +74,10 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 
-	before, err := apiClient.GetTimeSeriesAggregation(ctx, key, dataset)
+	get := func(ctx context.Context, key string) (*dash0api.TimeSeriesAggregationDefinition, error) {
+		return apiClient.GetTimeSeriesAggregation(ctx, key, dataset)
+	}
+	key, before, err := asset.RouteUpdate(ctx, args, updateKey, identity, get)
 	if err != nil {
 		if asset.IsTimeSeriesAggregationWrongDataset(err) {
 			return asset.WrapTimeSeriesAggregationWrongDataset(err, key)
