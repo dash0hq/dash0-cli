@@ -1445,6 +1445,7 @@ View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
 
 `--since` reads the inferred origin before it deletes there, because several delete endpoints report success for an asset that does not exist.
 When nothing is there, it prints a warning and deletes nothing, for example for an asset that an earlier dash0 version created at a server-assigned origin, or one applied with another dataset.
+`--dry-run` never reads from Dash0, so it still lists that deletion; use [`diff --since`](#diff-experimental) to see only the deletions `apply` makes.
 
 When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
 
@@ -1580,6 +1581,7 @@ If any single fetch fails for a reason other than the asset simply not existing 
 `--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
 A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
 A removed document without `dash0.com/id` or `dash0.com/origin` is listed as a deletion at its inferred origin, as `apply --since` deletes it.
+`diff` reads the inferred origin first, as `apply --since` does, so when nothing is there it prints the same warning and does not list the deletion.
 When a document elsewhere in the repository still writes that inferred origin, `diff --since` leaves it out and prints the same warning as `apply --since`.
 A removed dataset without a slug, or AWS metric scrape config without `dash0.com/id`, still fails the whole command before any plan is reported, matching `apply --since`'s posture.
 A check rule that `-f`'s current contents still declare is not listed as a deletion, because `apply --since` skips it.

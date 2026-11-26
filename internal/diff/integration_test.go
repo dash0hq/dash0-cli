@@ -1587,6 +1587,12 @@ func TestDiff_Since_DocumentWithoutIdentifierIsDeletedAtItsInferredOrigin(t *tes
 	repoDir, ref := testutil.BuildGitScenario(t, "no-identifier-deletion")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, name := range []string{"View A", "View B"} {
+		server.On(http.MethodGet, "/api/views/"+asset.InferOrigin("view", name, "default"), testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   testutil.FixtureViewsGetSuccess,
+		})
+	}
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
@@ -1629,4 +1635,48 @@ func TestDiff_Since_DocumentWithoutIdentifierIsDeletedAtItsInferredOrigin(t *tes
 	for _, req := range server.Requests() {
 		assert.Equal(t, http.MethodGet, req.Method, "diff must not mutate")
 	}
+}
+
+// An asset that an earlier dash0 version created, or that was applied with
+// another dataset, is not at the inferred origin. apply --since reads it there
+// and skips the delete, so diff must not list it either.
+func TestDiff_Since_NothingAtTheInferredOriginIsNotListed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repoDir}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "test")
+	target := filepath.Join(repoDir, "views")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	view := "kind: View\nmetadata:\n  name: ghost\nspec:\n  type: logs\n  display:\n    name: ghost\n"
+	require.NoError(t, os.WriteFile(filepath.Join(target, "ghost.yaml"), []byte(view), 0o644))
+	git("add", "-A")
+	git("commit", "-q", "-m", "add view")
+	ref := git("rev-parse", "HEAD")
+	require.NoError(t, os.RemoveAll(target))
+	git("add", "-A")
+	git("commit", "-q", "-m", "remove view")
+
+	inferred := asset.InferOrigin("view", "ghost", "default")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/"+inferred, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+	})
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", target, "--since", ref, "--api-url", server.URL)
+	})
+
+	require.NoError(t, err, output)
+	assert.NotContains(t, output, "Delete")
+	assert.Contains(t, output, "No differences")
+	assert.Contains(t, stderr, "no asset at inferred origin "+inferred)
 }

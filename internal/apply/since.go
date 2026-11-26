@@ -173,12 +173,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		return deletePrometheusRuleCRD(ctx, apiClient, dataset, d, declared)
 	}
 
+	get := func(key string) error { return asset.GetRoutedAsset(ctx, apiClient, kind, key, dataset) }
 	switch kind {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetDashboard(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteDashboard(ctx, identifier, dataset)
 		}
@@ -189,10 +187,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", identifier))
 			return true, nil
 		}
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetCheckRule(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil && declared[identifier] {
 			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", d.Identifier))
 			return true, nil
@@ -201,18 +196,12 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 			err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
 		}
 	case "syntheticcheck":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetSyntheticCheck(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
 		}
 	case "slo":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetSLO(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteSLO(ctx, identifier, dataset)
 		}
@@ -221,58 +210,37 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// disappeared entirely (see Diff's PrometheusRecordingRoleByIdentifier
 		// handling) -- distinct from the whole-CRD "prometheusrule" case
 		// above, which already attempts this endpoint unconditionally.
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetRecordingRule(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
 		}
 	case "view":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetView(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteView(ctx, identifier, dataset)
 		}
 	case "spamfilter":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetSpamFilter(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteSpamFilter(ctx, identifier, dataset)
 		}
 	case "notificationchannel":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetNotificationChannel(ctx, key)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteNotificationChannel(ctx, identifier)
 		}
 	case "team":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetTeam(ctx, key)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteTeam(ctx, identifier)
 		}
 	case "skill":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetCustomSkill(ctx, key)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteCustomSkill(ctx, identifier)
 		}
 	case "generativeaievaluation":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
 		}
@@ -285,10 +253,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// the same call as `aws-metric-scrape-configs delete`.
 		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
 	case "signaltometrics":
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetSignalToMetrics(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
 		}
@@ -301,10 +266,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// with 200, so the tolerance below rarely fires for this kind. The GET
 		// honors the dataset, so a rule in another dataset fails it with the
 		// cross-dataset 400, which is explained below.
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetSamplingRule(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteSamplingRule(ctx, identifier, dataset)
 		}
@@ -318,10 +280,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// 400, which must not be mistaken for "already gone": the aggregation
 		// exists and belongs to another dataset, so reporting it as reconciled
 		// would be a lie in a CI log.
-		identifier, err = routedDeleteKey(dataset, d, declaredRouted, func(key string) error {
-			_, err := apiClient.GetTimeSeriesAggregation(ctx, key, dataset)
-			return err
-		})
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
 		if err == nil {
 			err = apiClient.DeleteTimeSeriesAggregation(ctx, identifier, dataset)
 		}
@@ -334,7 +293,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 
 	ectx := client.ErrorContext{AssetType: asset.KindDisplayName(kind), AssetID: identifier}
 	if d.AtInferredOrigin && dash0api.IsNotFound(err) {
-		fmt.Fprintf(os.Stderr, "warning: no asset at inferred origin %s; an asset created by an earlier dash0 version or in another dataset is not deleted\n", identifier)
+		asset.WarnNothingAtInferredOrigin(os.Stderr, identifier)
 		return true, nil
 	}
 	if err != nil {
@@ -421,10 +380,7 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	recordingRuleKey, recordingRuleErr := routedDeleteKey(dataset, gitutil.Deletion{
 		Kind: "recordingrule", Identifier: identifier, Alias: d.Alias,
 		InferredOriginName: d.InferredOriginName, InferredOriginKept: d.InferredOriginKept,
-	}, nil, func(key string) error {
-		_, err := apiClient.GetRecordingRule(ctx, key, dataset)
-		return err
-	})
+	}, nil, func(key string) error { return asset.GetRoutedAsset(ctx, apiClient, "recordingrule", key, dataset) })
 	if recordingRuleErr == nil {
 		recordingRuleErr = apiClient.DeleteRecordingRule(ctx, recordingRuleKey, dataset)
 	}

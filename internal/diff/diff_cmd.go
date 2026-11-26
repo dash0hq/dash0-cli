@@ -127,6 +127,12 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 		return err
 	}
 
+	if sincePlan != nil {
+		if err := dropEmptyInferredOrigins(ctx, apiClient, sincePlan, dataset); err != nil {
+			return err
+		}
+	}
+
 	// Every document is read before anything is printed, so a failed read
 	// aborts the whole preview instead of printing a partial one.
 	planned, err := planDocuments(ctx, apiClient, documents, dataset)
@@ -269,5 +275,26 @@ func checkInferredOriginWrites(planned []plannedDoc, dataset *string) error {
 			}
 		}
 	}
+	return nil
+}
+
+// dropEmptyInferredOrigins leaves out a deletion at an inferred origin that
+// holds nothing, because apply --since reads it there and skips the delete.
+func dropEmptyInferredOrigins(ctx context.Context, apiClient dash0api.Client, sincePlan *gitutil.SincePlan, dataset *string) error {
+	kept := sincePlan.Plan.ByIdentifier[:0]
+	for _, deletion := range sincePlan.Plan.ByIdentifier {
+		if deletion.AtInferredOrigin {
+			err := asset.GetRoutedAsset(ctx, apiClient, deletion.Kind, deletion.Identifier, dataset)
+			if dash0api.IsNotFound(err) {
+				asset.WarnNothingAtInferredOrigin(os.Stderr, deletion.Identifier)
+				continue
+			}
+			if err != nil {
+				return client.HandleAPIError(err, client.ErrorContext{AssetType: asset.KindDisplayName(deletion.Kind), AssetID: deletion.Identifier})
+			}
+		}
+		kept = append(kept, deletion)
+	}
+	sincePlan.Plan.ByIdentifier = kept
 	return nil
 }
