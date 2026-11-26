@@ -50,6 +50,10 @@ type Deletion struct {
 	// PrometheusRule without an identifier, which share one Path. "" means
 	// SincePlan.Names has it.
 	Name string
+	// AtInferredOrigin reports that Identifier is the inferred origin of a
+	// document without an identifier. An asset that an earlier dash0 version
+	// created, or that was applied with another dataset, is not there.
+	AtInferredOrigin bool
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -91,6 +95,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if survives(before, after, key) {
 			continue
 		}
+		_, atInferredOrigin := before.Inferred[key]
 		deletion := Deletion{
 			Kind:               key.Kind,
 			Identifier:         key.Identifier,
@@ -100,6 +105,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(key.Kind), Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
 			Name:               before.Inferred[key],
+			AtInferredOrigin:   atInferredOrigin,
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]

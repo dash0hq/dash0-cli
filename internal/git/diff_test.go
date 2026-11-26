@@ -572,14 +572,14 @@ func TestDiff_PrometheusRuleWithoutIdentifierIsDeletedAtEachInferredOrigin(t *te
 		assert.Empty(t, plan.NoIdentifier)
 		assert.Empty(t, plan.AlertsByName)
 		assert.ElementsMatch(t, []Deletion{
-			{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A"},
-			{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B"},
-			{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules"},
+			{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A", AtInferredOrigin: true},
+			{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B", AtInferredOrigin: true},
+			{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules", AtInferredOrigin: true},
 		}, plan.ByIdentifier)
 	})
 	t.Run("one alert removed", func(t *testing.T) {
 		plan := Diff(snapshot(t, crd(false, "A", "B")), snapshot(t, crd(false, "A")))
-		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B"}}, plan.ByIdentifier)
+		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B", AtInferredOrigin: true}}, plan.ByIdentifier)
 		assert.Empty(t, plan.AlertsByName)
 	})
 	t.Run("an alert added keeps the others where they are", func(t *testing.T) {
@@ -587,7 +587,7 @@ func TestDiff_PrometheusRuleWithoutIdentifierIsDeletedAtEachInferredOrigin(t *te
 	})
 	t.Run("recording rules removed", func(t *testing.T) {
 		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, crd(false, "A")))
-		assert.Equal(t, []Deletion{{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules"}}, plan.ByIdentifier)
+		assert.Equal(t, []Deletion{{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules", AtInferredOrigin: true}}, plan.ByIdentifier)
 	})
 	t.Run("gained only an id", func(t *testing.T) {
 		// apply creates an alert at its id when the id is not found, so the
@@ -595,6 +595,6 @@ func TestDiff_PrometheusRuleWithoutIdentifierIsDeletedAtEachInferredOrigin(t *te
 		// fall back to their inferred origin.
 		withID := []byte(strings.Replace(string(crd(true, "A")), "  name: rules\n", "  name: rules\n  labels:\n    dash0.com/id: crd-1\n", 1))
 		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, withID))
-		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A"}}, plan.ByIdentifier)
+		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A", AtInferredOrigin: true}}, plan.ByIdentifier)
 	})
 }

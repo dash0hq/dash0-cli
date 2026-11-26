@@ -333,6 +333,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	}
 
 	ectx := client.ErrorContext{AssetType: asset.KindDisplayName(kind), AssetID: identifier}
+	if d.AtInferredOrigin && dash0api.IsNotFound(err) {
+		fmt.Fprintf(os.Stderr, "warning: no asset at inferred origin %s; an asset created by an earlier dash0 version or in another dataset is not deleted\n", identifier)
+		return true, nil
+	}
 	if err != nil {
 		if client.IsAlreadyDeleted(err, true, ectx) {
 			return true, nil
@@ -568,7 +572,9 @@ func routedDeleteKey(dataset *string, d gitutil.Deletion, declared map[string]bo
 			fallback, kept = "", true
 		}
 	}
-	if fallback == "" && !kept {
+	// Several delete endpoints answer a key that does not exist with 2xx, so
+	// an inferred origin, which often holds nothing, is read first.
+	if fallback == "" && !kept && !d.AtInferredOrigin {
 		return d.Identifier, nil
 	}
 	err := get(d.Identifier)

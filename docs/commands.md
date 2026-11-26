@@ -1443,6 +1443,9 @@ $ dash0 --experimental apply -f views/ --since HEAD~1 --force
 View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
 ```
 
+`--since` reads the inferred origin before it deletes there, because several delete endpoints report success for an asset that does not exist.
+When nothing is there, it prints a warning and deletes nothing, for example for an asset that an earlier dash0 version created at a server-assigned origin, or one applied with another dataset.
+
 When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
 
 `--since` also does not delete at an inferred origin that a document anywhere else in the repository still writes for the dataset of the run, and prints a warning that names that document.

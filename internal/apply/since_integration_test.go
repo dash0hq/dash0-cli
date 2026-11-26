@@ -3639,6 +3639,45 @@ func TestApply_Since_EveryKindDeletesADocumentWithoutIdentifierAtItsInferredOrig
 	}
 }
 
+// Several delete endpoints answer a key that does not exist with 2xx, so
+// --since reads the inferred origin first. An asset created by an earlier
+// dash0 version, or applied with another dataset, is not there, and --since
+// must not report a deletion that never happened.
+func TestApply_Since_NothingAtTheInferredOriginIsNotReportedAsDeleted(t *testing.T) {
+	run := func(t *testing.T, kind string, spec routedKind) {
+		testutil.SetupTestEnv(t)
+		dir := t.TempDir()
+		before := commitRemoval(t, dir, map[string]string{"asset.yaml": spec.document("")}, "asset.yaml")
+
+		inferred := inferredOrigin(kind, spec)
+		_, writeResponse := routedFixtures(t, spec)
+		server := testutil.NewMockServer(t, testutil.FixturesDir())
+		requests := serveRouted(server, spec, map[string][]byte{}, writeResponse)
+
+		cmd := newSinceTestCmd()
+		cmd.SetArgs([]string{"-f", dir, "--since", before, "--force", "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+		var cmdErr error
+		var stdout string
+		stderr := testutil.CaptureStderr(t, func() {
+			stdout = testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+		})
+		require.NoError(t, cmdErr)
+
+		for _, request := range *requests {
+			assert.Equal(t, "GET "+inferred, request.line)
+		}
+		assert.NotContains(t, stdout, "deleted")
+		assert.Contains(t, stderr, "no asset at inferred origin "+inferred)
+	}
+	for _, kind := range asset.ValidKinds {
+		spec := routedKinds[kind]
+		if spec.idRequired() {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) { run(t, kind, spec) })
+	}
+}
+
 // Renaming a document without an identifier moves it to a new inferred origin:
 // apply creates the new asset, --since deletes the old one, and plain apply
 // leaves it.
