@@ -18,7 +18,7 @@
 | Time series aggregations | `dash0 time-series-aggregations <subcommand>` (alias `tsa`) | Dataset-scoped. Every endpoint requires the organization admin role. `metadata.labels["dash0.com/origin"]` is mandatory and is the only upsert key |
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `metadata.labels["dash0.com/origin"]` is the upsert key. Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
 | Sampling rules | `dash0 sampling-rules <subcommand>` | Dataset-scoped. `kind: Dash0Sampling`; `metadata.labels["dash0.com/origin"]` is the upsert key. Writes require the organization admin role. The first enabled rule in a dataset turns sampling on; see [Sampling rules](#sampling-rules) |
-| Telemetry transformation rules | `dash0 telemetry-transformation-rules <subcommand>` | Unreleased. Dataset-scoped, no short top-level alias. `create` is POST-only; `update` replaces an existing rule; `apply` reconciles by origin, then ID. List output omits stored examples |
+| Telemetry transformation rules | `dash0 telemetry-transformation-rules <subcommand>` | Dataset-scoped, no short top-level alias. `create` is POST-only; `update` replaces an existing rule; `apply` reconciles by origin, then ID. List output omits stored examples |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `metadata.labels["dash0.com/origin"]` is the upsert key, and the skill name comes from the `SKILL.md` frontmatter |
@@ -27,7 +27,6 @@
 ### `telemetry-transformation-rules`
 
 `telemetry-transformation-rules` manages dataset-scoped rules with no short top-level alias.
-This command is unreleased; the stable client, specification, and launch gates still apply, and no release version is promised.
 Preview and policy commands are out of scope.
 
 The command uses the shared asset flags: `--dataset`, `--api-url`, `--auth-token`, and `-o`/`--output`, plus the operation-specific flags below.
@@ -108,7 +107,7 @@ These objects can contain arbitrary nested OTLP objects and arrays, including re
 There may be at most 10 examples, each at most 64 KiB of compact JSON, with at least 1 telemetry item.
 Examples are stored configuration, not telemetry subject to telemetry retention; use synthetic data without secrets or personal information.
 
-Telemetry transformation rule (unreleased, dataset-scoped, disabled synthetic logs example):
+Telemetry transformation rule (dataset-scoped, disabled synthetic logs example):
 
 ```yaml
 kind: Dash0TelemetryTransformationRule

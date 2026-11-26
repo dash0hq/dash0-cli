@@ -89,9 +89,8 @@ When `list -o yaml` or `get -o yaml` exports an existing asset, the server-assig
 For telemetry transformation rules, `list` omits stored `spec.examples` and is not a safe complete backup.
 Use single-rule `get` to include examples; replacement PUT without `spec.examples` removes them.
 
-Telemetry transformation rules are unreleased, dataset-scoped, and have no short top-level alias.
+Telemetry transformation rules are dataset-scoped and have no short top-level alias.
 The current model has no `apiVersion` field; use ordered `spec.transformations` objects with `name` and `statements`, never flat `spec.statements`.
-The stable client, specification, and launch gates still apply, with no promised release version.
 Read the `telemetry-transformation-rules` topic for priorities, signal/context combinations, OR conditions, and a disabled synthetic logs example with nested OTLP data.
 
 ## Filter syntax
@@ -234,7 +233,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `spans` | Query and send spans |
 | `synthetic-checks` | Synthetic check CRUD |
 | `teams` | Team management and membership |
-| `telemetry-transformation-rules` | Unreleased dataset-scoped rule CRUD and apply; POST-only create, replacement update, full-rule get with examples |
+| `telemetry-transformation-rules` | Dataset-scoped rule CRUD and apply; POST-only create, replacement update, full-rule get with examples |
 | `time-series-aggregations` | Time series aggregation CRUD (alias `tsa`; admin role required) |
 | `traces` | Retrieve every span belonging to a trace |
 | `views` | View CRUD |

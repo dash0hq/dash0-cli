@@ -507,11 +507,10 @@ Create a rule from a file:
 dash0 sampling-rules create -f sampling-rule.yaml
 ```
 
-### Telemetry transformation rules (unreleased)
+### Telemetry transformation rules
 
 `dash0 telemetry-transformation-rules` manages dataset-scoped rules with `list` (`ls`), `get`, `create` (`add`), `update`, and `delete` (`remove`).
 There is no short top-level alias.
-The stable client, specification, and launch gates still apply; no release version is promised.
 
 List rules in any shared asset output format (`table`, `wide`, `csv`, `json`, or `yaml`):
 
