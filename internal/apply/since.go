@@ -560,7 +560,8 @@ func (index checkRuleNameIndex) resolve(name string) (string, error) {
 // identifier, or, when the identifier is not found, its alias or inferred
 // origin. Several delete endpoints answer an unknown key with 2xx, and the
 // others with a 404 that reads as already deleted, so deleting at the wrong
-// key would report a deletion that never happened. An inferred origin that
+// key would report a deletion that never happened. An inferred origin is read
+// first for the same reason, because it often holds nothing. An inferred origin that
 // the current files still declare is never a fallback, because this run
 // writes the asset there.
 func routedDeleteKey(dataset *string, d gitutil.Deletion, declared map[string]bool, get func(key string) error) (string, error) {
@@ -572,8 +573,6 @@ func routedDeleteKey(dataset *string, d gitutil.Deletion, declared map[string]bo
 			fallback, kept = "", true
 		}
 	}
-	// Several delete endpoints answer a key that does not exist with 2xx, so
-	// an inferred origin, which often holds nothing, is read first.
 	if fallback == "" && !kept && !d.AtInferredOrigin {
 		return d.Identifier, nil
 	}

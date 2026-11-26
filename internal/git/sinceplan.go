@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -209,7 +210,7 @@ func ComputeSincePlan(ctx context.Context, file, since string, dataset *string) 
 	}
 
 	plan := Diff(before, after)
-	warnings, err := keepInferredOriginsDeclaredOutsideScope(ctx, &plan, before, repoRoot, dataset)
+	warnings, err := keepInferredOriginsDeclaredOutsideScope(ctx, &plan, repoRoot, dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -378,15 +379,8 @@ func StripScope(path, scope string) string {
 // ponytail: a same-named document applied to another dataset also matches, so
 // that deletion is skipped too and leaves an orphan; an orphan can be deleted
 // by hand, a live asset cannot be brought back.
-func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *DeletionPlan, before Snapshot, repoRoot string, dataset *string) ([]string, error) {
-	var atInferredOrigin bool
-	for _, deletion := range plan.ByIdentifier {
-		if _, ok := before.Inferred[IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}]; ok {
-			atInferredOrigin = true
-			break
-		}
-	}
-	if !atInferredOrigin {
+func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *DeletionPlan, repoRoot string, dataset *string) ([]string, error) {
+	if !slices.ContainsFunc(plan.ByIdentifier, func(deletion Deletion) bool { return deletion.AtInferredOrigin }) {
 		return nil, nil
 	}
 
@@ -394,16 +388,12 @@ func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *Deletion
 	if err != nil {
 		return nil, err
 	}
-	datasetName := "default"
-	if dataset != nil && *dataset != "" {
-		datasetName = *dataset
-	}
+	datasetName := asset.DatasetName(dataset)
 	var warnings []string
 	kept := plan.ByIdentifier[:0]
 	for _, deletion := range plan.ByIdentifier {
-		key := IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}
-		if _, inferred := before.Inferred[key]; inferred {
-			if path, ok := declaredAs(declared, key); ok {
+		if deletion.AtInferredOrigin {
+			if path, ok := declaredAs(declared, IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}); ok {
 				warnings = append(warnings, fmt.Sprintf("--since does not delete %s %s: %s still declares it in dataset %q; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset", asset.KindDisplayName(deletion.Kind), deletion.Identifier, path, datasetName))
 				continue
 			}
@@ -426,7 +416,10 @@ func inferredOriginsOnDisk(ctx context.Context, repoRoot string, dataset *string
 	}
 	declared := map[IdentifierKey]string{}
 	for _, relPath := range strings.Split(string(out), "\x00") {
-		if ext := strings.ToLower(filepath.Ext(relPath)); ext != ".yaml" && ext != ".yml" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !asset.IsYAMLFile(relPath) {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(repoRoot, relPath))

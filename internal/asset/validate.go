@@ -132,10 +132,7 @@ func checkDatasetOriginCollisions(documents []Document) []string {
 		if identity.ID == "" {
 			continue
 		}
-		origin := identity.Origin
-		if origin == "" {
-			origin = identity.Inferred
-		}
+		origin := identity.CreateOrigin()
 		if _, seen := slugsByOrigin[origin]; !seen {
 			origins = append(origins, origin)
 			slugsByOrigin[origin] = map[string]bool{}
