@@ -403,7 +403,7 @@ func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *Deletion
 	for _, deletion := range plan.ByIdentifier {
 		key := IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}
 		if _, inferred := before.Inferred[key]; inferred {
-			if path, ok := declared[key]; ok {
+			if path, ok := declaredAs(declared, key); ok {
 				warnings = append(warnings, fmt.Sprintf("--since does not delete %s %s: %s still declares it in dataset %q; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset", asset.KindDisplayName(deletion.Kind), deletion.Identifier, path, datasetName))
 				continue
 			}
@@ -446,6 +446,17 @@ func inferredOriginsOnDisk(ctx context.Context, repoRoot string, dataset *string
 		}
 	}
 	return declared, nil
+}
+
+// declaredAs returns the file that declares key under any kind that writes
+// the same asset.
+func declaredAs(declared map[IdentifierKey]string, key IdentifierKey) (string, bool) {
+	for _, kind := range sameAssetKinds(key.Kind) {
+		if path, ok := declared[IdentifierKey{Kind: kind, Identifier: key.Identifier}]; ok {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 var documentSeparator = regexp.MustCompile(`(?m)^---[ \t]*(?:#.*)?$`)

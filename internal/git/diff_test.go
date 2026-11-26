@@ -420,6 +420,21 @@ func TestDiff_PersesDashboardSwitchedToDashboardKeepsItsInferredOrigin(t *testin
 	assert.True(t, plan.ByIdentifier[0].InferredOriginKept, "the Dashboard writes the origin the PersesDashboard fell back to")
 }
 
+// A PersesDashboard without an identifier that becomes a Dashboard with only
+// an id writes the same inferred origin when the id is not found.
+func TestDiff_PersesDashboardWithoutIdentifierSwitchedToDashboardWithAnIDKeepsItsInferredOrigin(t *testing.T) {
+	before := newSnapshot()
+	require.NoError(t, ingestDocuments(&before, "dashboard.yaml", []byte(
+		"apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: orders\nspec:\n  display:\n    name: Orders\n"), nil))
+	after := newSnapshot()
+	require.NoError(t, ingestDocuments(&after, "dashboard.yaml", []byte(
+		"kind: Dashboard\nmetadata:\n  name: orders\n  labels:\n    dash0.com/id: new-id\nspec:\n  display:\n    name: Orders\n"), nil))
+
+	plan := Diff(before, after)
+
+	assert.True(t, plan.IsEmpty(), "got %+v", plan)
+}
+
 // When the id was not found, apply wrote the alert by the CRD's origin or its
 // inferred origin, so the deletion of the abandoned id carries that fallback.
 func TestDiff_PrometheusAlertThresholdCrossingDeletesAtTheID(t *testing.T) {

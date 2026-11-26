@@ -180,3 +180,20 @@ func TestInferredOriginsOnDisk_ReadsEveryDocumentGitDoesNotIgnore(t *testing.T) 
 	assert.Equal(t, "new/view.yaml", declared[key("untracked")])
 	assert.NotContains(t, declared, key("ignored"))
 }
+
+func TestKeepInferredOriginsDeclaredOutsideScope_MatchesAnotherDashboardKind(t *testing.T) {
+	repo := testRepo(t)
+	writeFile(t, repo.Dir, "other/dashboard.yaml", "kind: Dashboard\nmetadata:\n  name: orders\nspec:\n  display:\n    name: Orders\n")
+	commitAll(t, repo.Dir, "dashboard")
+	deleted := IdentifierKey{Kind: "persesdashboard", Identifier: asset.InferKindOrigin("persesdashboard", "orders", nil)}
+	before := newSnapshot()
+	before.Inferred[deleted] = ""
+	plan := DeletionPlan{ByIdentifier: []Deletion{{Kind: deleted.Kind, Identifier: deleted.Identifier}}}
+
+	warnings, err := keepInferredOriginsDeclaredOutsideScope(context.Background(), &plan, before, repo.Dir, nil)
+	require.NoError(t, err)
+
+	assert.Empty(t, plan.ByIdentifier)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "other/dashboard.yaml")
+}

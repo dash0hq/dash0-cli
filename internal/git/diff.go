@@ -233,22 +233,18 @@ func Diff(before, after Snapshot) DeletionPlan {
 // dashboard, not a deletion. The key keeps its own
 // kind, so a real deletion is still reported under the spelling it had.
 func survives(before, after Snapshot, key IdentifierKey) bool {
-	// An id-only document in after is written at its inferred origin when
-	// its id is not found.
-	// ponytail: when the id is found, the asset at the inferred origin is left
-	// behind; reading the id would need the API, which --since's plan never calls.
-	if _, ok := after.Inferred[key]; ok {
-		return true
-	}
 	names := []string{key.Identifier}
 	if alias := before.Aliases[key]; alias != "" {
 		names = append(names, alias)
 	}
-	kinds := []string{key.Kind}
-	if slices.Contains(dashboardKinds, key.Kind) {
-		kinds = dashboardKinds
-	}
-	for _, kind := range kinds {
+	for _, kind := range sameAssetKinds(key.Kind) {
+		// An id-only document in after is written at its inferred origin when
+		// its id is not found.
+		// ponytail: when the id is found, the asset at the inferred origin is left
+		// behind; reading the id would need the API, which --since's plan never calls.
+		if _, ok := after.Inferred[IdentifierKey{Kind: kind, Identifier: key.Identifier}]; ok {
+			return true
+		}
 		for _, name := range names {
 			if declares(after, IdentifierKey{Kind: kind, Identifier: name}) {
 				return true
@@ -273,3 +269,12 @@ func declares(snapshot Snapshot, key IdentifierKey) bool {
 }
 
 var dashboardKinds = []string{"dashboard", "ephemeraldashboard", "persesdashboard"}
+
+// sameAssetKinds returns the kinds whose documents write the same asset as a
+// document of kind.
+func sameAssetKinds(kind string) []string {
+	if slices.Contains(dashboardKinds, kind) {
+		return dashboardKinds
+	}
+	return []string{kind}
+}
