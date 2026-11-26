@@ -36,6 +36,10 @@
 - `/internal/signaltometricsrules`: The `signal-to-metrics-rules` command group (alias `s2m`), holding the five standard CRUD subcommands plus `test`, which counts the signals a rule matches without saving it. Dataset-scoped, and upserted by `dash0.com/origin`, with `dash0.com/id` as a fallback. The shared import helper lives in `internal/asset/signaltometricsrule.go`
 - `/internal/skill`: The `skill install`/`skill show` commands — distribute the dash0-cli Agent Skill (embedded via `//go:embed`) to AI coding agents; `internal/skill/gen` regenerates the embedded reference content from `docs/commands.md` (see `docs/agent-skill-maintenance.md`)
 - `/internal/teams`: The `teams` command group — `teams list`, `teams get`, `teams create`, `teams update`, `teams delete`, `teams add-members`, `teams remove-members` (experimental, org-wide, no dataset)
+- `/internal/telemetrytransformationrules`: The dataset-scoped `telemetry-transformation-rules` command group, with the five standard CRUD subcommands and no short top-level alias.
+  It uses shared asset flags and delegates parsing and write preparation to `internal/asset/telemetrytransformationrule.go`.
+  The shared import helper implements `apply` reconciliation; the CRUD commands keep POST-only create separate from update's full-rule GET and replacement PUT.
+  List omits examples; single-rule GET includes them.
 - `/internal/testutil`: Test helpers — mock HTTP server, fixture constants
 - `/internal/timeseriesaggregations`: The `time-series-aggregations` command group (alias `tsa`), holding the five standard CRUD subcommands. Dataset-scoped, admin-role-only, and upserted only by `dash0.com/origin`. The shared import helper lives in `internal/asset/timeseriesaggregation.go`
 - `/internal/tracing`: The `spans` and `traces` command groups — `spans send`, `spans query`, `traces get` — plus shared span helpers (kind/status conversions, duration formatting/parsing)
