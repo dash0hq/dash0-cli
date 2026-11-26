@@ -2,10 +2,13 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -412,31 +415,37 @@ func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *Deletion
 }
 
 // inferredOriginsOnDisk maps every inferred origin that a YAML file in the
-// repository writes for dataset to that file. A file that does not parse is
-// not an asset to --since, so its error is ignored.
+// repository writes for dataset to that file. It reads the files git tracks
+// or would track, so dot directories count and ignored build output does not.
+// Each document is read on its own: one apply cannot parse writes nothing,
+// and must not hide the documents after it.
 func inferredOriginsOnDisk(ctx context.Context, repoRoot string, dataset *string) (map[IdentifierKey]string, error) {
-	var paths []string
-	if err := filepath.WalkDir(repoRoot, asset.FindNonHiddenYAMLFiles(repoRoot, &paths, nil)); err != nil {
-		return nil, fmt.Errorf("failed to scan %s: %w", repoRoot, err)
+	out, err := Repo{Dir: repoRoot}.run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list the files of %s: %w", repoRoot, err)
 	}
 	declared := map[IdentifierKey]string{}
-	for _, path := range paths {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
+	for _, relPath := range strings.Split(string(out), "\x00") {
+		if ext := strings.ToLower(filepath.Ext(relPath)); ext != ".yaml" && ext != ".yml" {
 			continue
 		}
-		relPath, err := filepath.Rel(repoRoot, path)
-		if err != nil {
+		data, err := os.ReadFile(filepath.Join(repoRoot, relPath))
+		if errors.Is(err, fs.ErrNotExist) {
+			// Deleted from the working tree, not yet from the index.
 			continue
 		}
-		snap := newSnapshot()
-		_ = ingestDocuments(&snap, relPath, data, dataset)
-		for key := range snap.Inferred {
-			declared[key] = filepath.ToSlash(relPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %s: %w", relPath, err)
+		}
+		for _, document := range documentSeparator.Split(string(data), -1) {
+			snap := newSnapshot()
+			_ = ingestDocuments(&snap, relPath, []byte(document), dataset)
+			for key := range snap.Inferred {
+				declared[key] = relPath
+			}
 		}
 	}
 	return declared, nil
 }
+
+var documentSeparator = regexp.MustCompile(`(?m)^---[ \t]*(?:#.*)?$`)
