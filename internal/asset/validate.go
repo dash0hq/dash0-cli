@@ -109,7 +109,48 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 	}
 	validationErrors = append(validationErrors, checkRuleIDCollisions(documents)...)
 	validationErrors = append(validationErrors, checkRuleIDOriginConflicts(documents)...)
+	validationErrors = append(validationErrors, checkDatasetOriginCollisions(documents)...)
 	return validationErrors, validationWarnings
+}
+
+// checkDatasetOriginCollisions fails datasets with different slugs that
+// create at the same origin, because a slug cannot change, so the second
+// write would fail after the first was applied.
+func checkDatasetOriginCollisions(documents []Document) []string {
+	var origins []string
+	slugsByOrigin := make(map[string]map[string]bool)
+	usesByOrigin := make(map[string][]string)
+	for _, doc := range documents {
+		if NormalizeKind(doc.Kind) != "dataset" {
+			continue
+		}
+		var dataset dash0api.DatasetDefinition
+		if err := dash0yaml.Unmarshal(doc.Raw, &dataset); err != nil {
+			continue
+		}
+		identity := DatasetIdentity(&dataset)
+		if identity.ID == "" {
+			continue
+		}
+		origin := identity.Origin
+		if origin == "" {
+			origin = identity.Inferred
+		}
+		if _, seen := slugsByOrigin[origin]; !seen {
+			origins = append(origins, origin)
+			slugsByOrigin[origin] = map[string]bool{}
+		}
+		slugsByOrigin[origin][identity.ID] = true
+		usesByOrigin[origin] = append(usesByOrigin[origin], fmt.Sprintf("%s: slug %q", doc.Location(), identity.ID))
+	}
+
+	var collisions []string
+	for _, origin := range origins {
+		if len(slugsByOrigin[origin]) > 1 {
+			collisions = append(collisions, fmt.Sprintf("dataset origin %q is used by datasets with different slugs, and a dataset slug cannot change, so only the first would be created; set another dash0.com/origin:\n    %s", origin, strings.Join(usesByOrigin[origin], "\n    ")))
+		}
+	}
+	return collisions
 }
 
 func checkRuleIDCollisions(documents []Document) []string {
