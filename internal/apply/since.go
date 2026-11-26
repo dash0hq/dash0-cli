@@ -173,11 +173,17 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		return deletePrometheusRuleCRD(ctx, apiClient, dataset, d, declared)
 	}
 
-	get := func(key string) error { return asset.GetRoutedAsset(ctx, apiClient, kind, key, dataset) }
+	// A soft-deleted asset at a dash0.com/id is still deleted again; see #447.
+	softDeleted := false
+	get := func(key string) error {
+		deleted, err := asset.GetRoutedAsset(ctx, apiClient, kind, key, dataset)
+		softDeleted = deleted && d.AtInferredOrigin
+		return err
+	}
 	switch kind {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteDashboard(ctx, identifier, dataset)
 		}
 	case "checkrule":
@@ -192,17 +198,17 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", d.Identifier))
 			return true, nil
 		}
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
 		}
 	case "syntheticcheck":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
 		}
 	case "slo":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteSLO(ctx, identifier, dataset)
 		}
 	case "recordingrule":
@@ -211,37 +217,37 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// handling) -- distinct from the whole-CRD "prometheusrule" case
 		// above, which already attempts this endpoint unconditionally.
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
 		}
 	case "view":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteView(ctx, identifier, dataset)
 		}
 	case "spamfilter":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteSpamFilter(ctx, identifier, dataset)
 		}
 	case "notificationchannel":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteNotificationChannel(ctx, identifier)
 		}
 	case "team":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteTeam(ctx, identifier)
 		}
 	case "skill":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteCustomSkill(ctx, identifier)
 		}
 	case "generativeaievaluation":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
 		}
 	case "dataset":
@@ -254,7 +260,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		err = apiClient.DeleteAwsMetricScrapeConfig(ctx, identifier)
 	case "signaltometrics":
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
 		}
 		// Not "already gone": the rule exists in another dataset.
@@ -267,7 +273,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// honors the dataset, so a rule in another dataset fails it with the
 		// cross-dataset 400, which is explained below.
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteSamplingRule(ctx, identifier, dataset)
 		}
 		// Not "already gone": the rule exists in another dataset.
@@ -281,7 +287,7 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// exists and belongs to another dataset, so reporting it as reconciled
 		// would be a lie in a CI log.
 		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
-		if err == nil {
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteTimeSeriesAggregation(ctx, identifier, dataset)
 		}
 		if asset.IsTimeSeriesAggregationWrongDataset(err) {
@@ -292,6 +298,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	}
 
 	ectx := client.ErrorContext{AssetType: asset.KindDisplayName(kind), AssetID: identifier}
+	if err == nil && softDeleted {
+		client.PrintAlreadyDeleted(ectx)
+		return true, nil
+	}
 	if d.AtInferredOrigin && dash0api.IsNotFound(err) {
 		asset.WarnNothingAtInferredOrigin(os.Stderr, identifier)
 		return true, nil
@@ -380,7 +390,10 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 	recordingRuleKey, recordingRuleErr := routedDeleteKey(dataset, gitutil.Deletion{
 		Kind: "recordingrule", Identifier: identifier, Alias: d.Alias,
 		InferredOriginName: d.InferredOriginName, InferredOriginKept: d.InferredOriginKept,
-	}, nil, func(key string) error { return asset.GetRoutedAsset(ctx, apiClient, "recordingrule", key, dataset) })
+	}, nil, func(key string) error {
+		_, err := asset.GetRoutedAsset(ctx, apiClient, "recordingrule", key, dataset)
+		return err
+	})
 	if recordingRuleErr == nil {
 		recordingRuleErr = apiClient.DeleteRecordingRule(ctx, recordingRuleKey, dataset)
 	}

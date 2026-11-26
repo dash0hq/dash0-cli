@@ -3678,6 +3678,47 @@ func TestApply_Since_NothingAtTheInferredOriginIsNotReportedAsDeleted(t *testing
 	}
 }
 
+// A second --since run finds the asset it already deleted, soft-deleted, at the
+// inferred origin. It reports it as already deleted and sends no delete.
+func TestApply_Since_SoftDeletedAtTheInferredOriginIsAlreadyDeleted(t *testing.T) {
+	for _, kind := range asset.ValidKinds {
+		spec := routedKinds[kind]
+		deletedFixture := strings.Replace(spec.fixture, "get_success.json", "get_deleted.json", 1)
+		if spec.idRequired() || deletedFixture == spec.fixture {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(testutil.FixturesDir(), deletedFixture)); err != nil {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			before := commitRemoval(t, dir, map[string]string{"asset.yaml": spec.document("")}, "asset.yaml")
+
+			inferred := inferredOrigin(kind, spec)
+			_, writeResponse := routedFixtures(t, spec)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			requests := serveRouted(server, spec, map[string][]byte{inferred: readFixture(t, deletedFixture)}, writeResponse)
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{"-f", dir, "--since", before, "--force", "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+			var cmdErr error
+			var stdout string
+			stderr := testutil.CaptureStderr(t, func() {
+				stdout = testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+			})
+			require.NoError(t, cmdErr)
+
+			for _, request := range *requests {
+				assert.Equal(t, "GET "+inferred, request.line)
+			}
+			assert.NotContains(t, stdout, "deleted")
+			assert.Contains(t, stderr, "was already deleted")
+			assert.NotContains(t, stderr, "no asset at inferred origin")
+		})
+	}
+}
+
 // Renaming a document without an identifier moves it to a new inferred origin:
 // apply creates the new asset, --since deletes the old one, and plain apply
 // leaves it.

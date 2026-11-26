@@ -4,27 +4,35 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
-// GetRoutedAsset reads the asset of a routed kind at key. --since reads before
-// it deletes, because several delete endpoints answer an unknown key with 2xx.
-func GetRoutedAsset(ctx context.Context, apiClient dash0api.Client, kind, key string, dataset *string) error {
-	var err error
+// GetRoutedAsset reads the asset of a routed kind at key, and reports whether
+// it is soft-deleted. --since reads before it deletes, because several delete
+// endpoints answer an unknown key with 2xx, and the API keeps a deleted asset.
+func GetRoutedAsset(ctx context.Context, apiClient dash0api.Client, kind, key string, dataset *string) (deleted bool, err error) {
+	var deletedAt *time.Time
 	switch kind {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		_, err = apiClient.GetDashboard(ctx, key, dataset)
+		stored, getErr := apiClient.GetDashboard(ctx, key, dataset)
+		deletedAt, err = DashboardDeletedAt(stored), getErr
 	case "checkrule":
-		_, err = apiClient.GetCheckRule(ctx, key, dataset)
+		stored, getErr := apiClient.GetCheckRule(ctx, key, dataset)
+		deletedAt, err = CheckRuleDeletedAt(stored), getErr
 	case "syntheticcheck":
-		_, err = apiClient.GetSyntheticCheck(ctx, key, dataset)
+		stored, getErr := apiClient.GetSyntheticCheck(ctx, key, dataset)
+		deletedAt, err = SyntheticCheckDeletedAt(stored), getErr
 	case "slo":
-		_, err = apiClient.GetSLO(ctx, key, dataset)
+		stored, getErr := apiClient.GetSLO(ctx, key, dataset)
+		deletedAt, err = SLODeletedAt(stored), getErr
 	case "recordingrule":
-		_, err = apiClient.GetRecordingRule(ctx, key, dataset)
+		stored, getErr := apiClient.GetRecordingRule(ctx, key, dataset)
+		deletedAt, err = RecordingRuleDeletedAt(stored), getErr
 	case "view":
-		_, err = apiClient.GetView(ctx, key, dataset)
+		stored, getErr := apiClient.GetView(ctx, key, dataset)
+		deletedAt, err = ViewDeletedAt(stored), getErr
 	case "spamfilter":
 		_, err = apiClient.GetSpamFilter(ctx, key, dataset)
 	case "notificationchannel":
@@ -32,19 +40,23 @@ func GetRoutedAsset(ctx context.Context, apiClient dash0api.Client, kind, key st
 	case "team":
 		_, err = apiClient.GetTeam(ctx, key)
 	case "skill":
-		_, err = apiClient.GetCustomSkill(ctx, key)
+		stored, getErr := apiClient.GetCustomSkill(ctx, key)
+		deletedAt, err = CustomSkillDeletedAt(stored), getErr
 	case "generativeaievaluation":
-		_, err = apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
+		stored, getErr := apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
+		deletedAt, err = GenerativeAiEvaluationDeletedAt(stored), getErr
 	case "signaltometrics":
-		_, err = apiClient.GetSignalToMetrics(ctx, key, dataset)
+		stored, getErr := apiClient.GetSignalToMetrics(ctx, key, dataset)
+		deletedAt, err = SignalToMetricsRuleDeletedAt(stored), getErr
 	case "sampling":
 		_, err = apiClient.GetSamplingRule(ctx, key, dataset)
 	case "timeseriesaggregation":
-		_, err = apiClient.GetTimeSeriesAggregation(ctx, key, dataset)
+		stored, getErr := apiClient.GetTimeSeriesAggregation(ctx, key, dataset)
+		deletedAt, err = TimeSeriesAggregationDeletedAt(stored), getErr
 	default:
-		return fmt.Errorf("unsupported kind for a read before deletion: %s", kind)
+		return false, fmt.Errorf("unsupported kind for a read before deletion: %s", kind)
 	}
-	return err
+	return deletedAt != nil, err
 }
 
 // WarnNothingAtInferredOrigin reports a --since deletion that is skipped,

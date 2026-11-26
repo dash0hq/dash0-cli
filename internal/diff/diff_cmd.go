@@ -279,18 +279,24 @@ func checkInferredOriginWrites(planned []plannedDoc, dataset *string) error {
 }
 
 // dropEmptyInferredOrigins leaves out a deletion at an inferred origin that
-// holds nothing, because apply --since reads it there and skips the delete.
+// holds nothing or a soft-deleted asset, because apply --since reads it there
+// and skips the delete.
 func dropEmptyInferredOrigins(ctx context.Context, apiClient dash0api.Client, sincePlan *gitutil.SincePlan, dataset *string) error {
 	kept := sincePlan.Plan.ByIdentifier[:0]
 	for _, deletion := range sincePlan.Plan.ByIdentifier {
 		if deletion.AtInferredOrigin {
-			err := asset.GetRoutedAsset(ctx, apiClient, deletion.Kind, deletion.Identifier, dataset)
+			deleted, err := asset.GetRoutedAsset(ctx, apiClient, deletion.Kind, deletion.Identifier, dataset)
+			ectx := client.ErrorContext{AssetType: asset.KindDisplayName(deletion.Kind), AssetID: deletion.Identifier}
 			if dash0api.IsNotFound(err) {
 				asset.WarnNothingAtInferredOrigin(os.Stderr, deletion.Identifier)
 				continue
 			}
 			if err != nil {
-				return client.HandleAPIError(err, client.ErrorContext{AssetType: asset.KindDisplayName(deletion.Kind), AssetID: deletion.Identifier})
+				return client.HandleAPIError(err, ectx)
+			}
+			if deleted {
+				client.PrintAlreadyDeleted(ectx)
+				continue
 			}
 		}
 		kept = append(kept, deletion)

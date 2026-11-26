@@ -1680,3 +1680,47 @@ func TestDiff_Since_NothingAtTheInferredOriginIsNotListed(t *testing.T) {
 	assert.Contains(t, output, "No differences")
 	assert.Contains(t, stderr, "no asset at inferred origin "+inferred)
 }
+
+// After apply --since deleted the asset, the read at the inferred origin finds
+// it soft-deleted. diff must not list the delete again, or it never comes out
+// clean after a full sync.
+func TestDiff_Since_SoftDeletedAtTheInferredOriginIsNotListed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repoDir}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "test")
+	target := filepath.Join(repoDir, "views")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	view := "kind: View\nmetadata:\n  name: ghost\nspec:\n  type: logs\n  display:\n    name: ghost\n"
+	require.NoError(t, os.WriteFile(filepath.Join(target, "ghost.yaml"), []byte(view), 0o644))
+	git("add", "-A")
+	git("commit", "-q", "-m", "add view")
+	ref := git("rev-parse", "HEAD")
+	require.NoError(t, os.RemoveAll(target))
+	git("add", "-A")
+	git("commit", "-q", "-m", "remove view")
+
+	inferred := asset.InferOrigin("view", "ghost", "default")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/"+inferred, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   "views/get_deleted.json",
+	})
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", target, "--since", ref, "--api-url", server.URL)
+	})
+
+	require.NoError(t, err, output)
+	assert.NotContains(t, output, "Delete")
+	assert.Contains(t, output, "No differences")
+	assert.Contains(t, stderr, "was already deleted")
+}
