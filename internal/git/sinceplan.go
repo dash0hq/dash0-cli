@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,9 +18,9 @@ import (
 type SincePlan struct {
 	Plan    DeletionPlan
 	Warning string
-	// Warnings names each deletion left out because a document outside -f
-	// still writes its asset.
-	Warnings []string
+	// SkippedDeletionWarnings names each deletion left out because a document
+	// outside -f still writes its asset.
+	SkippedDeletionWarnings []string
 	// names best-effort maps each ByIdentifier deletion's Path (the
 	// git-recorded path, unique within one plan) to its display name,
 	// resolved by re-reading the asset's content from git history at the
@@ -53,6 +54,14 @@ type SincePlan struct {
 	// tell file from directory once the path is gone, but the ref usually
 	// still can.
 	TargetWasDirectoryAtRef bool
+}
+
+// PrintSkippedDeletionWarnings writes one warning line per skipped deletion,
+// so apply and diff print them the same way.
+func (p *SincePlan) PrintSkippedDeletionWarnings(w io.Writer) {
+	for _, warning := range p.SkippedDeletionWarnings {
+		fmt.Fprintf(w, "warning: %s\n", warning)
+	}
 }
 
 // ComputeSincePlan resolves since against the git repository
@@ -208,7 +217,7 @@ func ComputeSincePlan(ctx context.Context, file, since string, dataset *string) 
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
-	return &SincePlan{Plan: plan, Warning: warning, Warnings: warnings, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+	return &SincePlan{Plan: plan, Warning: warning, SkippedDeletionWarnings: warnings, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
 }
 
 // NameOf returns the display name of d, or "" when the lookup failed.
