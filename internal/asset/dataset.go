@@ -99,7 +99,7 @@ func PlanDataset(ctx context.Context, apiClient dash0api.Client, dataset *dash0a
 // the slug is required and names the dataset for good.
 func DatasetIdentity(dataset *dash0api.DatasetDefinition) Identity {
 	slug := dash0api.GetDatasetID(dataset)
-	return Identity{ID: slug, Origin: dash0api.GetDatasetOrigin(dataset), Inferred: InferOrigin("dataset", slug, "")}
+	return Identity{ID: slug, Origin: dash0api.GetDatasetOrigin(dataset), Inferred: InferOrigin("dataset", slug, ""), IDRequired: true}
 }
 
 // DatasetSlugChangeError reports a document whose origin belongs to a dataset

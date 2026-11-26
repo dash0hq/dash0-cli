@@ -26,6 +26,9 @@ type Identity struct {
 	// CreatesAtID is set for kinds that keep the id in the file, as check
 	// rules: an id that is not found is created at that id.
 	CreatesAtID bool
+	// IDRequired is set for kinds that cannot be written without their id,
+	// as datasets and AWS metric scrape configs.
+	IDRequired bool
 }
 
 // CreateOrigin is the origin the asset is created by.
@@ -109,22 +112,25 @@ func checkIDOrigin(identity Identity) error {
 // OriginMismatchError reports a document whose id names an asset that Dash0
 // stores with another origin. The CLI never changes a stored origin.
 type OriginMismatchError struct {
-	ID       string
-	Stored   string
-	Document string
+	ID         string
+	Stored     string
+	Document   string
+	IDRequired bool
 }
 
 func checkStoredOrigin(identity Identity, stored string) error {
 	if identity.Origin != "" && stored != "" && stored != identity.Origin {
-		return &OriginMismatchError{ID: identity.ID, Stored: stored, Document: identity.Origin}
+		return &OriginMismatchError{ID: identity.ID, Stored: stored, Document: identity.Origin, IDRequired: identity.IDRequired}
 	}
 	return nil
 }
 
 func (e *OriginMismatchError) Error() string {
-	return fmt.Sprintf("the asset with id %q has origin %q in Dash0, but the document sets origin %q, and the CLI never changes a stored origin"+
-		"\nHint: remove dash0.com/origin from the document to update that asset, or remove dash0.com/id to create or update the asset with origin %q",
-		e.ID, e.Stored, e.Document, e.Document)
+	message := fmt.Sprintf("the asset with id %q has origin %q in Dash0, but the document sets origin %q, and the CLI never changes a stored origin", e.ID, e.Stored, e.Document)
+	if e.IDRequired {
+		return message + fmt.Sprintf("\nHint: remove dash0.com/origin from the document, or set it to %q", e.Stored)
+	}
+	return message + fmt.Sprintf("\nHint: remove dash0.com/origin from the document to update that asset, or remove dash0.com/id to create or update the asset with origin %q", e.Document)
 }
 
 // InferOrigin returns the origin of a document without one. It depends only on

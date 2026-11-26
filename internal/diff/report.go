@@ -27,6 +27,9 @@ func buildPlan(planned []plannedDoc, sincePlan *gitutil.SincePlan) (*preview.Pla
 		documents = append(documents, pd.doc)
 		for _, p := range pd.plans {
 			change := preview.Change{Op: "create", Kind: p.displayKind, Name: p.name, OriginOrID: p.plan.Key}
+			if p.reportID != "" {
+				change.OriginOrID = p.reportID
+			}
 			// A PrometheusRule expands to check rules and a recording rule,
 			// which apply --dry-run's one CRD row has no kind for.
 			if asset.NormalizeKind(pd.doc.Kind) != "prometheusrule" {

@@ -730,8 +730,8 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	var pending *PendingDifferencesError
 	require.ErrorAs(t, err, &pending, output)
 	assert.Equal(t, 2, pending.Count)
-	// A dataset that does not exist is created by its origin, inferred from its slug.
-	assert.Contains(t, output, `Create Dataset "Staging" (`+asset.InferOrigin("dataset", "staging", "")+`)`)
+	// The dataset is named by its slug, as apply --dry-run names it.
+	assert.Contains(t, output, `Create Dataset "Staging" (staging)`)
 	// apply creates the dataset first, so the id is not found and the view is
 	// created by its inferred origin.
 	assert.Contains(t, output, `Create View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`)`)

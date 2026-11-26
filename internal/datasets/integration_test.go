@@ -685,7 +685,30 @@ func TestUpdateDataset_OriginMismatchWithoutArgumentNamesTheFile(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `"production" from the file: the asset with id "production" has origin "dash0-cli" in Dash0, but the document sets origin "other"`)
+	// The slug is required, so the hint must not suggest removing it.
+	assert.Contains(t, err.Error(), `remove dash0.com/origin from the document, or set it to "dash0-cli"`)
 	assert.Empty(t, requestsFor(server, http.MethodPut, "/api/datasets/production"))
+}
+
+// The update never sends the file's origin, so the preview must not show it.
+func TestUpdateDataset_DryRunDoesNotShowAnOriginTheUpdateNeverSends(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	fixture, err := os.ReadFile(filepath.Join(testutil.FixturesDir(), testutil.FixtureDatasetsGetSuccess))
+	require.NoError(t, err)
+	withoutOrigin := strings.Replace(string(fixture), `"dash0.com/origin": "dash0-cli",`, "", 1)
+	require.NotEqual(t, string(fixture), withoutOrigin)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       json.RawMessage(withoutOrigin),
+		Validator:  testutil.RequireHeaders,
+	})
+	withOrigin := strings.Replace(datasetYAML, "dash0.com/id: production", "dash0.com/id: production\n    dash0.com/origin: dash0-cli", 1)
+
+	stdout, _, err := runCmd(t, server.URL, "-X", "datasets", "update", "-f", writeYAML(t, withOrigin), "--dry-run")
+
+	require.NoError(t, err)
+	assert.NotContains(t, stdout, "dash0.com/origin")
 }
 
 func TestUpdateDataset_DryRun(t *testing.T) {

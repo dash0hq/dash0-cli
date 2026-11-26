@@ -307,6 +307,8 @@ func TestUpdate_DryRunFailsOnOriginMismatch(t *testing.T) {
 	var mismatch *asset.OriginMismatchError
 	require.ErrorAs(t, err, &mismatch)
 	assert.Equal(t, "other-origin", mismatch.Document)
+	// The integration id is required, so the hint must not suggest removing it.
+	assert.NotContains(t, err.Error(), "remove dash0.com/id")
 	assert.NotContains(t, stdout, "no changes")
 	assert.Empty(t, requestsFor(server, http.MethodPut))
 }

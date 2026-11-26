@@ -194,7 +194,7 @@ func CheckAwsMetricScrapeConfigOrigin(cfg *dash0api.AwsMetricScrapeConfigDefinit
 	}
 	document := AwsMetricScrapeConfigIdentity(cfg, integrationID).Origin
 	if stored := dash0api.GetAwsMetricScrapeConfigOrigin(before); document != "" && stored != "" && stored != document {
-		return &OriginMismatchError{ID: integrationID, Stored: stored, Document: document}
+		return &OriginMismatchError{ID: integrationID, Stored: stored, Document: document, IDRequired: true}
 	}
 	return nil
 }
@@ -204,9 +204,10 @@ func CheckAwsMetricScrapeConfigOrigin(cfg *dash0api.AwsMetricScrapeConfigDefinit
 // in place of metadata.name, which is the integration's name and read-only.
 func AwsMetricScrapeConfigIdentity(cfg *dash0api.AwsMetricScrapeConfigDefinition, integrationID string) Identity {
 	return Identity{
-		ID:       integrationID,
-		Origin:   dash0api.GetAwsMetricScrapeConfigOrigin(cfg),
-		Inferred: InferOrigin("awsmetricscrapeconfig", integrationID, ""),
+		ID:         integrationID,
+		Origin:     dash0api.GetAwsMetricScrapeConfigOrigin(cfg),
+		Inferred:   InferOrigin("awsmetricscrapeconfig", integrationID, ""),
+		IDRequired: true,
 	}
 }
 
