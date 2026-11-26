@@ -367,7 +367,15 @@ func TestE2E_ApplySince_NoIdentifierDeletion(t *testing.T) {
 	ctx := context.Background()
 	repoDir, ref := testutil.BuildGitScenario(t, "no-identifier-deletion")
 
+	wantDeleted := []string{
+		"/api/views/" + asset.InferOrigin("view", "View A", "default"),
+		"/api/views/" + asset.InferOrigin("view", "View B", "default"),
+	}
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	// --since reads an inferred origin before it deletes there.
+	for _, path := range wantDeleted {
+		server.On(http.MethodGet, path, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureViewsGetSuccess})
+	}
 	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusNotFound, Body: map[string]any{}})
 	server.OnPattern(http.MethodPut, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureViewsImportSuccess})
 	server.OnPattern(http.MethodDelete, viewIDPattern, testutil.MockResponse{StatusCode: http.StatusOK, Body: map[string]any{}})
@@ -389,10 +397,6 @@ func TestE2E_ApplySince_NoIdentifierDeletion(t *testing.T) {
 		case http.MethodPut:
 			written = append(written, r.Path)
 		}
-	}
-	wantDeleted := []string{
-		"/api/views/" + asset.InferOrigin("view", "View A", "default"),
-		"/api/views/" + asset.InferOrigin("view", "View B", "default"),
 	}
 	if !slices.Equal(slices.Sorted(slices.Values(deleted)), slices.Sorted(slices.Values(wantDeleted))) {
 		t.Errorf("expected deletes %v, got %v. Output:\n%s", wantDeleted, deleted, output)
