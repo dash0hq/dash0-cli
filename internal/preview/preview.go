@@ -83,7 +83,7 @@ func (p *Plan) AddDeletions(sincePlan *gitutil.SincePlan, documents []asset.Docu
 			continue
 		}
 		// Names come from git history; a failed lookup shows a placeholder.
-		name := sincePlan.Names[deletion.Path]
+		name := sincePlan.NameOf(deletion)
 		if name == "" {
 			name = "<name>"
 		}

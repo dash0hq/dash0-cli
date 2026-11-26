@@ -559,8 +559,8 @@ The `wide` format adds `DATASET`, `ORIGIN`, and `URL` columns:
 
 ```bash
 $ dash0 dashboards list -o wide
-NAME                  ID                                    DATASET   ORIGIN       URL
-Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   gitops/prod  https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
+NAME                  ID                                    DATASET   ORIGIN                         URL
+Production Overview   a1b2c3d4-5678-90ab-cdef-1234567890ab  default   dash0-cli_production-overview  https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
 Use `-o json` or `-o yaml` to get the full asset definitions, suitable for backup or re-applying with `apply -f -`.
@@ -570,7 +570,7 @@ Use `-o csv` for a pipe-friendly, machine-readable format with the same columns 
 ```bash
 $ dash0 dashboards list -o csv
 name,id,dataset,origin,url
-Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,gitops/prod,https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
+Production Overview,a1b2c3d4-5678-90ab-cdef-1234567890ab,default,dash0-cli_production-overview,https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-...
 ```
 
 For dashboards, a failed name lookup emits a warning to stderr and shows `<name>` in `table` and `wide` output, or an empty name in `csv` output.
@@ -595,7 +595,7 @@ $ dash0 dashboards get a1b2c3d4-5678-90ab-cdef-1234567890ab
 Kind: Dashboard
 Name: Production Overview
 Dataset: default
-Origin: gitops/prod
+Origin: dash0-cli_production-overview
 URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 Created: 2026-01-15 10:30:00
 Updated: 2026-01-20 14:45:00
@@ -625,7 +625,7 @@ Kind: Dashboard
 Name: Production Overview
 Dataset: default
 Deleted: 2026-01-21 09:15:00
-Origin: gitops/prod
+Origin: dash0-cli_production-overview
 URL: https://app.dash0.com/goto/dashboards?dashboard_id=a1b2c3d4-5678-90ab-cdef-1234567890ab
 Created: 2026-01-15 10:30:00
 Updated: 2026-01-20 14:45:00
@@ -846,12 +846,20 @@ For a PrometheusRule, each alert hashes `metadata.name` together with its check 
 A PersesDashboard hashes the kind `Dashboard`, because `apply` converts it to a dashboard first.
 The same document gets the same origin from every checkout, and a different one in every dataset.
 Renaming `metadata.name` changes the inferred origin, so the next apply creates a new asset.
+Plain `apply` leaves the old asset, and `apply --since` deletes it.
 Set `dash0.com/origin` to keep the asset across a rename.
 A document read from stdin (`-f -`) gets the same inferred origin as the same document read from a file, because the hash uses no file path.
+The dataset is not part of the document: it is the `--dataset` of the run, and every document of the run uses it.
+Applying the same file with another `--dataset` creates the asset in that dataset and leaves the one in the first dataset.
+Moving a document without `dash0.com/origin` to a directory that is applied with another `--dataset` leaves the old asset in the first dataset.
+`apply --since` cannot tell which dataset a directory is applied with, so it does not delete at an inferred origin that a document elsewhere in the repository still writes, and prints a warning instead.
+Delete the old asset by hand in its dataset.
 Two documents in one run without `dash0.com/id` or `dash0.com/origin` that would get the same inferred origin fail validation before anything is written.
 So does a document whose `dash0.com/origin` is the inferred origin of another document in the run.
 A document with only a `dash0.com/id` writes by its inferred origin when the id is not found, so `apply` and `diff` fail at that document when another document of the run already writes there.
-`apply --since` deletes a removed document with only a `dash0.com/id` at that id, or at its inferred origin when the id is not found, because that is where `apply` wrote it.
+`apply --since` deletes a removed document without `dash0.com/id` or `dash0.com/origin` at the inferred origin it had at `<ref>`, in the dataset of the run, because that is where `apply` wrote it.
+For a PrometheusRule, that is each alert's inferred origin and the inferred origin of its recording rules.
+`apply --since` deletes a removed document with only a `dash0.com/id` at that id, or at its inferred origin when the id is not found, for the same reason.
 A removed document with both labels is deleted at its `dash0.com/id`, or at its `dash0.com/origin` when the id is not found, for the same reason.
 
 Origins are unique per organization, while each dataset-scoped asset belongs to one dataset.
@@ -1174,6 +1182,7 @@ See [Eval documents](#eval-documents-experimental) for the fields the CLI remove
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
+Two datasets with different slugs that would be created at the same `dash0.com/origin`, explicit or inferred, also fail validation, because a slug cannot change and the second write would fail after the first was applied.
 They follow the [routing rule](#routing-rule), with the slug as the id: on hit the CLI updates the dataset at its slug, and on 404 it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug.
 Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
@@ -1212,7 +1221,7 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
 > You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_http-server-request-duration-staging`.
 
 `Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
 They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
@@ -1289,7 +1298,7 @@ Dry run: 1 document validated
 `--since <ref>` turns `apply` into a full GitOps sync, not just create/update: it additionally deletes any asset whose definition existed in `-f`'s scanned scope at `<ref>` but is no longer present in the current contents.
 `<ref>` accepts any revision expression `git` itself accepts — a commit SHA, a branch or tag name, or a relative expression like `HEAD~1` — and `-f`'s target must be inside a git repository (a single file or a directory both work).
 
-Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert) — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
+Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert), or the [inferred origin](#routing-rule) of a document without either — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
 `--since` requires `--experimental`/`-X`.
 `apply` itself is not gated: every other flag, including `--dry-run`, is completely unaffected when `--since` is not passed.
 
@@ -1427,10 +1436,35 @@ In agent mode, a `--since` run that would delete a sampling rule requires an exp
 A `Dash0Team` document removed since `<ref>` deletes the team at its `dash0.com/id`, or, when the id is not found, at its `dash0.com/origin` or its inferred origin, with the same API call as `teams delete`.
 `--since` warns before it deletes a team identified by `dash0.com/id` alone, because a team that an earlier CLI version created by POST sits at a server-assigned ID that the delete misses.
 
-A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+A removed document without `dash0.com/id` or `dash0.com/origin` is deleted at the origin `apply` inferred for it, from its kind, its `metadata.name` at `<ref>`, and the dataset of the run:
 
 ```bash
-$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+$ dash0 --experimental apply -f views/ --since HEAD~1 --force
+View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
+```
+
+`--since` reads the inferred origin before it deletes there, because several delete endpoints report success for an asset that does not exist.
+When nothing is there, it prints a warning and deletes nothing, for example for an asset that an earlier dash0 version created at a server-assigned origin, or one applied with another dataset.
+`--dry-run` never reads from Dash0, so it still lists that deletion; use [`diff --since`](#diff-experimental) to see only the deletions `apply` makes.
+
+When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
+
+`--since` also does not delete at an inferred origin that a document anywhere else in the repository still writes for the dataset of the run, and prints a warning that names that document.
+For this check, `--since` reads the YAML files outside `-f` that git tracks or does not ignore, including files in dot directories, but only when the plan has a deletion at an inferred origin.
+The dataset a directory was applied with is not recorded in git, so a document moved to a directory applied with another dataset gets the same inferred origin, and deleting there would remove the asset the moved document still declares:
+
+```bash
+$ dash0 --experimental apply -f old/ --since HEAD~1 --dataset staging --force
+warning: --since does not delete View dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8: new/view.yaml still declares it in dataset "staging"; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset
+```
+
+Run `--since` with the dataset the removed document was applied to, and delete the old asset in that dataset by hand.
+
+A dataset without a slug and an AWS metric scrape config without `dash0.com/id` have no inferred origin.
+A removed document of these kinds that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+
+```bash
+$ dash0 --experimental apply -f datasets/ --since HEAD~1
 Error: --since 'HEAD~1' found 1 document deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:
   removed.yaml
 Hint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation
@@ -1518,9 +1552,10 @@ dash0 --experimental diff -f <file|directory> [--since <ref>]
 | `--file` | `-f` | Path to a YAML/JSON file, a directory, or `-` for stdin |
 | `--since` | | Also preview deletions: assets removed from `-f`'s contents since this git ref |
 
-Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash0 first (when the document carries an identifier), so it can tell a create from an update accurately — `--dry-run` is local-only and cannot make that distinction.
+Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash0 first, at the key `apply` writes it at, so it can tell a create from an update accurately — `--dry-run` is local-only and cannot make that distinction.
 For an update, `diff` prints a unified diff between the fetched state and the local definition, identical in format to `dashboards update`'s own diff output.
-A document with no identifier, or one whose identifier does not match any existing asset, is reported as a create.
+A document without `dash0.com/id` or `dash0.com/origin` is read at its [inferred origin](#routing-rule), so an asset that `apply` already wrote there shows as an update, or as no change.
+A document that matches no existing asset is reported as a create.
 An asset that exists but is soft-deleted is also reported as a create, since `apply` restores it.
 
 A document in a dataset that a `Dash0Dataset` document in the same run creates is reported as a create too, because `apply` applies datasets first.
@@ -1545,7 +1580,10 @@ If any single fetch fails for a reason other than the asset simply not existing 
 
 `--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
 A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
-A deletion candidate with no `dash0.com/id` or `dash0.com/origin` label still fails the whole command before any plan is reported, matching `apply --since`'s posture.
+A removed document without `dash0.com/id` or `dash0.com/origin` is listed as a deletion at its inferred origin, as `apply --since` deletes it.
+`diff` reads the inferred origin first, as `apply --since` does, so when nothing is there it prints the same warning and does not list the deletion.
+When a document elsewhere in the repository still writes that inferred origin, `diff --since` leaves it out and prints the same warning as `apply --since`.
+A removed dataset without a slug, or AWS metric scrape config without `dash0.com/id`, still fails the whole command before any plan is reported, matching `apply --since`'s posture.
 A check rule that `-f`'s current contents still declare is not listed as a deletion, because `apply --since` skips it.
 When every asset definition under `-f`'s target was deleted, whether the directory is now empty or was removed, `diff --since` lists every deletion, the same as `apply --since`.
 
@@ -1723,7 +1761,7 @@ kind: SLO
 metadata:
   name: checkout-api-availability
   labels:
-    dash0.com/origin: checkout-api-availability
+    dash0.com/origin: dash0-cli_checkout-api-availability
   annotations:
     dash0.com/display-name: Checkout API availability
 spec:
@@ -1828,7 +1866,7 @@ kind: Dash0NotificationChannel
 metadata:
   name: Slack Alerts
   labels:
-    dash0.com/origin: my-slack-channel
+    dash0.com/origin: dash0-cli_slack-alerts
 spec:
   type: slack
   config:
@@ -1959,7 +1997,7 @@ kind: Dash0Team
 metadata:
   name: backend-team
   labels:
-    dash0.com/origin: backend-team
+    dash0.com/origin: dash0-cli_backend-team
 spec:
   display:
     name: Backend Team
@@ -1980,7 +2018,7 @@ kind: Dash0TimeSeriesAggregation
 metadata:
   name: http-server-request-duration
   labels:
-    dash0.com/origin: http-server-request-duration
+    dash0.com/origin: dash0-cli_http-server-request-duration
 spec:
   enabled: true
   display:
@@ -2232,7 +2270,7 @@ dash0 --experimental evals delete dash0-cli_answer-relevance --force
 > Eval origins are unique per organization, while each eval belongs to exactly one dataset.
 > You therefore cannot apply one document to two datasets.
 > The second apply fails with `404 ... does not exist or is inaccessible to you`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `answer-relevance-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_answer-relevance-staging`.
 
 An eval that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with `metadata.name ... already uses`, and the CLI adds a hint.
 Find that eval's origin with `dash0 -X evals list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it.
@@ -3997,10 +4035,10 @@ Example:
 
 ```bash
 $ dash0 -X notification-channels list
-NAME                  TYPE         ID                  ORIGIN       URL
-Slack Alerts          slack        abc-123-def-456     my-origin    https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
-PagerDuty On-Call     pagerduty    def-456-ghi-789     -            https://app.dash0.com/goto/settings/notifications?channel_id=def-456-ghi-789
-Email Digest          email_v2     ghi-789-jkl-012     -            https://app.dash0.com/goto/settings/notifications?channel_id=ghi-789-jkl-012
+NAME                  TYPE         ID                  ORIGIN                  URL
+Slack Alerts          slack        abc-123-def-456     dash0-cli_slack-alerts  https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
+PagerDuty On-Call     pagerduty    def-456-ghi-789     -                       https://app.dash0.com/goto/settings/notifications?channel_id=def-456-ghi-789
+Email Digest          email_v2     ghi-789-jkl-012     -                       https://app.dash0.com/goto/settings/notifications?channel_id=ghi-789-jkl-012
 ```
 
 Column aliases: `name` / `channel name`, `type` / `channel type`, `id` / `channel id`, `origin`, `url`.
@@ -4025,7 +4063,7 @@ Kind:  Dash0NotificationChannel
 Name:  Slack Alerts
 Type:  slack
 ID:    abc-123-def-456
-Origin: my-origin
+Origin: dash0-cli_slack-alerts
 URL:   https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
 ```
 
@@ -4038,7 +4076,7 @@ metadata:
   name: Slack Alerts
   labels:
     dash0.com/id: abc-123-def-456
-    dash0.com/origin: my-origin
+    dash0.com/origin: dash0-cli_slack-alerts
 spec:
   type: slack
   config: ...
@@ -4166,7 +4204,7 @@ $ dash0 -X datasets get <id>
 Kind:   Dash0Dataset
 Name:   Staging
 ID:     staging
-Origin: api-0b7e5d2a-1c3f-4e8a-9b6d-2f4a8c1e7d90
+Origin: dash0-cli_staging
 ```
 
 Use `-o yaml` to get the full definition, suitable for editing and re-applying.
@@ -4671,9 +4709,9 @@ Example:
 
 ```bash
 $ dash0 -X teams list
-NAME            ID          MEMBERS  ORIGIN       URL
-Backend Team    a1b2c3d4    3        dash0-cli    https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
-Frontend Team   b2c3d4e5    2                     https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
+NAME            ID          MEMBERS  ORIGIN                  URL
+Backend Team    a1b2c3d4    3        dash0-cli_backend-team  https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
+Frontend Team   b2c3d4e5    2                                https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
 ```
 
 Column aliases: `name` / `team name`, `id` / `team id`, `members` / `member count`, `origin`, `url`.
@@ -4697,7 +4735,7 @@ $ dash0 -X teams get <id>
 Kind:    Team
 Name:    Backend Team
 ID:      a1b2c3d4-5678-90ab-cdef-1234567890ab
-Origin:  dash0-cli
+Origin:  dash0-cli_backend-team
 Color:   #FF6B6B -> #4ECDC4
 Members: 2
 ...

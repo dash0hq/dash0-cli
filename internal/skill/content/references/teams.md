@@ -16,9 +16,9 @@ Example:
 
 ```bash
 $ dash0 -X teams list
-NAME            ID          MEMBERS  ORIGIN       URL
-Backend Team    a1b2c3d4    3        dash0-cli    https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
-Frontend Team   b2c3d4e5    2                     https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
+NAME            ID          MEMBERS  ORIGIN                  URL
+Backend Team    a1b2c3d4    3        dash0-cli_backend-team  https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
+Frontend Team   b2c3d4e5    2                                https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
 ```
 
 Column aliases: `name` / `team name`, `id` / `team id`, `members` / `member count`, `origin`, `url`.
@@ -42,7 +42,7 @@ $ dash0 -X teams get <id>
 Kind:    Team
 Name:    Backend Team
 ID:      a1b2c3d4-5678-90ab-cdef-1234567890ab
-Origin:  dash0-cli
+Origin:  dash0-cli_backend-team
 Color:   #FF6B6B -> #4ECDC4
 Members: 2
 ...

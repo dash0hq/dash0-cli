@@ -106,7 +106,7 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 
 	var sincePlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
-		plan, err := gitutil.ComputeSincePlan(ctx, flags.File, flags.Since)
+		plan, err := gitutil.ComputeSincePlan(ctx, flags.File, flags.Since, dataset)
 		if err != nil {
 			return err
 		}
@@ -119,11 +119,18 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 			// not the confirmation apply asks for.
 			fmt.Fprintf(os.Stderr, "warning: %s\n", sincePlan.Warning)
 		}
+		sincePlan.PrintSkippedDeletionWarnings(os.Stderr)
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
+	}
+
+	if sincePlan != nil {
+		if err := dropEmptyInferredOrigins(ctx, apiClient, sincePlan, dataset); err != nil {
+			return err
+		}
 	}
 
 	// Every document is read before anything is printed, so a failed read
@@ -268,5 +275,32 @@ func checkInferredOriginWrites(planned []plannedDoc, dataset *string) error {
 			}
 		}
 	}
+	return nil
+}
+
+// dropEmptyInferredOrigins leaves out a deletion at an inferred origin that
+// holds nothing or a soft-deleted asset, because apply --since reads it there
+// and skips the delete.
+func dropEmptyInferredOrigins(ctx context.Context, apiClient dash0api.Client, sincePlan *gitutil.SincePlan, dataset *string) error {
+	kept := sincePlan.Plan.ByIdentifier[:0]
+	for _, deletion := range sincePlan.Plan.ByIdentifier {
+		if deletion.AtInferredOrigin {
+			deleted, err := asset.GetRoutedAsset(ctx, apiClient, deletion.Kind, deletion.Identifier, dataset)
+			ectx := client.ErrorContext{AssetType: asset.KindDisplayName(deletion.Kind), AssetID: deletion.Identifier}
+			if dash0api.IsNotFound(err) {
+				asset.WarnNothingAtInferredOrigin(os.Stderr, deletion.Identifier)
+				continue
+			}
+			if err != nil {
+				return client.HandleAPIError(err, ectx)
+			}
+			if deleted {
+				client.PrintAlreadyDeleted(ectx)
+				continue
+			}
+		}
+		kept = append(kept, deletion)
+	}
+	sincePlan.Plan.ByIdentifier = kept
 	return nil
 }

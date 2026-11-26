@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -88,7 +89,7 @@ expression: up == 0
 	runGit(t, dir, "commit", "-q", "-m", "seed")
 
 	repo := Repo{Dir: dir}
-	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	deletions := []Deletion{
@@ -126,7 +127,7 @@ spec:
 	runGit(t, dir, "commit", "-q", "-m", "seed")
 
 	repo := Repo{Dir: dir}
-	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "")
+	before, err := BuildSnapshotFromRef(context.Background(), repo, "HEAD", "", nil)
 	require.NoError(t, err)
 
 	// The repository (and thus any chance of a second git read succeeding)
@@ -153,4 +154,44 @@ func TestResolveDeletionNames_MissingRawContentIsNonFatal(t *testing.T) {
 	}
 	names := resolveDeletionNames(before, deletions)
 	assert.Empty(t, names)
+}
+
+func TestInferredOriginsOnDisk_ReadsEveryDocumentGitDoesNotIgnore(t *testing.T) {
+	view := func(name string) string {
+		return "kind: View\nmetadata:\n  name: " + name + "\nspec:\n  type: logs\n"
+	}
+	dataset := "staging"
+	key := func(name string) IdentifierKey {
+		return IdentifierKey{Kind: "view", Identifier: asset.InferOrigin("view", name, dataset)}
+	}
+	repo := testRepo(t)
+	writeFile(t, repo.Dir, ".gitignore", "build/\n")
+	writeFile(t, repo.Dir, ".dash0/b/view.yaml", view("dotted"))
+	writeFile(t, repo.Dir, "multi.yaml", "kind: View\nmetadata: [unclosed\n---\n"+view("after-broken"))
+	writeFile(t, repo.Dir, "build/view.yaml", view("ignored"))
+	commitAll(t, repo.Dir, "assets")
+	writeFile(t, repo.Dir, "new/view.yaml", view("untracked"))
+
+	declared, err := inferredOriginsOnDisk(context.Background(), repo.Dir, &dataset)
+	require.NoError(t, err)
+
+	assert.Equal(t, ".dash0/b/view.yaml", declared[key("dotted")])
+	assert.Equal(t, "multi.yaml", declared[key("after-broken")])
+	assert.Equal(t, "new/view.yaml", declared[key("untracked")])
+	assert.NotContains(t, declared, key("ignored"))
+}
+
+func TestKeepInferredOriginsDeclaredOutsideScope_MatchesAnotherDashboardKind(t *testing.T) {
+	repo := testRepo(t)
+	writeFile(t, repo.Dir, "other/dashboard.yaml", "kind: Dashboard\nmetadata:\n  name: orders\nspec:\n  display:\n    name: Orders\n")
+	commitAll(t, repo.Dir, "dashboard")
+	deleted := IdentifierKey{Kind: "persesdashboard", Identifier: asset.InferKindOrigin("persesdashboard", "orders", nil)}
+	plan := DeletionPlan{ByIdentifier: []Deletion{{Kind: deleted.Kind, Identifier: deleted.Identifier, AtInferredOrigin: true}}}
+
+	warnings, err := keepInferredOriginsDeclaredOutsideScope(context.Background(), &plan, repo.Dir, nil)
+	require.NoError(t, err)
+
+	assert.Empty(t, plan.ByIdentifier)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "other/dashboard.yaml")
 }

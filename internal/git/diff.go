@@ -46,6 +46,14 @@ type Deletion struct {
 	// the "before" snapshot, when Kind is "prometheusrule". The preview needs
 	// it to list that deletion once it lists a multi-alert CRD per alert.
 	PrometheusHadRecordingRule bool
+	// Name is the display name of an alert or the recording rules of a
+	// PrometheusRule without an identifier, which share one Path. "" means
+	// SincePlan.Names has it.
+	Name string
+	// AtInferredOrigin reports that Identifier is the inferred origin of a
+	// document without an identifier. An asset that an earlier dash0 version
+	// created, or that was applied with another dataset, is not there.
+	AtInferredOrigin bool
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -87,6 +95,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if survives(before, after, key) {
 			continue
 		}
+		_, atInferredOrigin := before.Inferred[key]
 		deletion := Deletion{
 			Kind:               key.Kind,
 			Identifier:         key.Identifier,
@@ -95,6 +104,8 @@ func Diff(before, after Snapshot) DeletionPlan {
 			InferredOriginName: before.InferredOriginNames[key],
 			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(key.Kind), Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
+			Name:               before.Inferred[key],
+			AtInferredOrigin:   atInferredOrigin,
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
@@ -232,11 +243,14 @@ func survives(before, after Snapshot, key IdentifierKey) bool {
 	if alias := before.Aliases[key]; alias != "" {
 		names = append(names, alias)
 	}
-	kinds := []string{key.Kind}
-	if slices.Contains(dashboardKinds, key.Kind) {
-		kinds = dashboardKinds
-	}
-	for _, kind := range kinds {
+	for _, kind := range sameAssetKinds(key.Kind) {
+		// An id-only document in after is written at its inferred origin when
+		// its id is not found.
+		// ponytail: when the id is found, the asset at the inferred origin is left
+		// behind; reading the id would need the API, which --since's plan never calls.
+		if _, ok := after.Inferred[IdentifierKey{Kind: kind, Identifier: key.Identifier}]; ok {
+			return true
+		}
 		for _, name := range names {
 			if declares(after, IdentifierKey{Kind: kind, Identifier: name}) {
 				return true
@@ -261,3 +275,12 @@ func declares(snapshot Snapshot, key IdentifierKey) bool {
 }
 
 var dashboardKinds = []string{"dashboard", "ephemeraldashboard", "persesdashboard"}
+
+// sameAssetKinds returns the kinds whose documents write the same asset as a
+// document of kind.
+func sameAssetKinds(kind string) []string {
+	if slices.Contains(dashboardKinds, kind) {
+		return dashboardKinds
+	}
+	return []string{kind}
+}

@@ -3,6 +3,7 @@
 package apply
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-api-client-go/profiles"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
@@ -3581,4 +3583,226 @@ spec:
 		}
 	}
 	assert.Equal(t, []string{asset.InferKindOrigin("recordingrule", "app-rules", &dataset)}, deleted)
+}
+
+// runSinceWrites runs apply with args and returns every request it sent
+// other than a GET.
+func runSinceWrites(t *testing.T, args []string, requests *[]routedRequest) []string {
+	t.Helper()
+	cmd := newSinceTestCmd()
+	cmd.SetArgs(args)
+	var cmdErr error
+	_ = testutil.CaptureStderr(t, func() {
+		testutil.CaptureStdout(t, func() {
+			cmdErr = cmd.Execute()
+		})
+	})
+	require.NoError(t, cmdErr)
+	var writes []string
+	for _, request := range *requests {
+		if !strings.HasPrefix(request.line, http.MethodGet) {
+			writes = append(writes, request.line)
+		}
+	}
+	return writes
+}
+
+// A removed document without an id or an origin was written at its inferred
+// origin, so --since deletes it there, for every kind that has one. Datasets
+// and AWS metric scrape configs require an id, so they cannot get here.
+func TestApply_Since_EveryKindDeletesADocumentWithoutIdentifierAtItsInferredOrigin(t *testing.T) {
+	run := func(t *testing.T, kind string, spec routedKind) {
+		testutil.SetupTestEnv(t)
+		dir := t.TempDir()
+		before := commitRemoval(t, dir, map[string]string{"asset.yaml": spec.document("")}, "asset.yaml")
+
+		inferred := inferredOrigin(kind, spec)
+		fixture, writeResponse := routedFixtures(t, spec)
+		server := testutil.NewMockServer(t, testutil.FixturesDir())
+		requests := serveRouted(server, spec, map[string][]byte{inferred: storedAsset(t, fixture, spec, inferred, inferred)}, writeResponse)
+
+		writes := runSinceWrites(t, []string{
+			"-f", dir, "--since", before, "--force", "--experimental",
+			"--api-url", server.URL, "--auth-token", testAuthToken,
+		}, requests)
+		assert.Equal(t, []string{"DELETE " + inferred}, writes)
+	}
+	for _, kind := range asset.ValidKinds {
+		spec := routedKinds[kind]
+		if spec.idRequired() {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) { run(t, kind, spec) })
+		for version, variant := range routedVariants[kind] {
+			t.Run(kind+"/"+version, func(t *testing.T) { run(t, kind, variant) })
+		}
+	}
+}
+
+// Several delete endpoints answer a key that does not exist with 2xx, so
+// --since reads the inferred origin first. An asset created by an earlier
+// dash0 version, or applied with another dataset, is not there, and --since
+// must not report a deletion that never happened.
+func TestApply_Since_NothingAtTheInferredOriginIsNotReportedAsDeleted(t *testing.T) {
+	run := func(t *testing.T, kind string, spec routedKind) {
+		testutil.SetupTestEnv(t)
+		dir := t.TempDir()
+		before := commitRemoval(t, dir, map[string]string{"asset.yaml": spec.document("")}, "asset.yaml")
+
+		inferred := inferredOrigin(kind, spec)
+		_, writeResponse := routedFixtures(t, spec)
+		server := testutil.NewMockServer(t, testutil.FixturesDir())
+		requests := serveRouted(server, spec, map[string][]byte{}, writeResponse)
+
+		cmd := newSinceTestCmd()
+		cmd.SetArgs([]string{"-f", dir, "--since", before, "--force", "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+		var cmdErr error
+		var stdout string
+		stderr := testutil.CaptureStderr(t, func() {
+			stdout = testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+		})
+		require.NoError(t, cmdErr)
+
+		for _, request := range *requests {
+			assert.Equal(t, "GET "+inferred, request.line)
+		}
+		assert.NotContains(t, stdout, "deleted")
+		assert.Contains(t, stderr, "nothing to delete at inferred origin "+inferred)
+	}
+	for _, kind := range asset.ValidKinds {
+		spec := routedKinds[kind]
+		if spec.idRequired() {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) { run(t, kind, spec) })
+	}
+}
+
+// A second --since run finds the asset it already deleted, soft-deleted, at the
+// inferred origin. It reports it as already deleted and sends no delete.
+func TestApply_Since_SoftDeletedAtTheInferredOriginIsAlreadyDeleted(t *testing.T) {
+	for _, kind := range asset.ValidKinds {
+		spec := routedKinds[kind]
+		deletedFixture := strings.Replace(spec.fixture, "get_success.json", "get_deleted.json", 1)
+		if spec.idRequired() || deletedFixture == spec.fixture {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(testutil.FixturesDir(), deletedFixture)); err != nil {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			before := commitRemoval(t, dir, map[string]string{"asset.yaml": spec.document("")}, "asset.yaml")
+
+			inferred := inferredOrigin(kind, spec)
+			_, writeResponse := routedFixtures(t, spec)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			requests := serveRouted(server, spec, map[string][]byte{inferred: readFixture(t, deletedFixture)}, writeResponse)
+
+			cmd := newSinceTestCmd()
+			cmd.SetArgs([]string{"-f", dir, "--since", before, "--force", "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken})
+			var cmdErr error
+			var stdout string
+			stderr := testutil.CaptureStderr(t, func() {
+				stdout = testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+			})
+			require.NoError(t, cmdErr)
+
+			for _, request := range *requests {
+				assert.Equal(t, "GET "+inferred, request.line)
+			}
+			assert.NotContains(t, stdout, "deleted")
+			assert.Contains(t, stderr, "was already deleted")
+			assert.NotContains(t, stderr, "nothing to delete at inferred origin")
+		})
+	}
+}
+
+// Renaming a document without an identifier moves it to a new inferred origin:
+// apply creates the new asset, --since deletes the old one, and plain apply
+// leaves it.
+func TestApply_RenamedDocumentWithoutIdentifier(t *testing.T) {
+	view := func(name string) string {
+		return "kind: View\nmetadata:\n  name: " + name + "\nspec:\n  type: logs\n  display:\n    name: " + name + "\n"
+	}
+	spec := routedKinds["view"]
+	oldOrigin := asset.InferOrigin("view", "checkout", "staging")
+	newOrigin := asset.InferOrigin("view", "payments", "staging")
+
+	for _, tt := range []struct {
+		name  string
+		since bool
+		want  []string
+	}{
+		{"with --since", true, []string{"PUT " + newOrigin, "DELETE " + oldOrigin}},
+		{"without --since", false, []string{"PUT " + newOrigin}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			before := commitRemoval(t, dir, map[string]string{"old.yaml": view("checkout")}, "old.yaml")
+			writeFileFixture(t, dir, "new.yaml", view("payments"))
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "rename")
+
+			fixture, writeResponse := routedFixtures(t, spec)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			requests := serveRouted(server, spec, map[string][]byte{oldOrigin: storedAsset(t, fixture, spec, oldOrigin, oldOrigin)}, writeResponse)
+
+			args := []string{"-f", dir, "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken}
+			if tt.since {
+				args = append(args, "--since", before, "--force", "--experimental")
+			}
+			assert.Equal(t, tt.want, runSinceWrites(t, args, requests))
+		})
+	}
+}
+
+// A document moved out of -f to a directory applied with another dataset still
+// declares its asset there. Running --since on the old directory with that
+// dataset, from any source, must not delete it.
+func TestApply_Since_DoesNotDeleteAnInferredOriginDeclaredOutsideTheTarget(t *testing.T) {
+	view := "kind: View\nmetadata:\n  name: checkout\nspec:\n  type: logs\n  display:\n    name: checkout\n"
+	spec := routedKinds["view"]
+	declared := asset.InferOrigin("view", "checkout", "two")
+
+	for _, source := range []string{"flag", "env", "profile"} {
+		t.Run(source, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			dir := t.TempDir()
+			before := commitRemoval(t, dir, map[string]string{"old/view.yaml": view}, "old/view.yaml")
+			writeFileFixture(t, dir, "new/view.yaml", view)
+			runGitCmd(t, dir, "add", "-A")
+			runGitCmd(t, dir, "commit", "-q", "-m", "move")
+
+			fixture, writeResponse := routedFixtures(t, spec)
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			requests := serveRouted(server, spec, map[string][]byte{declared: storedAsset(t, fixture, spec, declared, declared)}, writeResponse)
+
+			args := []string{"-f", filepath.Join(dir, "old"), "--since", before, "--force", "--experimental", "--api-url", server.URL, "--auth-token", testAuthToken}
+			cmd := newSinceTestCmd()
+			switch source {
+			case "flag":
+				args = append(args, "--dataset", "two")
+			case "env":
+				t.Setenv("DASH0_DATASET", "two")
+			case "profile":
+				cmd.SetContext(profiles.WithConfiguration(context.Background(), testutil.ResolvedConfiguration(t, "test", profiles.Configuration{
+					ApiUrl: server.URL, AuthToken: testAuthToken, Dataset: "two",
+				})))
+			}
+			cmd.SetArgs(args)
+			var cmdErr error
+			stderr := testutil.CaptureStderr(t, func() {
+				testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+			})
+			require.NoError(t, cmdErr)
+
+			for _, request := range *requests {
+				assert.NotEqual(t, "DELETE "+declared, request.line)
+			}
+			assert.Contains(t, stderr, "new/view.yaml")
+		})
+	}
 }

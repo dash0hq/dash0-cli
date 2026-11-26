@@ -181,7 +181,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 	var deletionPlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
-		plan, err := computeDeletionPlan(ctx, flags)
+		plan, err := computeDeletionPlan(ctx, flags, dataset)
 		if err != nil {
 			return err
 		}
@@ -268,6 +268,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	if deletionPlan != nil {
+		deletionPlan.PrintSkippedDeletionWarnings(os.Stderr)
 		// The non-ancestor confirmation happens here, after every document
 		// create/update above has already gone through — never before them.
 		// Gating it earlier (inside computeDeletionPlan, as this used to

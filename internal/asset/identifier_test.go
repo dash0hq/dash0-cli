@@ -32,7 +32,7 @@ func TestExtractIdentifier_NonStringIdentifierLabelFails(t *testing.T) {
 // strips origin outbound, so nothing live ever had it. --since then recorded
 // the asset, deleted by an identifier that matches nothing, got a 404, and
 // printed "was already deleted" while the asset stayed live. Returning ""
-// instead routes it to the NoIdentifier hard-fail written for this case.
+// keeps the identifier to the field the kind is upserted by.
 //
 // Only datasets and AWS metric scrape configs read a single field; every
 // other kind reads the id, then the origin.

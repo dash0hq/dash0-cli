@@ -60,6 +60,7 @@ See [Eval documents](#eval-documents-experimental) for the fields the CLI remove
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
+Two datasets with different slugs that would be created at the same `dash0.com/origin`, explicit or inferred, also fail validation, because a slug cannot change and the second write would fail after the first was applied.
 They follow the [routing rule](#routing-rule), with the slug as the id: on hit the CLI updates the dataset at its slug, and on 404 it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug.
 Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
@@ -98,7 +99,7 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
 > You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_http-server-request-duration-staging`.
 
 `Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
 They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
@@ -175,7 +176,7 @@ Dry run: 1 document validated
 `--since <ref>` turns `apply` into a full GitOps sync, not just create/update: it additionally deletes any asset whose definition existed in `-f`'s scanned scope at `<ref>` but is no longer present in the current contents.
 `<ref>` accepts any revision expression `git` itself accepts — a commit SHA, a branch or tag name, or a relative expression like `HEAD~1` — and `-f`'s target must be inside a git repository (a single file or a directory both work).
 
-Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert) — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
+Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert), or the [inferred origin](#routing-rule) of a document without either — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
 `--since` requires `--experimental`/`-X`.
 `apply` itself is not gated: every other flag, including `--dry-run`, is completely unaffected when `--since` is not passed.
 
@@ -313,10 +314,35 @@ In agent mode, a `--since` run that would delete a sampling rule requires an exp
 A `Dash0Team` document removed since `<ref>` deletes the team at its `dash0.com/id`, or, when the id is not found, at its `dash0.com/origin` or its inferred origin, with the same API call as `teams delete`.
 `--since` warns before it deletes a team identified by `dash0.com/id` alone, because a team that an earlier CLI version created by POST sits at a server-assigned ID that the delete misses.
 
-A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+A removed document without `dash0.com/id` or `dash0.com/origin` is deleted at the origin `apply` inferred for it, from its kind, its `metadata.name` at `<ref>`, and the dataset of the run:
 
 ```bash
-$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+$ dash0 --experimental apply -f views/ --since HEAD~1 --force
+View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
+```
+
+`--since` reads the inferred origin before it deletes there, because several delete endpoints report success for an asset that does not exist.
+When nothing is there, it prints a warning and deletes nothing, for example for an asset that an earlier dash0 version created at a server-assigned origin, or one applied with another dataset.
+`--dry-run` never reads from Dash0, so it still lists that deletion; use [`diff --since`](#diff-experimental) to see only the deletions `apply` makes.
+
+When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
+
+`--since` also does not delete at an inferred origin that a document anywhere else in the repository still writes for the dataset of the run, and prints a warning that names that document.
+For this check, `--since` reads the YAML files outside `-f` that git tracks or does not ignore, including files in dot directories, but only when the plan has a deletion at an inferred origin.
+The dataset a directory was applied with is not recorded in git, so a document moved to a directory applied with another dataset gets the same inferred origin, and deleting there would remove the asset the moved document still declares:
+
+```bash
+$ dash0 --experimental apply -f old/ --since HEAD~1 --dataset staging --force
+warning: --since does not delete View dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8: new/view.yaml still declares it in dataset "staging"; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset
+```
+
+Run `--since` with the dataset the removed document was applied to, and delete the old asset in that dataset by hand.
+
+A dataset without a slug and an AWS metric scrape config without `dash0.com/id` have no inferred origin.
+A removed document of these kinds that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+
+```bash
+$ dash0 --experimental apply -f datasets/ --since HEAD~1
 Error: --since 'HEAD~1' found 1 document deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:
   removed.yaml
 Hint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation

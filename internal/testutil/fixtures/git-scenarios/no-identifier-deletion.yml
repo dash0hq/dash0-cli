@@ -1,0 +1,43 @@
+kind: GitRepoFixture
+spec:
+  # Two views without an id or an origin, so apply writes each at its inferred
+  # origin. The next commit removes one and renames the other, so --since
+  # deletes both at their old inferred origins and apply writes the renamed
+  # view at its new one.
+  sinceRef: before
+  repo:
+    commits:
+      - label: before
+        message: "add view-a and view-b without identifiers"
+        changes:
+          - op: add
+            name: view-a.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: View A
+              spec:
+                query: "true"
+          - op: add
+            name: view-b.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: View B
+              spec:
+                query: "true"
+      - message: "remove view-a and rename view-b"
+        changes:
+          - op: delete
+            name: view-a.yaml
+          - op: modify
+            name: view-b.yaml
+            content: |
+              apiVersion: dash0.com/v1alpha1
+              kind: View
+              metadata:
+                name: View C
+              spec:
+                query: "true"

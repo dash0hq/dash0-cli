@@ -744,3 +744,37 @@ func TestParseDocumentHeader_SignalToMetricsRule(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDocuments_DatasetsWithTheSameOrigin(t *testing.T) {
+	dataset := func(slug, origin string) string {
+		labels := ""
+		if origin != "" {
+			labels = "\n  labels:\n    dash0.com/origin: " + origin
+		}
+		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: " + slug + labels + "\nspec:\n  slug: " + slug + "\n"
+	}
+	tests := []struct {
+		name       string
+		documents  []string
+		wantFailed bool
+	}{
+		{name: "same origin, different slugs", documents: []string{dataset("staging", "dash0-cli_env"), dataset("prod", "dash0-cli_env")}, wantFailed: true},
+		{name: "origin is another slug's inferred origin", documents: []string{dataset("staging", ""), dataset("prod", InferOrigin("dataset", "staging", ""))}, wantFailed: true},
+		{name: "same origin, same slug", documents: []string{dataset("staging", "dash0-cli_env"), dataset("staging", "dash0-cli_env")}},
+		{name: "different origins", documents: []string{dataset("staging", "dash0-cli_staging"), dataset("prod", "dash0-cli_prod")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			docs, err := ReadMultiDocumentYAML("-", strings.NewReader(strings.Join(tt.documents, "---\n")))
+			require.NoError(t, err)
+
+			validationErrors, _ := ValidateDocuments(docs)
+			if !tt.wantFailed {
+				assert.Empty(t, validationErrors)
+				return
+			}
+			require.Len(t, validationErrors, 1)
+			assert.Contains(t, validationErrors[0], "dataset origin")
+		})
+	}
+}
