@@ -147,7 +147,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 
 // deleteAssetByKindAndIdentifier dispatches a whole-asset deletion (an
 // asset whose identifier disappeared entirely) to the matching per-kind
-// delete API call, mirroring the dispatch applyDocument already uses for
+// delete API call, mirroring the dispatch asset.ApplyDocument already uses for
 // create/update.
 //
 // A 404 here always means "already gone" and is always tolerated,

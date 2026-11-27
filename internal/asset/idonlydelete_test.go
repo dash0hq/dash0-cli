@@ -6,14 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// A new kind must decide whether `apply --since` warns before it deletes an
-// id-only document of that kind, instead of silently getting no warning.
+// Only these kinds warn before `apply --since` deletes an id-only document.
 func TestIDOnlyDeleteWarning_EveryValidKindDecides(t *testing.T) {
 	var warningKinds []string
 	for _, kind := range ValidKinds {
-		warning, decided := idOnlyDeleteWarnings[NormalizeKind(kind)]
-		assert.Truef(t, decided, "kind %q has no key in idOnlyDeleteWarnings", kind)
-		if warning != nil {
+		if kinds[NormalizeKind(kind)].idOnlyDelete != nil {
 			warningKinds = append(warningKinds, kind)
 			assert.NotEmptyf(t, IDOnlyDeleteWarning(kind, `"name" (id)`), "kind %q", kind)
 		}

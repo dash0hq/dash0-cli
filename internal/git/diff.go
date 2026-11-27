@@ -233,7 +233,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 // same dashboard, so the old id is not a deletion.
 //
 // apply upserts Dashboard, EphemeralDashboard, and PersesDashboard documents
-// through the same dashboard import (see applyDocument in internal/apply), and
+// through the same dashboard import (see asset.ApplyDocument), and
 // the API keeps all three under one identifier, so a file re-authored from one
 // of these kinds to another under the same identifier is still the same live
 // dashboard, not a deletion. The key keeps its own

@@ -1,7 +1,6 @@
 package apply
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,11 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestApplyAction_String(t *testing.T) {
-	assert.Equal(t, "created", string(actionCreated))
-	assert.Equal(t, "updated", string(actionUpdated))
-}
 
 func TestValidateDocuments_NotificationChannelAssetsWarning(t *testing.T) {
 	yaml := `kind: Dash0NotificationChannel
@@ -208,19 +202,6 @@ spec:
 
 			validationErrors, _ := asset.ValidateDocuments(docs)
 			assert.Equal(t, tt.want, validationErrors)
-		})
-	}
-}
-
-// Every kind in asset.ValidKinds must have an applyDocument case, or apply
-// accepts a document in validation and then fails it with "unsupported kind".
-// The document does not parse, so no case reaches the API.
-func TestApplyDocument_AppliesEveryValidKind(t *testing.T) {
-	for _, kind := range asset.ValidKinds {
-		t.Run(kind, func(t *testing.T) {
-			_, err := applyDocument(context.Background(), nil, asset.Document{Kind: kind, Raw: []byte("{")}, nil)
-			require.Error(t, err)
-			assert.NotContains(t, err.Error(), "unsupported kind")
 		})
 	}
 }

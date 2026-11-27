@@ -65,193 +65,25 @@ func FormatNameAndID(name, id string) string {
 }
 
 // ParseDocumentHeader extracts the kind, human-readable name, and ID from
-// raw YAML bytes. It unmarshals into typed structs and delegates to the
-// Extract* functions in internal/asset/ so that apply and the per-asset
-// CRUD commands use the same extraction logic.
+// raw YAML bytes, with the decoder of the document's kind.
 func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 	kind, err = dash0yaml.DetectKind(data)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	switch NormalizeKind(kind) {
-	case "dashboard", "ephemeraldashboard":
-		var dashboard dash0api.DashboardDefinition
-		if err := dash0yaml.Unmarshal(data, &dashboard); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+	if behavior := kinds[NormalizeKind(kind)]; behavior.decodeHeader != nil {
+		name, id, err = behavior.decodeHeader(data)
+		if err != nil {
+			return "", "", "", err
 		}
-		name = dash0api.GetDashboardName(&dashboard)
-		if name == "" {
-			name = dashboard.Metadata.Name
-		}
-		id = DashboardKey(&dashboard)
-
-	case "checkrule":
-		var rule dash0api.PrometheusAlertRule
-		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetCheckRuleName(&rule)
-		id = idThenOrigin(&rule)
-
-	case "view":
-		var view dash0api.ViewDefinition
-		if err := dash0yaml.Unmarshal(data, &view); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetViewName(&view)
-		id = idThenOrigin(&view)
-
-	case "syntheticcheck":
-		var check dash0api.SyntheticCheckDefinition
-		if err := dash0yaml.Unmarshal(data, &check); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSyntheticCheckName(&check)
-		id = idThenOrigin(&check)
-
-	case "slo":
-		var slo dash0api.SloDefinition
-		if err := dash0yaml.Unmarshal(data, &slo); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSLOName(&slo)
-		id = PreferredKey(&slo)
-
-	case "prometheusrule":
-		// We only need metadata (name + ID) here; the Metadata struct has no
-		// time.Duration fields, so a partial unmarshal via sigsyaml is safe.
-		var partial struct {
-			Metadata dash0api.PrometheusRulesMetadata `json:"metadata"`
-		}
-		if err := dash0yaml.Unmarshal(data, &partial); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = partial.Metadata.Name
-		id = partial.Metadata.Labels[dash0api.LabelID]
-		if id == "" {
-			id = partial.Metadata.Labels[dash0api.LabelOrigin]
-		}
-
-	case "persesdashboard":
-		var perses dash0api.PersesDashboard
-		if err := dash0yaml.Unmarshal(data, &perses); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetPersesDashboardName(&perses)
-		id = dash0api.GetPersesDashboardID(&perses)
-		if id == "" {
-			id = perses.Metadata.Labels[dash0api.LabelOrigin]
-		}
-
-	case "spamfilter":
-		// Metadata fields (name + dash0.com/id label) are identical across
-		// v1alpha1 and v1alpha2, so we use the v1alpha1 type for the header
-		// peek regardless of the document's apiVersion. The apiVersion-aware
-		// dispatch happens in applyDocument.
-		var filter dash0api.SpamFilter
-		if err := dash0yaml.Unmarshal(data, &filter); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSpamFilterName(&filter)
-		id = dash0api.GetSpamFilterID(&filter)
-
-	case "notificationchannel":
-		var channel dash0api.NotificationChannelDefinition
-		if err := dash0yaml.Unmarshal(data, &channel); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetNotificationChannelName(&channel)
-		id = dash0api.GetNotificationChannelID(&channel)
-		if id == "" {
-			// Notification channels use origin as the upsert key. Surface it
-			// as the ID in dry-run/listing output so users can see which
-			// existing channel the document will replace.
-			id = dash0api.GetNotificationChannelOrigin(&channel)
-		}
-
-	case "timeseriesaggregation":
-		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := dash0yaml.Unmarshal(data, &aggregation); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetTimeSeriesAggregationName(&aggregation)
-		// This kind upserts by origin, not id. Showing the origin as the ID in
-		// dry-run output names the key being used, which an exported
-		// document's server-assigned id would not.
-		id = GetTimeSeriesAggregationOrigin(&aggregation)
-
-	case "signaltometrics":
-		var rule dash0api.SignalToMetricsDefinition
-		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSignalToMetricsName(&rule)
-		// Rules upsert by origin, falling back to dash0.com/id.
-		id = SignalToMetricsRuleKey(&rule)
-
-	case "sampling":
-		var rule dash0api.SamplingDefinition
-		if err := dash0yaml.Unmarshal(data, &rule); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetSamplingRuleName(&rule)
-		// Rules upsert by origin, falling back to dash0.com/id.
-		id = SamplingRuleKey(&rule)
-
-	case "team":
-		var team dash0api.TeamDefinitionV1Alpha1
-		if err := dash0yaml.Unmarshal(data, &team); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetTeamDisplayName(&team)
-		if name == "" {
-			name = dash0api.GetTeamName(&team)
-		}
-		id = PreferredKey(&team)
-
-	case "dataset":
-		var dataset dash0api.DatasetDefinition
-		if err := dash0yaml.Unmarshal(data, &dataset); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetDatasetName(&dataset)
-		id = dash0api.GetDatasetID(&dataset)
-
-	case "skill":
-		var skill dash0api.SkillDefinition
-		if err := dash0yaml.Unmarshal(data, &skill); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = CustomSkillName(&skill)
-		id = CustomSkillKey(&skill)
-
-	case "awsmetricscrapeconfig":
-		var cfg dash0api.AwsMetricScrapeConfigDefinition
-		if err := dash0yaml.Unmarshal(data, &cfg); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetAwsMetricScrapeConfigName(&cfg)
-		// The integration id is the only key: there is one config per integration.
-		id = dash0api.GetAwsMetricScrapeConfigID(&cfg)
-
-	case "generativeaievaluation":
-		var evaluation dash0api.GenerativeAiEvaluationDefinition
-		if err := dash0yaml.Unmarshal(data, &evaluation); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = dash0api.GetGenerativeAiEvaluationName(&evaluation)
-		id = PreferredKey(&evaluation)
-
-	default:
-		var raw map[string]any
-		if err := dash0yaml.Unmarshal(data, &raw); err != nil {
-			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		name = yamlStringFromMap(raw, "metadata", "name")
+		return kind, name, id, nil
 	}
-
-	return kind, name, id, nil
+	var raw map[string]any
+	if err := dash0yaml.Unmarshal(data, &raw); err != nil {
+		return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+	}
+	return kind, yamlStringFromMap(raw, "metadata", "name"), "", nil
 }
 
 // yamlString traverses a nested map[string]any by the given keys and returns

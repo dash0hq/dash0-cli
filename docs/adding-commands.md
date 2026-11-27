@@ -60,8 +60,10 @@ Adding a CRUD command without wiring it into `apply` is incomplete work and will
 Concretely:
 
 1. Add the asset's normalized `kind` (and any CRD aliases, e.g. `PersesDashboard` for dashboards, `PrometheusRule` for check rules and recording rules) to `ValidKinds` in `internal/asset/kind.go`.
-2. Add a `case` in `ParseDocumentHeader` in `internal/asset/document.go` that unmarshals the document into the appropriate typed struct and extracts `name` and `id`.
-3. Add a `case` in `applyDocument` in `internal/apply/apply.go` that parses the raw bytes, calls the corresponding `asset.Import<Asset>(...)` helper, and returns an `applyResult`.
+2. Add an entry for the kind to `kinds` in `internal/asset/kinds.go`.
+   The entry is the one place that names the kind's behavior: `displayName` (see [asset kind display names](cli-naming-conventions.md#asset-kind-display-names)), `decodeHeader` (the name and identifier that validation and the dry run show), `apply` (parses the raw bytes, calls the `asset.Import<Asset>(...)` helper, and returns the applied assets), and `idOnlyDelete` when `apply --since` must warn before it deletes a document identified by `dash0.com/id` alone.
+   `TestKinds_EveryValidKindHasEveryBehavior` fails for a kind in `ValidKinds` whose entry misses a behavior.
+3. `ParseDocumentHeader`, `KindDisplayName`, and `apply` read the entry, so they need no change.
 4. Update the human-readable list of supported kinds in the `Long` description of `NewApplyCmd` in `internal/apply/apply.go`, and in the "unsupported kind" error message of `ValidateDocuments` in `internal/asset/validate.go`.
 5. If the asset has multiple schema versions (e.g., `apiVersion: v1alpha1` vs `v1alpha2`), validate the apiVersion during the validation phase using a `Detect<Asset>APIVersion` helper from `internal/asset/`, so a typo fails up front rather than mid-apply.
 6. Route the kind through `asset.RouteDocument` in `internal/asset/router.go`: build its `Identity` (`dash0.com/id`, `dash0.com/origin`, and the origin from `asset.InferOrigin`), add its parser to `routedParsers` so `apply` and `diff` check inferred origin collisions, and add the kind to `routedKinds` and `routedUpdateCommands` in `internal/apply/router_conformance_test.go`.
@@ -74,11 +76,11 @@ Concretely:
    A kind whose id is required, as for datasets, sets its own case table in `routedKind.cases`.
 7. Add a matching `case` in `planDocument` in `internal/diff/plan.go` that calls the asset's `asset.Plan<Asset>(...)` step, so `diff` previews the new kind.
    `TestPlanDocument_PlansEveryKindApplyAccepts` fails when a kind in `ValidKinds` has no case there.
-   `TestParseDocumentHeader_DecodesEveryValidKind` and `TestApplyDocument_AppliesEveryValidKind` do the same for steps 2 and 3.
+   `TestParseDocumentHeader_DecodesEveryValidKind` and `TestApplyDocument_AppliesEveryValidKind` check the entry from step 2 end to end.
 
 The shared import logic lives in `internal/asset/<asset>.go` (an `Import<Asset>` function) so that `apply` and the dedicated `create` command call the same code path.
 
-If the asset is organization-level (no `--dataset`), the import helper must accept a `nil` dataset and `applyDocument` must pass `nil` regardless of the resolved CLI dataset.
+If the asset is organization-level (no `--dataset`), the import helper must accept a `nil` dataset and the kind's `apply` entry must pass `nil` regardless of the resolved CLI dataset.
 
 ## 5. Implement flags
 
