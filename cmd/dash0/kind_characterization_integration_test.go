@@ -94,8 +94,6 @@ func invalidKindDocument(kind string) string {
 		return "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: checkout\nspec:\n  groups:\n    - name: g\n      rules: []\n"
 	case "spamfilter":
 		return "apiVersion: v9\nkind: Dash0SpamFilter\nmetadata:\n  name: checkout\nspec:\n  contexts: [log]\n  filter: []\n"
-	case "timeseriesaggregation":
-		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0TimeSeriesAggregation\nmetadata:\n  name: checkout\nspec: {}\n"
 	case "dataset":
 		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: checkout\nspec: {}\n"
 	case "skill":
@@ -456,7 +454,8 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "Synthetic check \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n",
 				requests: []string{
-					"DELETE /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 		},
@@ -506,9 +505,10 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "SLO \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"SLO \"checkout\" (o) deleted\n",
-				stderr: "warning: SLO \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n",
+				stderr: "warning: SLO \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but an SLO that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on SLOs you manage with --since\n",
 				requests: []string{
-					"DELETE /api/slos/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/slos/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/slos/dash0-cli_2b7c28a0ab687522b9ed77c33344bc6f?dataset=ds",
 					"DELETE /api/slos/o?dataset=ds",
 				},
 			},
@@ -543,7 +543,8 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "View \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n",
 				requests: []string{
-					"DELETE /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 		},
@@ -578,7 +579,8 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 				stdout: "PrometheusRule \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n",
 				requests: []string{
 					"DELETE /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"DELETE /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 		},
@@ -612,7 +614,8 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "PersesDashboard \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n",
 				requests: []string{
-					"DELETE /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 		},
@@ -662,9 +665,10 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "Spam filter \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"Spam filter \"checkout\" (o) deleted\n",
-				stderr: "warning: spam filter \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter\n",
+				stderr: "warning: spam filter \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a spam filter that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on spam filters you manage with --since\n",
 				requests: []string{
-					"DELETE /api/spam-filters/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/spam-filters/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/spam-filters/dash0-cli_8ecbbb9380552fc47bafd305cbaccb0e?dataset=ds",
 					"DELETE /api/spam-filters/o?dataset=ds",
 				},
 			},
@@ -749,9 +753,10 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "Team \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"Team \"checkout\" (o) deleted\n",
-				stderr: "warning: team \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; team ids are server-assigned, so if this document was first applied to an organization without that id the live team now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n",
+				stderr: "warning: team \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a team that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on teams you manage with --since\n",
 				requests: []string{
-					"DELETE /api/teams/11111111-1111-4111-8111-111111111111",
+					"GET /api/teams/11111111-1111-4111-8111-111111111111",
+					"DELETE /api/teams/dash0-cli_bcd2e925dfd133e960739b9c63643445",
 					"DELETE /api/teams/o",
 				},
 			},
@@ -871,7 +876,8 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 				stdout: "Agent0 skill \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"Agent0 skill \"checkout\" (o) deleted\n",
 				requests: []string{
-					"DELETE /api/agent0/custom-skills/11111111-1111-4111-8111-111111111111",
+					"GET /api/agent0/custom-skills/11111111-1111-4111-8111-111111111111",
+					"DELETE /api/agent0/custom-skills/dash0-cli_95637659fc967c84d5d13302af42475c",
 					"DELETE /api/agent0/custom-skills/o",
 				},
 			},
@@ -956,9 +962,10 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "Eval \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"Eval \"checkout\" (o) deleted\n",
-				stderr: "warning: eval \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n",
+				stderr: "warning: eval \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but an eval that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on evals you manage with --since\n",
 				requests: []string{
-					"DELETE /api/generative-ai-evaluations/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/generative-ai-evaluations/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/generative-ai-evaluations/dash0-cli_a066261debeec3968b41f4a0d21806cd?dataset=ds",
 					"DELETE /api/generative-ai-evaluations/o?dataset=ds",
 				},
 			},
@@ -1009,9 +1016,10 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "Signal-to-metrics rule \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"Signal-to-metrics rule \"checkout\" (o) deleted\n",
-				stderr: "warning: signal-to-metrics rule \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; rule ids are server-assigned, so if this document was first applied to an organization without that id the live rule now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it\n",
+				stderr: "warning: signal-to-metrics rule \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a signal-to-metrics rule that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on signal-to-metrics rules you manage with --since\n",
 				requests: []string{
-					"DELETE /api/signal-to-metrics/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/signal-to-metrics/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/signal-to-metrics/dash0-cli_6a41e519ef6e238e992ee15aef91eeb4?dataset=ds",
 					"DELETE /api/signal-to-metrics/o?dataset=ds",
 				},
 			},
@@ -1062,9 +1070,10 @@ func TestApplySince_KindCharacterization(t *testing.T) {
 			apply: cliRun{
 				stdout: "Sampling rule \"checkout\" (11111111-1111-4111-8111-111111111111) deleted\n" +
 					"Sampling rule \"checkout\" (o) deleted\n",
-				stderr: "warning: sampling rule \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; if this document was first applied to an organization without that id, the live rule got a new id from the server (see docs/commands.md's asset-identifiers section) and this delete may miss it\n",
+				stderr: "warning: sampling rule \"checkout\" (11111111-1111-4111-8111-111111111111) was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a sampling rule that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on sampling rules you manage with --since\n",
 				requests: []string{
-					"DELETE /api/sampling-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/sampling-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"DELETE /api/sampling-rules/dash0-cli_e284652e8ae253e0ae52087d4ea1dee1?dataset=ds",
 					"DELETE /api/sampling-rules/o?dataset=ds",
 				},
 			},
@@ -1115,7 +1124,7 @@ func TestApplyValidation_KindCharacterization(t *testing.T) {
 		"team": "validation failed with 1 error:\n" +
 			"  failed to decode document: error unmarshaling JSON: while decoding JSON: json: cannot unmarshal array into Go struct field .spec of type dash0.TeamSpec",
 		"timeseriesaggregation": "validation failed with 1 error:\n" +
-			"  document 1: Dash0TimeSeriesAggregation requires metadata.labels[\"dash0.com/origin\"]: the Dash0 API rejects a time series aggregation without an origin, and the origin is the key `apply` upserts by",
+			"  failed to decode document: error unmarshaling JSON: while decoding JSON: json: cannot unmarshal array into Go struct field .spec of type dash0.TimeSeriesAggregationSpec",
 		"dataset": "validation failed with 1 error:\n" +
 			"  document 1: dataset definition requires a slug in spec.slug or metadata.labels[\"dash0.com/id\"]",
 		"skill": "validation failed with 1 error:\n" +
@@ -1256,10 +1265,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Dashboard (before)\n" +
 					"+++ Dashboard (after)\n" +
-					"@@ -1,7 +1,7 @@\n" +
+					"@@ -1,5 +1,5 @@\n" +
 					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/origin: o\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n" +
 					" spec:\n" +
@@ -1366,10 +1373,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Ephemeral dashboard (before)\n" +
 					"+++ Ephemeral dashboard (after)\n" +
-					"@@ -1,8 +1,8 @@\n" +
+					"@@ -1,6 +1,6 @@\n" +
 					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/origin: o\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n" +
 					" spec:\n" +
@@ -1503,10 +1508,11 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"]\n",
 			},
 			diffCreate: cliRun{
-				stdout: "Create Synthetic check \"checkout\" (11111111-1111-4111-8111-111111111111)\n",
+				stdout: "Create Synthetic check \"checkout\" (dash0-cli_f2debf26c52f473e7a4b1816c6f299ca)\n",
 				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 			diffCreateJSON: cliRun{
@@ -1518,7 +1524,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"Synthetic check\",\n" +
 					"        \"name\": \"checkout\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_f2debf26c52f473e7a4b1816c6f299ca\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1526,29 +1532,23 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 			applyCreate: cliRun{
-				stdout: "Synthetic check \"checkout\" (11111111-1111-4111-8111-111111111111) created\n",
+				stdout: "Synthetic check \"checkout\" created\n",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
+					"PUT /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 			diffUpdate: cliRun{
-				stdout: "--- Synthetic check (before)\n" +
-					"+++ Synthetic check (after)\n" +
-					"@@ -1,6 +1,6 @@\n" +
-					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/id: 11111111-1111-4111-8111-111111111111\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n" +
-					" spec:\n" +
-					"   enabled: false\n",
-				err: "1 difference pending",
+				stdout: "Create Synthetic check \"changed\" (dash0-cli_7e713b04dcf6adaf5b182c232147a957)\n",
+				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1557,10 +1557,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"update\",\n" +
+					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"Synthetic check\",\n" +
 					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_7e713b04dcf6adaf5b182c232147a957\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1568,22 +1568,15 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
-				stdout: "--- Synthetic check (before)\n" +
-					"+++ Synthetic check (after)\n" +
-					"@@ -1,6 +1,6 @@\n" +
-					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/id: 11111111-1111-4111-8111-111111111111\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n" +
-					" spec:\n" +
-					"   enabled: false\n",
+				stdout: "Synthetic check \"changed\" created\n",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
+					"PUT /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
 				},
 			},
 		},
@@ -1705,10 +1698,11 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"]\n",
 			},
 			diffCreate: cliRun{
-				stdout: "Create View \"checkout\" (11111111-1111-4111-8111-111111111111)\n",
+				stdout: "Create View \"checkout\" (dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870)\n",
 				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 			diffCreateJSON: cliRun{
@@ -1720,7 +1714,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"View\",\n" +
 					"        \"name\": \"checkout\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1728,27 +1722,23 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 			applyCreate: cliRun{
-				stdout: "View \"checkout\" (11111111-1111-4111-8111-111111111111) created\n",
+				stdout: "View \"checkout\" created\n",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
+					"PUT /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 			diffUpdate: cliRun{
-				stdout: "--- View (before)\n" +
-					"+++ View (after)\n" +
-					"@@ -1,4 +1,4 @@\n" +
-					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/id: 11111111-1111-4111-8111-111111111111\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n",
-				err: "1 difference pending",
+				stdout: "Create View \"changed\" (dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b)\n",
+				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1757,10 +1747,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"update\",\n" +
+					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"View\",\n" +
 					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1768,20 +1758,15 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
-				stdout: "--- View (before)\n" +
-					"+++ View (after)\n" +
-					"@@ -1,4 +1,4 @@\n" +
-					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/id: 11111111-1111-4111-8111-111111111111\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n",
+				stdout: "View \"changed\" created\n",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
+					"PUT /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
 				},
 			},
 		},
@@ -1807,11 +1792,12 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			},
 			diffCreate: cliRun{
 				stdout: "Create Check rule \"g - a\" (11111111-1111-4111-8111-111111111111)\n" +
-					"Create Recording rule \"checkout\" (11111111-1111-4111-8111-111111111111)\n",
+					"Create Recording rule \"checkout\" (dash0-cli_dd2229d9c437266800ab5a5d1a8dd019)\n",
 				err: "2 differences pending",
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 			diffCreateJSON: cliRun{
@@ -1829,7 +1815,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"Recording rule\",\n" +
 					"        \"name\": \"checkout\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_dd2229d9c437266800ab5a5d1a8dd019\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1838,6 +1824,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 			applyCreate: cliRun{
@@ -1847,24 +1834,18 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"PUT /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
+					"PUT /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 			diffUpdate: cliRun{
 				stdout: "Check rule \"g - a\": no changes\n" +
-					"--- Recording rule (before)\n" +
-					"+++ Recording rule (after)\n" +
-					"@@ -1,5 +1,5 @@\n" +
-					" metadata:\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n" +
-					" spec:\n" +
-					"   groups:\n" +
-					"   - name: g\n",
+					"Create Recording rule \"changed\" (dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226)\n",
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1873,10 +1854,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"update\",\n" +
+					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"Recording rule\",\n" +
 					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1885,24 +1866,18 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
 				stdout: "Check rule \"g - a\": no changes\n" +
-					"--- Recording rule (before)\n" +
-					"+++ Recording rule (after)\n" +
-					"@@ -1,5 +1,5 @@\n" +
-					" metadata:\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n" +
-					" spec:\n" +
-					"   groups:\n" +
-					"   - name: g\n",
+					"Recording rule \"changed\" created\n",
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"PUT /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
+					"PUT /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
 				},
 			},
 		},
@@ -1927,10 +1902,11 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"]\n",
 			},
 			diffCreate: cliRun{
-				stdout: "Create Dashboard \"checkout\" (11111111-1111-4111-8111-111111111111)\n",
+				stdout: "Create Dashboard \"checkout\" (dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23)\n",
 				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 			diffCreateJSON: cliRun{
@@ -1942,7 +1918,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"PersesDashboard\",\n" +
 					"        \"name\": \"checkout\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1950,30 +1926,23 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 			applyCreate: cliRun{
-				stdout: "Dashboard \"checkout\" (11111111-1111-4111-8111-111111111111) created\n",
+				stdout: "Dashboard \"checkout\" (dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23) created\n",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
+					"PUT /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 			diffUpdate: cliRun{
-				stdout: "--- Dashboard (before)\n" +
-					"+++ Dashboard (after)\n" +
-					"@@ -1,6 +1,6 @@\n" +
-					" metadata:\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n" +
-					" spec:\n" +
-					"   display:\n" +
-					"-    name: checkout\n" +
-					"+    name: changed\n" +
-					"   duration: 5m\n",
-				err: "1 difference pending",
+				stdout: "Create Dashboard \"changed\" (dash0-cli_af4e084e9ed9269c89119b966223e9d8)\n",
+				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1982,10 +1951,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"update\",\n" +
+					"        \"op\": \"create\",\n" +
 					"        \"kind\": \"PersesDashboard\",\n" +
 					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"11111111-1111-4111-8111-111111111111\"\n" +
+					"        \"originOrId\": \"dash0-cli_af4e084e9ed9269c89119b966223e9d8\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1993,23 +1962,15 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
-				stdout: "--- Dashboard (before)\n" +
-					"+++ Dashboard (after)\n" +
-					"@@ -1,6 +1,6 @@\n" +
-					" metadata:\n" +
-					"-  name: checkout\n" +
-					"+  name: changed\n" +
-					" spec:\n" +
-					"   display:\n" +
-					"-    name: checkout\n" +
-					"+    name: changed\n" +
-					"   duration: 5m\n",
+				stdout: "Dashboard \"changed\" (dash0-cli_af4e084e9ed9269c89119b966223e9d8) created\n",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"PUT /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
+					"GET /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
+					"PUT /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
 				},
 			},
 		},
@@ -2105,10 +2066,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Spam filter (before)\n" +
 					"+++ Spam filter (after)\n" +
-					"@@ -1,7 +1,7 @@\n" +
+					"@@ -1,5 +1,5 @@\n" +
 					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/origin: o\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n" +
 					" spec:\n" +
@@ -2211,10 +2170,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Notification channel (before)\n" +
 					"+++ Notification channel (after)\n" +
-					"@@ -1,6 +1,6 @@\n" +
+					"@@ -1,4 +1,4 @@\n" +
 					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/origin: o\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n" +
 					" spec:\n" +
@@ -2318,10 +2275,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Team (before)\n" +
 					"+++ Team (after)\n" +
-					"@@ -1,7 +1,7 @@\n" +
+					"@@ -1,5 +1,5 @@\n" +
 					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/origin: o\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n" +
 					" spec:\n" +
@@ -2460,6 +2415,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err:    "1 difference pending",
 				requests: []string{
 					"GET /api/datasets/11111111-1111-4111-8111-111111111111",
+					"GET /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
 				},
 			},
 			diffCreateJSON: cliRun{
@@ -2479,27 +2435,30 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/datasets/11111111-1111-4111-8111-111111111111",
+					"GET /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
 				},
 			},
 			applyCreate: cliRun{
 				stdout: "Dataset \"checkout\" (11111111-1111-4111-8111-111111111111) created\n",
 				requests: []string{
 					"GET /api/datasets/11111111-1111-4111-8111-111111111111",
-					"POST /api/datasets",
+					"GET /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
+					"PUT /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
 				},
 			},
 			diffUpdate: cliRun{
 				stdout: "--- Dataset (before)\n" +
 					"+++ Dataset (after)\n" +
-					"@@ -1,4 +1,4 @@\n" +
-					" metadata:\n" +
+					"@@ -2,4 +2,4 @@\n" +
 					"   labels:\n" +
 					"     dash0.com/id: 11111111-1111-4111-8111-111111111111\n" +
+					"     dash0.com/origin: dash0-cli_6607c9b6b409c12240c46a45369b2c8c\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n",
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/datasets/11111111-1111-4111-8111-111111111111",
+					"GET /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -2519,6 +2478,7 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/datasets/11111111-1111-4111-8111-111111111111",
+					"GET /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
 				},
 			},
 			applyUpdate: cliRun{
@@ -2532,7 +2492,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"+  name: changed\n",
 				requests: []string{
 					"GET /api/datasets/11111111-1111-4111-8111-111111111111",
-					"PUT /api/datasets/11111111-1111-4111-8111-111111111111",
+					"GET /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
+					"PUT /api/datasets/dash0-cli_6607c9b6b409c12240c46a45369b2c8c",
 				},
 			},
 		},
@@ -2628,7 +2589,11 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Agent0 skill (before)\n" +
 					"+++ Agent0 skill (after)\n" +
-					"@@ -5,7 +5,7 @@\n" +
+					"@@ -1,11 +1,8 @@\n" +
+					"-metadata:\n" +
+					"-  labels:\n" +
+					"-    dash0.com/origin: o\n" +
+					" spec:\n" +
 					"   files:\n" +
 					"   - content: |\n" +
 					"       ---\n" +
@@ -2842,10 +2807,8 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			applyUpdate: cliRun{
 				stdout: "--- Eval (before)\n" +
 					"+++ Eval (after)\n" +
-					"@@ -1,10 +1,10 @@\n" +
+					"@@ -1,8 +1,8 @@\n" +
 					" metadata:\n" +
-					"   labels:\n" +
-					"     dash0.com/origin: o\n" +
 					"-  name: checkout\n" +
 					"+  name: changed\n" +
 					" spec:\n" +
