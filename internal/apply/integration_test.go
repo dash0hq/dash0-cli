@@ -4476,3 +4476,46 @@ func TestApply_SamplingRule_InvalidDocumentFailsValidationBeforeAnyWrite(t *test
 		})
 	}
 }
+
+const (
+	apiPathAwsLogGroupPolicy = "/api/aws-log-group-instrumentation-policies/" + awsScrapeIntegrationID
+	awsLogGroupPolicyDoc     = "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsLogGroupInstrumentationPolicy\nmetadata:\n  labels:\n    dash0.com/id: " + awsScrapeIntegrationID + "\nspec:\n  rules:\n    - conditions:\n        - key: dash0.cloud.tags.team\n          operator: is\n          value: checkout\n"
+)
+
+// apply sends the spec only: without dash0.com/version the file wins over
+// concurrent edits, and without dash0.com/origin it never hits an origin conflict.
+func TestApply_AwsLogGroupPolicy_PutsSpecOnlyByIntegrationID(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	yamlFile := filepath.Join(t.TempDir(), "policy.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(awsLogGroupPolicyDoc), 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, apiPathAwsLogGroupPolicy, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: "awsloggrouppolicies/error_not_found.json", Validator: testutil.RequireHeaders})
+	server.On(http.MethodPut, apiPathAwsLogGroupPolicy, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: "awsloggrouppolicies/get_active.json", Validator: testutil.RequireHeaders})
+
+	output, _, err := runApplyFile(t, server.URL, yamlFile, "--dataset", "ignored")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "created")
+	put := findRequest(server.Requests(), http.MethodPut, apiPathAwsLogGroupPolicy)
+	require.NotNil(t, put)
+	assert.Empty(t, put.Query, "the policy is organization-level, so no dataset is sent")
+	var sent dash0api.AwsLogGroupInstrumentationPolicy
+	require.NoError(t, json.Unmarshal(put.Body, &sent))
+	assert.Nil(t, sent.Metadata.Labels, "the CLI must not send a version or an origin")
+	require.Len(t, sent.Spec.Rules, 1)
+}
+
+func TestApply_AwsLogGroupPolicy_InvalidDocumentFailsValidation(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a-dashboard.yaml"), []byte("kind: Dashboard\nmetadata:\n  name: d\n  dash0Extensions:\n    id: dash-1\nspec:\n  display:\n    name: d\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.yaml"), []byte(strings.Replace(awsLogGroupPolicyDoc, "rules:", "rule:", 1)), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	_, _, err := runApplyFile(t, server.URL, dir)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "spec.rules is required")
+	assert.Empty(t, server.Requests())
+}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/dash0hq/dash0-cli/internal/agent0"
 	"github.com/dash0hq/dash0-cli/internal/asset"
+	"github.com/dash0hq/dash0-cli/internal/awsloggrouppolicies"
 	"github.com/dash0hq/dash0-cli/internal/awsmetricscrapeconfigs"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
@@ -73,6 +74,8 @@ type routedKind struct {
 	// storedID is the dash0.com/id of every stored asset, for a kind whose
 	// id cannot differ from the document's, as a dataset's slug.
 	storedID string
+	// sendsNoOrigin kinds never send dash0.com/origin, not even on a create.
+	sendsNoOrigin bool
 }
 
 var routedKinds = map[string]routedKind{
@@ -195,6 +198,16 @@ var routedKinds = map[string]routedKind{
 		cases: awsMetricScrapeConfigRouterCases,
 		document: func(labels string) string {
 			return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n" + labels + "spec:\n  namespaces: []\n"
+		},
+	},
+	"awsloggroupinstrumentationpolicy": {
+		// The integration id is the only key. A 404 is an integration without
+		// a policy, which the write creates without an origin.
+		path: "/api/aws-log-group-instrumentation-policies", fixture: "awsloggrouppolicies/get_active.json", orgLevel: true,
+		inferName: awsIntegrationID, sendsNoOrigin: true,
+		cases: awsLogGroupPolicyRouterCases,
+		document: func(labels string) string {
+			return "apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsLogGroupInstrumentationPolicy\nmetadata:\n" + labels + "spec:\n  rules: []\n"
 		},
 	},
 	"spamfilter": {
@@ -366,6 +379,40 @@ var awsMetricScrapeConfigRouterCases = []routerCase{
 	},
 }
 
+// awsLogGroupPolicyRouterCases are the rule of the policy: it is written at its
+// integration id, created when the integration has none, and never sends an origin.
+var awsLogGroupPolicyRouterCases = []routerCase{
+	{
+		name:   "id hit",
+		labels: map[string]string{"dash0.com/id": awsIntegrationID},
+		stored: map[string]string{awsIntegrationID: "o"},
+		want:   []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+	},
+	{
+		name:   "id hit, same origin in the document",
+		labels: map[string]string{"dash0.com/id": awsIntegrationID, "dash0.com/origin": "o"},
+		stored: map[string]string{awsIntegrationID: "o"},
+		want:   []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+	},
+	{
+		name:   "no policy yet",
+		labels: map[string]string{"dash0.com/id": awsIntegrationID, "dash0.com/origin": "o"},
+		want:   []string{"GET " + awsIntegrationID, "PUT " + awsIntegrationID},
+	},
+	{
+		name:    "id with a differing stored origin",
+		labels:  map[string]string{"dash0.com/id": awsIntegrationID, "dash0.com/origin": "o"},
+		stored:  map[string]string{awsIntegrationID: "other"},
+		want:    []string{"GET " + awsIntegrationID},
+		wantErr: `has origin "other" in Dash0`,
+	},
+	{
+		name:    "no identifier",
+		labels:  map[string]string{"dash0.com/origin": "o"},
+		wantErr: `requires metadata.labels["dash0.com/id"]`,
+	},
+}
+
 // TestRouter_EveryKindFollowsTheSameOrder runs the routing rule against the
 // mock server for every kind apply accepts. A new kind fails here until it is
 // routed.
@@ -467,6 +514,8 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 		bodyOrigin := labelOf(t, r.body, spec, "dash0.com/origin")
 		storedOrigin, update := stored[key]
 		switch {
+		case spec.sendsNoOrigin:
+			assert.Empty(t, bodyOrigin, "this kind never sends the origin")
 		case spec.originIsID:
 			assert.Empty(t, bodyOrigin, "the path carries the origin, and the labels belong to the alerts")
 		case update && storedOrigin == key && keepsOriginOnUpdateAtOrigin[kind]:
@@ -488,24 +537,25 @@ type routedUpdateCommand struct {
 
 // routedUpdateCommands is the `update -f` command of each kind in routedKinds.
 var routedUpdateCommands = map[string]routedUpdateCommand{
-	"dashboard":              {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
-	"ephemeraldashboard":     {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
-	"team":                   {teams.NewTeamsCmd, []string{"-X", "teams", "update"}},
-	"notificationchannel":    {notificationchannels.NewNotificationChannelsCmd, []string{"-X", "notification-channels", "update"}},
-	"timeseriesaggregation":  {timeseriesaggregations.NewTimeSeriesAggregationsCmd, []string{"time-series-aggregations", "update"}},
-	"spamfilter":             {spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}},
-	"slo":                    {slos.NewSlosCmd, []string{"slos", "update"}},
-	"generativeaievaluation": {evals.NewEvalsCmd, []string{"-X", "evals", "update"}},
-	"signaltometrics":        {signaltometricsrules.NewSignalToMetricsRulesCmd, []string{"signal-to-metrics-rules", "update"}},
-	"sampling":               {samplingrules.NewSamplingRulesCmd, []string{"sampling-rules", "update"}},
-	"skill":                  {agent0.NewAgent0Cmd, []string{"-X", "agent0", "skills", "update"}},
-	"view":                   {views.NewViewsCmd, []string{"views", "update"}},
-	"syntheticcheck":         {syntheticchecks.NewSyntheticChecksCmd, []string{"synthetic-checks", "update"}},
-	"checkrule":              {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
-	"persesdashboard":        {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
-	"prometheusrule":         {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
-	"dataset":                {datasets.NewDatasetsCmd, []string{"-X", "datasets", "update"}},
-	"awsmetricscrapeconfig":  {awsmetricscrapeconfigs.NewAwsMetricScrapeConfigsCmd, []string{"-X", "aws-metric-scrape-configs", "update"}},
+	"dashboard":                        {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"ephemeraldashboard":               {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"team":                             {teams.NewTeamsCmd, []string{"-X", "teams", "update"}},
+	"notificationchannel":              {notificationchannels.NewNotificationChannelsCmd, []string{"-X", "notification-channels", "update"}},
+	"timeseriesaggregation":            {timeseriesaggregations.NewTimeSeriesAggregationsCmd, []string{"time-series-aggregations", "update"}},
+	"spamfilter":                       {spamfilters.NewSpamFiltersCmd, []string{"spam-filters", "update"}},
+	"slo":                              {slos.NewSlosCmd, []string{"slos", "update"}},
+	"generativeaievaluation":           {evals.NewEvalsCmd, []string{"-X", "evals", "update"}},
+	"signaltometrics":                  {signaltometricsrules.NewSignalToMetricsRulesCmd, []string{"signal-to-metrics-rules", "update"}},
+	"sampling":                         {samplingrules.NewSamplingRulesCmd, []string{"sampling-rules", "update"}},
+	"skill":                            {agent0.NewAgent0Cmd, []string{"-X", "agent0", "skills", "update"}},
+	"view":                             {views.NewViewsCmd, []string{"views", "update"}},
+	"syntheticcheck":                   {syntheticchecks.NewSyntheticChecksCmd, []string{"synthetic-checks", "update"}},
+	"checkrule":                        {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
+	"persesdashboard":                  {dashboards.NewDashboardsCmd, []string{"dashboards", "update"}},
+	"prometheusrule":                   {checkrules.NewCheckRulesCmd, []string{"check-rules", "update"}},
+	"dataset":                          {datasets.NewDatasetsCmd, []string{"-X", "datasets", "update"}},
+	"awsmetricscrapeconfig":            {awsmetricscrapeconfigs.NewAwsMetricScrapeConfigsCmd, []string{"-X", "aws-metric-scrape-configs", "update"}},
+	"awsloggroupinstrumentationpolicy": {awsloggrouppolicies.NewAwsLogGroupPoliciesCmd, []string{"-X", "aws-log-group-policies", "update"}},
 	// A variant whose writes go to another endpoint has its own command.
 	"prometheusrule/recording": {recordingrules.NewRecordingRulesCmd, []string{"recording-rules", "update"}},
 }
@@ -584,7 +634,7 @@ func TestRouter_UpdateFailsWhenTheStoredOriginDiffers(t *testing.T) {
 // updateTestID is the id the update tests store an asset at. An AWS
 // integration id must be a UUID.
 func updateTestID(kind string) string {
-	if kind == "awsmetricscrapeconfig" {
+	if kind == "awsmetricscrapeconfig" || kind == "awsloggroupinstrumentationpolicy" {
 		return awsIntegrationID
 	}
 	return "i"

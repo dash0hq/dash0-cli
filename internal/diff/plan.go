@@ -242,6 +242,17 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		return []docPlan{{displayKind: asset.AwsMetricScrapeConfigKind, name: dash0api.GetAwsMetricScrapeConfigName(cfg), plan: plan}}, nil
 
+	case "awsloggroupinstrumentationpolicy":
+		policy, _, err := asset.ParseAwsLogGroupPolicy(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		plan, err := asset.PlanAwsLogGroupPolicy(ctx, apiClient, policy, doc.ID)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
+		}
+		return []docPlan{{displayKind: asset.AwsLogGroupPolicyKind, name: doc.ID, plan: plan}}, nil
+
 	case "generativeaievaluation":
 		var evaluation dash0api.GenerativeAiEvaluationDefinition
 		if err := dash0yaml.Unmarshal(doc.Raw, &evaluation); err != nil {

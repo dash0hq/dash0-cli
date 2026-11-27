@@ -187,6 +187,13 @@ func marshalForDiff(asset any) (string, error) {
 		}
 		normalizeAwsMetricScrapeConfigForDiff(&c)
 		stripped = &c
+	case *dash0api.AwsLogGroupInstrumentationPolicy:
+		var p dash0api.AwsLogGroupInstrumentationPolicy
+		if err := dash0yaml.Unmarshal(jsonBytes, &p); err != nil {
+			return "", fmt.Errorf("failed to unmarshal AWS log-group policy: %w", err)
+		}
+		normalizeAwsLogGroupPolicyForDiff(&p)
+		stripped = &p
 	case *dash0api.AuthTokenDefinition, *dash0api.AuthTokenResponseDefinition:
 		// Decoding into the request type drops spec.token, so a diff can never
 		// show the secret, even if a caller passes a response that still holds it.

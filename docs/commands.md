@@ -18,7 +18,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Send](#send-commands) | `logs send`, `spans send`, `debuginfo upload` | `logs send` and `spans send` are OTLP-based, with repeatable attribute flags; `debuginfo upload` is experimental and uploads to the Dash0 debuginfo gRPC service |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Interactive](#interactive-commands) | `k8s pods watch`, `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, `k8s cronjobs watch` | Full-screen terminal page, refreshes on a timer, experimental |
-| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs`, `aws-log-group-policies` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
@@ -815,6 +815,7 @@ Aliases: `remove`
 | Sampling rules | `dash0 sampling-rules <subcommand>` | Dataset-scoped. `kind: Dash0Sampling`; `dash0.com/id` is read first, then `dash0.com/origin`, as for the [routing rule](#routing-rule). Writes require the organization admin role. The first enabled rule in a dataset turns sampling on; see [Sampling rules](#sampling-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
+| AWS log-group policies | `dash0 --experimental aws-log-group-policies <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has at most one policy, addressed by the integration id. `update` creates or replaces it. `delete` keeps forwarding the matched log groups unless `--remove-forwarding` is given |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `dash0.com/id` is read first, then `dash0.com/origin`, as for the [routing rule](#routing-rule), and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
 
@@ -918,6 +919,7 @@ The identifier field location varies by asset kind:
 | `Dash0NotificationChannel` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level. Follows the [routing rule](#routing-rule) |
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug) | Organization-level. Follows the [routing rule](#routing-rule), with the slug as the id. The slug is required and cannot change after creation, so a document whose `dash0.com/origin` belongs to a dataset with another slug fails. Without `dash0.com/origin`, the inferred origin hashes the slug. `create` and `apply` create a dataset for a slug that does not exist yet, so a mistyped slug creates a new dataset; `datasets update` fails with "not found" instead. |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Does not follow the [routing rule](#routing-rule): every AWS integration has exactly one scrape config, so the integration id is required, and an unknown integration fails. `apply` always replaces the whole config (PUT). The first config of an integration sends `dash0.com/origin`, or the origin inferred from the integration id; later writes do not |
+| `Dash0AwsLogGroupInstrumentationPolicy` | `metadata.labels["dash0.com/id"]` (the AWS integration's id) | Organization-level. Does not follow the [routing rule](#routing-rule): each AWS integration has at most one log-group policy, so the integration id is required, and an unknown integration fails. `apply` creates or replaces the whole policy (PUT), and recreates a deleted one. The CLI sends neither `dash0.com/version` nor `dash0.com/origin`: the file wins over concurrent edits. A document whose `dash0.com/origin` differs from the stored one fails, as for the other kinds |
 | `Dash0Skill` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level Agent0 custom skill. Follows the [routing rule](#routing-rule). The inferred origin comes from the skill name in the `SKILL.md` frontmatter, not from `metadata.name`. Use a `dash0-cli_` prefix in an explicit origin so Dash0 shows the skill as managed by the CLI. The skill name is unique per organization, so a skill that an earlier CLI version created by POST, at a server-assigned origin, makes the next apply fail with a name collision. Delete that skill, or set its origin in the document, to manage it with `apply` |
 | `Dash0Team` | `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` | Organization-level. Follows the [routing rule](#routing-rule). An exported SSO/SCIM team keeps its `dash0.com/id`, so it updates at the id even though the teams endpoint cannot resolve its `saml://...` origin. `spec.members` accepts email addresses or internal member ids interchangeably |
 
@@ -1145,7 +1147,7 @@ Hidden files and directories (starting with `.`) are skipped, except for the dir
 All documents are validated before any are applied.
 If any document fails validation, no changes are made.
 
-Supported `kind` values: `Dashboard`, `EphemeralDashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0GenerativeAiEvaluation`.
+Supported `kind` values: `Dashboard`, `EphemeralDashboard`, `PersesDashboard`, `CheckRule`, `PrometheusRule`, `SyntheticCheck`, `SLO`, `View`, `Dash0SpamFilter`, `Dash0NotificationChannel`, `Dash0Dataset`, `Dash0Team`, `Dash0TimeSeriesAggregation`, `Dash0SignalToMetrics`, `Dash0Sampling`, `Dash0Skill`, `Dash0AwsMetricScrapeConfig`, `Dash0AwsLogGroupInstrumentationPolicy`, `Dash0GenerativeAiEvaluation`.
 `Dash0AuthToken` is not supported yet and fails validation: the API returns a new token's secret only once, and `apply` has no safe place to deliver it.
 Use [`auth-tokens create`](#auth-tokens-create-experimental) instead.
 A single file may contain multiple documents separated by `---`.
@@ -1254,6 +1256,22 @@ The first config of an integration sends `dash0.com/origin`, or the origin the C
 Dash0 keeps the origin of the first writer until the config is cleared, and ignores it on later writes, so an update never sends it.
 A document whose `dash0.com/origin` differs from the stored one fails, as for the other kinds.
 `apply` prints `created` when the integration had no config before, and a diff otherwise.
+
+`Dash0AwsLogGroupInstrumentationPolicy` documents create or replace the log-group instrumentation policy of the AWS integration named by `metadata.labels["dash0.com/id"]`.
+They are organization-level: the integration decides the dataset, and `--dataset` is not sent.
+These checks run during the validation phase, before any document in the run is applied:
+
+- A document without `dash0.com/id`, or with one that is not a UUID, fails.
+- A missing or `null` `spec.rules` fails, because the API would read it as `[]` and match no log group.
+  Write `rules: []` for that on purpose.
+- An unknown field under `spec`, an unsupported operator, or an `onNoLongerMatching` other than `keep` or `remove` fails.
+- A label or annotation that the API ignores prints a warning.
+  The labels and annotations that `aws-log-group-policies get -o yaml` exports are not warned about.
+
+The CLI sends no metadata.
+Without `dash0.com/version` the write is not fenced by revision, so the file replaces whatever is stored, including changes made in the UI since the file was exported.
+The CLI never changes the origin that owns the policy: a document whose `dash0.com/origin` differs from the stored one fails, and a document without one updates the policy whoever owns it.
+`apply` prints `created` when the integration had no policy or a deleted one, and a diff otherwise.
 
 > [!NOTE]
 > The `-f` flag accepts a single path.
@@ -1430,6 +1448,9 @@ A dataset that is already gone counts as deleted, and a removed dataset document
 A `Dash0AwsMetricScrapeConfig` document removed since `<ref>` clears the integration's scrape config, with the same API call as `aws-metric-scrape-configs delete`.
 Dash0 stops scraping CloudWatch metrics for that integration, and the integration itself is kept.
 
+A `Dash0AwsLogGroupInstrumentationPolicy` document removed since `<ref>` deletes the integration's policy with the `keep` disposition: the log groups it forwards keep forwarding.
+Removing forwarding needs explicit consent, which only [`aws-log-group-policies delete --remove-forwarding`](#aws-log-group-policies-delete-experimental) gives.
+
 A removed `Dash0Sampling` document's delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
 In agent mode, a `--since` run that would delete a sampling rule requires an explicit `--force`, as `sampling-rules delete` does, and otherwise refuses before it applies anything.
 
@@ -1460,7 +1481,7 @@ warning: --since does not delete View dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8
 
 Run `--since` with the dataset the removed document was applied to, and delete the old asset in that dataset by hand.
 
-A dataset without a slug and an AWS metric scrape config without `dash0.com/id` have no inferred origin.
+A dataset without a slug, and an AWS metric scrape config or log-group policy without `dash0.com/id`, have no inferred origin.
 A removed document of these kinds that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
 
 ```bash
@@ -2131,6 +2152,37 @@ spec:
 `dash0.com/id` is the id of the AWS integration and is required.
 `spec.namespaces` is the complete list of CloudWatch namespaces to scrape: a namespace that is not listed is not scraped, and `namespaces: []` stops all scraping.
 Each namespace takes an optional `filter`, and `spec` takes an optional `integrationFilter`; both are lists of filter criteria (`key`, `operator`, `value`).
+
+AWS log-group policy (organization-level, no `--dataset`, requires `--experimental` for the `aws-log-group-policies` commands):
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0AwsLogGroupInstrumentationPolicy
+metadata:
+  labels:
+    dash0.com/id: 27755ed0-0009-422d-8c11-19c6dd72df98
+spec:
+  onNoLongerMatching: keep
+  rules:
+    - conditions:
+        - key: dash0.cloud.tags.team
+          operator: is_one_of
+          values: [checkout, payments]
+        - key: dash0.cloud.tags.env
+          operator: is
+          value: production
+    - conditions:
+        - key: dash0.cloud.tags.dash0-forward
+          operator: is_set
+```
+
+`dash0.com/id` is the id of the AWS integration and is required.
+The policy forwards every CloudWatch log group whose own tags match one of `spec.rules`: rules are ORed, and the conditions within a rule are ANDed.
+A condition's `key` is a log-group tag written as `dash0.cloud.tags.<tag name>`.
+`operator` is one of `is`, `is_one_of`, `is_set`, `starts_with`, `ends_with`, and `contains`; matching is case-sensitive.
+`is_one_of` takes `values`, `is_set` takes no operand, and the others take `value`.
+`spec.onNoLongerMatching` decides what happens to a log group that stops matching: `keep` (the default) keeps forwarding it, and `remove` removes its subscription filter.
+Log groups selected by hand keep forwarding regardless of the policy.
 `metadata.name` is the integration's name: `get` exports it, and the API ignores it on write.
 The API returns namespaces and metrics sorted, and the diff ignores their order.
 
@@ -4691,6 +4743,86 @@ AWS metric scrape config of integration "27755ed0-0009-422d-8c11-19c6dd72df98" c
 
 Aliases: `remove`
 
+### `aws-log-group-policies get` (experimental)
+
+Show the log-group instrumentation policy of an AWS integration.
+
+```bash
+dash0 -X aws-log-group-policies get <integration-id> [-o <format>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, or `yaml` |
+
+An integration that never had a policy fails with a not-found error.
+A deleted policy is still shown, with its deletion time and disposition.
+
+```bash
+$ dash0 -X aws-log-group-policies get 27755ed0-0009-422d-8c11-19c6dd72df98
+Kind: AWS log-group policy
+Integration ID: 27755ed0-0009-422d-8c11-19c6dd72df98
+Dataset: default
+Origin: dash0-cli
+Revision: 3
+On no longer matching: keep
+Rules (any rule matches; all conditions of a rule must hold):
+  1. dash0.cloud.tags.team is_one_of [checkout, payments] AND dash0.cloud.tags.env is "production"
+  2. dash0.cloud.tags.dash0-forward is_set
+Created: 2026-11-17 09:00:00
+Updated: 2026-11-18 10:30:00
+```
+
+Use `-o yaml` to get a definition that `aws-log-group-policies update -f` and `apply -f` accept unchanged:
+
+```bash
+dash0 -X aws-log-group-policies get 27755ed0-0009-422d-8c11-19c6dd72df98 -o yaml > policy.yaml
+```
+
+### `aws-log-group-policies update` (experimental)
+
+Create or replace the log-group instrumentation policy of an AWS integration with the policy in a YAML or JSON file, and recreate a deleted one.
+There is no `create`: `update` creates the policy when the integration has none.
+If the integration id argument is omitted, it is taken from the document's `dash0.com/id` label; when both are given, they must match.
+The document is validated before any API call, as described for [`apply`](#apply).
+The file replaces whatever is stored: the CLI does not send the `dash0.com/version` revision, so a change made in the UI since the export is overwritten.
+The output is a unified diff of the before and after states, or `created` when the integration had no policy or a deleted one.
+
+```bash
+dash0 -X aws-log-group-policies update [integration-id] -f <file> [--dry-run]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--dry-run` | Show the diff without applying it |
+
+### `aws-log-group-policies delete` (experimental)
+
+Delete the log-group instrumentation policy of an AWS integration.
+The integration itself is kept.
+By default the log groups the policy forwards keep forwarding.
+With `--remove-forwarding`, Dash0 removes their subscription filters, and the confirmation prompt says so.
+Log groups selected by hand keep forwarding either way.
+Prompts for confirmation unless `--force` is passed.
+With `--force`, a policy that does not exist counts as deleted.
+
+```bash
+dash0 -X aws-log-group-policies delete <integration-id> [--remove-forwarding] [--force]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--remove-forwarding` | Also remove the subscription filters of the log groups the policy forwards |
+| `--force` | Skip the confirmation prompt |
+
+```bash
+$ dash0 -X aws-log-group-policies delete 27755ed0-0009-422d-8c11-19c6dd72df98 --force
+AWS log-group policy of integration "27755ed0-0009-422d-8c11-19c6dd72df98" deleted; its log groups keep forwarding
+```
+
+Aliases: `remove`
+
 ### `teams list` (experimental)
 
 List all teams in the organization.
@@ -5242,7 +5374,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, debuginfo, diff, evals, failed-checks, k8s, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, aws-log-group-policies, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, debuginfo, diff, evals, failed-checks, k8s, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents

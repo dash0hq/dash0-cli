@@ -1,0 +1,15 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0AwsLogGroupInstrumentationPolicy
+metadata:
+  labels:
+    dash0.com/id: __ID__
+spec:
+  onNoLongerMatching: keep
+  rules:
+    - conditions:
+        - key: dash0.cloud.tags.dash0-cli-roundtrip
+          operator: is
+          value: __MARKER__
+        - key: dash0.cloud.tags.env
+          operator: is_one_of
+          values: [never-a, never-b]

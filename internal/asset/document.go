@@ -235,6 +235,14 @@ func ParseDocumentHeader(data []byte) (kind, name, id string, err error) {
 		// The integration id is the only key: there is one config per integration.
 		id = dash0api.GetAwsMetricScrapeConfigID(&cfg)
 
+	case "awsloggroupinstrumentationpolicy":
+		var policy dash0api.AwsLogGroupInstrumentationPolicy
+		if err := dash0yaml.Unmarshal(data, &policy); err != nil {
+			return "", "", "", fmt.Errorf("failed to decode document: %w", err)
+		}
+		name = dash0api.GetAwsLogGroupInstrumentationPolicyName(&policy)
+		id = dash0api.GetAwsLogGroupInstrumentationPolicyID(&policy)
+
 	case "generativeaievaluation":
 		var evaluation dash0api.GenerativeAiEvaluationDefinition
 		if err := dash0yaml.Unmarshal(data, &evaluation); err != nil {

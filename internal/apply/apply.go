@@ -74,6 +74,7 @@ Supported asset types:
   - Dash0Dataset
   - Dash0Skill (Agent0 custom skill)
   - Dash0AwsMetricScrapeConfig
+  - Dash0AwsLogGroupInstrumentationPolicy
   - Dash0GenerativeAiEvaluation (eval)
 
 A PrometheusRule CRD that mixes alerting and recording rules is dispatched to both endpoints; alerting rules become check rules and recording rules become a recording rule.
@@ -499,6 +500,17 @@ func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Doc
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
 		}
 		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
+	case "awsloggroupinstrumentationpolicy":
+		// Organization-level, like the scrape config: --dataset is not passed.
+		policy, _, err := asset.ParseAwsLogGroupPolicy(doc.Raw)
+		if err != nil {
+			return nil, err
+		}
+		result, err := asset.ImportAwsLogGroupPolicy(ctx, apiClient, policy, doc.ID)
+		if err != nil {
+			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
+		}
+		return []applyResult{{kind: asset.AwsLogGroupPolicyKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
 	case "generativeaievaluation":
 		var evaluation dash0api.GenerativeAiEvaluationDefinition
 		if err := dash0yaml.Unmarshal(doc.Raw, &evaluation); err != nil {

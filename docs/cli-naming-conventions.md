@@ -5,8 +5,8 @@ The reason for this is that the word "resource" is overloaded in OpenTelemetry, 
 Use the word "asset" consistently where appropriate.
 
 ## Top-level Asset Commands
-- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`
-- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `auth-tokens`, `aws-metric-scrape-configs`
+- Use **plural form**: `dashboards`, `views`, `check-rules`, `synthetic-checks`, `slos`, `evals`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `teams`, `datasets`, `auth-tokens`, `aws-metric-scrape-configs`, `aws-log-group-policies`
+- Use **kebab-case** for multi-word names: `check-rules`, `synthetic-checks`, `recording-rules`, `notification-channels`, `spam-filters`, `time-series-aggregations`, `signal-to-metrics-rules`, `sampling-rules`, `auth-tokens`, `aws-metric-scrape-configs`, `aws-log-group-policies`
 - Group related functionality: `config profiles` for profile management, `agent0 skills` for the custom skills of Agent0, `k8s pods`, `k8s deployments`, and the other kinds for Kubernetes workloads
 
 ## Standard CRUD Subcommands for Assets
@@ -48,6 +48,18 @@ The API has no list endpoint and no create, so `aws-metric-scrape-configs` has o
 
 `update` doubles as create, because a PUT replaces the config whether or not one exists, so there is no `create` alias to keep in sync.
 Success messages say `cleared`, not `deleted`, because the integration survives.
+
+## AWS Log-Group Policies Subcommands (experimental)
+Each AWS integration has at most one log-group instrumentation policy, addressed by the integration id.
+The API has no list endpoint and no create, so `aws-log-group-policies` has the same three subcommands as `aws-metric-scrape-configs`:
+
+| Subcommand | Alias    | Description                                                         |
+|------------|----------|---------------------------------------------------------------------|
+| `get`      | -        | Get the policy of an integration                                    |
+| `update`   | -        | Create or replace the policy of an integration from a file          |
+| `delete`   | `remove` | Delete the policy; `--remove-forwarding` also stops its log groups  |
+
+`delete` keeps forwarding the matched log groups by default, and `apply --since` always does: removing subscription filters needs the explicit `--remove-forwarding` flag.
 ## Signal-to-metrics Rules Subcommands
 `signal-to-metrics-rules` (alias `s2m`) has the standard CRUD subcommands plus one more:
 
@@ -167,6 +179,7 @@ In user-facing output (success messages, dry-run listings, error messages), use 
 | `Dash0SignalToMetrics`      | Signal-to-metrics rule |
 | `Dash0Sampling`             | Sampling rule        |
 | `Dash0AwsMetricScrapeConfig`| AWS metric scrape config |
+| `Dash0AwsLogGroupInstrumentationPolicy`| AWS log-group policy |
 | `Dash0GenerativeAiEvaluation`| Eval |
 
 For example: `Check rule "High Error Rate" created`, not `CheckRule "High Error Rate" created`.

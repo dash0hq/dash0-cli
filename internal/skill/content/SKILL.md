@@ -22,7 +22,7 @@ description: Use when working with Dash0 observability data or configuration via
 | Send | `logs send`, `spans send`, `debuginfo upload` | OTLP-based, repeatable attribute flags; `debuginfo upload` is experimental |
 | Daemon | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | Interactive | `k8s pods watch`, `k8s deployments watch`, and the other kinds | Full-screen terminal page, refreshes on a timer, experimental |
-| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
+| Organizational | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs`, `aws-log-group-policies` | Flag-based input, no dataset, experimental |
 | Raw HTTP | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | Agent tooling | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output |
 
@@ -62,6 +62,7 @@ Every asset type accepts a user-defined identifier in its YAML/JSON document. Wh
 | `Dash0Dataset` | `spec.slug`, or `metadata.labels["dash0.com/id"]` when `spec.slug` is absent (the dataset slug — required and immutable; `spec.slug` wins when both are set); `dash0.com/origin` is optional |
 | `Dash0Team` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]` |
 | `Dash0AwsMetricScrapeConfig` | `metadata.labels["dash0.com/id"]`, the AWS integration id — **required**. One config per integration; `apply` replaces it (PUT), there is no create. `spec.namespaces` is required (`[]` stops all scraping). The first config of an integration, and the first after a clear, sends `dash0.com/origin` (the file's, or one inferred from the integration id); later writes do not, and a stored origin that differs from the file's fails |
+| `Dash0AwsLogGroupInstrumentationPolicy` | `metadata.labels["dash0.com/id"]`, the AWS integration id — **required**. At most one policy per integration; `apply` creates or replaces it (PUT). `spec.rules` is required (`[]` matches nothing). Neither `dash0.com/version` nor `dash0.com/origin` is sent, so the file wins; a `dash0.com/origin` that differs from the stored one fails. `apply --since` deletes with `keep` |
 | `Dash0Skill` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. The inferred origin hashes the skill name from the `SKILL.md` frontmatter, not `metadata.name` |
 | `Dash0SignalToMetrics` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. Origins are unique per organization while each rule belongs to one dataset, so one document with an explicit origin cannot serve two datasets |
 | `Dash0Sampling` | Routing rule: `metadata.labels["dash0.com/id"]`, then `metadata.labels["dash0.com/origin"]`. Origins are unique per organization while each rule belongs to one dataset, so one document with an explicit origin cannot serve two datasets |
@@ -185,6 +186,7 @@ Run `dash0 skill show <topic>` for the reference content below, or read `referen
 | `api` | Raw HTTP passthrough to any Dash0 API endpoint |
 | `auth-tokens` | Auth token CRUD (organization-level, experimental; `create` needs `--secret-file` outside an interactive terminal; not supported by `apply`) |
 | `aws-metric-scrape-configs` | CloudWatch metric scrape config of an AWS integration: `get`, `update` (replace), `delete` (clear) by integration id (organization-level, experimental; also accepted by `apply` as `Dash0AwsMetricScrapeConfig`) |
+| `aws-log-group-policies` | Tag-based log-group instrumentation policy of an AWS integration: `get`, `update` (create or replace), `delete` (keeps forwarding unless `--remove-forwarding`) by integration id (organization-level, experimental; also accepted by `apply` as `Dash0AwsLogGroupInstrumentationPolicy`) |
 | `check-rules` | Check rule (alerting rule) CRUD, including PrometheusRule CRD import |
 | `config` | Profile management (create/update/list/select/delete) and `config show` |
 | `dashboards` | Dashboard CRUD, including PersesDashboard CRD import |

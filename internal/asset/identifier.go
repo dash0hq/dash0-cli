@@ -46,7 +46,7 @@ type identifierProbe struct {
 //   - CheckRule: top-level id, then labels["dash0.com/origin"]
 //   - every other routed kind: dash0.com/id, then dash0.com/origin
 //   - Dash0Dataset: spec.slug, then dash0.com/id
-//   - Dash0AwsMetricScrapeConfig: dash0.com/id
+//   - Dash0AwsMetricScrapeConfig, Dash0AwsLogGroupInstrumentationPolicy: dash0.com/id
 //
 // The kinds RouteDocument routes read the id first, as apply does, so --since
 // deletes where apply wrote. For the other kinds, a fallback onto another
