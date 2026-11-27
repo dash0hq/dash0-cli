@@ -38,3 +38,14 @@ func IDOnlyDeleteWarning(kind, display string) string {
 	}
 	return fmt.Sprintf(warning.format, display)
 }
+
+// idOnlyDelete builds the warning for a kind. article is the noun with "a" or
+// "an".
+func idOnlyDelete(noun, article, plural string, usesOrigin func(data []byte) (bool, error)) *idOnlyDeleteWarning {
+	return &idOnlyDeleteWarning{
+		noun:       noun,
+		usesOrigin: usesOrigin,
+		format: "warning: " + noun + " %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but " +
+			article + " that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on " + plural + " you manage with --since",
+	}
+}

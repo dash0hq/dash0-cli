@@ -7,7 +7,7 @@ import (
 )
 
 // Only these kinds warn before `apply --since` deletes an id-only document.
-func TestIDOnlyDeleteWarning_EveryValidKindDecides(t *testing.T) {
+func TestIDOnlyDeleteWarning_Kinds(t *testing.T) {
 	var warningKinds []string
 	for _, kind := range ValidKinds {
 		if kinds[NormalizeKind(kind)].idOnlyDelete != nil {
