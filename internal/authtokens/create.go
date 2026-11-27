@@ -112,7 +112,7 @@ func runCreate(ctx context.Context, flags *createFlags, stdout io.Writer, stdout
 	}
 
 	var token dash0api.AuthTokenDefinition
-	if err := asset.ReadDefinition(flags.File, &token, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &token, os.Stdin, "authtoken"); err != nil {
 		return fmt.Errorf("failed to read auth token definition: %w", err)
 	}
 	if err := validateAPIVersion(&token); err != nil {

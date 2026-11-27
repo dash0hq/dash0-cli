@@ -43,7 +43,7 @@ If the ID argument is omitted, the file's dash0.com/id label is read first, then
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
 	var rule dash0api.RecordingRule
-	if err := asset.ReadDefinition(flags.File, &rule, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &rule, os.Stdin, "prometheusrule"); err != nil {
 		return fmt.Errorf("failed to read recording rule definition: %w", err)
 	}
 

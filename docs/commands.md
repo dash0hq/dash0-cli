@@ -644,6 +644,7 @@ dash0 dashboards create -f <file> [--dry-run] [-o <format>]
 
 Use `-f -` to read from stdin.
 The `--dry-run` flag validates the file without creating anything.
+Unsupported metadata labels and annotations produce [warnings on stderr](#warnings-for-ignored-metadata), including during dry runs.
 
 Example:
 
@@ -689,6 +690,7 @@ For check rules, an id that is not found fails, because `apply` would create the
 For datasets and AWS metric scrape configs, a file without that identifier fails, even when it carries the other one.
 The output shows a unified diff of what changed.
 The `--dry-run` flag shows the diff without applying the update.
+Unsupported metadata labels and annotations produce [warnings on stderr](#warnings-for-ignored-metadata), including during dry runs.
 
 The diff is computed semantically, not as a raw text diff: cosmetic differences, such as key order, duration formatting (`2m` vs. `2m0s`), int-vs-float representation, and API-populated defaults absent from the local file, never produce a spurious "changed" result.
 See [`diff`](#diff-experimental) for what the comparison does and does not normalize.
@@ -817,6 +819,16 @@ Aliases: `remove`
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `dash0.com/id` is read first, then `dash0.com/origin`, as for the [routing rule](#routing-rule), and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
+
+### Warnings for ignored metadata
+
+`apply`, `create -f`, and `update -f` warn on stderr when a document contains metadata labels or annotations that will not be stored by Dash0.
+For example, a team label named `team-lead` produces `warning: team.yaml: metadata.labels["team-lead"] will not be stored by Dash0`.
+Warnings also appear with `--dry-run`; they do not prevent the write or change its exit code, and stdout keeps its normal output format.
+
+The checks account for each asset type, including supported `custom` label maps and annotations inherited by Prometheus alert rules.
+Ordinary exported server metadata, such as timestamps, and identifiers used by the CLI remain quiet so an export → edit → apply workflow does not produce unnecessary warnings.
+The warnings identify field names without printing their values.
 
 ### Asset identifiers and idempotent upsert
 

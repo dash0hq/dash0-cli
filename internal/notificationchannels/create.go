@@ -59,7 +59,7 @@ it infers from metadata.name, so creating the same file again updates the same c
 
 func runCreate(ctx context.Context, flags *createFlags) error {
 	var channel dash0api.NotificationChannelDefinition
-	if err := asset.ReadDefinition(flags.File, &channel, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &channel, os.Stdin, "notificationchannel"); err != nil {
 		return fmt.Errorf("failed to read notification channel definition: %w", err)
 	}
 

@@ -42,7 +42,7 @@ Otherwise it writes by dash0.com/origin, or by an origin it infers from the kind
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
 	var slo dash0api.SloDefinition
-	if err := asset.ReadDefinition(flags.File, &slo, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &slo, os.Stdin, "slo"); err != nil {
 		return fmt.Errorf("failed to read SLO definition: %w", err)
 	}
 

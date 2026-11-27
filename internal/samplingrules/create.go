@@ -51,7 +51,7 @@ rule in the dataset, it turns sampling on, and the CLI prints a warning.` + inte
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	raw, err := asset.ReadRawInput(flags.File, os.Stdin)
+	raw, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "sampling")
 	if err != nil {
 		return fmt.Errorf("failed to read sampling rule definition: %w", err)
 	}

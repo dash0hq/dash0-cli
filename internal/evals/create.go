@@ -45,7 +45,7 @@ Otherwise it writes by metadata.labels["dash0.com/origin"], or by an origin it i
 }
 
 func runCreate(ctx context.Context, flags *asset.FileInputFlags) error {
-	data, err := asset.ReadRawInput(flags.File, os.Stdin)
+	data, err := asset.ReadRawInputForWrite(flags.File, os.Stdin, "generativeaievaluation")
 	if err != nil {
 		return fmt.Errorf("failed to read eval definition: %w", err)
 	}

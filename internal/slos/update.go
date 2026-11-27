@@ -43,7 +43,7 @@ If the ID argument is omitted, the file's dash0.com/id label is read first, then
 
 func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) error {
 	var slo dash0api.SloDefinition
-	if err := asset.ReadDefinition(flags.File, &slo, os.Stdin); err != nil {
+	if err := asset.ReadDefinitionForWrite(flags.File, &slo, os.Stdin, "slo"); err != nil {
 		return fmt.Errorf("failed to read SLO definition: %w", err)
 	}
 
