@@ -13,9 +13,10 @@ dash0 --experimental diff -f <file|directory> [--since <ref>]
 
 _For the exact, always-current flag list, run `dash0 --agent-mode diff --help`._
 
-Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash0 first (when the document carries an identifier), so it can tell a create from an update accurately — `--dry-run` is local-only and cannot make that distinction.
+Unlike `apply --dry-run`, `diff` fetches each document's current state from Dash0 first, at the key `apply` writes it at, so it can tell a create from an update accurately — `--dry-run` is local-only and cannot make that distinction.
 For an update, `diff` prints a unified diff between the fetched state and the local definition, identical in format to `dashboards update`'s own diff output.
-A document with no identifier, or one whose identifier does not match any existing asset, is reported as a create.
+A document without `dash0.com/id` or `dash0.com/origin` is read at its [inferred origin](#routing-rule), so an asset that `apply` already wrote there shows as an update, or as no change.
+A document that matches no existing asset is reported as a create.
 An asset that exists but is soft-deleted is also reported as a create, since `apply` restores it.
 
 A document in a dataset that a `Dash0Dataset` document in the same run creates is reported as a create too, because `apply` applies datasets first.
@@ -40,7 +41,10 @@ If any single fetch fails for a reason other than the asset simply not existing 
 
 `--since <ref>` previews deletions the same way `apply --since` computes them (see [`apply --since`](#apply---since-experimental) for the full identity/ref-resolution semantics) — by identifier, using local git history — but never deletes anything, regardless of confirmation.
 A non-ancestor `--since` ref prints the same warning `apply` does, then still computes and shows the plan: `diff` never mutates, so there is nothing to confirm before proceeding.
-A deletion candidate with no `dash0.com/id` or `dash0.com/origin` label still fails the whole command before any plan is reported, matching `apply --since`'s posture.
+A removed document without `dash0.com/id` or `dash0.com/origin` is listed as a deletion at its inferred origin, as `apply --since` deletes it.
+`diff` reads the inferred origin first, as `apply --since` does, so when nothing is there it prints the same warning and does not list the deletion.
+When a document elsewhere in the repository still writes that inferred origin, `diff --since` leaves it out and prints the same warning as `apply --since`.
+A removed dataset without a slug, or AWS metric scrape config without `dash0.com/id`, still fails the whole command before any plan is reported, matching `apply --since`'s posture.
 A check rule that `-f`'s current contents still declare is not listed as a deletion, because `apply --since` skips it.
 When every asset definition under `-f`'s target was deleted, whether the directory is now empty or was removed, `diff --since` lists every deletion, the same as `apply --since`.
 

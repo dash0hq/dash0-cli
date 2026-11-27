@@ -20,6 +20,7 @@ import (
 	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal/agentmode"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,10 @@ import (
 const testAuthToken = "auth_test_token"
 
 var viewIDPattern = regexp.MustCompile(`^/api/views/[^/]+$`)
+
+// datasetIDPattern matches a dataset read by its slug and, after a 404, by its
+// inferred origin.
+var datasetIDPattern = regexp.MustCompile(`^/api/datasets/[^/]+$`)
 
 func withAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
@@ -713,7 +718,7 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writeNewDatasetWithView(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,
@@ -725,8 +730,11 @@ func TestDiff_ViewInDatasetCreatedInSameRunIsCreate(t *testing.T) {
 	var pending *PendingDifferencesError
 	require.ErrorAs(t, err, &pending, output)
 	assert.Equal(t, 2, pending.Count)
+	// The dataset is named by its slug, as apply --dry-run names it.
 	assert.Contains(t, output, `Create Dataset "Staging" (staging)`)
-	assert.Contains(t, output, `Create View "my-view" (view-id)`)
+	// apply creates the dataset first, so the id is not found and the view is
+	// created by its inferred origin.
+	assert.Contains(t, output, `Create View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`)`)
 }
 
 // A token without access to an existing dataset also gets a 404 for the
@@ -736,7 +744,7 @@ func TestDiff_DroppedForbiddenReadWarnsOnStderr(t *testing.T) {
 	withAgentMode(t, true)
 	dir := writeNewDatasetWithView(t)
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,
@@ -754,7 +762,7 @@ func TestDiff_DroppedForbiddenReadWarnsOnStderr(t *testing.T) {
 	assert.Equal(t, 2, pending.Count)
 	assert.True(t, json.Valid([]byte(output)), "stdout must stay valid JSON in agent mode: %s", output)
 	assert.Contains(t, stderr,
-		`warning: View "my-view" (view-id): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
+		`warning: View "my-view" (`+asset.InferOrigin("view", "my-view", "staging")+`): read denied in dataset "staging", assumed new because this run creates "staging"; a token without access to "staging" gives the same result`+"\n")
 }
 
 // A 403 is only read as "nothing stored" for the dataset this run creates.
@@ -1062,7 +1070,7 @@ spec:
     rate: 1
 `), 0644))
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusNotFound,
 		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 		Validator:  testutil.RequireHeaders,
@@ -1316,7 +1324,7 @@ func TestDiff_SamplingRuleInDatasetCreatedInSameRunWarns(t *testing.T) {
 			doc := strings.Replace(samplingRuleDoc, "enabled: true", c.enabled, 1)
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "rule.yaml"), []byte(doc), 0644))
 			server := testutil.NewMockServer(t, testutil.FixturesDir())
-			server.On(http.MethodGet, "/api/datasets/staging", testutil.MockResponse{
+			server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
 				StatusCode: http.StatusNotFound,
 				Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
 				Validator:  testutil.RequireHeaders,
@@ -1437,4 +1445,282 @@ spec:
 	assert.Contains(t, output, "Ephemeral dashboard")
 	assert.Contains(t, output, "1d")
 	assert.Contains(t, output, "7d")
+}
+
+// diff must report the collision apply fails on: both ids are not found, so
+// both documents would write the same inferred origin.
+func TestDiff_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	cmd := NewDiffCmd()
+	withExperimentalFlag(cmd)
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken, "--experimental"})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+
+	require.Error(t, cmdErr)
+	var pending *PendingDifferencesError
+	assert.False(t, errors.As(cmdErr, &pending), "a collision is an error, not a pending difference")
+	assert.Contains(t, cmdErr.Error(), "a.yaml")
+	assert.Contains(t, cmdErr.Error(), "b.yaml")
+	assert.Contains(t, cmdErr.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
+}
+
+// In a dataset the same run creates, a PrometheusRule alert is created at its
+// id, and recording rules by their own inferred origin, never by the CRD's.
+func TestDiff_PrometheusRuleInDatasetCreatedInSameRunUsesItsOwnKeys(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	dir := writeNewDatasetWithView(t)
+	require.NoError(t, os.Remove(filepath.Join(dir, "view.yaml")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "alerts.yaml"), []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alerts
+  labels:
+    dash0.com/id: alerts-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - alert: Down
+          expr: up == 0
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "records.yaml"), []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: records
+  labels:
+    dash0.com/id: records-id
+spec:
+  groups:
+    - name: g
+      rules:
+        - record: up:sum
+          expr: sum(up)
+`), 0644))
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, datasetIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), forbiddenResponse)
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), forbiddenResponse)
+
+	output, err := runDiffCmd(t, "-f", dir, "--dataset", "staging", "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	dataset := "staging"
+	assert.Contains(t, output, "(alerts-id)")
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts\x00g - Down", &dataset))
+	assert.Contains(t, output, "("+asset.InferOrigin("recordingrule", "records", "staging")+")")
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "alerts", &dataset))
+	assert.NotContains(t, output, asset.InferKindOrigin("prometheusrule", "records", &dataset))
+}
+
+// Two PrometheusRules whose ids are not found create the same alert at their
+// own ids, so they never collide at the alert's inferred origin.
+func TestDiff_PrometheusRuleAlertsWithIDsNotFoundCreateAtTheirIDs(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: alerts\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  groups:\n    - name: g\n      rules:\n        - alert: Down\n          expr: up == 0\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+		Validator:  testutil.RequireHeaders,
+	})
+
+	output, err := runDiffCmd(t, "-f", tmpDir, "--api-url", server.URL)
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, err, &pending, output)
+	assert.Contains(t, output, "(id-a)")
+	assert.Contains(t, output, "(id-b)")
+}
+
+// A document without an identifier is read at its inferred origin, so an asset
+// that apply already wrote there shows as no change instead of a create.
+func TestDiff_DocumentWithoutIdentifierComparesWithItsInferredOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "view.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte("kind: View\nmetadata:\n  name: my-view\nspec:\n  type: logs\n  display:\n    name: my-view\n"), 0644))
+	inferred := asset.InferOrigin("view", "my-view", "staging")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/"+inferred, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       storedView(inferred, "my-view"),
+		Validator:  testutil.RequireHeaders,
+	})
+
+	cmd := NewDiffCmd()
+	withExperimentalFlag(cmd)
+	cmd.SetArgs([]string{"-f", yamlFile, "--dataset", "staging", "--api-url", server.URL, "--auth-token", testAuthToken, "--experimental"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	assert.Contains(t, output, "No differences")
+}
+
+// diff --since lists a removed or renamed document without an identifier as a
+// deletion at its inferred origin, in the JSON the sync-assets action parses.
+func TestDiff_Since_DocumentWithoutIdentifierIsDeletedAtItsInferredOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	withAgentMode(t, true)
+	repoDir, ref := testutil.BuildGitScenario(t, "no-identifier-deletion")
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, name := range []string{"View A", "View B"} {
+		server.On(http.MethodGet, "/api/views/"+asset.InferOrigin("view", name, "default"), testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   testutil.FixtureViewsGetSuccess,
+		})
+	}
+	server.OnPattern(http.MethodGet, viewIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+	})
+
+	cmd := NewDiffCmd()
+	withExperimentalFlag(cmd)
+	cmd.SetArgs([]string{"-f", repoDir, "--since", ref, "--api-url", server.URL, "--auth-token", testAuthToken, "--experimental"})
+
+	var cmdErr error
+	output := testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	var pending *PendingDifferencesError
+	require.ErrorAs(t, cmdErr, &pending)
+	var files []struct {
+		Path    string `json:"path"`
+		Changes []struct {
+			Op         string `json:"op"`
+			Name       string `json:"name"`
+			OriginOrID string `json:"originOrId"`
+			Since      string `json:"since"`
+		} `json:"changes"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &files))
+	var deletes []string
+	for _, file := range files {
+		for _, change := range file.Changes {
+			if change.Op == "delete" {
+				assert.Equal(t, ref, change.Since)
+				deletes = append(deletes, change.Name+" "+change.OriginOrID)
+			}
+		}
+	}
+	assert.ElementsMatch(t, []string{
+		"View A " + asset.InferOrigin("view", "View A", "default"),
+		"View B " + asset.InferOrigin("view", "View B", "default"),
+	}, deletes)
+	for _, req := range server.Requests() {
+		assert.Equal(t, http.MethodGet, req.Method, "diff must not mutate")
+	}
+}
+
+// An asset that an earlier dash0 version created, or that was applied with
+// another dataset, is not at the inferred origin. apply --since reads it there
+// and skips the delete, so diff must not list it either.
+func TestDiff_Since_NothingAtTheInferredOriginIsNotListed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repoDir}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "test")
+	target := filepath.Join(repoDir, "views")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	view := "kind: View\nmetadata:\n  name: ghost\nspec:\n  type: logs\n  display:\n    name: ghost\n"
+	require.NoError(t, os.WriteFile(filepath.Join(target, "ghost.yaml"), []byte(view), 0o644))
+	git("add", "-A")
+	git("commit", "-q", "-m", "add view")
+	ref := git("rev-parse", "HEAD")
+	require.NoError(t, os.RemoveAll(target))
+	git("add", "-A")
+	git("commit", "-q", "-m", "remove view")
+
+	inferred := asset.InferOrigin("view", "ghost", "default")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/"+inferred, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		Body:       map[string]any{"error": map[string]any{"code": 404, "message": "not found"}},
+	})
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", target, "--since", ref, "--api-url", server.URL)
+	})
+
+	require.NoError(t, err, output)
+	assert.NotContains(t, output, "Delete")
+	assert.Contains(t, output, "No differences")
+	assert.Contains(t, stderr, "nothing to delete at inferred origin "+inferred)
+}
+
+// After apply --since deleted the asset, the read at the inferred origin finds
+// it soft-deleted. diff must not list the delete again, or it never comes out
+// clean after a full sync.
+func TestDiff_Since_SoftDeletedAtTheInferredOriginIsNotListed(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	repoDir := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repoDir}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "test")
+	target := filepath.Join(repoDir, "views")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	view := "kind: View\nmetadata:\n  name: ghost\nspec:\n  type: logs\n  display:\n    name: ghost\n"
+	require.NoError(t, os.WriteFile(filepath.Join(target, "ghost.yaml"), []byte(view), 0o644))
+	git("add", "-A")
+	git("commit", "-q", "-m", "add view")
+	ref := git("rev-parse", "HEAD")
+	require.NoError(t, os.RemoveAll(target))
+	git("add", "-A")
+	git("commit", "-q", "-m", "remove view")
+
+	inferred := asset.InferOrigin("view", "ghost", "default")
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/views/"+inferred, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   "views/get_deleted.json",
+	})
+
+	var output string
+	var err error
+	stderr := testutil.CaptureStderr(t, func() {
+		output, err = runDiffCmd(t, "-f", target, "--since", ref, "--api-url", server.URL)
+	})
+
+	require.NoError(t, err, output)
+	assert.NotContains(t, output, "Delete")
+	assert.Contains(t, output, "No differences")
+	assert.Contains(t, stderr, "was already deleted")
 }

@@ -16,6 +16,7 @@ import (
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 	"github.com/dash0hq/dash0-cli/internal/apply"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/checkrules"
 	"github.com/dash0hq/dash0-cli/internal/dashboards"
 	"github.com/dash0hq/dash0-cli/internal/notificationchannels"
@@ -125,22 +126,23 @@ func TestMalformedResponse_ApplyIDPreflightStopsBeforeWrite(t *testing.T) {
 }
 
 // A failed response does not roll back the server's successful write. A manual
-// retry without an ID creates another asset; a pinned ID replaces the same one.
+// retry writes by the same origin, so it replaces the same asset.
 func TestMalformedResponse_RepeatedApplyAfterWrite(t *testing.T) {
 	asset := malformedAssets[2] // views
-	for _, withID := range []bool{false, true} {
-		t.Run(fmt.Sprintf("withID=%t", withID), func(t *testing.T) {
+	for _, withOrigin := range []bool{false, true} {
+		t.Run(fmt.Sprintf("withOrigin=%t", withOrigin), func(t *testing.T) {
 			testutil.SetupTestEnv(t)
 			server := testutil.NewMockServer(t, testutil.FixturesDir())
-			data, err := json.Marshal(applyInput(t, asset, withID))
+			input := applyInput(t, asset, withOrigin)
+			data, err := json.Marshal(input)
 			require.NoError(t, err)
 			file := filepath.Join(t.TempDir(), "view.json")
 			require.NoError(t, os.WriteFile(file, data, 0600))
-			path, method, status := asset.path, http.MethodPost, http.StatusCreated
-			if withID {
-				path, method, status = asset.path+"/"+malformedAssetID, http.MethodPut, http.StatusOK
-				server.On(http.MethodGet, path, testutil.MockResponse{StatusCode: http.StatusNotFound, Validator: testutil.RequireHeaders})
+			path := asset.path + "/" + inferredOriginOf(input, "view")
+			if withOrigin {
+				path = asset.path + "/" + malformedAssetID
 			}
+			server.On(http.MethodGet, path, testutil.MockResponse{StatusCode: http.StatusNotFound, Validator: testutil.RequireHeaders})
 			stored := make(map[string]dash0api.ViewDefinition)
 			writes := 0
 			var mu sync.Mutex
@@ -154,37 +156,27 @@ func TestMalformedResponse_RepeatedApplyAfterWrite(t *testing.T) {
 				}
 				mu.Lock()
 				defer mu.Unlock()
-				id := malformedAssetID
-				if !withID {
-					id = fmt.Sprintf("generated-%d", writes)
-				}
-				stored[id] = view
+				stored[r.URL.Path] = view
 				writes++
 				return nil
 			}
-			server.On(method, path, testutil.MockResponse{StatusCode: status, Body: json.RawMessage("null"), Validator: storeWrite})
-			assertMalformedCommand(t, apply.NewApplyCmd(), []string{"-f", file}, server, asset, method, path, "null")
+			server.On(http.MethodPut, path, testutil.MockResponse{StatusCode: http.StatusOK, Body: json.RawMessage("null"), Validator: storeWrite})
+			assertMalformedCommand(t, apply.NewApplyCmd(), []string{"-f", file}, server, asset, http.MethodPut, path, "null")
 			mu.Lock()
 			assert.Equal(t, 1, writes, "the successful write must not be automatically replayed")
 			assert.Len(t, stored, 1)
-			firstView := stored[malformedAssetID]
+			firstView := stored[path]
 			mu.Unlock()
-			if withID {
-				server.On(http.MethodGet, path, testutil.MockResponse{StatusCode: http.StatusOK, Body: firstView, Validator: testutil.RequireHeaders})
-			}
+			server.On(http.MethodGet, path, testutil.MockResponse{StatusCode: http.StatusOK, Body: firstView, Validator: testutil.RequireHeaders})
 			response := validWriteResponse(t, asset)
-			response.StatusCode, response.Validator = status, storeWrite
-			server.On(method, path, response)
+			response.Validator = storeWrite
+			server.On(http.MethodPut, path, response)
 			_, err = executeResponseCommand(t, apply.NewApplyCmd(), []string{"-f", file}, server)
 			require.NoError(t, err)
 			mu.Lock()
 			defer mu.Unlock()
 			assert.Equal(t, 2, writes)
-			if withID {
-				assert.Len(t, stored, 1)
-			} else {
-				assert.Len(t, stored, 2)
-			}
+			assert.Len(t, stored, 1)
 		})
 	}
 }
@@ -246,7 +238,10 @@ func TestMalformedResponse_Apply(t *testing.T) {
 					require.NoError(t, err)
 					require.NoError(t, os.WriteFile(file, data, 0600))
 					path, method := asset.path+"/"+malformedAssetID, http.MethodGet
-					if create {
+					routedKind, routed := routedByInferredOrigin[asset.fixture]
+					if create && routed {
+						path, method = asset.path+"/"+inferredOriginOf(input, routedKind), http.MethodPut
+					} else if create {
 						path, method = asset.path, http.MethodPost
 					} else if stage == "update" {
 						method = http.MethodPut
@@ -273,7 +268,8 @@ func TestMalformedResponse_Apply(t *testing.T) {
 					}
 					assertMalformedCommand(t, apply.NewApplyCmd(), []string{"-f", file}, server, asset, method, path, kind)
 					wantRequests := 1
-					if stage == "update" {
+					if stage == "update" || (create && routed) {
+						// A routed create reads its origin first, and that read is a 404.
 						wantRequests = 2
 					}
 					assert.Len(t, server.Requests(), wantRequests, "no retries or writes after failed preflight")
@@ -281,6 +277,31 @@ func TestMalformedResponse_Apply(t *testing.T) {
 			}
 		}
 	}
+}
+
+// routedByInferredOrigin maps the fixtures whose kinds the router creates by
+// their inferred origin to that kind. Later kinds join as they are routed.
+var routedByInferredOrigin = map[string]string{
+	"checkrules":           "checkrule",
+	"dashboards":           "Dashboard",
+	"recordingrules":       "recordingrule",
+	"syntheticchecks":      "syntheticcheck",
+	"views":                "view",
+	"notificationchannels": "notificationchannel",
+	"slos":                 "slo",
+	"spamfilters":          "spamfilter",
+	"teams":                "team",
+}
+
+func inferredOriginOf(input map[string]any, kind string) string {
+	dataset := "default"
+	if kind == "notificationchannel" || kind == "team" {
+		dataset = ""
+	}
+	if kind == "checkrule" {
+		return asset.InferOrigin(kind, input["name"].(string), dataset)
+	}
+	return asset.InferOrigin(kind, input["metadata"].(map[string]any)["name"].(string), dataset)
 }
 
 func assertMalformedCommand(t *testing.T, cmd *cobra.Command, args []string, server *testutil.MockServer, asset malformedAssetCase, method, path, kind string) {
@@ -409,8 +430,9 @@ func applyInput(t *testing.T, asset malformedAssetCase, withID bool) map[string]
 	if asset.fixture == "checkrules" {
 		input["kind"] = "CheckRule"
 		delete(input, "id")
+		delete(input, "labels")
 		if withID {
-			input["id"] = malformedAssetID
+			input["labels"] = map[string]any{"dash0.com/origin": malformedAssetID}
 		}
 		return input
 	}
@@ -421,10 +443,8 @@ func applyInput(t *testing.T, asset malformedAssetCase, withID bool) map[string]
 		switch asset.fixture {
 		case "dashboards":
 			metadata["dash0Extensions"] = map[string]any{"id": malformedAssetID}
-		case "notificationchannels", "teams", "slos", "spamfilters":
-			metadata["labels"] = map[string]any{"dash0.com/origin": malformedAssetID}
 		default:
-			metadata["labels"] = map[string]any{"dash0.com/id": malformedAssetID}
+			metadata["labels"] = map[string]any{"dash0.com/origin": malformedAssetID}
 		}
 	}
 	return input

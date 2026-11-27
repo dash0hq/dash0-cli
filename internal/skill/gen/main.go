@@ -156,17 +156,14 @@ var topics = []topicSpec{
 		includeQuickRef: true,
 		sections:        []string{"eval documents"},
 		assetYAMLLabels: []string{"Eval (generative AI evaluation"},
-		extraNote:       deletedAssetNote("evals", "eval", "evals", "origin"),
+		extraNote:       routedKeyNote("eval") + "\n\n" + deletedAssetNote("evals", "eval", "evals", "origin"),
 	},
 	{
 		name:            "sampling-rules",
 		includeQuickRef: true,
 		sections:        []string{"sampling rules"},
 		assetYAMLLabels: []string{"Sampling rule ("},
-		extraNote: "`metadata.labels[\"dash0.com/origin\"]` is the upsert key: `create` and `apply` PUT to that origin, " +
-			"which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only " +
-			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
-			"apply; pin `dash0.com/origin` instead.",
+		extraNote:       routedKeyNote("rule"),
 	},
 	{
 		name:            "signal-to-metrics-rules",
@@ -175,10 +172,7 @@ var topics = []topicSpec{
 		assetYAMLLabels: []string{"Signal-to-metrics rule ("},
 		extraNote: "The command is also available under the shorter alias `s2m`, so `dash0 s2m list` and " +
 			"`dash0 signal-to-metrics-rules list` are the same command.\n\n" +
-			"`metadata.labels[\"dash0.com/origin\"]` is the upsert key: `create` and `apply` PUT to that origin, " +
-			"which creates the rule or replaces it. Rule IDs are server-assigned, so a document with only " +
-			"`dash0.com/id` updates the rule with that ID when it exists and otherwise creates a new rule on every " +
-			"apply; pin `dash0.com/origin` instead.\n\n" +
+			routedKeyNote("rule") + "\n\n" +
 			"Origins are unique per organization while each rule belongs to one dataset, so applying the same " +
 			"document to a second dataset fails, and so does `diff`: the error names the dataset the rule belongs " +
 			"to. Use a distinct origin per dataset.\n\n" +
@@ -191,9 +185,7 @@ var topics = []topicSpec{
 		includeQuickRef: true,
 		sections:        []string{"slo documents and openslo v1 compatibility"},
 		assetYAMLLabels: []string{"SLO (Dash0's OpenSLO"},
-		extraNote: "`dash0.com/origin` — not `dash0.com/id` — is the upsert key for SLOs: SLO IDs are assigned " +
-			"by the server (`slo_<ulid>`), so origin is the only identifier a hand-written document can pin, and " +
-			"it is what makes `apply` idempotent. See the `apply` topic for the full upsert-key selection rules.\n\n" +
+		extraNote: routedKeyNote("SLO") + "\n\n" +
 			deletedAssetNote("slos", "SLO", "SLOs", "origin"),
 	},
 	{
@@ -226,10 +218,10 @@ var topics = []topicSpec{
 			"`dash0 time-series-aggregations list` are the same command.\n\n" +
 			"Every time series aggregation endpoint requires the organization admin role, which is stricter than any " +
 			"other asset type. A non-admin token gets a 403 naming the role.\n\n" +
-			"`metadata.labels[\"dash0.com/origin\"]` is mandatory and is the only upsert key. `create` and `apply` both " +
-			"PUT to that origin, so they are create-or-replace; a document without the label fails before any API " +
-			"call. A `dash0.com/id` in a document body is ignored, which is what makes an exported definition " +
-			"reapply cleanly.\n\n" +
+			"`create` and `apply` follow the routing rule: `dash0.com/id` first, then `metadata.labels[\"dash0.com/origin\"]`. " +
+			"A document without an origin gets an inferred `dash0-cli_` origin, so applying it again updates the same " +
+			"aggregation. The CLI never POSTs, and the body never carries the origin, because the API reads it from " +
+			"the path.\n\n" +
 			"Origins are unique per organization, while each aggregation belongs to exactly one dataset. One document " +
 			"therefore cannot be applied to two datasets the way it can for every other asset kind — the second " +
 			"dataset fails with `400 ... associated with a different dataset`. Use a distinct origin per dataset.\n\n" +
@@ -649,6 +641,16 @@ func findRepoRoot() (string, error) {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "skillgen:", err)
 	os.Exit(1)
+}
+
+// routedKeyNote describes how create and apply pick the asset for a kind
+// that follows the routing rule (asset.RouteDocument).
+func routedKeyNote(singular string) string {
+	return fmt.Sprintf("`create` and `apply` read `dash0.com/id` first and update the %[1]s at that id when it "+
+		"exists. Otherwise they PUT to `dash0.com/origin`, or to an origin inferred from the kind, `metadata.name`, "+
+		"and the dataset, so applying the same document again updates the same %[1]s and never creates a "+
+		"second one. The server assigns ids, so a hand-written document pins `dash0.com/origin` or relies on "+
+		"the inferred one. See the `apply` topic for the routing rule.", singular)
 }
 
 // deletedAssetNote describes how an asset kind's commands show and bring back

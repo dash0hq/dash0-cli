@@ -43,7 +43,7 @@ jobs:
           ref: ${{ inputs.ref }}
           allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           # A cache saved from a pull_request_target run lands in main's scope.
@@ -78,7 +78,7 @@ jobs:
           ref: ${{ inputs.ref }}
           allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           # A cache saved from a pull_request_target run lands in main's scope.
@@ -97,7 +97,7 @@ jobs:
           ref: ${{ inputs.ref }}
           allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           # A cache saved from a pull_request_target run lands in main's scope.
@@ -141,7 +141,7 @@ jobs:
           ref: ${{ inputs.ref }}
           allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           # A cache saved from a pull_request_target run lands in main's scope.

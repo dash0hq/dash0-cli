@@ -107,6 +107,7 @@ const (
 	FixtureEvalsNotFound            = "evals/error_not_found.json"
 	FixtureEvalsNameImmutable       = "evals/error_name_immutable.json"
 	FixtureEvalsOutputKindImmutable = "evals/error_output_kind_immutable.json"
+	FixtureEvalsNameTaken           = "evals/error_name_taken.json"
 
 	// Datasets fixtures
 	FixtureDatasetsListSuccess   = "datasets/list_success.json"
@@ -515,7 +516,7 @@ func (m *MockServer) WithCheckRulesGet(fixture string) *MockServer {
 
 // WithCheckRulesCreate sets up the mock server to accept check rule creation.
 func (m *MockServer) WithCheckRulesCreate(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/alerting/check-rules", MockResponse{
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/alerting/check-rules/[^/]+$`), MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
 		Validator:  RequireHeaders,
@@ -556,7 +557,7 @@ func (m *MockServer) WithViewsGet(fixture string) *MockServer {
 
 // WithViewsCreate sets up the mock server to accept view creation.
 func (m *MockServer) WithViewsCreate(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/views", MockResponse{
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/views/[^/]+$`), MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
 		Validator:  RequireHeaders,
@@ -597,7 +598,7 @@ func (m *MockServer) WithSyntheticChecksGet(fixture string) *MockServer {
 
 // WithSyntheticChecksCreate sets up the mock server to accept synthetic check creation.
 func (m *MockServer) WithSyntheticChecksCreate(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/synthetic-checks", MockResponse{
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/synthetic-checks/[^/]+$`), MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
 		Validator:  RequireHeaders,
@@ -638,8 +639,8 @@ func (m *MockServer) WithRecordingRulesGet(fixture string) *MockServer {
 
 // WithRecordingRulesCreate sets up the mock server to accept recording rule creation.
 func (m *MockServer) WithRecordingRulesCreate(fixture string) *MockServer {
-	return m.On(http.MethodPost, "/api/recording-rules", MockResponse{
-		StatusCode: http.StatusCreated,
+	return m.OnPattern(http.MethodPut, regexp.MustCompile(`^/api/recording-rules/[^/]+$`), MockResponse{
+		StatusCode: http.StatusOK,
 		BodyFile:   fixture,
 		Validator:  RequireHeaders,
 	})

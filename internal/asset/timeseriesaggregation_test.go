@@ -192,8 +192,6 @@ func TestIsValidKind_TimeSeriesAggregation(t *testing.T) {
 }
 
 func TestExtractIdentifier_TimeSeriesAggregation(t *testing.T) {
-	// The API upserts by origin, so an id-only document has no key that
-	// matches a live aggregation.
 	identifier, err := ExtractIdentifier([]byte(`kind: Dash0TimeSeriesAggregation
 metadata:
   name: my-aggregation
@@ -202,12 +200,11 @@ metadata:
     dash0.com/id: d54caa75-e94b-43c7-8470-23e4ab852ab6
 `))
 	require.NoError(t, err)
-	assert.Equal(t, "my-origin", identifier)
+	// The id first, as apply routes; ExtractDeleteFallbacks returns the origin.
+	assert.Equal(t, "d54caa75-e94b-43c7-8470-23e4ab852ab6", identifier)
 }
 
-func TestExtractIdentifier_TimeSeriesAggregationWithoutOrigin(t *testing.T) {
-	// Returning "" routes the document to --since's no-identifier hard-fail
-	// instead of a delete call against an id the server never keys on.
+func TestExtractIdentifier_TimeSeriesAggregationWithoutOriginFallsBackToID(t *testing.T) {
 	identifier, err := ExtractIdentifier([]byte(`kind: Dash0TimeSeriesAggregation
 metadata:
   name: my-aggregation
@@ -215,5 +212,5 @@ metadata:
     dash0.com/id: d54caa75-e94b-43c7-8470-23e4ab852ab6
 `))
 	require.NoError(t, err)
-	assert.Empty(t, identifier)
+	assert.Equal(t, "d54caa75-e94b-43c7-8470-23e4ab852ab6", identifier)
 }

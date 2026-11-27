@@ -9,17 +9,19 @@ FIXTURES="${SCRIPT_DIR}/fixtures"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+# An id that is not found is created at the origin with a server-assigned id,
+# so the origin is the key the test sets and addresses the asset by.
+ORIGIN="cli-roundtrip-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 YAML_FILE="${TMPDIR}/view.yaml"
 FOLDER_PATH="/views/test/annotations"
 
 echo "=== View annotations and permissions round-trip test ==="
-echo "Generated ID: $ID"
+echo "Origin: $ORIGIN"
 
-# Inject the generated ID, folder-path annotation, and permissions into the fixture.
-ID="$ID" FOLDER_PATH="$FOLDER_PATH" \
+# Inject the origin, folder-path annotation, and permissions into the fixture.
+ORIGIN="$ORIGIN" FOLDER_PATH="$FOLDER_PATH" \
   yq '
-    .metadata.labels."dash0.com/id" = env(ID) |
+    .metadata.labels."dash0.com/origin" = env(ORIGIN) |
     .metadata.annotations."dash0.com/folder-path" = env(FOLDER_PATH) |
     .spec.permissions = [{"actions": ["views:read", "views:write"], "role": "admin"}]
   ' "$FIXTURES/view.yaml" > "$YAML_FILE"
@@ -28,14 +30,10 @@ ID="$ID" FOLDER_PATH="$FOLDER_PATH" \
 echo "--- Step 1: Apply view with annotations and permissions ---"
 APPLY_OUTPUT=$("$DASH0" apply -f "$YAML_FILE")
 echo "$APPLY_OUTPUT"
-if ! echo "$APPLY_OUTPUT" | grep -q "$ID"; then
-  echo "FAIL: apply output does not contain ID '$ID'"
-  exit 1
-fi
 
 # Step 2: Get the view and verify annotations and permissions are present.
 echo "--- Step 2: Verify annotations and permissions on created view ---"
-GET_YAML=$("$DASH0" views get "$ID" -o yaml)
+GET_YAML=$("$DASH0" views get "$ORIGIN" -o yaml)
 echo "$GET_YAML"
 
 ACTUAL_FOLDER=$(echo "$GET_YAML" | yq '.metadata.annotations."dash0.com/folder-path"')
@@ -54,13 +52,13 @@ echo "permissions count: $PERM_COUNT"
 
 # Step 3: Export and re-apply (round-trip). Annotations and permissions must survive.
 echo "--- Step 3: Export and re-apply (round-trip) ---"
-"$DASH0" views get "$ID" -o yaml > "${TMPDIR}/exported.yaml"
+"$DASH0" views get "$ORIGIN" -o yaml > "${TMPDIR}/exported.yaml"
 REAPPLY_OUTPUT=$("$DASH0" apply -f "${TMPDIR}/exported.yaml")
 echo "$REAPPLY_OUTPUT"
 
 # Step 4: Verify annotations and permissions survived the round-trip.
 echo "--- Step 4: Verify annotations and permissions after round-trip ---"
-GET_YAML2=$("$DASH0" views get "$ID" -o yaml)
+GET_YAML2=$("$DASH0" views get "$ORIGIN" -o yaml)
 
 ACTUAL_FOLDER2=$(echo "$GET_YAML2" | yq '.metadata.annotations."dash0.com/folder-path"')
 if [ "$ACTUAL_FOLDER2" != "$FOLDER_PATH" ]; then
@@ -78,5 +76,5 @@ echo "permissions count after round-trip: $PERM_COUNT2"
 
 # Cleanup.
 echo "--- Cleanup ---"
-"$DASH0" views delete "$ID" --force
+"$DASH0" views delete "$ORIGIN" --force
 echo "=== View annotations and permissions round-trip test PASSED ==="

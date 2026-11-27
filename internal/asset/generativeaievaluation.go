@@ -97,9 +97,8 @@ func validateGenerativeAiEvaluation(evaluation *dash0api.GenerativeAiEvaluationD
 }
 
 // GenerativeAiEvaluationUsesOrigin reports whether an eval document carries a non-empty
-// dash0.com/origin label. --since uses it the same way as SLOUsesOrigin: eval ids are
-// server-assigned, so an id-only document that took ImportGenerativeAiEvaluation's POST
-// fallback left the live eval at an id the document never learned.
+// dash0.com/origin label. --since uses it the same way as SLOUsesOrigin: an id-only eval that an
+// earlier CLI version created by POST sits at a server-assigned id the document never learned.
 func GenerativeAiEvaluationUsesOrigin(data []byte) (bool, error) {
 	var evaluation dash0api.GenerativeAiEvaluationDefinition
 	if err := dash0yaml.Unmarshal(data, &evaluation); err != nil {
@@ -108,36 +107,23 @@ func GenerativeAiEvaluationUsesOrigin(data []byte) (bool, error) {
 	return dash0api.GetGenerativeAiEvaluationOrigin(&evaluation) != "", nil
 }
 
-// ImportGenerativeAiEvaluation creates or upserts a generative AI evaluation.
-//
-// The upsert keys follow ImportSLO:
-//
-//   - With a dash0.com/origin label, the eval is PUT to that origin. PUT to an unknown origin
-//     creates the eval, so the preflight GET only decides "created" vs "updated" and supplies
-//     the diff; any error other than a 404 is surfaced.
-//   - With only a dash0.com/id label, a preflight GET decides the route: PUT on hit, POST on a
-//     404 (the id belongs to another organization), and any other error is surfaced so a
-//     transient failure never creates a duplicate.
-//   - With neither, POST creates the eval.
+// ImportGenerativeAiEvaluation creates or updates a generative AI evaluation through
+// RouteDocument. The body carries the origin only on create.
 //
 // The identifiers are read before StripGenerativeAiEvaluationServerFields, which removes
 // dash0.com/id (the server rejects a create that sets it) and dash0.com/version. Without the
-// version, the PUT overwrites unconditionally. The strip keeps dash0.com/origin, so the body
-// of an origin PUT carries the same origin as the path.
+// version, the PUT overwrites unconditionally.
 func ImportGenerativeAiEvaluation(ctx context.Context, apiClient dash0api.Client, evaluation *dash0api.GenerativeAiEvaluationDefinition, dataset *string) (ImportResult, error) {
-	id := dash0api.GetGenerativeAiEvaluationID(evaluation)
 	plan, err := PlanGenerativeAiEvaluation(ctx, apiClient, evaluation, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
 
-	var result *dash0api.GenerativeAiEvaluationDefinition
-	if plan.Key != "" {
-		result, err = apiClient.UpdateGenerativeAiEvaluation(ctx, plan.Key, evaluation, dataset)
-	} else {
-		result, err = apiClient.CreateGenerativeAiEvaluation(ctx, evaluation, dataset)
+	if plan.Action != ActionCreated {
+		SetGenerativeAiEvaluationOrigin(evaluation, "")
 	}
-	if err != nil && plan.Key != "" && plan.Before == nil && dash0api.IsNotFound(err) {
+	result, err := apiClient.UpdateGenerativeAiEvaluation(ctx, plan.Key, evaluation, dataset)
+	if err != nil && plan.Action == ActionCreated && dash0api.IsNotFound(err) {
 		// A PUT to an origin that this dataset does not have creates the eval, unless another
 		// dataset already uses the origin: origins are unique per organization, while each eval
 		// belongs to one dataset. The API then answers 404, which reads as a missing eval.
@@ -155,9 +141,7 @@ func ImportGenerativeAiEvaluation(ctx context.Context, apiClient dash0api.Client
 		return ImportResult{}, err
 	}
 
-	if resultID := dash0api.GetGenerativeAiEvaluationID(result); resultID != "" {
-		id = resultID
-	}
+	id := dash0api.GetGenerativeAiEvaluationID(result)
 	name := dash0api.GetGenerativeAiEvaluationName(result)
 	if err := RequireNotDeleted(GenerativeAiEvaluationDisplayName, name, id, GenerativeAiEvaluationDeletedAt(result)); err != nil {
 		return ImportResult{}, err
@@ -165,40 +149,45 @@ func ImportGenerativeAiEvaluation(ctx context.Context, apiClient dash0api.Client
 	return ImportResult{Name: name, ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanGenerativeAiEvaluation reads the stored eval that ImportGenerativeAiEvaluation would write.
-// An empty Key means a POST: the document has no origin, and its id is unknown or missing.
+// PlanGenerativeAiEvaluation routes the eval with RouteDocument and reads the stored eval that
+// ImportGenerativeAiEvaluation would write. Any preflight error other than "not found" is
+// returned and stops the write.
 func PlanGenerativeAiEvaluation(ctx context.Context, apiClient dash0api.Client, evaluation *dash0api.GenerativeAiEvaluationDefinition, dataset *string) (ImportPlan, error) {
-	origin := dash0api.GetGenerativeAiEvaluationOrigin(evaluation)
-	id := dash0api.GetGenerativeAiEvaluationID(evaluation)
+	identity := GenerativeAiEvaluationIdentity(evaluation, dataset)
 	dash0api.StripGenerativeAiEvaluationServerFields(evaluation)
-
-	plan := ImportPlan{Action: ActionCreated, Proposed: evaluation}
-	switch {
-	case origin != "":
-		// PUT to an unknown origin creates the eval, so a 404 keeps the origin as the key.
-		plan.Key = origin
-		existing, err := apiClient.GetGenerativeAiEvaluation(ctx, origin, dataset)
-		switch {
-		case err == nil:
-			plan.Action, plan.Before = actionForExisting(GenerativeAiEvaluationDeletedAt(existing)), existing
-		case dash0api.IsNotFound(err):
-		default:
-			// Keep the plan, so a caller that drops a denied read still names the eval by its origin.
-			return plan, err
-		}
-	case id != "":
-		existing, err := apiClient.GetGenerativeAiEvaluation(ctx, id, dataset)
-		switch {
-		case err == nil:
-			plan.Key = id
-			plan.Action, plan.Before = actionForExisting(GenerativeAiEvaluationDeletedAt(existing)), existing
-		case dash0api.IsNotFound(err):
-			// The id belongs to another organization: POST creates the eval.
-		default:
-			return plan, err
-		}
+	get := func(ctx context.Context, key string) (*dash0api.GenerativeAiEvaluationDefinition, error) {
+		return apiClient.GetGenerativeAiEvaluation(ctx, key, dataset)
 	}
+	route, err := RouteDocument(ctx, identity, get, (*dash0api.GenerativeAiEvaluationDefinition).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: evaluation}
+	if err != nil {
+		return plan, err
+	}
+	if route.Create {
+		SetGenerativeAiEvaluationOrigin(evaluation, route.Key)
+		return plan, nil
+	}
+	// The stored origin keeps the diff to what changes.
+	// ImportGenerativeAiEvaluation clears it before the write: an update never
+	// sends the origin.
+	SetGenerativeAiEvaluationOrigin(evaluation, route.Stored.GetOrigin())
+	plan.Action, plan.Before = actionForExisting(GenerativeAiEvaluationDeletedAt(route.Stored)), route.Stored
 	return plan, nil
+}
+
+// GenerativeAiEvaluationIdentity returns what RouteDocument routes an eval by.
+func GenerativeAiEvaluationIdentity(evaluation *dash0api.GenerativeAiEvaluationDefinition, dataset *string) Identity {
+	return identityOf("generativeaievaluation", evaluation.Metadata.Name, dataset, evaluation)
+}
+
+func SetGenerativeAiEvaluationOrigin(evaluation *dash0api.GenerativeAiEvaluationDefinition, origin string) {
+	if evaluation.Metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		evaluation.Metadata.Labels = &dash0api.GenerativeAiEvaluationLabels{}
+	}
+	evaluation.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }
 
 // GenerativeAiEvaluationDeletedAt returns when the eval was deleted, or nil when it is not deleted.
@@ -209,9 +198,10 @@ func GenerativeAiEvaluationDeletedAt(evaluation *dash0api.GenerativeAiEvaluation
 	return evaluation.Metadata.Annotations.Dash0ComdeletedAt
 }
 
-// ExplainGenerativeAiEvaluationError adds the cause and the fix to the two 400s a write to an
-// existing eval hits when the document changes a field that is fixed at create: metadata.name
-// and spec.judge.output.kind. It returns nil for any other error, so the caller falls back to
+// ExplainGenerativeAiEvaluationError adds the cause and the fix to the 400 for a metadata.name
+// that another eval in the dataset already uses, and to the two 400s a write to an existing eval
+// hits when the document changes a field that is fixed at create: metadata.name and
+// spec.judge.output.kind. It returns nil for any other error, so the caller falls back to
 // client.HandleAPIError.
 //
 // The advice goes behind "\nHint:" so agent mode lifts it into the JSON error's hint field.
@@ -222,6 +212,14 @@ func ExplainGenerativeAiEvaluationError(err error, name string) error {
 	}
 	// Matching on the text is unavoidable, because the errors carry no machine-readable discriminator.
 	haystack := strings.ToLower(apiErr.Message + " " + apiErr.Body)
+	if strings.Contains(haystack, "already uses") {
+		return fmt.Errorf(
+			"another eval in this dataset is already named %q:\n  %w"+
+				"\nHint: metadata.name is unique per dataset. Rename the eval, delete the other one, "+
+				"or set the other eval's %s or metadata.labels[\"dash0.com/id\"] in this document to update it instead",
+			name, err, OriginLabel,
+		)
+	}
 	if !strings.Contains(haystack, "cannot change after create") {
 		return nil
 	}

@@ -231,7 +231,7 @@ func TestExtractIdentifier_SamplingRule(t *testing.T) {
 		labels string
 		want   string
 	}{
-		{"origin wins over id", "    dash0.com/origin: " + samplingTestOrigin + "\n    dash0.com/id: " + samplingTestID + "\n" + custom, samplingTestOrigin},
+		{"id wins over origin, as apply reads it", "    dash0.com/origin: " + samplingTestOrigin + "\n    dash0.com/id: " + samplingTestID + "\n" + custom, samplingTestID},
 		{"id when origin is absent", "    dash0.com/id: " + samplingTestID + "\n" + custom, samplingTestID},
 		{"neither label", custom, ""},
 	}
@@ -291,7 +291,7 @@ func storedSamplingRule(id string, enabled bool) *dash0api.SamplingDefinition {
 }
 
 func TestPlanSamplingRule_ByOrigin(t *testing.T) {
-	labels := "    dash0.com/origin: " + samplingTestOrigin + "\n    dash0.com/id: " + samplingTestID + "\n    dash0.com/dataset: elsewhere\n"
+	labels := "    dash0.com/origin: " + samplingTestOrigin + "\n    dash0.com/dataset: elsewhere\n"
 
 	t.Run("unknown origin is still the key", func(t *testing.T) {
 		client := &samplingClient{getErr: errSamplingNotFound}
@@ -351,16 +351,16 @@ func TestPlanSamplingRule_ByIDOnly(t *testing.T) {
 		assert.Equal(t, ActionUpdated, plan.Action)
 		assert.Equal(t, samplingTestID, dash0api.GetSamplingRuleID(rule), "a PUT to the id may carry the same id")
 	})
-	t.Run("unknown id falls back to POST without the id", func(t *testing.T) {
+	t.Run("unknown id is created by the inferred origin without the id", func(t *testing.T) {
 		client := &samplingClient{getErr: errSamplingNotFound, list: []*dash0api.SamplingDefinition{storedSamplingRule("other", true)}}
 		rule := parseSampling(t, labels, samplingSpec)
 
 		plan, err := PlanSamplingRule(context.Background(), client, rule, nil)
 
 		require.NoError(t, err)
-		assert.Empty(t, plan.Key, "an empty key means POST")
+		assert.Equal(t, InferKindOrigin("sampling", rule.Metadata.Name, nil), plan.Key, "never POST, so a repeated apply cannot duplicate")
 		assert.Equal(t, ActionCreated, plan.Action)
-		assert.Empty(t, dash0api.GetSamplingRuleID(rule), "the server rejects an id in a POST body")
+		assert.Empty(t, dash0api.GetSamplingRuleID(rule), "the path selects the rule, so the body carries no id")
 	})
 	t.Run("rule in another dataset is explained", func(t *testing.T) {
 		client := &samplingClient{getErr: errSamplingWrongDataset}
@@ -380,14 +380,16 @@ func TestPlanSamplingRule_ByIDOnly(t *testing.T) {
 	})
 }
 
-func TestPlanSamplingRule_WithoutIdentifierReadsNothing(t *testing.T) {
-	client := &samplingClient{list: []*dash0api.SamplingDefinition{storedSamplingRule("other", true)}}
+func TestPlanSamplingRule_WithoutIdentifierUsesTheInferredOrigin(t *testing.T) {
+	client := &samplingClient{getErr: errSamplingNotFound, list: []*dash0api.SamplingDefinition{storedSamplingRule("other", true)}}
+	rule := parseSampling(t, "", samplingSpec)
+	inferred := InferKindOrigin("sampling", rule.Metadata.Name, nil)
 
-	plan, err := PlanSamplingRule(context.Background(), client, parseSampling(t, "", samplingSpec), nil)
+	plan, err := PlanSamplingRule(context.Background(), client, rule, nil)
 
 	require.NoError(t, err)
-	assert.Empty(t, plan.Key)
-	assert.Equal(t, []string{"LIST"}, client.calls, "only the turn-on check reads, and no rule is fetched")
+	assert.Equal(t, inferred, plan.Key)
+	assert.Equal(t, []string{"GET " + inferred, "LIST"}, client.calls)
 }
 
 func TestSamplingTurnOnWarning(t *testing.T) {

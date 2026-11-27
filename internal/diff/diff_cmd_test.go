@@ -90,10 +90,12 @@ type unmergeableDatasetClient struct {
 
 func (unmergeableDatasetClient) GetDataset(context.Context, string) (*dash0api.DatasetDefinition, error) {
 	outOfRange := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	slug := "prod"
 	return &dash0api.DatasetDefinition{
 		ApiVersion: asset.DatasetAPIVersion,
 		Metadata: dash0api.DatasetMetadata{
 			Name:        "Prod",
+			Labels:      &dash0api.DatasetLabels{Dash0Comid: &slug},
 			Annotations: &dash0api.DatasetAnnotations{Dash0ComcreatedAt: &outOfRange},
 		},
 	}, nil

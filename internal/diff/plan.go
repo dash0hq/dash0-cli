@@ -20,6 +20,12 @@ type docPlan struct {
 	// readDenied reports that the read answered 403 and the plan assumes a
 	// create, because this run creates the dataset.
 	readDenied bool
+	// identity is what the write routes by, when it is not the document's
+	// own, as for each asset of a PrometheusRule.
+	identity *asset.Identity
+	// reportID names the asset in the report when the write key does not, as
+	// a dataset created by its origin, which apply --dry-run names by its slug.
+	reportID string
 }
 
 // planDocument reads the stored state of every asset doc would write, through
@@ -30,11 +36,11 @@ type docPlan struct {
 func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string, inNewDataset bool) ([]docPlan, error) {
 	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
+		dashboard, inferredName, err := asset.ParseDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
 		}
-		plan, err := asset.PlanDashboard(ctx, apiClient, dashboard, dataset)
+		plan, err := asset.PlanDashboard(ctx, apiClient, dashboard, inferredName, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "dashboard", AssetID: plan.Key})
@@ -153,7 +159,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "dataset", AssetID: plan.Key})
 		}
-		return []docPlan{{displayKind: "Dash0Dataset", name: dash0api.GetDatasetName(&ds), plan: plan}}, nil
+		return []docPlan{{displayKind: "Dash0Dataset", name: dash0api.GetDatasetName(&ds), plan: plan, reportID: dash0api.GetDatasetID(&ds)}}, nil
 
 	case "view":
 		var view dash0api.ViewDefinition
@@ -167,7 +173,7 @@ func planDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Docu
 		}
 		// The API can give a view a new id and still find it by the local id,
 		// so the stored id names the same view and is not a change.
-		if before, ok := plan.Before.(*dash0api.ViewDefinition); ok && before.Metadata.Labels != nil && before.Metadata.Labels.Dash0Comid != nil {
+		if before, ok := plan.Before.(*dash0api.ViewDefinition); ok && before.Metadata.Labels != nil && before.Metadata.Labels.Dash0Comid != nil && view.Metadata.Labels != nil {
 			view.Metadata.Labels.Dash0Comid = before.Metadata.Labels.Dash0Comid
 		}
 		return []docPlan{{displayKind: doc.Kind, name: view.Metadata.Name, plan: plan, readDenied: denied}}, nil
@@ -274,12 +280,17 @@ func planCheckRules(ctx context.Context, apiClient dash0api.Client, doc asset.Do
 	}
 	var plans []docPlan
 	for _, rule := range rules {
+		// PlanCheckRule clears the id and origin, so read the identity first.
+		identity := rule.Identity(dataset)
 		plan, err := asset.PlanCheckRule(ctx, apiClient, rule, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return plans, client.HandleAPIError(err, client.ErrorContext{AssetType: "check rule", AssetID: plan.Key, AssetName: rule.Name})
 		}
-		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied})
+		if denied && plan.Key == "" {
+			plan.Key = identity.CreateOrigin()
+		}
+		plans = append(plans, docPlan{displayKind: "CheckRule", name: rule.Name, plan: plan, readDenied: denied, identity: &identity})
 	}
 	return plans, nil
 }
@@ -303,12 +314,17 @@ func planPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asse
 
 	if recordingOnly := asset.RecordingOnlyPrometheusRule(crd); recordingOnly != nil {
 		name := dash0api.GetRecordingRuleName(recordingOnly)
+		// PlanRecordingRule clears the id and origin, so read the identity first.
+		identity := asset.RecordingRuleIdentity(recordingOnly, dataset)
 		plan, err := asset.PlanRecordingRule(ctx, apiClient, recordingOnly, dataset)
 		denied, err := readError(err, inNewDataset)
 		if err != nil {
 			return plans, client.HandleAPIError(err, client.ErrorContext{AssetType: "recording rule", AssetID: plan.Key, AssetName: name})
 		}
-		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied})
+		if denied && plan.Key == "" {
+			plan.Key = identity.CreateOrigin()
+		}
+		plans = append(plans, docPlan{displayKind: "RecordingRule", name: name, plan: plan, readDenied: denied, identity: &identity})
 	}
 	return plans, nil
 }

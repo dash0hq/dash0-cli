@@ -22,7 +22,8 @@ func newCreateCmd() *cobra.Command {
 		Short:   "[experimental] Create an eval from a file",
 		Long: `Create a generative AI evaluation (eval) from a YAML or JSON definition file. Use '-f -' to read from stdin.
 
-When the file sets metadata.labels["dash0.com/origin"], the eval is created or replaced at that origin, so running the command again does not create a duplicate.` + internal.CONFIG_HINT,
+The CLI reads metadata.labels["dash0.com/id"] first and updates the eval at the id when it exists.
+Otherwise it writes by metadata.labels["dash0.com/origin"], or by an origin it infers from the kind, metadata.name, and dataset, so running the command again does not create a duplicate.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 --experimental evals create -f eval.yaml
 

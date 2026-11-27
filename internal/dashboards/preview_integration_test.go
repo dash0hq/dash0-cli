@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -328,7 +329,9 @@ func TestPreviewDashboards_PrefixSeparatesPreviewsAndPrefixesTheirNames(t *testi
 	assert.Equal(t, "PR 376-Orders", bodies[0]["spec"].(map[string]any)["display"].(map[string]any)["name"])
 }
 
-func TestPreviewDashboards_WithoutIDCreatesWithDefaultTTL(t *testing.T) {
+// A dashboard without an identifier gets the same preview on every run, at the
+// origin inferred from its kind, name, and dataset.
+func TestPreviewDashboards_WithoutIDCreatesByItsInferredOriginWithDefaultTTL(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	dir := writePreviewFiles(t, map[string]string{"orders.yaml": `kind: Dashboard
 metadata:
@@ -341,7 +344,8 @@ spec:
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	created := ephemeralDashboardResponse("Orders")
 	created["metadata"].(map[string]any)["dash0Extensions"] = map[string]any{"id": testDashboardID}
-	server.On(http.MethodPost, apiPathDashboards, testutil.MockResponse{
+	previewPath := apiPathDashboards + "/" + asset.InferOrigin("EphemeralDashboard", "orders", "default")
+	server.On(http.MethodPut, previewPath, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		Body:       created,
 		Validator:  testutil.RequireHeaders,
@@ -356,8 +360,9 @@ spec:
 	})
 
 	require.NoError(t, err)
-	bodies := server.RequestBodies(t, http.MethodPost, apiPathDashboards)
+	bodies := server.RequestBodies(t, http.MethodPut, previewPath)
 	require.Len(t, bodies, 1)
+	assert.Equal(t, asset.InferOrigin("EphemeralDashboard", "orders", "default"), bodies[0]["metadata"].(map[string]any)["labels"].(map[string]any)["dash0.com/origin"])
 	assert.Equal(t, "EphemeralDashboard", bodies[0]["kind"])
 	assert.Equal(t, "1d", bodies[0]["spec"].(map[string]any)["ttl"])
 
@@ -416,6 +421,22 @@ func TestPreviewDashboards_FailsWithoutDashboardsBeforeAnyRequest(t *testing.T) 
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no Dashboard or PersesDashboard found")
+	assert.Empty(t, server.Requests())
+}
+
+func TestPreviewDashboards_FailsForTwoDashboardsAtOneInferredOriginBeforeAnyRequest(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	unnamed := "kind: Dashboard\nmetadata:\n  name: orders\nspec:\n  display:\n    name: Orders\n"
+	dir := writePreviewFiles(t, map[string]string{"a.yaml": unnamed, "b.yaml": unnamed})
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+	cmd := newExperimentalDashboardsCmd()
+	cmd.SetArgs([]string{"-X", "dashboards", "preview", "-f", dir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "2 documents have no dash0.com/origin")
 	assert.Empty(t, server.Requests())
 }
 

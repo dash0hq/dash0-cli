@@ -170,7 +170,9 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return asset.FormatValidationError("no documents found in input")
 	}
 
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
+	validationErrors = append(validationErrors, asset.CheckInferredOriginCollisions(documents, dataset)...)
 	if len(validationErrors) > 0 {
 		return asset.FormatValidationError(validationErrors...)
 	}
@@ -180,7 +182,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 
 	var deletionPlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
-		plan, err := computeDeletionPlan(ctx, flags)
+		plan, err := computeDeletionPlan(ctx, flags, dataset)
 		if err != nil {
 			return err
 		}
@@ -224,12 +226,11 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 		return err
 	}
 
-	dataset := client.ResolveDataset(ctx, flags.Dataset)
-
 	// Apply each document
 	var applied []string
+	writes := asset.InferredOriginWrites{}
 	for _, doc := range datasetsFirst(documents) {
-		results, applyErr := applyDocument(ctx, apiClient, doc, dataset)
+		results, applyErr := applyDocument(asset.WithInferredOriginWrites(ctx, writes, doc.Location()), apiClient, doc, dataset)
 		for _, r := range results {
 			displayKind := asset.KindDisplayName(r.kind)
 			label := asset.FormatNameAndID(r.name, r.id)
@@ -268,6 +269,7 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	if deletionPlan != nil {
+		deletionPlan.PrintSkippedDeletionWarnings(os.Stderr)
 		// The non-ancestor confirmation happens here, after every document
 		// create/update above has already gone through — never before them.
 		// Gating it earlier (inside computeDeletionPlan, as this used to
@@ -303,11 +305,11 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
 	switch asset.NormalizeKind(doc.Kind) {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, err := dash0yaml.ParseAsDashboard(doc.Raw)
+		dashboard, inferredName, err := asset.ParseDashboard(doc.Raw)
 		if err != nil {
 			return nil, err
 		}
-		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, dataset)
+		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, inferredName, dataset)
 		if err != nil {
 			return nil, client.HandleAPIError(err, client.ErrorContext{
 				AssetType: "dashboard",

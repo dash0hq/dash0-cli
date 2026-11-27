@@ -37,33 +37,31 @@ Recording rules (entries with `record:`) are sent to the recording-rule endpoint
 A CRD that mixes both kinds is dispatched to both endpoints in a single apply.
 A CRD that contains no alerting and no recording rules fails validation up front.
 
-Two check rules in one run that resolve to the same ID fail validation up front, because only the last one applied would be kept.
+Two check rules in one run that resolve to the same ID, or without an ID to the same `dash0.com/origin`, fail validation up front, because only the last one applied would be kept.
 This covers `CheckRule` documents and the per-alert IDs of `PrometheusRule` CRDs, in one file or across files.
 
 `Dash0NotificationChannel` documents are dispatched to the organization-level notification-channels endpoint and are not associated with a dataset.
-The `dash0.com/origin` label is the upsert key when present; otherwise the server assigns a fresh ID on each apply.
+They follow the [routing rule](#routing-rule), so a document without an identifier is created by its inferred origin, and the next apply updates the same channel.
 `spec.routing.assets` is API-managed: the API populates it as a back-reference when a check rule or synthetic check binds to the channel, and ignores any value supplied on write.
 Exported definitions never carry the field (`get`/`list` omit it from `-o yaml`/`-o json` output).
 The CLI warns when an applied document carries a non-empty `spec.routing.assets`.
 To bind a check rule, set the `dash0.com/notification-channel-ids` annotation on the check rule; to bind a synthetic check, set `spec.notifications.channels` on the synthetic check.
 
-`SLO` IDs are assigned by the server (`slo_<ulid>`), so `dash0.com/id` cannot be chosen up front.
-That makes `dash0.com/origin` the only key a hand-authored SLO document can pin, and the recommended one to use.
-`dash0.com/origin` wins when present and PUTs unconditionally (create-or-replace at that origin).
-When only `dash0.com/id` is present the CLI preflights the SLO with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
-On that POST fallback the foreign `dash0.com/id` is removed from the request body, since the server assigns the ID.
-The fallback is therefore a one-way create, not an idempotent one: the newly assigned ID is not written back into the document, so a second apply preflights the same unknown ID, 404s again, and POSTs a second SLO.
-Pin `dash0.com/origin` on any SLO that will be applied more than once, including every cross-organization apply.
-A document with neither label creates a new SLO on every apply.
+`SLO` documents follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
+SLO IDs are assigned by the server (`slo_<ulid>`), so a hand-written SLO document pins `dash0.com/origin`, or relies on the inferred origin.
+An SLO exported from the Dash0 platform UI keeps its `dash0.com/id`, so applying it again updates the SLO it came from.
+An SLO exported from another organization has an id that is not found there, so the SLO is created by its origin, and the next apply updates the same SLO.
 
 `Dash0GenerativeAiEvaluation` documents are evals, dispatched to the dataset-scoped generative AI evaluations endpoint.
-`dash0.com/origin` is the upsert key, with `dash0.com/id` as the fallback, the same as for `SLO` documents above.
+They follow the [routing rule](#routing-rule), the same as `SLO` documents above.
+`metadata.name` is unique per dataset, so an eval that an earlier CLI version created by POST, at a server-assigned origin, makes the next apply fail with a name collision until you delete that eval or set its origin in the document.
 See [Eval documents](#eval-documents-experimental) for the fields the CLI removes before it writes and the fields that cannot change after create.
 
 `Dash0Dataset` documents are dispatched to the organization-level datasets endpoint (not associated with a dataset).
 The slug, in `spec.slug` or `metadata.labels["dash0.com/id"]`, is required: a document without it fails during the validation phase, before any document in the run is applied.
 So does a document whose `apiVersion` is missing or not `dash0.com/v1alpha1`.
-The CLI preflights the dataset with a GET — on hit it PUTs, on 404 it POSTs.
+Two datasets with different slugs that would be created at the same `dash0.com/origin`, explicit or inferred, also fail validation, because a slug cannot change and the second write would fail after the first was applied.
+They follow the [routing rule](#routing-rule), with the slug as the id: on hit the CLI updates the dataset at its slug, and on 404 it creates the dataset by its `dash0.com/origin`, or by the origin it infers from the slug.
 Creating a dataset with the slug of a dataset deleted in the last 30 days restores that dataset: a view created in it before the delete is back after the create.
 Only the creation time and the version reset, and the settings come from the request.
 `apply` prints `created` for a restore, as it does for a new dataset.
@@ -73,23 +71,24 @@ A dataset document has no telemetry filters: spam filters own them, and creating
 
 `Dash0Skill` documents are Agent0 custom skills, dispatched to the organization-level custom skills endpoint (not associated with a dataset).
 A document without a `SKILL.md` file in `spec.files` fails during the validation phase.
-`dash0.com/origin` is the upsert key, with `dash0.com/id` as an update-only fallback (see [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert)).
+They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
+Without an origin, the CLI infers one from the skill name in the `SKILL.md` frontmatter, so renaming the skill there creates a new skill.
+A skill that an earlier CLI version created by POST has a server-assigned origin, so applying the same document again fails with a name collision.
+Find that skill's origin with `dash0 -X agent0 skills list -o wide`, set it as `dash0.com/origin` in the document, and apply again to update it, or delete that skill.
 `apply` never sends `spec.source`, `metadata.annotations["dash0.com/enabled"]`, or the server-managed `metadata.name`, version, and timestamps, so a `get -o yaml` export applies as is.
 `spec.permissions` is sent as written, `defaultEnabled` included; when it is absent, the stored grants stay unchanged.
 The `admin` grant the server adds to every skill is left out of the request and the diff, unless it sets `defaultEnabled: false`.
 A skill name already used by another skill, and a `defaultEnabled` the caller may not change, fail with an error that names the cause and the fix.
 
 `Dash0Team` documents are dispatched to the organization-level teams endpoint (also not associated with a dataset).
-Upsert key selection: `dash0.com/origin` wins when present and PUTs at that origin.
-When the document also carries `dash0.com/id` and the origin is not found, the CLI reads the team by its id, and on hit it PUTs at the id.
-This keeps an exported SSO/SCIM-provisioned team, whose `saml://...` origin the teams endpoint cannot resolve, from being created a second time.
-When only `dash0.com/id` is present the CLI preflights the team with a GET — on hit it PUTs (idempotent update, the path that makes a UI-downloaded YAML reapply cleanly), on 404 it falls back to POST so a YAML from one organization applies to another as a fresh create, and other preflight errors surface instead of silently creating a duplicate.
-A document with neither label creates a new team on every apply.
+They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
+An exported SSO/SCIM-provisioned team keeps its `dash0.com/id`, so it updates at the id, even though the teams endpoint cannot resolve its `saml://...` origin.
+A team exported from another organization has an id that is not found there, so the team is created by its origin.
 `spec.members` accepts either email addresses (recommended for GitOps) or internal member ids; the server resolves emails during reconciliation and rejects unresolvable ones with a single 400 listing every offender.
 Requires `--experimental`.
 
 `Dash0TimeSeriesAggregation` documents are dispatched to the dataset-scoped time series aggregations endpoint.
-`metadata.labels["dash0.com/origin"]` is mandatory: a document without it fails during the validation phase, before any document in the run is applied.
+They follow the [routing rule](#routing-rule), so a document without `dash0.com/origin` is created by its inferred origin.
 Every call requires the organization admin role.
 The CLI does not check the role before it starts, so a non-admin token fails partway through the apply instead of during validation.
 In a directory that holds an aggregation next to other kinds, the run stops at the aggregation.
@@ -98,23 +97,20 @@ Grant the admin role, or keep aggregations in their own `-f` target, so a role f
 
 > [!IMPORTANT]
 > Time series aggregation origins are unique per organization, while each aggregation belongs to exactly one dataset.
-> You therefore cannot apply one document to two datasets, as you can for every other asset kind.
+> You therefore cannot apply one document with an explicit origin to two datasets; see [Routing rule](#routing-rule).
 > The second apply fails with `400 ... associated with a different dataset`, and the CLI adds a hint naming the organization-wide origin namespace.
-> Use a distinct origin per dataset, for example `http-server-request-duration-staging`.
+> Use a distinct origin per dataset, for example `dash0-cli_http-server-request-duration-staging`.
 
 `Dash0SignalToMetrics` documents are signal-to-metrics rules, dispatched to the dataset-scoped signal-to-metrics endpoint.
-`dash0.com/origin` wins when present: the CLI PUTs to that origin, which creates the rule or replaces it.
-When only `dash0.com/id` is present the CLI preflights the rule with a GET: on hit it PUTs to that ID, on 404 it POSTs without the ID, and other preflight errors surface.
-The POST fallback lets a definition exported from another organization apply, but it is not idempotent, because the new ID is never written back into the document.
-A document with neither label creates a new rule on every apply.
-Pin `dash0.com/origin` on any rule that will be applied more than once.
+They follow the [routing rule](#routing-rule): `dash0.com/id` first, then `dash0.com/origin`, never POST.
+A rule exported from another organization has an id that is not found there, so the rule is created by its origin, without the id, and the next apply updates the same rule.
 Origins are unique per organization while each rule belongs to one dataset, as for time series aggregations.
 The GET finds a rule whatever `--dataset` says, so the CLI compares the stored rule's dataset with `--dataset` before it writes.
 Applying a document to a second dataset therefore fails with an error that names the rule's dataset, before anything is written, and `diff` reports the same error instead of "No differences".
 Use a distinct origin per dataset.
 
 `Dash0Sampling` documents are sampling rules, dispatched to the dataset-scoped sampling rules endpoint.
-The upsert keys are the same as for `Dash0SignalToMetrics` documents above: `dash0.com/origin` first, then `dash0.com/id` with a POST fallback that is not idempotent.
+They follow the [routing rule](#routing-rule), the same as `Dash0SignalToMetrics` documents above.
 A document without `spec.enabled` or `spec.conditions`, with more than 32 `ottl` and `error` conditions, or with `spec.rateLimit` on a rule whose conditions are all `probabilistic`, fails during the validation phase, before any document in the run is applied.
 Origins and IDs are unique per organization while each rule belongs to one dataset.
 The GET honors `--dataset`, so a rule stored in another dataset fails it with an error that names the cause, before anything is written, and `diff` reports the same error.
@@ -131,8 +127,10 @@ These checks run during the validation phase, before any document in the run is 
 - A label or annotation that the API ignores prints a warning.
   The labels and annotations that `aws-metric-scrape-configs get -o yaml` exports are not warned about.
 
-The CLI does not send `dash0.com/origin`, so it never claims ownership of a config.
-Dash0 keeps the origin of the first writer until the config is cleared.
+They do not follow the [routing rule](#routing-rule): the integration id is the only key, and an unknown integration fails, because the CLI cannot create an integration.
+The first config of an integration sends `dash0.com/origin`, or the origin the CLI infers from the integration id.
+Dash0 keeps the origin of the first writer until the config is cleared, and ignores it on later writes, so an update never sends it.
+A document whose `dash0.com/origin` differs from the stored one fails, as for the other kinds.
 `apply` prints `created` when the integration had no config before, and a diff otherwise.
 
 `Dash0AwsLogGroupInstrumentationPolicy` documents create or replace the log-group instrumentation policy of the AWS integration named by `metadata.labels["dash0.com/id"]`.
@@ -148,7 +146,7 @@ These checks run during the validation phase, before any document in the run is 
 
 The CLI sends no metadata.
 Without `dash0.com/version` the write is not fenced by revision, so the file replaces whatever is stored, including changes made in the UI since the file was exported.
-Without `dash0.com/origin` the CLI never conflicts with the origin that owns the policy.
+The CLI never changes the origin that owns the policy: a document whose `dash0.com/origin` differs from the stored one fails, and a document without one updates the policy whoever owns it.
 `apply` prints `created` when the integration had no policy or a deleted one, and a diff otherwise.
 
 > [!NOTE]
@@ -194,7 +192,7 @@ Dry run: 1 document validated
 `--since <ref>` turns `apply` into a full GitOps sync, not just create/update: it additionally deletes any asset whose definition existed in `-f`'s scanned scope at `<ref>` but is no longer present in the current contents.
 `<ref>` accepts any revision expression `git` itself accepts — a commit SHA, a branch or tag name, or a relative expression like `HEAD~1` — and `-f`'s target must be inside a git repository (a single file or a directory both work).
 
-Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert) — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
+Deletion detection is by identifier — the asset's `dash0.com/id` or `dash0.com/origin`, per the [asset identifiers table](#asset-identifiers-and-idempotent-upsert), or the [inferred origin](#routing-rule) of a document without either — never by file path, so moving or renaming a file within the scanned scope is not a deletion.
 `--since` requires `--experimental`/`-X`.
 `apply` itself is not gated: every other flag, including `--dry-run`, is completely unaffected when `--since` is not passed.
 
@@ -306,10 +304,10 @@ Are you sure you want to delete Dashboard "Old Dashboard" (b2c3d4e5-...), remove
 Dashboard "Old Dashboard" (b2c3d4e5-...) deleted
 ```
 
-A `Dash0GenerativeAiEvaluation` document removed since `<ref>` deletes the eval by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `evals delete`.
-As for SLOs, `--since` warns before it deletes an eval identified by `dash0.com/id` alone, because the live eval may sit at a different, server-assigned ID.
-
-A `Dash0Skill` document removed since `<ref>` deletes the skill by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `agent0 skills delete`.
+A removed view, check rule, synthetic check, SLO, eval, signal-to-metrics rule, sampling rule, or Agent0 skill document is deleted where `apply` wrote it, as for the other kinds that follow the [routing rule](#routing-rule): at its `dash0.com/id`, or at its `dash0.com/origin` or inferred origin when the id is not found.
+A removed check rule with an `id` is always deleted at that id, because `apply` creates a check rule whose id is not found at that id.
+Each uses the same API call as its `delete` command.
+For an SLO, eval, signal-to-metrics rule, or sampling rule identified by `dash0.com/id` alone, `--since` prints a warning, because one that an earlier CLI version created by POST sits at a server-assigned id that the delete misses.
 
 A `Dash0Dataset` document removed since `<ref>` deletes the dataset, like any other kind, with the same API call as `datasets delete`.
 `--since` deletes a removed dataset after every other removed asset, because the API ignores an asset delete in a dataset that is already deleted.
@@ -329,20 +327,41 @@ Dash0 stops scraping CloudWatch metrics for that integration, and the integratio
 A `Dash0AwsLogGroupInstrumentationPolicy` document removed since `<ref>` deletes the integration's policy with the `keep` disposition: the log groups it forwards keep forwarding.
 Removing forwarding needs explicit consent, which only [`aws-log-group-policies delete --remove-forwarding`](#aws-log-group-policies-delete-experimental) gives.
 
-A `Dash0SignalToMetrics` document removed since `<ref>` deletes the rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `signal-to-metrics-rules delete`.
-Deleting by `dash0.com/id` alone prints a warning: if the document was first applied to an organization without that ID, the live rule has a different, server-assigned ID, and the delete can miss it.
-
-A `Dash0Sampling` document removed since `<ref>` deletes the sampling rule by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `sampling-rules delete`, and with the same warning for a delete by `dash0.com/id` alone.
-The delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
+A removed `Dash0Sampling` document's delete is permanent, and deleting the last enabled rule of a dataset turns sampling off.
 In agent mode, a `--since` run that would delete a sampling rule requires an explicit `--force`, as `sampling-rules delete` does, and otherwise refuses before it applies anything.
 
-A `Dash0Team` document removed since `<ref>` deletes the team by its origin, or by its `dash0.com/id` when it has no origin, with the same API call as `teams delete`.
-As for SLOs, `--since` warns before it deletes a team identified by `dash0.com/id` alone, because the live team may sit at a different, server-assigned ID.
+A `Dash0Team` document removed since `<ref>` deletes the team at its `dash0.com/id`, or, when the id is not found, at its `dash0.com/origin` or its inferred origin, with the same API call as `teams delete`.
+`--since` warns before it deletes a team identified by `dash0.com/id` alone, because a team that an earlier CLI version created by POST sits at a server-assigned ID that the delete misses.
 
-A document removed from git history that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+A removed document without `dash0.com/id` or `dash0.com/origin` is deleted at the origin `apply` inferred for it, from its kind, its `metadata.name` at `<ref>`, and the dataset of the run:
 
 ```bash
-$ dash0 --experimental apply -f dashboards/ --since HEAD~1
+$ dash0 --experimental apply -f views/ --since HEAD~1 --force
+View "Checkout errors" (dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8) deleted
+```
+
+`--since` reads the inferred origin before it deletes there, because several delete endpoints report success for an asset that does not exist.
+When nothing is there, it prints a warning and deletes nothing, for example for an asset that an earlier dash0 version created at a server-assigned origin, or one applied with another dataset.
+`--dry-run` never reads from Dash0, so it still lists that deletion; use [`diff --since`](#diff-experimental) to see only the deletions `apply` makes.
+
+When the current files hold a document of the same kind and `metadata.name` with only a `dash0.com/id`, `--since` does not delete at the inferred origin, because `apply` writes that document there when its id is not found.
+
+`--since` also does not delete at an inferred origin that a document anywhere else in the repository still writes for the dataset of the run, and prints a warning that names that document.
+For this check, `--since` reads the YAML files outside `-f` that git tracks or does not ignore, including files in dot directories, but only when the plan has a deletion at an inferred origin.
+The dataset a directory was applied with is not recorded in git, so a document moved to a directory applied with another dataset gets the same inferred origin, and deleting there would remove the asset the moved document still declares:
+
+```bash
+$ dash0 --experimental apply -f old/ --since HEAD~1 --dataset staging --force
+warning: --since does not delete View dash0-cli_3f2a9c0e5d7b41a8b6e1c2d4f5a6b7c8: new/view.yaml still declares it in dataset "staging"; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset
+```
+
+Run `--since` with the dataset the removed document was applied to, and delete the old asset in that dataset by hand.
+
+A dataset without a slug, and an AWS metric scrape config or log-group policy without `dash0.com/id`, have no inferred origin.
+A removed document of these kinds that carried no identifier at `<ref>` fails the entire `--since` run before creating, updating, or deleting anything, since there is no reliable way to know which live asset (if any) it corresponds to.
+
+```bash
+$ dash0 --experimental apply -f datasets/ --since HEAD~1
 Error: --since 'HEAD~1' found 1 document deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:
   removed.yaml
 Hint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation
@@ -356,7 +375,9 @@ alerts.yaml: PrometheusRule "service-alerts" (c3d4e5f6-...) created
 Check rule "service-alerts - HighLatency" deleted
 ```
 
-Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with:
+Removing the whole CRD (the file or document disappears entirely, rather than one alert within it) deletes every alerting rule the CRD had, plus its recording rule if it had one — for a [multi-alert CRD](#multi-alert-prometheusrule-crds), that means one delete call per alert's own derived id, not one call against the CRD's literal `dash0.com/id` label, since that label alone was never each alert's real check-rule id to begin with.
+Each alert and the recording rule are deleted where `apply` wrote them.
+An alert with an id is deleted at that id, found or not, and the recording rule at its id, or at its origin or inferred origin when the id is not found.
 
 The `--dry-run` preview and `diff --since` list one deletion per alert, at its derived id, plus a `Delete Recording rule` line when the CRD had recording rules:
 

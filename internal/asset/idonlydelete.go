@@ -19,32 +19,32 @@ var idOnlyDeleteWarnings = map[string]*idOnlyDeleteWarning{
 	"slo": {
 		noun:       "SLO",
 		usesOrigin: SLOUsesOrigin,
-		format:     "warning: SLO %s was identified by dash0.com/id alone; SLO ids are server-assigned, so if this document was first applied to an organization without that id the live SLO now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+		format:     "warning: SLO %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but an SLO that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on SLOs you manage with --since",
 	},
 	"generativeaievaluation": {
 		noun:       "eval",
 		usesOrigin: GenerativeAiEvaluationUsesOrigin,
-		format:     "warning: eval %s was identified by dash0.com/id alone; eval ids are server-assigned, so if this document was first applied to an organization without that id the live eval now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+		format:     "warning: eval %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but an eval that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on evals you manage with --since",
 	},
 	"signaltometrics": {
 		noun:       "signal-to-metrics rule",
 		usesOrigin: SignalToMetricsRuleUsesOrigin,
-		format:     "warning: signal-to-metrics rule %s was identified by dash0.com/id alone; rule ids are server-assigned, so if this document was first applied to an organization without that id the live rule now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+		format:     "warning: signal-to-metrics rule %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a signal-to-metrics rule that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on signal-to-metrics rules you manage with --since",
 	},
 	"sampling": {
 		noun:       "sampling rule",
 		usesOrigin: SamplingRuleUsesOrigin,
-		format:     "warning: sampling rule %s was identified by dash0.com/id alone; if this document was first applied to an organization without that id, the live rule got a new id from the server (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+		format:     "warning: sampling rule %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a sampling rule that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on sampling rules you manage with --since",
 	},
 	"team": {
 		noun:       "team",
 		usesOrigin: TeamUsesOrigin,
-		format:     "warning: team %s was identified by dash0.com/id alone; team ids are server-assigned, so if this document was first applied to an organization without that id the live team now sits at a different one (see docs/commands.md's asset-identifiers section) and this delete may miss it",
+		format:     "warning: team %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a team that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on teams you manage with --since",
 	},
 	"spamfilter": {
 		noun:       "spam filter",
 		usesOrigin: SpamFilterUsesOrigin,
-		format:     "warning: spam filter %s was identified by dash0.com/id alone; its live id may have been reassigned by the server since this identifier was recorded (see docs/commands.md's asset-identifiers section), so this delete may miss the actual live filter",
+		format:     "warning: spam filter %s was identified by dash0.com/id alone; --since deletes it at that id, or at its inferred origin when the id is not found, but a spam filter that an earlier dash0 version created by POST sits at a server-assigned id, and this delete misses it; set dash0.com/origin on spam filters you manage with --since",
 	},
 	"dashboard":                        nil,
 	"checkrule":                        nil,

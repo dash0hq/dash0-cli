@@ -748,6 +748,20 @@ func TestPrintDiff_CheckRule_ServerAddedFieldsAreNotAChange(t *testing.T) {
 	assert.Contains(t, buf.String(), `Check rule "rule": no changes`)
 }
 
+// A check rule written by origin leaves its id out of the body, and the PUT
+// keeps the stored id, so the stored id is not a removal.
+func TestUnifiedDiff_CheckRule_StoredIDIsNotARemoval(t *testing.T) {
+	var stored dash0api.PrometheusAlertRule
+	require.NoError(t, json.Unmarshal([]byte(storedCheckRuleJSON), &stored))
+	id := "dash0-cli_abc"
+	stored.Id = &id
+	local := &dash0api.PrometheusAlertRule{Name: "rule", Expression: "up == 0"}
+
+	text, err := UnifiedDiff("Check rule", &stored, local)
+	require.NoError(t, err)
+	assert.Empty(t, text)
+}
+
 func TestUnifiedDiff_CheckRule_ShowsOnlyTheRealChange(t *testing.T) {
 	var stored dash0api.PrometheusAlertRule
 	require.NoError(t, json.Unmarshal([]byte(storedCheckRuleJSON), &stored))

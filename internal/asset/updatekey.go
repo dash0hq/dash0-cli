@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"fmt"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
@@ -20,6 +21,10 @@ type UpdateKey struct {
 	// Upsert is the document. Read it before a Strip*ServerFields call, which
 	// can clear both labels.
 	Upsert dash0api.AssetMetadata
+
+	// OriginLabel is where the document sets its origin, when that is not
+	// metadata.labels, as for check rules.
+	OriginLabel string
 }
 
 // ResolveUpdateKey returns the originOrId to update. Without an argument it is
@@ -64,10 +69,123 @@ func ResolveUpdateKey(args []string, k UpdateKey) (string, error) {
 		return key, nil
 	}
 	if byOrigin {
+		label := OriginLabel
+		if k.OriginLabel != "" {
+			label = k.OriginLabel
+		}
 		return "", fmt.Errorf(
 			"no %s origin or id given: pass one as an argument, or set %s in the file",
-			k.Noun, OriginLabel,
+			k.Noun, label,
 		)
 	}
 	return "", fmt.Errorf("no %s id given: pass one as an argument, or set the id in the file", k.Noun)
+}
+
+// CheckRouteUpdate fails when RouteUpdate has no key to read, so a command can
+// report a bad file or argument before it builds an API client.
+func CheckRouteUpdate(args []string, k UpdateKey, identity Identity) error {
+	if len(args) == 0 && identity.ID != "" {
+		return nil
+	}
+	_, err := ResolveUpdateKey(args, k)
+	return err
+}
+
+// RouteUpdate returns the key and the stored asset that `update -f` writes for
+// a kind RouteDocument routes. Without an argument it reads the file's id
+// first, then its origin, as apply reads those labels. update never creates
+// and never tries the inferred origin, so a missing asset is get's not-found
+// error.
+func RouteUpdate[T any](ctx context.Context, args []string, k UpdateKey, identity Identity, get func(context.Context, string) (T, error)) (string, T, error) {
+	var zero T
+	if len(args) > 0 || identity.ID == "" {
+		key, err := ResolveUpdateKey(args, k)
+		if err != nil {
+			return "", zero, err
+		}
+		stored, err := get(ctx, key)
+		if err != nil {
+			return key, zero, err
+		}
+		if err := CheckStoredOrigin(key, identity, stored); err != nil {
+			return key, zero, err
+		}
+		return key, stored, nil
+	}
+	stored, err := get(ctx, identity.ID)
+	if err == nil {
+		if err := CheckStoredOrigin(identity.ID, identity, stored); err != nil {
+			return identity.ID, zero, err
+		}
+		return identity.ID, stored, nil
+	}
+	if !dash0api.IsNotFound(err) || identity.Origin == "" || identity.Origin == identity.ID || identity.CreatesAtID {
+		return identity.ID, zero, err
+	}
+	stored, err = get(ctx, identity.Origin)
+	return identity.Origin, stored, err
+}
+
+// ClearUpdateOrigin removes dash0.com/origin from the body of an update, as
+// apply does, so an update never tries to change a stored origin.
+func ClearUpdateOrigin(document dash0api.AssetMetadata) {
+	switch d := document.(type) {
+	case *dash0api.DashboardDefinition:
+		setDashboardOrigin(d, "")
+	case *dash0api.TeamDefinitionV1Alpha1:
+		setTeamOrigin(d, "")
+	case *dash0api.NotificationChannelDefinition:
+		setNotificationChannelOrigin(d, "")
+	case *dash0api.SpamFilter:
+		setSpamFilterOrigin(&d.Metadata, "")
+	case *dash0api.SpamFilterV1Alpha2:
+		setSpamFilterOrigin(&d.Metadata, "")
+	case *dash0api.GenerativeAiEvaluationDefinition:
+		SetGenerativeAiEvaluationOrigin(d, "")
+	case *dash0api.SkillDefinition:
+		SetCustomSkillOrigin(d, "")
+	}
+}
+
+// CheckStoredOrigin fails when key is the file's id and the asset stored there
+// has an origin other than the file's, as apply does.
+func CheckStoredOrigin(key string, identity Identity, stored any) error {
+	if key != identity.ID || identity.Origin == "" {
+		return nil
+	}
+	var origin string
+	switch asset := stored.(type) {
+	case *dash0api.SamplingDefinition:
+		// The client gives SamplingDefinition no GetOrigin method.
+		origin = GetSamplingRuleOrigin(asset)
+	case *dash0api.PrometheusAlertRule:
+		origin = CheckRuleStoredOrigin(asset)
+	case interface{ GetOrigin() string }:
+		origin = asset.GetOrigin()
+	default:
+		// Fail loudly, so a routed kind without an origin accessor cannot skip the check.
+		return fmt.Errorf("cannot read the stored origin of %T", stored)
+	}
+	return checkStoredOrigin(identity, origin)
+}
+
+// RoutedKeys lets the shared key rules read the origin of a routed kind whose
+// client type reports that it upserts by id only.
+func RoutedKeys(upsert dash0api.AssetMetadata) dash0api.AssetMetadata {
+	return routedKeys{upsert}
+}
+
+type routedKeys struct{ dash0api.AssetMetadata }
+
+func (routedKeys) UpsertKeys() (byOrigin, byID bool) { return true, true }
+
+// UpdateOrigin returns the origin that an update of a view, synthetic check,
+// or recording rule at key sends. An update at the stored origin sends it
+// back, because without it Dash0 leaves the origin out of a later read by id.
+// An update at the id sends none, because the API rejects a body origin there.
+func UpdateOrigin(storedOrigin, key string) string {
+	if storedOrigin == key {
+		return key
+	}
+	return ""
 }

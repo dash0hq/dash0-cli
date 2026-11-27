@@ -9,8 +9,44 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CheckRule is a check rule ready for import, with the kind and name its
+// inferred origin comes from.
+type CheckRule struct {
+	*dash0api.PrometheusAlertRule
+	// Origin is the document's origin. The rule's labels are its alerts'
+	// Prometheus labels, so the origin never travels in them.
+	Origin       string
+	InferredKind string
+	InferredName string
+}
+
+// Identity returns what RouteDocument routes the check rule by.
+func (rule CheckRule) Identity(dataset *string) Identity {
+	return Identity{
+		ID:          rule.GetID(),
+		Origin:      rule.Origin,
+		Inferred:    InferKindOrigin(rule.InferredKind, rule.InferredName, dataset),
+		CreatesAtID: true,
+	}
+}
+
+// UpdateKeys is what `check-rules update -f` resolves its key from: the
+// rule's origin lives in Origin, not in its labels.
+func (rule CheckRule) UpdateKeys() dash0api.AssetMetadata {
+	return routedKeys{checkRuleKeys{rule}}
+}
+
+type checkRuleKeys struct{ CheckRule }
+
+func (keys checkRuleKeys) GetOrigin() string { return keys.Origin }
+
 // ParseCheckRules parses a CheckRule or PrometheusRule CRD document into one or
 // more check rules ready for import.
+//
+// A CheckRule infers its origin from its name. An alert of a PrometheusRule
+// infers it from the CRD's metadata.name and the alert's composed name, so two
+// alerts never share one, and carries the CRD's dash0.com/origin, derived per
+// alert like the id when the CRD has two or more alerts.
 //
 // For PrometheusRule CRDs the check-rule name is composed as
 // "<group name> - <alert name>", matching the Dash0 Kubernetes operator and the
@@ -19,15 +55,34 @@ import (
 // The underlying SDK conversion (ParseAsPrometheusAlertRules) names each check
 // rule after the alert only and discards the group name, so the group-name
 // prefix is reapplied here from the raw CRD.
-func ParseCheckRules(data []byte) ([]*dash0api.PrometheusAlertRule, error) {
+func ParseCheckRules(data []byte) ([]CheckRule, error) {
 	rules, err := dash0yaml.ParseAsPrometheusAlertRules(data)
 	if err != nil {
 		return nil, err
 	}
-	if err := composePrometheusRuleNames(data, rules); err != nil {
+	crd, err := composePrometheusRuleNames(data, rules)
+	if err != nil {
 		return nil, err
 	}
-	return rules, nil
+	parsed := make([]CheckRule, len(rules))
+	for i, rule := range rules {
+		parsed[i] = CheckRule{PrometheusAlertRule: rule, Origin: rule.GetOrigin(), InferredKind: "checkrule", InferredName: rule.Name}
+		if crd != nil {
+			parsed[i].Origin = crd.GetOrigin()
+			if parsed[i].Origin != "" && len(rules) > 1 {
+				parsed[i].Origin = DeriveAlertCheckRuleID(parsed[i].Origin, rule.Name)
+			}
+			parsed[i].InferredKind, parsed[i].InferredName = "prometheusrule", PrometheusAlertInferredName(crd.Metadata.Name, rule.Name)
+		}
+	}
+	return parsed, nil
+}
+
+// PrometheusAlertInferredName is what an alert of a PrometheusRule hashes into
+// its inferred origin, with kind "prometheusrule". The NUL keeps CRD "a" with
+// alert "b - c" apart from CRD "a\x00b" with alert "c".
+func PrometheusAlertInferredName(crdName, checkRuleName string) string {
+	return crdName + "\x00" + checkRuleName
 }
 
 // PrometheusRuleHasRecordingRule reports whether a PrometheusRule CRD
@@ -90,26 +145,30 @@ func PrometheusRuleHasRecordingRule(data []byte) (bool, error) {
 // last under the old behavior, is not touched by the new per-alert ids and
 // becomes an orphaned duplicate -- delete it by hand once the new per-alert
 // check rules look correct.
-func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRule) error {
+func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRule) (*dash0api.RecordingRule, error) {
 	kind, err := dash0yaml.DetectKind(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !strings.EqualFold(kind, "PrometheusRule") {
-		return nil
+		return nil, nil
+	}
+	crd, err := ParsePrometheusRuleCRD(data)
+	if err != nil {
+		return nil, err
 	}
 
 	names, err := ExtractPrometheusAlertNames(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := CheckAlertNameCollisions(names); err != nil {
-		return err
+		return nil, err
 	}
 	multiAlert := len(names) > 1
 	for i, name := range names {
 		if i >= len(rules) {
-			return nil
+			break
 		}
 		composedName := name.CheckRuleName()
 		rules[i].Name = composedName
@@ -118,7 +177,7 @@ func composePrometheusRuleNames(data []byte, rules []*dash0api.PrometheusAlertRu
 			rules[i].Id = &derived
 		}
 	}
-	return nil
+	return crd, nil
 }
 
 // CheckAlertNameCollisions validates that no two alerting rules in the same

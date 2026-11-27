@@ -16,10 +16,10 @@ Example:
 
 ```bash
 $ dash0 -X notification-channels list
-NAME                  TYPE         ID                  ORIGIN       URL
-Slack Alerts          slack        abc-123-def-456     my-origin    https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
-PagerDuty On-Call     pagerduty    def-456-ghi-789     -            https://app.dash0.com/goto/settings/notifications?channel_id=def-456-ghi-789
-Email Digest          email_v2     ghi-789-jkl-012     -            https://app.dash0.com/goto/settings/notifications?channel_id=ghi-789-jkl-012
+NAME                  TYPE         ID                  ORIGIN                  URL
+Slack Alerts          slack        abc-123-def-456     dash0-cli_slack-alerts  https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
+PagerDuty On-Call     pagerduty    def-456-ghi-789     -                       https://app.dash0.com/goto/settings/notifications?channel_id=def-456-ghi-789
+Email Digest          email_v2     ghi-789-jkl-012     -                       https://app.dash0.com/goto/settings/notifications?channel_id=ghi-789-jkl-012
 ```
 
 Column aliases: `name` / `channel name`, `type` / `channel type`, `id` / `channel id`, `origin`, `url`.
@@ -44,7 +44,7 @@ Kind:  Dash0NotificationChannel
 Name:  Slack Alerts
 Type:  slack
 ID:    abc-123-def-456
-Origin: my-origin
+Origin: dash0-cli_slack-alerts
 URL:   https://app.dash0.com/goto/settings/notifications?channel_id=abc-123-def-456
 ```
 
@@ -57,7 +57,7 @@ metadata:
   name: Slack Alerts
   labels:
     dash0.com/id: abc-123-def-456
-    dash0.com/origin: my-origin
+    dash0.com/origin: dash0-cli_slack-alerts
 spec:
   type: slack
   config: ...
@@ -66,8 +66,8 @@ spec:
 ### `notification-channels create` (experimental)
 
 Create a notification channel from a YAML or JSON definition file.
-If the definition contains a `dash0.com/origin` label, the channel is created or replaced (PUT).
-Otherwise, a new channel is created (POST) and the server assigns an ID.
+The channel is created or replaced by PUT, following the [routing rule](#routing-rule).
+A definition without `dash0.com/origin` gets an inferred origin, so creating it again updates the same channel.
 A definition carrying a non-empty `spec.routing.assets` triggers a warning: the field is API-managed (a server-derived back-reference) and ignored on write, and existing bindings are unaffected.
 Bind check rules via their `dash0.com/notification-channel-ids` annotation, and synthetic checks via their `spec.notifications.channels`.
 Exported definitions never carry the field — `get` and `list` omit `spec.routing.assets` from `-o yaml` and `-o json` output — so get → edit → apply/update roundtrips stay warning-free.
@@ -104,7 +104,7 @@ Aliases: `add`
 ### `notification-channels update` (experimental)
 
 Update an existing notification channel from a YAML or JSON definition file.
-If the ID argument is omitted, the `dash0.com/origin` label is read from the file, as `apply` does; a file without it fails.
+If the ID argument is omitted, `update` reads the file's `dash0.com/id` label first, then its `dash0.com/origin` label when the id is not found, as `apply` does; a file with neither fails.
 
 ```bash
 dash0 -X notification-channels update [id] -f <file> [--dry-run]

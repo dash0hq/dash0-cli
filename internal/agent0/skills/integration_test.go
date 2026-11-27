@@ -4,6 +4,7 @@ package skills
 
 import (
 	"encoding/json"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -390,17 +391,26 @@ func TestCreateSkill_StripsExportedServerFields(t *testing.T) {
 	assertWriteBody(t, decodeSkill(t, puts[0]))
 }
 
-func TestCreateSkill_PostsWithoutOriginOrID(t *testing.T) {
+// A skill without an origin or an id is created by the origin inferred from
+// its SKILL.md name, never by POST, so creating it again updates the same skill.
+func TestCreateSkill_WithoutOriginOrIDPUTsByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
+	inferred := asset.InferKindOrigin("skill", "incident-triage", nil)
+	pathByInferred := apiPathSkills + "/" + inferred
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathSkills, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsCreateSuccess, Validator: testutil.RequireHeaders})
+	mockGet(server, pathByInferred, http.StatusNotFound, testutil.FixtureAgent0SkillsNotFound)
+	server.On(http.MethodPut, pathByInferred, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsCreateSuccess, Validator: testutil.RequireHeaders})
 	noOrigin := strings.Replace(skillYAML, "  labels:\n    dash0.com/origin: dash0-cli_incident-triage\n", "  {}\n", 1)
 
 	output, _, err := runCmd(t, server.URL, "-X", "agent0", "skills", "create", "-f", writeYAML(t, noOrigin))
 
 	require.NoError(t, err)
 	assert.Contains(t, output, `Agent0 skill "incident-triage" created`)
-	assert.Len(t, requestsFor(server, http.MethodPost, apiPathSkills), 1)
+	puts := requestsFor(server, http.MethodPut, pathByInferred)
+	require.Len(t, puts, 1)
+	labels, _ := decodeSkill(t, puts[0])["metadata"].(map[string]any)["labels"].(map[string]any)
+	assert.Equal(t, inferred, labels["dash0.com/origin"], "the body carries the origin on create")
+	assert.Empty(t, requestsFor(server, http.MethodPost, apiPathSkills))
 }
 
 func TestCreateSkill_DuplicateNameExplained(t *testing.T) {

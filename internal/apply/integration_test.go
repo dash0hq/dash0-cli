@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -223,7 +224,6 @@ annotations:
   description: Test description
   sharing: team:team_01abc
 labels:
-  dash0.com/origin: dash0-cli
   team: platform
 `), 0644)
 	require.NoError(t, err)
@@ -299,8 +299,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	// Import succeeds
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -313,6 +312,16 @@ spec:
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "Dashboard")
 	assert.Contains(t, output, "created")
+
+	// Without an identifier, the dashboard is created by its inferred origin,
+	// so a second apply updates it instead of creating another.
+	origin := asset.InferOrigin("Dashboard", "test-dashboard", "default")
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+origin)
+	require.NotNil(t, createReq, "expected a PUT by the inferred origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathDashboards), "apply never creates by POST")
+	var dashboard dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
+	assert.Equal(t, origin, dashboard.GetOrigin(), "a create sends the origin")
 }
 
 func TestApply_Dashboard_Updated(t *testing.T) {
@@ -651,7 +660,7 @@ spec:
 	})
 	require.NoError(t, cmdErr)
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathSyntheticChecks)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathSyntheticChecks)
 	require.NotNil(t, createReq, "expected a create request for synthetic check")
 
 	var check dash0api.SyntheticCheckDefinition
@@ -968,8 +977,8 @@ spec:
 
 	// The check-rule name sent to the API must be "<group name> - <alert name>",
 	// matching the Dash0 operator and Terraform provider (not the alert name alone).
-	postReq := findRequest(server.Requests(), http.MethodPost, "/api/alerting/check-rules")
-	require.NotNil(t, postReq, "expected a POST request for check rule")
+	postReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules")
+	require.NotNil(t, postReq, "expected a PUT request for check rule")
 	var rule dash0api.PrometheusAlertRule
 	require.NoError(t, json.Unmarshal(postReq.Body, &rule))
 	assert.Equal(t, "test-group - HighErrorRate", rule.Name)
@@ -1024,10 +1033,15 @@ spec:
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, "Check rule")
 
-	highErrorRateReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/shared-id--test-group-higherrorrate")
-	diskFullReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/shared-id--test-group-diskfull")
+	// Each alert reads its own derived id, and on 404 is created at that id.
+	highErrorRateID := "/api/alerting/check-rules/shared-id--test-group-higherrorrate"
+	diskFullID := "/api/alerting/check-rules/shared-id--test-group-diskfull"
+	require.NotNil(t, findRequest(server.Requests(), http.MethodGet, highErrorRateID))
+	require.NotNil(t, findRequest(server.Requests(), http.MethodGet, diskFullID))
+	highErrorRateReq := findRequest(server.Requests(), http.MethodPut, highErrorRateID)
+	diskFullReq := findRequest(server.Requests(), http.MethodPut, diskFullID)
 	require.NotNil(t, highErrorRateReq, "expected a PUT to the HighErrorRate alert's own derived id")
-	require.NotNil(t, diskFullReq, "expected a PUT to the DiskFull alert's own derived id, not a second write to the same id as HighErrorRate")
+	require.NotNil(t, diskFullReq, "expected a PUT to the DiskFull alert's own derived id, not a second write to the same key as HighErrorRate")
 
 	var highErrorRateRule, diskFullRule dash0api.PrometheusAlertRule
 	require.NoError(t, json.Unmarshal(highErrorRateReq.Body, &highErrorRateRule))
@@ -1035,10 +1049,6 @@ spec:
 	assert.Equal(t, "test-group - HighErrorRate", highErrorRateRule.Name)
 	assert.Equal(t, "test-group - DiskFull", diskFullRule.Name)
 
-	// Never PUT to the CRD's own literal shared id (exact match, not a
-	// prefix -- both derived ids above start with "shared-id--" and would
-	// otherwise match a prefix check): that would still be the old
-	// collapsing behavior.
 	for _, req := range server.Requests() {
 		if req.Method == http.MethodPut {
 			assert.NotEqual(t, "/api/alerting/check-rules/shared-id", req.Path, "must never PUT directly to the CRD's shared id")
@@ -1111,7 +1121,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1127,7 +1137,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the create request contains the Perses spec fields
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "test-perses-dashboard", "default"))
 	require.NotNil(t, createReq, "expected a create request for dashboard")
 	var dashboard dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
@@ -1159,7 +1169,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	server.WithDashboardsCreate(testutil.FixtureDashboardsImportSuccess)
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
@@ -1174,7 +1184,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify the spec.config wrapper was unwrapped
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDashboards)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/"+asset.InferOrigin("Dashboard", "v1alpha2-dashboard", "default"))
 	require.NotNil(t, createReq, "expected a create request for dashboard")
 	var dashboard dash0api.DashboardDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &dashboard))
@@ -1652,29 +1662,33 @@ spec:
 }
 
 // Adding an origin to an exported dashboard must update that dashboard, not
-// create a second one at the origin.
-func TestApply_Dashboard_OriginNotFoundUpdatesAtID(t *testing.T) {
+// create a second one at the origin. The id is read first, and the update does
+// not send the origin, so the stored origin stays as it was created.
+func TestApply_Dashboard_IDFoundUpdatesAtIDWithoutOrigin(t *testing.T) {
 	requests := applyExportedDashboardWithNewOrigin(t, http.StatusOK)
 
 	assert.Equal(t, []string{
-		"GET /api/dashboards/" + exportedDashboardOrigin,
 		"GET /api/dashboards/" + exportedDashboardID,
 		"PUT /api/dashboards/" + exportedDashboardID,
 	}, methodsAndPaths(requests))
 
 	var body dash0api.DashboardDefinition
-	require.NoError(t, json.Unmarshal(requests[2].Body, &body))
-	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "the PUT carries the origin, which the API ignores on an update")
+	require.NoError(t, json.Unmarshal(requests[1].Body, &body))
+	assert.Empty(t, body.GetOrigin(), "an update never sends the origin")
 }
 
-func TestApply_Dashboard_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
+func TestApply_Dashboard_IDNotFoundCreatesAtOrigin(t *testing.T) {
 	requests := applyExportedDashboardWithNewOrigin(t, http.StatusNotFound)
 
 	assert.Equal(t, []string{
-		"GET /api/dashboards/" + exportedDashboardOrigin,
 		"GET /api/dashboards/" + exportedDashboardID,
+		"GET /api/dashboards/" + exportedDashboardOrigin,
 		"PUT /api/dashboards/" + exportedDashboardOrigin,
 	}, methodsAndPaths(requests))
+
+	var body dash0api.DashboardDefinition
+	require.NoError(t, json.Unmarshal(requests[2].Body, &body))
+	assert.Equal(t, exportedDashboardOrigin, body.GetOrigin(), "a create sends the origin")
 }
 
 func TestApply_Dashboard_RoundTrip(t *testing.T) {
@@ -1708,7 +1722,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDashboardsNotFound,
 	})
-	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	// The id is not found, so the first apply PUTs by the inferred origin.
 	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
 
 	cmd1 := NewApplyCmd()
@@ -1750,12 +1764,11 @@ spec:
 	assert.Contains(t, output2, "no changes")
 }
 
-func TestApply_CheckRule_Created_PreservesId(t *testing.T) {
+func TestApply_CheckRule_IDNotFoundCreatesAtTheID(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	// Check rule has a user-defined ID but the asset doesn't exist yet (404).
-	// When an ID is present, apply always uses PUT (create-or-replace), so the
-	// rule is created with the user-defined ID.
+	// A check rule whose id is not found is created at that id, so the file
+	// keeps its id.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
@@ -1787,81 +1800,132 @@ expression: up == 0
 	assert.Contains(t, output, "Check rule")
 	assert.Contains(t, output, "created")
 
-	// Verify the PUT request body contains the user-defined ID.
-	putReq := findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/new-rule-uuid")
-	require.NotNil(t, putReq, "expected a PUT request for check rule")
-	var rule dash0api.PrometheusAlertRule
-	require.NoError(t, json.Unmarshal(putReq.Body, &rule))
-	require.NotNil(t, rule.Id)
-	assert.Equal(t, "new-rule-uuid", *rule.Id)
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/new-rule-uuid"), "expected a PUT at the id")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPut, "/api/alerting/check-rules/"+asset.InferOrigin("checkrule", "test-check-rule", "default")))
 }
 
 func TestApply_CheckRule_RoundTrip(t *testing.T) {
-	testutil.SetupTestEnv(t)
-
-	// A check rule YAML with a user-defined ID. Applying it twice must be
-	// idempotent: the first apply creates the rule (GET returns 404), and the
-	// second apply updates it (GET returns 200).
+	// Applying the same check rule twice must be idempotent: the first apply
+	// creates the rule (GET returns 404), and the second apply updates it
+	// (GET returns 200).
 	const ruleID = "47b6ccbe-82ab-47c6-a613-ce0d7f34353e"
 	const getPath = "/api/alerting/check-rules/" + ruleID
-
-	tmpDir := t.TempDir()
-	yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
-	err := os.WriteFile(yamlFile, []byte(`kind: CheckRule
+	documents := map[string]string{
+		"id only": `kind: CheckRule
 id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
 name: test-check-rule
 expression: up == 0
-`), 0644)
-	require.NoError(t, err)
+`,
+		"id and the same origin": `kind: CheckRule
+id: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+name: test-check-rule
+expression: up == 0
+labels:
+  dash0.com/origin: 47b6ccbe-82ab-47c6-a613-ce0d7f34353e
+`,
+	}
+	for name, document := range documents {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			tmpDir := t.TempDir()
+			yamlFile := filepath.Join(tmpDir, "checkrule.yaml")
+			err := os.WriteFile(yamlFile, []byte(document), 0644)
+			require.NoError(t, err)
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
 
-	// --- First apply: rule does not exist yet ---
-	server.On(http.MethodGet, getPath, testutil.MockResponse{
-		StatusCode: http.StatusNotFound,
-		BodyFile:   testutil.FixtureCheckRulesNotFound,
-	})
-	// PUT (create-or-replace) is used when an ID is present, even on first apply.
-	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+			// --- First apply: rule does not exist yet ---
+			server.On(http.MethodGet, getPath, testutil.MockResponse{
+				StatusCode: http.StatusNotFound,
+				BodyFile:   testutil.FixtureCheckRulesNotFound,
+			})
+			// The id is not found, so the first apply creates the rule at the id.
+			server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
-	cmd1 := NewApplyCmd()
-	cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+			cmd1 := NewApplyCmd()
+			cmd1.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	var err1 error
-	output1 := testutil.CaptureStdout(t, func() {
-		err1 = cmd1.Execute()
-	})
-	require.NoError(t, err1)
-	assert.Contains(t, output1, "created")
+			var err1 error
+			output1 := testutil.CaptureStdout(t, func() {
+				err1 = cmd1.Execute()
+			})
+			require.NoError(t, err1)
+			assert.Contains(t, output1, "created")
 
-	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
-	require.NotNil(t, putReq, "expected a PUT request on first apply")
-	var ruleBody dash0api.PrometheusAlertRule
-	require.NoError(t, json.Unmarshal(putReq.Body, &ruleBody))
-	require.NotNil(t, ruleBody.Id)
-	assert.Equal(t, ruleID, *ruleBody.Id)
+			require.NotNil(t, findRequest(server.Requests(), http.MethodPut, getPath), "expected a PUT at the id on first apply")
 
-	// --- Second apply: rule now exists under the same user-defined ID ---
-	server.Reset()
-	server.On(http.MethodGet, getPath, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureCheckRulesImportSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
+			// --- Second apply: rule now exists under the same user-defined ID ---
+			server.Reset()
+			server.On(http.MethodGet, getPath, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   testutil.FixtureCheckRulesImportSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.WithCheckRulesUpdate(testutil.FixtureCheckRulesImportSuccess)
 
-	cmd2 := NewApplyCmd()
-	cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+			cmd2 := NewApplyCmd()
+			cmd2.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	var err2 error
-	output2 := testutil.CaptureStdout(t, func() {
-		err2 = cmd2.Execute()
-	})
-	require.NoError(t, err2)
-	// Must update, not create again
-	assert.NotContains(t, output2, "created")
-	// GET and Update return the same fixture, so no diff → "no changes"
-	assert.Contains(t, output2, "no changes")
+			var err2 error
+			output2 := testutil.CaptureStdout(t, func() {
+				err2 = cmd2.Execute()
+			})
+			require.NoError(t, err2)
+			// Must update, not create again
+			assert.NotContains(t, output2, "created")
+			// GET and Update return the same fixture, so no diff → "no changes"
+			assert.Contains(t, output2, "no changes")
+		})
+	}
+}
+
+func TestApply_CheckRule_IDAndAnotherOriginFailsValidation(t *testing.T) {
+	// Each apply of these documents would fail, so validation rejects them
+	// before any request, on the first apply as on every later one.
+	documents := map[string]string{
+		"check rule": `kind: CheckRule
+id: rule-id
+name: test-check-rule
+expression: up == 0
+labels:
+  dash0.com/origin: rule-origin
+`,
+		"multi-alert PrometheusRule": `apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-rules
+  labels:
+    dash0.com/id: rules-id
+    dash0.com/origin: rules-origin
+spec:
+  groups:
+    - name: test-group
+      rules:
+        - alert: HighErrorRate
+          expr: up == 0
+        - alert: DiskFull
+          expr: up == 0
+`,
+	}
+	for name, document := range documents {
+		t.Run(name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
+			yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(document), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+
+			for range 2 {
+				cmd := NewApplyCmd()
+				cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+				var err error
+				testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "validation failed")
+				assert.Contains(t, err.Error(), "remove dash0.com/origin or the id")
+			}
+			assert.Empty(t, server.Requests())
+		})
+	}
 }
 
 func TestApply_View_Updated(t *testing.T) {
@@ -2193,7 +2257,7 @@ spec:
 	assert.Contains(t, output, "created")
 
 	// Verify filter values survive the YAML parse → JSON serialize round-trip
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathViews)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathViews)
 	require.NotNil(t, createReq, "expected a create request for view")
 	var view dash0api.ViewDefinition
 	require.NoError(t, json.Unmarshal(createReq.Body, &view))
@@ -2208,12 +2272,11 @@ spec:
 	assert.Equal(t, dash0api.AttributeFilterOperator("is"), filters[1].Operator)
 }
 
-func TestApply_View_Created_PreservesId(t *testing.T) {
+func TestApply_View_IDNotFoundCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	// View has a user-defined ID but the asset doesn't exist yet (404).
-	// When an ID is present, apply always uses PUT (create-or-replace), so the
-	// view is created with the user-defined ID.
+	// An id that is not found is never written to: the view is created by
+	// its inferred origin, without the id.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "view.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: View
@@ -2254,14 +2317,12 @@ spec:
 	assert.Contains(t, output, "View")
 	assert.Contains(t, output, "created")
 
-	// Verify the PUT request body contains the user-defined ID.
-	putReq := findRequest(server.Requests(), http.MethodPut, "/api/views/new-view-uuid")
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/views/"+asset.InferOrigin("view", "test-view", "default"))
 	require.NotNil(t, putReq, "expected a PUT request for view")
 	var view dash0api.ViewDefinition
 	require.NoError(t, json.Unmarshal(putReq.Body, &view))
 	require.NotNil(t, view.Metadata.Labels)
-	require.NotNil(t, view.Metadata.Labels.Dash0Comid)
-	assert.Equal(t, "new-view-uuid", *view.Metadata.Labels.Dash0Comid)
+	assert.Nil(t, view.Metadata.Labels.Dash0Comid)
 }
 
 func TestApply_View_RoundTrip(t *testing.T) {
@@ -2295,7 +2356,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureViewsNotFound,
 	})
-	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	// The id is not found, so the first apply PUTs by the inferred origin.
 	server.WithViewsUpdate(testutil.FixtureViewsImportSuccess)
 
 	cmd1 := NewApplyCmd()
@@ -2308,13 +2369,12 @@ spec:
 	require.NoError(t, err1)
 	assert.Contains(t, output1, "created")
 
-	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
-	require.NotNil(t, putReq, "expected a PUT request on first apply")
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/views/"+asset.InferOrigin("view", "test-view", "default"))
+	require.NotNil(t, putReq, "expected a PUT to the inferred origin on first apply")
 	var viewBody dash0api.ViewDefinition
 	require.NoError(t, json.Unmarshal(putReq.Body, &viewBody))
 	require.NotNil(t, viewBody.Metadata.Labels)
-	require.NotNil(t, viewBody.Metadata.Labels.Dash0Comid)
-	assert.Equal(t, viewID, *viewBody.Metadata.Labels.Dash0Comid)
+	assert.Nil(t, viewBody.Metadata.Labels.Dash0Comid)
 
 	// --- Second apply: view now exists under the same ID ---
 	server.Reset()
@@ -2337,12 +2397,11 @@ spec:
 	assert.Contains(t, output2, "no changes")
 }
 
-func TestApply_SyntheticCheck_Created_PreservesId(t *testing.T) {
+func TestApply_SyntheticCheck_IDNotFoundCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	// Synthetic check has a user-defined ID but the asset doesn't exist yet (404).
-	// When an ID is present, apply always uses PUT (create-or-replace), so the
-	// check is created with the user-defined ID.
+	// An id that is not found is never written to: the synthetic check is created by
+	// its inferred origin, without the id.
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "syntheticcheck.yaml")
 	err := os.WriteFile(yamlFile, []byte(`kind: SyntheticCheck
@@ -2386,14 +2445,12 @@ spec:
 	assert.Contains(t, output, "Synthetic check")
 	assert.Contains(t, output, "created")
 
-	// Verify the PUT request body contains the user-defined ID.
-	putReq := findRequest(server.Requests(), http.MethodPut, "/api/synthetic-checks/new-check-uuid")
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/synthetic-checks/"+asset.InferOrigin("syntheticcheck", "test-synthetic-check", "default"))
 	require.NotNil(t, putReq, "expected a PUT request for synthetic check")
 	var check dash0api.SyntheticCheckDefinition
 	require.NoError(t, json.Unmarshal(putReq.Body, &check))
 	require.NotNil(t, check.Metadata.Labels)
-	require.NotNil(t, check.Metadata.Labels.Dash0Comid)
-	assert.Equal(t, "new-check-uuid", *check.Metadata.Labels.Dash0Comid)
+	assert.Nil(t, check.Metadata.Labels.Dash0Comid)
 }
 
 func TestApply_SyntheticCheck_RoundTrip(t *testing.T) {
@@ -2430,7 +2487,7 @@ spec:
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureSyntheticChecksNotFound,
 	})
-	// PUT (create-or-replace) is used when an ID is present, even on first apply.
+	// The id is not found, so the first apply PUTs by the inferred origin.
 	server.WithSyntheticChecksUpdate(testutil.FixtureSyntheticChecksImportSuccess)
 
 	cmd1 := NewApplyCmd()
@@ -2443,13 +2500,12 @@ spec:
 	require.NoError(t, err1)
 	assert.Contains(t, output1, "created")
 
-	putReq := findRequest(server.Requests(), http.MethodPut, getPath)
-	require.NotNil(t, putReq, "expected a PUT request on first apply")
+	putReq := findRequest(server.Requests(), http.MethodPut, "/api/synthetic-checks/"+asset.InferOrigin("syntheticcheck", "test-synthetic-check", "default"))
+	require.NotNil(t, putReq, "expected a PUT to the inferred origin on first apply")
 	var checkBody dash0api.SyntheticCheckDefinition
 	require.NoError(t, json.Unmarshal(putReq.Body, &checkBody))
 	require.NotNil(t, checkBody.Metadata.Labels)
-	require.NotNil(t, checkBody.Metadata.Labels.Dash0Comid)
-	assert.Equal(t, checkID, *checkBody.Metadata.Labels.Dash0Comid)
+	assert.Nil(t, checkBody.Metadata.Labels.Dash0Comid)
 
 	// --- Second apply: synthetic check now exists under the same ID ---
 	server.Reset()
@@ -2506,10 +2562,10 @@ spec:
 	assert.Contains(t, output, "Recording rule")
 	assert.Contains(t, output, "created")
 
-	require.NotNil(t, findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules), "expected POST to recording-rules")
-	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathCheckRules), "did not expect POST to check-rules")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathRecordingRules), "expected PUT to recording-rules")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules), "did not expect PUT to check-rules")
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathRecordingRules)
 	var rule dash0api.RecordingRule
 	require.NoError(t, json.Unmarshal(createReq.Body, &rule))
 	require.Len(t, rule.Spec.Groups, 1)
@@ -2563,10 +2619,10 @@ spec:
 	assert.Contains(t, output, "Recording rule")
 	assert.Equal(t, 2, countOccurrences(output, "created"))
 
-	require.NotNil(t, findRequest(server.Requests(), http.MethodPost, apiPathCheckRules), "expected POST to check-rules")
-	require.NotNil(t, findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules), "expected POST to recording-rules")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathCheckRules), "expected PUT to check-rules")
+	require.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathRecordingRules), "expected PUT to recording-rules")
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathRecordingRules)
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathRecordingRules)
 	var rule dash0api.RecordingRule
 	require.NoError(t, json.Unmarshal(createReq.Body, &rule))
 	require.Len(t, rule.Spec.Groups, 1)
@@ -2664,7 +2720,8 @@ spec:
 	require.NoError(t, err)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathNotificationChannels, testutil.MockResponse{
+	origin := asset.InferOrigin("notificationchannel", "Slack Alerts", "")
+	server.On(http.MethodPut, apiPathNotificationChannels+"/"+origin, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureNotificationChannelsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -2682,8 +2739,12 @@ spec:
 	assert.Contains(t, output, "Notification channel")
 	assert.Contains(t, output, "created")
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathNotificationChannels)
-	require.NotNil(t, createReq, "expected a create request for notification channel")
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathNotificationChannels+"/"+origin)
+	require.NotNil(t, createReq, "expected a PUT by the inferred origin")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathNotificationChannels), "apply never creates by POST")
+	var channel dash0api.NotificationChannelDefinition
+	require.NoError(t, json.Unmarshal(createReq.Body, &channel))
+	assert.Equal(t, origin, dash0api.GetNotificationChannelOrigin(&channel), "a create sends the origin")
 	assert.NotContains(t, createReq.Query, "dataset=", "notification channels are org-level and must not carry a dataset query parameter")
 }
 
@@ -2977,22 +3038,13 @@ func TestApply_TimeSeriesAggregation_UpsertByOrigin(t *testing.T) {
 	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathTimeSeriesAggs), "did not expect POST")
 }
 
-// The document must be rejected during validation, so a multi-document apply
-// never writes anything before reaching it.
-func TestApply_TimeSeriesAggregation_MissingOriginFailsValidation(t *testing.T) {
+// Without an origin, the aggregation is created by its inferred origin instead
+// of failing validation.
+func TestApply_TimeSeriesAggregation_WithoutOriginUpsertsByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	tmpDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "dashboard.yaml"), []byte(`kind: Dashboard
-metadata:
-  name: Test Dashboard
-  dash0Extensions:
-    id: dash-1
-spec:
-  display:
-    name: Test Dashboard
-`), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aggregation.yaml"), []byte(`apiVersion: dash0.com/v1alpha1
+	yamlFile := filepath.Join(t.TempDir(), "aggregation.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: dash0.com/v1alpha1
 kind: Dash0TimeSeriesAggregation
 metadata:
   name: no-origin
@@ -3009,15 +3061,109 @@ spec:
 `), 0644))
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	path := apiPathTimeSeriesAggs + "/" + asset.InferOrigin("timeseriesaggregation", "no-origin", "default")
+	server.On(http.MethodPut, path, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   "timeseriesaggregations/create_response.json",
+		Validator:  testutil.RequireHeaders,
+	})
 
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+	var cmdErr error
+	testutil.CaptureStdout(t, func() { cmdErr = cmd.Execute() })
+
+	require.NoError(t, cmdErr)
+	assert.Equal(t, []string{"GET " + path, "PUT " + path}, methodsAndPaths(server.Requests()))
+}
+
+// Two documents without an identifier and with the same kind, name, and
+// dataset would get the same origin, so the run fails before any write.
+func TestApply_InferredOriginCollisionFailsValidation(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := t.TempDir()
+	dashboard := []byte("kind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.yaml"), dashboard, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "b.yaml"), dashboard, 0644))
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
 	cmd := NewApplyCmd()
 	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
 
 	err := cmd.Execute()
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dash0.com/origin")
-	assert.Empty(t, server.Requests(), "validation must fail before the dashboard in the same directory is written")
+	assert.Contains(t, err.Error(), asset.InferOrigin("Dashboard", "checkout", "default"))
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), "b.yaml")
+	assert.Empty(t, server.Requests(), "validation must fail before anything is written")
+}
+
+// Two documents with the same name and different ids write at their ids when
+// both ids exist, so validation must not fail them.
+func TestApply_DocumentsWithIDsAndTheSameNameWriteAtTheirIDs(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := writeIDOnlyCheckoutDashboards(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	for _, id := range []string{"id-a", "id-b"} {
+		server.On(http.MethodGet, apiPathDashboards+"/"+id, testutil.MockResponse{
+			StatusCode: http.StatusOK,
+			BodyFile:   testutil.FixtureDashboardsImportSuccess,
+			Validator:  testutil.RequireHeaders,
+		})
+	}
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+
+	require.NoError(t, err)
+	assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/id-a"))
+	assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, apiPathDashboards+"/id-b"))
+}
+
+// When neither id exists, both documents fall back to the same inferred
+// origin, and the second must fail instead of replacing the first.
+func TestApply_DocumentsWithIDsThatFallBackToTheSameInferredOriginFail(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	tmpDir := writeIDOnlyCheckoutDashboards(t)
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.WithDashboardsUpdate(testutil.FixtureDashboardsImportSuccess)
+
+	cmd := NewApplyCmd()
+	cmd.SetArgs([]string{"-f", tmpDir, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() { err = cmd.Execute() })
+
+	origin := asset.InferOrigin("Dashboard", "checkout", "default")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a.yaml")
+	assert.Contains(t, err.Error(), "b.yaml")
+	assert.Contains(t, err.Error(), origin)
+	var puts int
+	for _, r := range server.Requests() {
+		if r.Method == http.MethodPut {
+			puts++
+		}
+	}
+	assert.Equal(t, 1, puts, "the second document must not write")
+}
+
+func writeIDOnlyCheckoutDashboards(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	for name, id := range map[string]string{"a.yaml": "id-a", "b.yaml": "id-b"} {
+		doc := "kind: Dashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: " + id + "\nspec:\n  display:\n    name: Checkout\n"
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), []byte(doc), 0644))
+	}
+	return tmpDir
 }
 
 // The cross-dataset 400 must keep its explanation instead of being flattened
@@ -3277,7 +3423,7 @@ func TestApply_Dataset_Created(t *testing.T) {
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDatasetsNotFound,
 	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -3294,12 +3440,15 @@ func TestApply_Dataset_Created(t *testing.T) {
 	require.NoError(t, cmdErr)
 	assert.Contains(t, output, `Dataset "Production" (production) created`)
 
-	createReq := findRequest(server.Requests(), http.MethodPost, apiPathDatasets)
-	require.NotNil(t, createReq, "expected a create request for the dataset")
+	assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathDatasets), "a dataset is never created by POST")
+	inferred := asset.InferOrigin("dataset", "production", "")
+	createReq := findRequest(server.Requests(), http.MethodPut, apiPathDatasets+"/"+inferred)
+	require.NotNil(t, createReq, "a dataset that does not exist is created by its inferred origin")
 	assert.NotContains(t, createReq.Query, "dataset=", "datasets are org-level and must not carry a dataset query parameter")
 	var body dash0api.DatasetDefinition
 	require.NoError(t, json.Unmarshal([]byte(createReq.Body), &body))
 	assert.Equal(t, "production", dash0api.GetDatasetID(&body))
+	assert.Equal(t, inferred, dash0api.GetDatasetOrigin(&body), "a create sends its origin")
 	assert.Equal(t, "dash0.com/v1alpha1", body.ApiVersion)
 	require.NotNil(t, body.Spec.Retention)
 	require.NotNil(t, body.Spec.Retention.Traces)
@@ -3433,7 +3582,7 @@ func TestApply_Dataset_AppliedBeforeAssetsThatSortFirst(t *testing.T) {
 		StatusCode: http.StatusNotFound,
 		BodyFile:   testutil.FixtureDatasetsNotFound,
 	})
-	server.On(http.MethodPost, apiPathDatasets, testutil.MockResponse{
+	server.OnPattern(http.MethodPut, datasetIDPattern, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureDatasetsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -3454,7 +3603,7 @@ func TestApply_Dataset_AppliedBeforeAssetsThatSortFirst(t *testing.T) {
 	require.NoError(t, cmdErr)
 	datasetAt, viewAt := -1, -1
 	for i, req := range server.Requests() {
-		if req.Method == http.MethodPost && req.Path == apiPathDatasets && datasetAt < 0 {
+		if req.Method == http.MethodPut && strings.HasPrefix(req.Path, apiPathDatasets+"/") && datasetAt < 0 {
 			datasetAt = i
 		}
 		if strings.HasPrefix(req.Path, "/api/views") && viewAt < 0 {
@@ -3576,15 +3725,21 @@ func TestApply_Skill_IDFallbackUpdatesOnly(t *testing.T) {
 		assert.NotNil(t, findRequest(server.Requests(), http.MethodPut, idPath))
 	})
 
-	t.Run("unknown id is not created", func(t *testing.T) {
+	t.Run("unknown id is created by the inferred origin", func(t *testing.T) {
+		inferredPath := apiPathSkills + "/" + asset.InferKindOrigin("skill", "incident-triage", nil)
 		server := testutil.NewMockServer(t, testutil.FixturesDir())
 		server.On(http.MethodGet, idPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders})
+		server.On(http.MethodGet, inferredPath, testutil.MockResponse{StatusCode: http.StatusNotFound, BodyFile: testutil.FixtureAgent0SkillsNotFound, Validator: testutil.RequireHeaders})
+		server.On(http.MethodPut, inferredPath, testutil.MockResponse{StatusCode: http.StatusOK, BodyFile: testutil.FixtureAgent0SkillsUpdateSuccess, Validator: testutil.RequireHeaders})
 
 		_, err := runApplyDoc(t, server.URL, doc)
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `Agent0 skill with id "cskl_01jb8k3m4n5p6q7r8s9t0v1w2x" not found`)
-		assert.Contains(t, err.Error(), "dash0.com/id only addresses an existing skill")
+		require.NoError(t, err)
+		put := findRequest(server.Requests(), http.MethodPut, inferredPath)
+		require.NotNil(t, put)
+		var body dash0api.SkillDefinition
+		require.NoError(t, json.Unmarshal(put.Body, &body))
+		assert.Empty(t, dash0api.GetCustomSkillID(&body), "the path selects the skill, so the body carries no foreign id")
 		assert.Nil(t, findRequest(server.Requests(), http.MethodPut, idPath))
 		assert.Nil(t, findRequest(server.Requests(), http.MethodPost, apiPathSkills))
 	})
@@ -3677,7 +3832,10 @@ func TestApply_AwsMetricScrapeConfig_PutsByIntegrationID(t *testing.T) {
 	assert.Empty(t, put.Query, "the config is organization-level, so no dataset is sent")
 	var sent dash0api.AwsMetricScrapeConfigDefinition
 	require.NoError(t, json.Unmarshal(put.Body, &sent))
-	assert.Nil(t, sent.Metadata.Labels, "the CLI must not claim ownership with an origin")
+	require.NotNil(t, sent.Metadata.Labels)
+	assert.Equal(t, asset.InferOrigin("awsmetricscrapeconfig", awsScrapeIntegrationID, ""), dash0api.GetAwsMetricScrapeConfigOrigin(&sent),
+		"the first config sends the origin it is created by")
+	assert.Nil(t, sent.Metadata.Labels.Dash0Comid, "only the origin is sent")
 	require.Len(t, sent.Spec.Namespaces, 1)
 	assert.Equal(t, "AWS/S3", sent.Spec.Namespaces[0].Namespace)
 }
@@ -3885,11 +4043,10 @@ func methodsAndPaths(requests []testutil.RecordedRequest) []string {
 
 // An exported SSO/SCIM team carries an origin the teams endpoint cannot
 // resolve, and an id it can. Writing at the origin would create a second team.
-func TestApply_Team_OriginNotFoundUpdatesAtID(t *testing.T) {
+func TestApply_Team_IDFoundUpdatesAtID(t *testing.T) {
 	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusOK)
 
 	assert.Equal(t, []string{
-		"GET /api/teams/" + unresolvableTeamOrigin,
 		"GET /api/teams/" + unresolvableTeamID,
 		"PUT /api/teams/" + unresolvableTeamID,
 	}, methodsAndPaths(requests))
@@ -3897,13 +4054,13 @@ func TestApply_Team_OriginNotFoundUpdatesAtID(t *testing.T) {
 	assert.NotContains(t, output, "created")
 }
 
-// When neither label names a stored team, the origin stays the write key.
+// When the id names no stored team, the origin is the write key.
 func TestApply_Team_OriginAndIDNotFoundCreatesAtOrigin(t *testing.T) {
 	output, requests := applyTeamWithUnresolvableOrigin(t, http.StatusNotFound)
 
 	assert.Equal(t, []string{
-		"GET /api/teams/" + unresolvableTeamOrigin,
 		"GET /api/teams/" + unresolvableTeamID,
+		"GET /api/teams/" + unresolvableTeamOrigin,
 		"PUT /api/teams/" + unresolvableTeamOrigin,
 	}, methodsAndPaths(requests))
 	assert.Contains(t, output, `Team "Dash0PushGroup" created`)

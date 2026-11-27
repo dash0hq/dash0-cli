@@ -22,8 +22,9 @@ func TestCreateCheckRule_PrometheusRuleCRD_TopLevelAnnotationsMerge(t *testing.T
 	testutil.SetupTestEnv(t)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathCheckRules, testutil.MockResponse{
-		StatusCode: http.StatusCreated,
+	// No identifier, so each alert is created by its inferred origin.
+	server.OnPattern(http.MethodPut, checkRuleInferredOriginPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
 		BodyFile:   fixtureGetSuccess,
 		Validator:  testutil.RequireHeaders,
 	})
@@ -58,7 +59,7 @@ spec:
 
 	var rules []dash0api.PrometheusAlertRule
 	for _, req := range server.Requests() {
-		if req.Method != http.MethodPost || req.Path != apiPathCheckRules {
+		if req.Method != http.MethodPut || !checkRuleInferredOriginPattern.MatchString(req.Path) {
 			continue
 		}
 		var rule dash0api.PrometheusAlertRule

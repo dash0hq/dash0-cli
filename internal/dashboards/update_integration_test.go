@@ -228,6 +228,63 @@ spec:
 	assert.Contains(t, output, "no changes")
 }
 
+func TestUpdateDashboard_PersesDashboardCRD_IDNotFound_FallsBackToOrigin(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	missingID := "m1i2s3s4-5678-90ab-cdef-1234567890ab"
+	origin := "my-perses-origin"
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/dashboards/"+missingID, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodGet, "/api/dashboards/"+origin, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.On(http.MethodPut, "/api/dashboards/"+origin, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	tmpDir := t.TempDir()
+	yamlFile := filepath.Join(tmpDir, "dashboard.yaml")
+	err := os.WriteFile(yamlFile, []byte(`apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: my-perses-dashboard
+  labels:
+    dash0.com/id: `+missingID+`
+    dash0.com/origin: `+origin+`
+spec:
+  display:
+    name: My Perses Dashboard
+  duration: 5m
+  panels: {}
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := NewDashboardsCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var cmdErr error
+	testutil.CaptureStdout(t, func() {
+		cmdErr = cmd.Execute()
+	})
+
+	require.NoError(t, cmdErr)
+	var putPaths []string
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodPut {
+			putPaths = append(putPaths, req.Path)
+		}
+	}
+	assert.Equal(t, []string{"/api/dashboards/" + origin}, putPaths)
+}
+
 func TestUpdateDashboard_PersesDashboardCRD_IDFromArg(t *testing.T) {
 	testutil.SetupTestEnv(t)
 

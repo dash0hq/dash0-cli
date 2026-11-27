@@ -16,9 +16,9 @@ Example:
 
 ```bash
 $ dash0 -X teams list
-NAME            ID          MEMBERS  ORIGIN       URL
-Backend Team    a1b2c3d4    3        dash0-cli    https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
-Frontend Team   b2c3d4e5    2                     https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
+NAME            ID          MEMBERS  ORIGIN                  URL
+Backend Team    a1b2c3d4    3        dash0-cli_backend-team  https://app.dash0.com/goto/settings/teams?team_id=a1b2c3d4
+Frontend Team   b2c3d4e5    2                                https://app.dash0.com/goto/settings/teams?team_id=b2c3d4e5
 ```
 
 Column aliases: `name` / `team name`, `id` / `team id`, `members` / `member count`, `origin`, `url`.
@@ -42,7 +42,7 @@ $ dash0 -X teams get <id>
 Kind:    Team
 Name:    Backend Team
 ID:      a1b2c3d4-5678-90ab-cdef-1234567890ab
-Origin:  dash0-cli
+Origin:  dash0-cli_backend-team
 Color:   #FF6B6B -> #4ECDC4
 Members: 2
 ...
@@ -53,10 +53,8 @@ Members: 2
 Create a team. Two modes are supported.
 
 **Declarative** — read a `TeamDefinitionV1Alpha1` YAML/JSON document.
-Origin wins over id when both labels are present, and `dash0.com/origin` upserts via PUT (create-or-replace).
-When the origin is not found but the id is, the team is updated at the id.
-When only `dash0.com/id` is present the CLI preflights `GET /api/teams/{id}`: on hit it PUTs (idempotent update — this is what makes reapplying a YAML downloaded from the Dash0 platform UI a no-op), on 404 it falls back to POST (cross-org apply spawns a fresh team with a server-assigned id), and any other error surfaces.
-A document with neither label is created via POST and the server assigns id and origin.
+The team follows the [routing rule](#routing-rule): the CLI reads `dash0.com/id` first and updates the team at the id when it exists.
+Otherwise it writes by `dash0.com/origin`, or by the origin it infers when the document has none, so creating the same document again updates the same team.
 See the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section for the full rationale.
 
 ```bash
@@ -102,7 +100,7 @@ dash0 -X teams update [<id>] -f <file> [--dry-run]
 ```
 
 The file must have the same shape `teams create -f` accepts and `teams get -o yaml` produces, so the export → edit → reapply loop round-trips cleanly.
-If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/origin` label (preferred) or `dash0.com/id` label — matching the upsert-key precedence in the [Asset identifiers and idempotent upsert](#asset-identifiers-and-idempotent-upsert) section.
+If the positional `<id>` argument is omitted, the CLI derives the target team from the document's `dash0.com/id` label, then its `dash0.com/origin` label, as `apply` does; see the [routing rule](#routing-rule).
 When both a positional `<id>` and one of the labels are present, the argument must match the origin or the id in the file; otherwise the command fails before any API call.
 
 Unlike `teams create -f`, `teams update -f` does not create a new team on 404 — the team must already exist.

@@ -65,17 +65,18 @@ YAML
 
 # ---------------------------------------------------------------------------
 # Scenario B: multi-document partial deletion (a View survives, a CheckRule
-# in the same file is removed).
+# in the same file is removed). Both are addressed by origin: an id that is not
+# found would send apply to the inferred origin instead.
 # ---------------------------------------------------------------------------
-VIEW_ID="since-rt-view-${SUFFIX}"
-CHECKRULE_ID="since-rt-checkrule-${SUFFIX}"
+VIEW_ORIGIN="since-rt-view-${SUFFIX}"
+CHECKRULE_ORIGIN="since-rt-checkrule-${SUFFIX}"
 cat > "${TMPDIR}/multi-doc.yaml" << YAML
 apiVersion: dash0.com/v1alpha1
 kind: View
 metadata:
   name: since-rt-view-${SUFFIX}
   labels:
-    dash0.com/id: ${VIEW_ID}
+    dash0.com/origin: ${VIEW_ORIGIN}
 spec:
   display:
     name: Since RT View ${SUFFIX}
@@ -83,9 +84,10 @@ spec:
 ---
 apiVersion: dash0.com/v1alpha1
 kind: CheckRule
-id: ${CHECKRULE_ID}
 name: Since RT Check Rule ${SUFFIX}
 expression: up == 0
+labels:
+  dash0.com/origin: ${CHECKRULE_ORIGIN}
 YAML
 
 echo "--- Step 1: Create the 'before' commit (all assets present) ---"
@@ -110,7 +112,7 @@ kind: View
 metadata:
   name: since-rt-view-${SUFFIX}
   labels:
-    dash0.com/id: ${VIEW_ID}
+    dash0.com/origin: ${VIEW_ORIGIN}
 spec:
   display:
     name: Since RT View ${SUFFIX}
@@ -128,8 +130,8 @@ if ! echo "$SINCE_OUTPUT" | grep -q "$REMOVE_DASHBOARD_ORIGIN"; then
   echo "FAIL: whole-file dashboard deletion did not mention its origin"
   FAIL=1
 fi
-if ! echo "$SINCE_OUTPUT" | grep -q "$CHECKRULE_ID"; then
-  echo "FAIL: multi-document check-rule deletion did not mention its id"
+if ! echo "$SINCE_OUTPUT" | grep -q "$CHECKRULE_ORIGIN"; then
+  echo "FAIL: multi-document check-rule deletion did not mention its origin"
   FAIL=1
 fi
 if [ "$FAIL" -ne 0 ]; then
@@ -144,8 +146,8 @@ if "$DASH0" dashboards list --all -o json | jq -e --arg id "$REMOVE_DASHBOARD_OR
   echo "FAIL: dashboard '$REMOVE_DASHBOARD_ORIGIN' still exists after --since deletion"
   FAIL=1
 fi
-if "$DASH0" check-rules list --all -o json | jq -e --arg id "$CHECKRULE_ID" '.[] | select(.id == $id)' > /dev/null 2>&1; then
-  echo "FAIL: check rule '$CHECKRULE_ID' still exists after --since deletion"
+if "$DASH0" check-rules list --all -o json | jq -e --arg id "$CHECKRULE_ORIGIN" '.[] | select(.id == $id)' > /dev/null 2>&1; then  # a rule created at an origin has that origin as its id
+  echo "FAIL: check rule '$CHECKRULE_ORIGIN' still exists after --since deletion"
   FAIL=1
 fi
 if [ "$FAIL" -ne 0 ]; then
@@ -157,8 +159,8 @@ if ! "$DASH0" dashboards get "$DASHBOARD_ORIGIN" > /dev/null 2>&1; then
   echo "FAIL: surviving dashboard '$DASHBOARD_ORIGIN' is missing"
   FAIL=1
 fi
-if ! "$DASH0" views get "$VIEW_ID" > /dev/null 2>&1; then
-  echo "FAIL: surviving view '$VIEW_ID' is missing"
+if ! "$DASH0" views get "$VIEW_ORIGIN" > /dev/null 2>&1; then
+  echo "FAIL: surviving view '$VIEW_ORIGIN' is missing"
   FAIL=1
 fi
 if [ "$FAIL" -ne 0 ]; then
@@ -167,6 +169,6 @@ fi
 
 echo "--- Cleanup: delete the surviving assets ---"
 "$DASH0" dashboards delete "$DASHBOARD_ORIGIN" --force || true
-"$DASH0" views delete "$VIEW_ID" --force || true
+"$DASH0" views delete "$VIEW_ORIGIN" --force || true
 
 echo "=== apply --since round-trip test PASSED ==="

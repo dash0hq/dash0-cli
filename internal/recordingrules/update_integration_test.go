@@ -76,7 +76,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no recording rule id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no recording rule origin or id given: pass one as an argument")
 }
 
 func TestCreateAndUpdateRecordingRule_Deleted(t *testing.T) {

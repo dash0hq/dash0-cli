@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Exercises `dash0 apply` for Dash0Dataset documents. Confirms that:
 #   - apply creates the dataset on first run;
+#   - the create stores the origin the CLI infers from the slug;
 #   - apply is idempotent on the second run (PUT by slug, no duplicate);
 #   - cleanup via the dedicated `datasets delete` works.
 
@@ -61,6 +62,16 @@ if [ "$COUNT" != "1" ]; then
   echo "FAIL: expected exactly 1 dataset with slug '$SLUG', got $COUNT"
   exit 1
 fi
+
+echo "--- Step 3b: Verify the create stored the inferred origin ---"
+ORIGIN=$("$DASH0" -X datasets get "$SLUG" -o json | jq -r '.metadata.labels["dash0.com/origin"]')
+case "$ORIGIN" in
+  dash0-cli_*) echo "Origin: $ORIGIN" ;;
+  *)
+    echo "FAIL: expected an inferred dash0-cli_ origin, got $ORIGIN"
+    exit 1
+    ;;
+esac
 
 # Step 4: Cleanup (also runs from the EXIT trap as a safety net).
 echo "--- Step 4: Delete ---"

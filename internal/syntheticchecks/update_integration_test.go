@@ -68,7 +68,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no synthetic check id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no synthetic check origin or id given: pass one as an argument")
 }
 
 func TestCreateAndUpdateSyntheticCheck_Deleted(t *testing.T) {

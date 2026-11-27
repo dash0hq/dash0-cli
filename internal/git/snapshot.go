@@ -86,9 +86,24 @@ type Snapshot struct {
 	RawContent map[string][]byte
 
 	// Aliases maps an identifier to a second identifier of the same asset
-	// (see asset.ExtractAlias), so an asset still declared under either one
+	// (see asset.ExtractDeleteFallbacks), so an asset still declared under either one
 	// is not a deletion.
 	Aliases map[IdentifierKey]string
+
+	// InferredOriginNames maps the identifier of a routed document that names
+	// only a dash0.com/id to its metadata.name (see asset.ExtractDeleteFallbacks).
+	InferredOriginNames map[IdentifierKey]string
+
+	// InferredOriginDocuments holds the kind and metadata.name of every routed
+	// document without an origin, which apply writes at its inferred origin
+	// when it has no id or the id is not found.
+	InferredOriginDocuments map[IdentifierKey]bool
+
+	// Inferred maps the identifier of every asset that a document without an
+	// origin writes at its inferred origin to its display name (see
+	// asset.ExtractInferredKeys). A document with an id writes there only when
+	// the id is not found, so only one without an id is in Identifiers too.
+	Inferred map[IdentifierKey]string
 }
 
 func newSnapshot() Snapshot {
@@ -101,13 +116,17 @@ func newSnapshot() Snapshot {
 		Paths:                               map[string]bool{},
 		RawContent:                          map[string][]byte{},
 		Aliases:                             map[IdentifierKey]string{},
+		InferredOriginNames:                 map[IdentifierKey]string{},
+		InferredOriginDocuments:             map[IdentifierKey]bool{},
+		Inferred:                            map[IdentifierKey]string{},
 	}
 }
 
 // BuildSnapshotFromRef builds a Snapshot from the contents of scope (a
 // repo-relative directory or file path; "" scans the whole repo) as they
-// existed at ref.
-func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string) (Snapshot, error) {
+// existed at ref. dataset is the run's dataset, which the inferred origin of a
+// document without an identifier hashes, as apply does.
+func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string, dataset *string) (Snapshot, error) {
 	files, err := repo.ListYAMLFilesAtRef(ctx, ref, scope)
 	if err != nil {
 		return Snapshot{}, err
@@ -122,7 +141,7 @@ func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string) (Sn
 	for i, path := range files {
 		snap.Paths[path] = true
 		snap.RawContent[path] = contents[i]
-		if err := ingestDocuments(&snap, path, contents[i]); err != nil {
+		if err := ingestDocuments(&snap, path, contents[i], dataset); err != nil {
 			return Snapshot{}, fmt.Errorf("%s at %s: %w", path, ref, err)
 		}
 	}
@@ -154,7 +173,7 @@ func BuildSnapshotFromRef(ctx context.Context, repo Repo, ref, scope string) (Sn
 // nothing -- so every identifier the "before" snapshot (BuildSnapshotFromRef)
 // found becomes a deletion candidate, the same as it would for a survived,
 // merely-emptied directory.
-func BuildSnapshotFromDisk(ctx context.Context, scope, repoRoot string) (Snapshot, error) {
+func BuildSnapshotFromDisk(ctx context.Context, scope, repoRoot string, dataset *string) (Snapshot, error) {
 	info, err := os.Stat(scope)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -183,7 +202,7 @@ func BuildSnapshotFromDisk(ctx context.Context, scope, repoRoot string) (Snapsho
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", path, err)
 		}
-		if err := ingestDocuments(&snap, relPath, data); err != nil {
+		if err := ingestDocuments(&snap, relPath, data, dataset); err != nil {
 			return fmt.Errorf("%s: %w", relPath, err)
 		}
 		return nil
@@ -220,7 +239,9 @@ func BuildSnapshotFromDisk(ctx context.Context, scope, repoRoot string) (Snapsho
 // and records each document's identifier (or lack thereof) into snap under
 // path. Multiple documents in one file are distinguished in NoIdentifier by
 // appending a "#<index>" suffix to path for the second and later documents.
-func ingestDocuments(snap *Snapshot, path string, data []byte) error {
+// A routed document without an id or an origin is recorded under the inferred
+// origins apply writes it at, for dataset.
+func ingestDocuments(snap *Snapshot, path string, data []byte, dataset *string) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	index := 0
 	for {
@@ -271,19 +292,42 @@ func ingestDocuments(snap *Snapshot, path string, data []byte) error {
 		}
 
 		normalizedKind := asset.NormalizeKind(kind)
+		alias, inferredOriginName, err := asset.ExtractDeleteFallbacks(docBytes)
+		if err != nil {
+			return fmt.Errorf("failed to read fallback identifiers: %w", err)
+		}
+		if inferredOriginName != "" {
+			snap.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(normalizedKind), Identifier: inferredOriginName}] = true
+		}
+		var keys []asset.InferredKey
+		inferred := false
+		if identifier == "" || inferredOriginName != "" {
+			keys, inferred, err = asset.ExtractInferredKeys(docBytes, dataset)
+			if err != nil {
+				return fmt.Errorf("failed to infer origin: %w", err)
+			}
+		}
+		for _, inferredKey := range keys {
+			snap.Inferred[IdentifierKey{Kind: inferredKey.Kind, Identifier: inferredKey.Origin}] = inferredKey.Name
+		}
 		if identifier == "" {
-			snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
+			if !inferred {
+				snap.NoIdentifier[docPath] = NoIdentifierDoc{Kind: normalizedKind, FilePath: path}
+			}
+			// A PrometheusRule without alerts or recording rules wrote nothing.
+			for _, inferredKey := range keys {
+				snap.Identifiers[IdentifierKey{Kind: inferredKey.Kind, Identifier: inferredKey.Origin}] = docPath
+			}
 			continue
 		}
 		key := IdentifierKey{Kind: normalizedKind, Identifier: identifier}
 		snap.Identifiers[key] = docPath
 
-		alias, err := asset.ExtractAlias(docBytes)
-		if err != nil {
-			return fmt.Errorf("failed to extract alias: %w", err)
-		}
 		if alias != "" {
 			snap.Aliases[key] = alias
+		}
+		if inferredOriginName != "" {
+			snap.InferredOriginNames[key] = inferredOriginName
 		}
 
 		if normalizedKind == "prometheusrule" {

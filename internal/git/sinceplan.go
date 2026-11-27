@@ -2,9 +2,14 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,6 +22,9 @@ import (
 type SincePlan struct {
 	Plan    DeletionPlan
 	Warning string
+	// SkippedDeletionWarnings names each deletion left out because a document
+	// outside -f still writes its asset.
+	SkippedDeletionWarnings []string
 	// names best-effort maps each ByIdentifier deletion's Path (the
 	// git-recorded path, unique within one plan) to its display name,
 	// resolved by re-reading the asset's content from git history at the
@@ -39,6 +47,10 @@ type SincePlan struct {
 	// declare, so a deletion dispatched by identifier never removes an asset
 	// this same run created or updated. See declaredCheckRuleIDs.
 	DeclaredCheckRuleIDs map[string]bool
+	// DeclaredRoutedKeys is every origin or id of a routed kind that -f's
+	// current contents still declare, so --since never falls back to deleting
+	// an asset that this same run writes.
+	DeclaredRoutedKeys map[string]bool
 	// targetWasDirectoryAtRef reports whether -f's target was a directory
 	// (rather than a single file) the last time it existed, per git history
 	// at --since's ref. apply uses this to correct its own fromDirectory
@@ -48,11 +60,21 @@ type SincePlan struct {
 	TargetWasDirectoryAtRef bool
 }
 
+// PrintSkippedDeletionWarnings writes one warning line per skipped deletion,
+// so apply and diff print them the same way.
+func (p *SincePlan) PrintSkippedDeletionWarnings(w io.Writer) {
+	for _, warning := range p.SkippedDeletionWarnings {
+		fmt.Fprintf(w, "warning: %s\n", warning)
+	}
+}
+
 // ComputeSincePlan resolves since against the git repository
 // containing file and diffs the identifier set at that ref against
 // file's current disk contents. It never talks to the Dash0 API —
-// everything it needs comes from git and the local filesystem.
-func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, error) {
+// everything it needs comes from git and the local filesystem. dataset is the
+// one apply writes to: a document without an identifier is deleted at the
+// origin apply infers for it in that dataset.
+func ComputeSincePlan(ctx context.Context, file, since string, dataset *string) (*SincePlan, error) {
 	absFile, err := filepath.Abs(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve absolute path for %s: %w", file, err)
@@ -178,16 +200,20 @@ func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, erro
 		targetWasDirectoryAtRef = false
 	}
 
-	before, err := BuildSnapshotFromRef(ctx, repo, sha, scope)
+	before, err := BuildSnapshotFromRef(ctx, repo, sha, scope, dataset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read git state at --since ref '%s': %w", since, err)
 	}
-	after, err := BuildSnapshotFromDisk(ctx, absFile, repoRoot)
+	after, err := BuildSnapshotFromDisk(ctx, absFile, repoRoot, dataset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read current Git state: %w", err)
 	}
 
 	plan := Diff(before, after)
+	warnings, err := keepInferredOriginsDeclaredOutsideScope(ctx, &plan, repoRoot, dataset)
+	if err != nil {
+		return nil, err
+	}
 	if len(plan.NoIdentifier) > 0 {
 		return nil, fmt.Errorf("--since '%s' found %s deleted with no identifier its kind is upserted by, so deletion cannot be determined reliably:\n  %s\nHint: without a stable identifier there is no way to tell which live asset each document was; delete these assets directly in Dash0, or skip --since for this invocation",
 			since, asset.Pluralize(len(plan.NoIdentifier), "document"), strings.Join(plan.NoIdentifier, "\n  "))
@@ -195,7 +221,15 @@ func ComputeSincePlan(ctx context.Context, file, since string) (*SincePlan, erro
 
 	names := resolveDeletionNames(before, plan.ByIdentifier)
 
-	return &SincePlan{Plan: plan, Warning: warning, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+	return &SincePlan{Plan: plan, Warning: warning, SkippedDeletionWarnings: warnings, Names: names, Scope: scope, DeclaredCheckRuleIDs: declaredCheckRuleIDs(after), DeclaredRoutedKeys: declaredRoutedKeys(after), TargetWasDirectoryAtRef: targetWasDirectoryAtRef}, nil
+}
+
+// NameOf returns the display name of d, or "" when the lookup failed.
+func (p *SincePlan) NameOf(d Deletion) string {
+	if d.Name != "" {
+		return d.Name
+	}
+	return p.Names[d.Path]
 }
 
 // nearestExistingAncestor walks up from path until it finds an entry that
@@ -303,6 +337,21 @@ func declaredCheckRuleIDs(after Snapshot) map[string]bool {
 	return declared
 }
 
+func declaredRoutedKeys(after Snapshot) map[string]bool {
+	declared := map[string]bool{}
+	for key := range after.Identifiers {
+		// Check rules and PrometheusRules are tracked by declaredCheckRuleIDs.
+		if !asset.IsRoutedKind(key.Kind) || key.Kind == "checkrule" || key.Kind == "prometheusrule" {
+			continue
+		}
+		declared[key.Identifier] = true
+		if alias := after.Aliases[key]; alias != "" {
+			declared[alias] = true
+		}
+	}
+	return declared
+}
+
 // StripScope removes scope's directory prefix from path, converting a
 // repo-root-relative deletion path (Deletion.Path, as read via git
 // ls-tree) into the same -f-target-relative basis validated documents'
@@ -321,3 +370,86 @@ func StripScope(path, scope string) string {
 	}
 	return path
 }
+
+// keepInferredOriginsDeclaredOutsideScope removes from plan each deletion at
+// an inferred origin that a document elsewhere in the repository still writes
+// for dataset. The dataset at the ref is not recorded, so a document moved out
+// of -f to a directory applied with another dataset, then deleted with that
+// dataset, would hit the asset the moved document still declares.
+// ponytail: a same-named document applied to another dataset also matches, so
+// that deletion is skipped too and leaves an orphan; an orphan can be deleted
+// by hand, a live asset cannot be brought back.
+func keepInferredOriginsDeclaredOutsideScope(ctx context.Context, plan *DeletionPlan, repoRoot string, dataset *string) ([]string, error) {
+	if !slices.ContainsFunc(plan.ByIdentifier, func(deletion Deletion) bool { return deletion.AtInferredOrigin }) {
+		return nil, nil
+	}
+
+	declared, err := inferredOriginsOnDisk(ctx, repoRoot, dataset)
+	if err != nil {
+		return nil, err
+	}
+	datasetName := asset.DatasetName(dataset)
+	var warnings []string
+	kept := plan.ByIdentifier[:0]
+	for _, deletion := range plan.ByIdentifier {
+		if deletion.AtInferredOrigin {
+			if path, ok := declaredAs(declared, IdentifierKey{Kind: deletion.Kind, Identifier: deletion.Identifier}); ok {
+				warnings = append(warnings, fmt.Sprintf("--since does not delete %s %s: %s still declares it in dataset %q; if that document was moved to a directory applied with another dataset, delete the old asset in its own dataset", asset.KindDisplayName(deletion.Kind), deletion.Identifier, path, datasetName))
+				continue
+			}
+		}
+		kept = append(kept, deletion)
+	}
+	plan.ByIdentifier = kept
+	return warnings, nil
+}
+
+// inferredOriginsOnDisk maps every inferred origin that a YAML file in the
+// repository writes for dataset to that file. It reads the files git tracks
+// or would track, so dot directories count and ignored build output does not.
+// Each document is read on its own: one apply cannot parse writes nothing,
+// and must not hide the documents after it.
+func inferredOriginsOnDisk(ctx context.Context, repoRoot string, dataset *string) (map[IdentifierKey]string, error) {
+	out, err := Repo{Dir: repoRoot}.run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list the files of %s: %w", repoRoot, err)
+	}
+	declared := map[IdentifierKey]string{}
+	for _, relPath := range strings.Split(string(out), "\x00") {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !asset.IsYAMLFile(relPath) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(repoRoot, relPath))
+		if errors.Is(err, fs.ErrNotExist) {
+			// Deleted from the working tree, not yet from the index.
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %s: %w", relPath, err)
+		}
+		for _, document := range documentSeparator.Split(string(data), -1) {
+			snap := newSnapshot()
+			_ = ingestDocuments(&snap, relPath, []byte(document), dataset)
+			for key := range snap.Inferred {
+				declared[key] = relPath
+			}
+		}
+	}
+	return declared, nil
+}
+
+// declaredAs returns the file that declares key under any kind that writes
+// the same asset.
+func declaredAs(declared map[IdentifierKey]string, key IdentifierKey) (string, bool) {
+	for _, kind := range sameAssetKinds(key.Kind) {
+		if path, ok := declared[IdentifierKey{Kind: kind, Identifier: key.Identifier}]; ok {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+var documentSeparator = regexp.MustCompile(`(?m)^---[ \t]*(?:#.*)?$`)

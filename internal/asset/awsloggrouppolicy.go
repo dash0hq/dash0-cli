@@ -184,6 +184,9 @@ func PlanAwsLogGroupPolicy(
 	policy *dash0api.AwsLogGroupInstrumentationPolicy,
 	integrationID string,
 ) (ImportPlan, error) {
+	if integrationID == "" {
+		return ImportPlan{}, ErrAwsLogGroupPolicyMissingID
+	}
 	plan := ImportPlan{Key: integrationID, Action: ActionCreated, Proposed: policy}
 	before, err := apiClient.GetAwsLogGroupInstrumentationPolicy(ctx, integrationID)
 	if dash0api.IsNotFound(err) {
@@ -192,9 +195,14 @@ func PlanAwsLogGroupPolicy(
 	if err != nil {
 		return plan, err
 	}
-	if !dash0api.IsAwsLogGroupInstrumentationPolicyDeleted(before) {
-		plan.Action, plan.Before = ActionUpdated, before
+	if dash0api.IsAwsLogGroupInstrumentationPolicyDeleted(before) {
+		return plan, nil
 	}
+	document, stored := dash0api.GetAwsLogGroupInstrumentationPolicyOrigin(policy), dash0api.GetAwsLogGroupInstrumentationPolicyOrigin(before)
+	if document != "" && stored != "" && stored != document {
+		return plan, &OriginMismatchError{ID: integrationID, Stored: stored, Document: document, IDRequired: true}
+	}
+	plan.Action, plan.Before = ActionUpdated, before
 	return plan, nil
 }
 

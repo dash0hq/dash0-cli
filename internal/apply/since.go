@@ -99,7 +99,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 	// dp.Names is resolved from git history and best-effort: a lookup
 	// failure falls back to an explicit "<name>" placeholder, matching
 	// printDryRunWithDeletions' convention.
-	name := dp.Names[d.Path]
+	name := dp.NameOf(d)
 	if name == "" {
 		name = "<name>"
 	}
@@ -127,7 +127,7 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 		fmt.Fprintf(os.Stderr, "%s %s: deletion declined\n", displayKind, display)
 		return true, nil
 	}
-	alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.DeclaredCheckRuleIDs)
+	alreadyDeleted, err := deleteAssetByKindAndIdentifier(ctx, apiClient, dataset, d, dp.DeclaredCheckRuleIDs, dp.DeclaredRoutedKeys)
 	if err != nil {
 		return false, fmt.Errorf("failed to delete %s %s: %w", displayKind, display, err)
 	}
@@ -167,16 +167,23 @@ func deleteRemovedAsset(ctx context.Context, apiClient dash0api.Client, dataset 
 // "was already deleted" message -- printing both claims a deletion that
 // never happened, which a CI log or audit trail would then take at face
 // value.
-func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (alreadyDeleted bool, err error) {
+func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared, declaredRouted map[string]bool) (alreadyDeleted bool, err error) {
 	kind, identifier := d.Kind, d.Identifier
 	if kind == "prometheusrule" {
-		return deletePrometheusRuleCRD(ctx, apiClient, dataset, identifier, d.PrometheusAlerts, declared)
+		return deletePrometheusRuleCRD(ctx, apiClient, dataset, d, declared)
 	}
 
+	// A soft-deleted asset at a dash0.com/id is still deleted again; see #447.
+	softDeleted := false
+	get := func(key string) error {
+		deleted, err := asset.GetRoutedAsset(ctx, apiClient, kind, key, dataset)
+		softDeleted = deleted && d.AtInferredOrigin
+		return err
+	}
 	switch kind {
 	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		identifier, err = dashboardDeleteKey(ctx, apiClient, dataset, d)
-		if err == nil {
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
 			err = apiClient.DeleteDashboard(ctx, identifier, dataset)
 		}
 	case "checkrule":
@@ -186,29 +193,63 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", identifier))
 			return true, nil
 		}
-		err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && declared[identifier] {
+			warnSkippedDeclaredCheckRule(identifier, fmt.Sprintf("check rule %q", d.Identifier))
+			return true, nil
+		}
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteCheckRule(ctx, identifier, dataset)
+		}
 	case "syntheticcheck":
-		err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteSyntheticCheck(ctx, identifier, dataset)
+		}
 	case "slo":
-		err = apiClient.DeleteSLO(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteSLO(ctx, identifier, dataset)
+		}
 	case "recordingrule":
 		// A surviving PrometheusRule CRD whose recording-rule role
 		// disappeared entirely (see Diff's PrometheusRecordingRoleByIdentifier
 		// handling) -- distinct from the whole-CRD "prometheusrule" case
 		// above, which already attempts this endpoint unconditionally.
-		err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteRecordingRule(ctx, identifier, dataset)
+		}
 	case "view":
-		err = apiClient.DeleteView(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteView(ctx, identifier, dataset)
+		}
 	case "spamfilter":
-		err = apiClient.DeleteSpamFilter(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteSpamFilter(ctx, identifier, dataset)
+		}
 	case "notificationchannel":
-		err = apiClient.DeleteNotificationChannel(ctx, identifier)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteNotificationChannel(ctx, identifier)
+		}
 	case "team":
-		err = apiClient.DeleteTeam(ctx, identifier)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteTeam(ctx, identifier)
+		}
 	case "skill":
-		err = apiClient.DeleteCustomSkill(ctx, identifier)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteCustomSkill(ctx, identifier)
+		}
 	case "generativeaievaluation":
-		err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteGenerativeAiEvaluation(ctx, identifier, dataset)
+		}
 	case "dataset":
 		// A soft delete: Dash0 keeps the dataset and its assets for 30 days.
 		// The same path as `datasets delete`.
@@ -222,15 +263,23 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// consent, which only `aws-log-group-policies delete --remove-forwarding` gives.
 		_, err = apiClient.DeleteAwsLogGroupInstrumentationPolicy(ctx, identifier, dash0api.AwsLogGroupPolicyDispositionKeep, nil)
 	case "signaltometrics":
-		err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteSignalToMetrics(ctx, identifier, dataset)
+		}
 		// Not "already gone": the rule exists in another dataset.
 		if asset.IsSignalToMetricsRuleWrongDataset(err) {
 			return false, asset.WrapSignalToMetricsRuleWrongDataset(err, identifier)
 		}
 	case "sampling":
 		// The API deletes sampling rules for good, and answers a missing rule
-		// with 200, so the tolerance below rarely fires for this kind.
-		err = apiClient.DeleteSamplingRule(ctx, identifier, dataset)
+		// with 200, so the tolerance below rarely fires for this kind. The GET
+		// honors the dataset, so a rule in another dataset fails it with the
+		// cross-dataset 400, which is explained below.
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteSamplingRule(ctx, identifier, dataset)
+		}
 		// Not "already gone": the rule exists in another dataset.
 		if asset.IsSamplingRuleWrongDataset(err) {
 			return false, asset.WrapSamplingRuleWrongDataset(err, identifier)
@@ -241,7 +290,10 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 		// 400, which must not be mistaken for "already gone": the aggregation
 		// exists and belongs to another dataset, so reporting it as reconciled
 		// would be a lie in a CI log.
-		err = apiClient.DeleteTimeSeriesAggregation(ctx, identifier, dataset)
+		identifier, err = routedDeleteKey(dataset, d, declaredRouted, get)
+		if err == nil && !softDeleted {
+			err = apiClient.DeleteTimeSeriesAggregation(ctx, identifier, dataset)
+		}
 		if asset.IsTimeSeriesAggregationWrongDataset(err) {
 			return false, asset.WrapTimeSeriesAggregationWrongDataset(err, identifier)
 		}
@@ -250,6 +302,14 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 	}
 
 	ectx := client.ErrorContext{AssetType: asset.KindDisplayName(kind), AssetID: identifier}
+	if err == nil && softDeleted {
+		client.PrintAlreadyDeleted(ectx)
+		return true, nil
+	}
+	if d.AtInferredOrigin && dash0api.IsNotFound(err) {
+		asset.WarnNothingAtInferredOrigin(os.Stderr, identifier)
+		return true, nil
+	}
 	if err != nil {
 		if client.IsAlreadyDeleted(err, true, ectx) {
 			return true, nil
@@ -300,7 +360,9 @@ func deleteAssetByKindAndIdentifier(ctx context.Context, apiClient dash0api.Clie
 // rule id and the recording rule all 404), so a mixed outcome -- anything
 // genuinely deleted, the rest already gone -- is reported as a real
 // deletion, matching the fact that something was.
-func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, identifier string, alerts []asset.PrometheusAlertName, declared map[string]bool) (alreadyDeleted bool, err error) {
+func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion, declared map[string]bool) (alreadyDeleted bool, err error) {
+	identifier, alerts := d.Identifier, d.PrometheusAlerts
+	// apply writes each alert at its id whether or not the id was found.
 	checkRuleIDs := asset.CheckRuleIDsOccupiedByCRD(identifier, alerts)
 	if len(alerts) > 1 {
 		// A multi-alert CRD applied before per-alert derivation existed left
@@ -329,10 +391,19 @@ func deletePrometheusRuleCRD(ctx context.Context, apiClient dash0api.Client, dat
 		lastCheckRuleNotFoundErr = checkRuleErr
 	}
 
-	recordingRuleErr := apiClient.DeleteRecordingRule(ctx, identifier, dataset)
+	recordingRuleKey, recordingRuleErr := routedDeleteKey(dataset, gitutil.Deletion{
+		Kind: "recordingrule", Identifier: identifier, Alias: d.Alias,
+		InferredOriginName: d.InferredOriginName, InferredOriginKept: d.InferredOriginKept,
+	}, nil, func(key string) error {
+		_, err := asset.GetRoutedAsset(ctx, apiClient, "recordingrule", key, dataset)
+		return err
+	})
+	if recordingRuleErr == nil {
+		recordingRuleErr = apiClient.DeleteRecordingRule(ctx, recordingRuleKey, dataset)
+	}
 	recordingRuleNotFound := recordingRuleErr != nil && dash0api.IsNotFound(recordingRuleErr)
 	if recordingRuleErr != nil && !recordingRuleNotFound {
-		return false, client.HandleAPIError(recordingRuleErr, client.ErrorContext{AssetType: "recording rule", AssetID: identifier})
+		return false, client.HandleAPIError(recordingRuleErr, client.ErrorContext{AssetType: "recording rule", AssetID: recordingRuleKey})
 	}
 
 	// "Genuinely gone" means 404 on every check-rule id attempted and on
@@ -458,17 +529,31 @@ func (index checkRuleNameIndex) resolve(name string) (string, error) {
 	return deletable[0], nil
 }
 
-// dashboardDeleteKey returns the key apply wrote the dashboard at: its
-// identifier, or its alias when the identifier is not found. The API answers
-// a DELETE of an unknown dashboard with 200, so deleting at the wrong key
-// would report a deletion that never happened.
-func dashboardDeleteKey(ctx context.Context, apiClient dash0api.Client, dataset *string, d gitutil.Deletion) (string, error) {
-	if d.Alias == "" {
+// routedDeleteKey returns the key apply wrote a routed asset at: its
+// identifier, or, when the identifier is not found, its alias or inferred
+// origin. Several delete endpoints answer an unknown key with 2xx, and the
+// others with a 404 that reads as already deleted, so deleting at the wrong
+// key would report a deletion that never happened. An inferred origin is read
+// first for the same reason, because it often holds nothing. An inferred origin that
+// the current files still declare is never a fallback, because this run
+// writes the asset there.
+func routedDeleteKey(dataset *string, d gitutil.Deletion, declared map[string]bool, get func(key string) error) (string, error) {
+	kept := d.InferredOriginKept
+	fallback := d.Alias
+	if fallback == "" && d.InferredOriginName != "" && !kept {
+		fallback = asset.InferKindOrigin(d.Kind, d.InferredOriginName, dataset)
+		if declared[fallback] {
+			fallback, kept = "", true
+		}
+	}
+	if fallback == "" && !kept && !d.AtInferredOrigin {
 		return d.Identifier, nil
 	}
-	_, err := apiClient.GetDashboard(ctx, d.Identifier, dataset)
-	if dash0api.IsNotFound(err) {
-		return d.Alias, nil
+	err := get(d.Identifier)
+	if dash0api.IsNotFound(err) && fallback != "" {
+		return fallback, nil
 	}
+	// With the inferred origin kept, a missing id leaves nothing to delete, and
+	// the 404 reports the asset as already deleted.
 	return d.Identifier, err
 }

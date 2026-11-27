@@ -521,6 +521,13 @@ func IsAlreadyDeleted(err error, force bool, ectx ErrorContext) bool {
 	if err == nil || !force || !dash0api.IsNotFound(err) {
 		return false
 	}
+	PrintAlreadyDeleted(ectx)
+	return true
+}
+
+// PrintAlreadyDeleted prints the line that reports an asset as already
+// deleted to stderr.
+func PrintAlreadyDeleted(ectx ErrorContext) {
 	identifier := ectx.AssetName
 	if identifier == "" {
 		identifier = ectx.AssetID
@@ -534,7 +541,6 @@ func IsAlreadyDeleted(err error, force bool, ectx ErrorContext) bool {
 	} else {
 		fmt.Fprintf(os.Stderr, "%s was already deleted\n", assetType)
 	}
-	return true
 }
 
 func capitalizeFirst(s string) string {

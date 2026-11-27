@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/confirmation"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
@@ -243,7 +244,10 @@ func TestUpdate_ReplacesConfigAndShowsDiff(t *testing.T) {
 	var sent dash0api.AwsMetricScrapeConfigDefinition
 	require.NoError(t, json.Unmarshal(puts[0].Body, &sent))
 	assert.Equal(t, "dash0.com/v1alpha1", string(sent.ApiVersion))
-	assert.Nil(t, sent.Metadata.Labels, "the CLI must not send an origin or other labels")
+	require.NotNil(t, sent.Metadata.Labels)
+	assert.Equal(t, asset.InferOrigin("awsmetricscrapeconfig", integrationID, ""), dash0api.GetAwsMetricScrapeConfigOrigin(&sent),
+		"the first config sends the origin it is created by")
+	assert.Nil(t, sent.Metadata.Labels.Dash0Comid, "no label other than the origin is sent")
 	assert.Nil(t, sent.Metadata.Name)
 	require.Len(t, sent.Spec.Namespaces, 2)
 	assert.Equal(t, "AWS/S3", sent.Spec.Namespaces[0].Namespace)
@@ -289,6 +293,23 @@ spec:
 	assert.Contains(t, stdout, "-  - filter:")
 	assert.Contains(t, stdout, "+    - NumberOfObjects")
 	assert.NotContains(t, stdout, "origin", "the origin is not written, so it must not show up as a change")
+	assert.Empty(t, requestsFor(server, http.MethodPut))
+}
+
+func TestUpdate_DryRunFailsOnOriginMismatch(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	server := newServer(t)
+	server.On(http.MethodGet, apiPath, respond(http.StatusOK, fixtureConfigured))
+
+	doc := strings.Replace(configYAML, "    dash0.com/id: ", "    dash0.com/origin: other-origin\n    dash0.com/id: ", 1)
+	stdout, _, err := runCmd(t, server.URL, "update", "-f", writeYAML(t, doc), "--dry-run")
+
+	var mismatch *asset.OriginMismatchError
+	require.ErrorAs(t, err, &mismatch)
+	assert.Equal(t, "other-origin", mismatch.Document)
+	// The integration id is required, so the hint must not suggest removing it.
+	assert.NotContains(t, err.Error(), "remove dash0.com/id")
+	assert.NotContains(t, stdout, "no changes")
 	assert.Empty(t, requestsFor(server, http.MethodPut))
 }
 

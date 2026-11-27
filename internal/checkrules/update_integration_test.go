@@ -56,7 +56,7 @@ expression: up == 0
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no check rule id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no check rule origin or id given: pass one as an argument")
 }
 
 func TestUpdateCheckRule_PrometheusRuleCRD_IDFromFile(t *testing.T) {
@@ -163,7 +163,7 @@ spec:
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.Contains(t, cmdErr.Error(), "no check rule id given: pass one as an argument")
+	assert.Contains(t, cmdErr.Error(), "no check rule origin or id given: pass one as an argument")
 }
 
 func TestUpdateCheckRule_PrometheusRuleCRD_MultipleRules(t *testing.T) {
@@ -343,4 +343,73 @@ func countRequests(requests []testutil.RecordedRequest, method string) int {
 		}
 	}
 	return count
+}
+
+func TestUpdateCheckRule_PrometheusRuleCRD_OriginFromFile(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/alerting/check-rules/crd-origin", testutil.MockResponse{
+		Validator:  testutil.RequireHeaders,
+		StatusCode: http.StatusOK,
+		BodyFile:   "checkrules/get_success.json",
+	})
+	server.On(http.MethodPut, "/api/alerting/check-rules/crd-origin", testutil.MockResponse{
+		Validator:  testutil.RequireHeaders,
+		StatusCode: http.StatusOK,
+		BodyFile:   "checkrules/get_success.json",
+	})
+
+	yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: my-prom-rule
+  labels:
+    dash0.com/origin: crd-origin
+spec:
+  groups:
+    - name: Alerting
+      rules:
+        - alert: Test Alert
+          expr: up == 0
+`), 0644))
+
+	cmd := NewCheckRulesCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	require.NoError(t, cmd.Execute())
+}
+
+// update never falls back to the file's origin when a check rule's id is not
+// found, because apply would have created the rule at that id.
+func TestUpdateCheckRule_IDNotFoundFails(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.On(http.MethodGet, "/api/alerting/check-rules/rule-origin", testutil.MockResponse{
+		Validator:  testutil.RequireHeaders,
+		StatusCode: http.StatusOK,
+		BodyFile:   "checkrules/get_success.json",
+	})
+
+	yamlFile := filepath.Join(t.TempDir(), "rule.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(`kind: CheckRule
+id: missing-id
+name: test-check-rule
+expression: up == 0
+labels:
+  dash0.com/origin: rule-origin
+`), 0644))
+
+	cmd := NewCheckRulesCmd()
+	cmd.SetArgs([]string{"update", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+	for _, request := range server.Requests() {
+		assert.NotEqual(t, http.MethodPut, request.Method, "update must not write when the id is not found")
+		assert.NotContains(t, request.Path, "rule-origin")
+	}
 }

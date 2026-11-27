@@ -63,6 +63,8 @@ API_TESTS=(
   "${SCRIPT_DIR}/test_apply_dashboard_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_check_rule_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_view_idempotency.sh"
+  "${SCRIPT_DIR}/test_apply_view_inferred_origin.sh"
+  "${SCRIPT_DIR}/test_apply_check_rule_creates_at_id.sh"
   "${SCRIPT_DIR}/test_apply_synthetic_check_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_slo_idempotency.sh"
   "${SCRIPT_DIR}/test_apply_spam_filter_idempotency.sh"

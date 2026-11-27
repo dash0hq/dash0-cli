@@ -6,7 +6,6 @@ import (
 	"os"
 
 	dash0api "github.com/dash0hq/dash0-api-client-go"
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -53,7 +52,7 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 		return fmt.Errorf("failed to read dashboard definition: %w", err)
 	}
 
-	dashboard, err := dash0yaml.ParseAsDashboard(data)
+	dashboard, inferredName, err := asset.ParseDashboard(data)
 	if err != nil {
 		return err
 	}
@@ -64,18 +63,12 @@ func runUpdate(ctx context.Context, args []string, flags *asset.FileInputFlags) 
 	if err := asset.ValidateDashboard(dashboard); err != nil {
 		return err
 	}
-	id, err := asset.ResolveUpdateKey(args, asset.UpdateKey{
-		Noun:   "dashboard",
-		Upsert: asset.DashboardKeys(dashboard),
-	})
-	if err != nil {
+	key := asset.UpdateKey{Noun: "dashboard", Upsert: asset.DashboardKeys(dashboard)}
+	identity := asset.DashboardIdentity(dashboard, inferredName, nil)
+	if err := asset.CheckRouteUpdate(args, key, identity); err != nil {
 		return err
 	}
 
-	return doUpdate(ctx, flags, id, dashboard)
-}
-
-func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashboard *dash0api.DashboardDefinition) error {
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
@@ -84,7 +77,10 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	asset.ClearDashboardDeletedAt(dashboard)
 
-	before, err := apiClient.GetDashboard(ctx, id, dataset)
+	get := func(ctx context.Context, key string) (*dash0api.DashboardDefinition, error) {
+		return apiClient.GetDashboard(ctx, key, dataset)
+	}
+	id, before, err := asset.RouteUpdate(ctx, args, key, identity, get)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{
 			AssetType: "dashboard",
@@ -113,6 +109,7 @@ func doUpdate(ctx context.Context, flags *asset.FileInputFlags, id string, dashb
 	}
 
 	dash0api.ClearDashboardID(dashboard)
+	asset.ClearUpdateOrigin(dashboard)
 	result, err := apiClient.UpdateDashboard(ctx, id, dashboard, dataset)
 	if err != nil {
 		return client.HandleAPIError(err, client.ErrorContext{

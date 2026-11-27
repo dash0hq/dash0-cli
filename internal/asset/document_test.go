@@ -570,6 +570,48 @@ func TestParseDocumentHeader(t *testing.T) {
 			expectedId:   "",
 		},
 		{
+			name:         "CheckRule: id before origin",
+			yaml:         "kind: CheckRule\nid: rule-id\nname: My Rule\nexpression: up == 0\nlabels:\n  dash0.com/origin: rule-origin\n",
+			expectedKind: "CheckRule",
+			expectedName: "My Rule",
+			expectedId:   "rule-id",
+		},
+		{
+			name:         "CheckRule: origin without id",
+			yaml:         "kind: CheckRule\nname: My Rule\nexpression: up == 0\nlabels:\n  dash0.com/origin: rule-origin\n",
+			expectedKind: "CheckRule",
+			expectedName: "My Rule",
+			expectedId:   "rule-origin",
+		},
+		{
+			name:         "View: id before origin",
+			yaml:         "kind: View\nmetadata:\n  name: view-name\n  labels:\n    dash0.com/id: view-id\n    dash0.com/origin: view-origin\n",
+			expectedKind: "View",
+			expectedName: "view-name",
+			expectedId:   "view-id",
+		},
+		{
+			name:         "SyntheticCheck: id before origin",
+			yaml:         "kind: SyntheticCheck\nmetadata:\n  name: check-name\n  labels:\n    dash0.com/id: check-id\n    dash0.com/origin: check-origin\n",
+			expectedKind: "SyntheticCheck",
+			expectedName: "check-name",
+			expectedId:   "check-id",
+		},
+		{
+			name:         "PrometheusRule: id before origin",
+			yaml:         "kind: PrometheusRule\nmetadata:\n  name: prom-name\n  labels:\n    dash0.com/id: prom-id\n    dash0.com/origin: prom-origin\n",
+			expectedKind: "PrometheusRule",
+			expectedName: "prom-name",
+			expectedId:   "prom-id",
+		},
+		{
+			name:         "PersesDashboard: id before origin",
+			yaml:         "apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: perses-name\n  labels:\n    dash0.com/id: perses-id\n    dash0.com/origin: perses-origin\nspec:\n  duration: 5m\n",
+			expectedKind: "PersesDashboard",
+			expectedName: "perses-name",
+			expectedId:   "perses-id",
+		},
+		{
 			name:         "Unknown kind extracts no ID",
 			yaml:         "kind: Unknown\nid: id\nmetadata:\n  name: name\n  labels:\n    dash0.com/id: label-id\n",
 			expectedKind: "Unknown",
@@ -699,6 +741,40 @@ func TestParseDocumentHeader_SignalToMetricsRule(t *testing.T) {
 			assert.Equal(t, "Dash0SignalToMetrics", kind)
 			assert.Equal(t, "Checkout error logs", docName, "the name comes from spec.display.name")
 			assert.Equal(t, c.wantID, id, "rules upsert by origin, falling back to dash0.com/id")
+		})
+	}
+}
+
+func TestValidateDocuments_DatasetsWithTheSameOrigin(t *testing.T) {
+	dataset := func(slug, origin string) string {
+		labels := ""
+		if origin != "" {
+			labels = "\n  labels:\n    dash0.com/origin: " + origin
+		}
+		return "apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: " + slug + labels + "\nspec:\n  slug: " + slug + "\n"
+	}
+	tests := []struct {
+		name       string
+		documents  []string
+		wantFailed bool
+	}{
+		{name: "same origin, different slugs", documents: []string{dataset("staging", "dash0-cli_env"), dataset("prod", "dash0-cli_env")}, wantFailed: true},
+		{name: "origin is another slug's inferred origin", documents: []string{dataset("staging", ""), dataset("prod", InferOrigin("dataset", "staging", ""))}, wantFailed: true},
+		{name: "same origin, same slug", documents: []string{dataset("staging", "dash0-cli_env"), dataset("staging", "dash0-cli_env")}},
+		{name: "different origins", documents: []string{dataset("staging", "dash0-cli_staging"), dataset("prod", "dash0-cli_prod")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			docs, err := ReadMultiDocumentYAML("-", strings.NewReader(strings.Join(tt.documents, "---\n")))
+			require.NoError(t, err)
+
+			validationErrors, _ := ValidateDocuments(docs)
+			if !tt.wantFailed {
+				assert.Empty(t, validationErrors)
+				return
+			}
+			require.Len(t, validationErrors, 1)
+			assert.Contains(t, validationErrors[0], "dataset origin")
 		})
 	}
 }

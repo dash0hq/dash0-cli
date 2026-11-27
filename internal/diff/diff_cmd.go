@@ -94,7 +94,9 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 		return asset.FormatValidationError("no documents found in input")
 	}
 
+	dataset := client.ResolveDataset(ctx, flags.Dataset)
 	validationErrors, validationWarnings := asset.ValidateDocuments(documents)
+	validationErrors = append(validationErrors, asset.CheckInferredOriginCollisions(documents, dataset)...)
 	if len(validationErrors) > 0 {
 		return asset.FormatValidationError(validationErrors...)
 	}
@@ -104,7 +106,7 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 
 	var sincePlan *gitutil.SincePlan
 	if flags.SinceFlagSet {
-		plan, err := gitutil.ComputeSincePlan(ctx, flags.File, flags.Since)
+		plan, err := gitutil.ComputeSincePlan(ctx, flags.File, flags.Since, dataset)
 		if err != nil {
 			return err
 		}
@@ -117,18 +119,27 @@ func runDiff(ctx context.Context, flags *diffFlags) error {
 			// not the confirmation apply asks for.
 			fmt.Fprintf(os.Stderr, "warning: %s\n", sincePlan.Warning)
 		}
+		sincePlan.PrintSkippedDeletionWarnings(os.Stderr)
 	}
 
 	apiClient, err := client.NewClientFromContext(ctx, flags.ApiUrl, flags.AuthToken)
 	if err != nil {
 		return err
 	}
-	dataset := client.ResolveDataset(ctx, flags.Dataset)
+
+	if sincePlan != nil {
+		if err := dropEmptyInferredOrigins(ctx, apiClient, sincePlan, dataset); err != nil {
+			return err
+		}
+	}
 
 	// Every document is read before anything is printed, so a failed read
 	// aborts the whole preview instead of printing a partial one.
 	planned, err := planDocuments(ctx, apiClient, documents, dataset)
 	if err != nil {
+		return err
+	}
+	if err := checkInferredOriginWrites(planned, dataset); err != nil {
 		return err
 	}
 	warnDeniedReads(planned, dataset)
@@ -195,6 +206,11 @@ func planEach(ctx context.Context, apiClient dash0api.Client, documents []asset.
 				failed.Store(true)
 				return
 			}
+			// A denied id read leaves no key, but apply creates the dataset
+			// first, so the id is not found and the write goes to the origin.
+			if len(plans) == 1 && plans[0].readDenied && plans[0].plan.Key == "" {
+				plans[0].plan.Key = asset.DocumentCreateOrigin(doc, dataset)
+			}
 			planned[i] = plannedDoc{doc: doc, plans: plans}
 		}()
 	}
@@ -231,10 +247,60 @@ func createsDataset(planned []plannedDoc, dataset *string) bool {
 	}
 	for _, pd := range planned {
 		for _, p := range pd.plans {
-			if p.displayKind == "Dash0Dataset" && p.plan.Action == asset.ActionCreated && p.plan.Key == *dataset {
+			// A create writes at the dataset's origin, so compare its slug.
+			if proposed, ok := p.plan.Proposed.(*dash0api.DatasetDefinition); ok && p.plan.Action == asset.ActionCreated && dash0api.GetDatasetID(proposed) == *dataset {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// checkInferredOriginWrites fails like apply when two documents write the same
+// inferred origin. Documents are planned in parallel, so the check runs after
+// planning, in document order.
+func checkInferredOriginWrites(planned []plannedDoc, dataset *string) error {
+	writes := asset.InferredOriginWrites{}
+	for _, p := range planned {
+		for _, dp := range p.plans {
+			var err error
+			switch {
+			case dp.identity != nil:
+				err = writes.Claim(*dp.identity, dp.plan.Key, p.doc.Location())
+			case len(p.plans) == 1:
+				err = writes.ClaimDocument(p.doc, dataset, dp.plan.Key)
+			}
+			if err != nil {
+				return fmt.Errorf("%s (%s): %w", p.doc.Location(), p.doc.Kind, err)
+			}
+		}
+	}
+	return nil
+}
+
+// dropEmptyInferredOrigins leaves out a deletion at an inferred origin that
+// holds nothing or a soft-deleted asset, because apply --since reads it there
+// and skips the delete.
+func dropEmptyInferredOrigins(ctx context.Context, apiClient dash0api.Client, sincePlan *gitutil.SincePlan, dataset *string) error {
+	kept := sincePlan.Plan.ByIdentifier[:0]
+	for _, deletion := range sincePlan.Plan.ByIdentifier {
+		if deletion.AtInferredOrigin {
+			deleted, err := asset.GetRoutedAsset(ctx, apiClient, deletion.Kind, deletion.Identifier, dataset)
+			ectx := client.ErrorContext{AssetType: asset.KindDisplayName(deletion.Kind), AssetID: deletion.Identifier}
+			if dash0api.IsNotFound(err) {
+				asset.WarnNothingAtInferredOrigin(os.Stderr, deletion.Identifier)
+				continue
+			}
+			if err != nil {
+				return client.HandleAPIError(err, ectx)
+			}
+			if deleted {
+				client.PrintAlreadyDeleted(ectx)
+				continue
+			}
+		}
+		kept = append(kept, deletion)
+	}
+	sincePlan.Plan.ByIdentifier = kept
+	return nil
 }

@@ -19,7 +19,10 @@ func newCreateCmd() *cobra.Command {
 		Use:     "create -f <file>",
 		Aliases: []string{"add"},
 		Short:   "Create an SLO from a file",
-		Long:    `Create a new SLO from a YAML or JSON definition file in OpenSLO v1 format. Use '-f -' to read from stdin.` + internal.CONFIG_HINT,
+		Long:    `Create a new SLO from a YAML or JSON definition file in OpenSLO v1 format. Use '-f -' to read from stdin.
+
+The CLI reads dash0.com/id first and updates the SLO at the id when it exists.
+Otherwise it writes by dash0.com/origin, or by an origin it infers from the kind, metadata.name, and dataset, so running the command again updates the same SLO instead of creating a duplicate.` + internal.CONFIG_HINT,
 		Example: `  # Create from a YAML file
   dash0 slos create -f slo.yaml
 

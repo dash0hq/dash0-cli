@@ -1,6 +1,8 @@
 package git
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dash0hq/dash0-cli/internal/asset"
@@ -375,4 +377,224 @@ func TestDiff_PrometheusAlertNoAbandonedAddress(t *testing.T) {
 			assert.Empty(t, Diff(before, after).ByIdentifier)
 		})
 	}
+}
+
+// A routed document is keyed by its id, with its origin as the alias, so
+// adding or removing one of the two labels keeps the asset.
+func TestDiff_RoutedDocumentThatGainsOrDropsALabelIsNotADeletion(t *testing.T) {
+	documents := map[string]string{
+		"both":   "    dash0.com/id: i\n    dash0.com/origin: o\n",
+		"id":     "    dash0.com/id: i\n",
+		"origin": "    dash0.com/origin: o\n",
+	}
+	for _, kind := range []string{"Dashboard", "Dash0Team", "Dash0NotificationChannel", "Dash0TimeSeriesAggregation", "Dash0SpamFilter"} {
+		for _, change := range [][2]string{{"both", "id"}, {"both", "origin"}, {"id", "both"}, {"origin", "both"}} {
+			t.Run(kind+"/"+change[0]+"->"+change[1], func(t *testing.T) {
+				snapshot := func(labels string) Snapshot {
+					snap := newSnapshot()
+					doc := "kind: " + kind + "\nmetadata:\n  name: n\n  labels:\n" + labels
+					require.NoError(t, ingestDocuments(&snap, "a.yaml", []byte(doc), nil))
+					return snap
+				}
+				plan := Diff(snapshot(documents[change[0]]), snapshot(documents[change[1]]))
+				assert.Empty(t, plan.ByIdentifier)
+			})
+		}
+	}
+}
+
+// A PersesDashboard and a Dashboard with the same metadata.name write the same
+// inferred origin, so switching kinds keeps the asset there.
+func TestDiff_PersesDashboardSwitchedToDashboardKeepsItsInferredOrigin(t *testing.T) {
+	before := newSnapshot()
+	require.NoError(t, ingestDocuments(&before, "dashboard.yaml", []byte(
+		"apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: checkout\n  labels:\n    dash0.com/id: old-id\nspec:\n  display:\n    name: Checkout\n"), nil))
+	after := newSnapshot()
+	require.NoError(t, ingestDocuments(&after, "dashboard.yaml", []byte(
+		"kind: Dashboard\nmetadata:\n  name: checkout\nspec:\n  display:\n    name: Checkout\n"), nil))
+
+	plan := Diff(before, after)
+
+	require.Len(t, plan.ByIdentifier, 1)
+	assert.Equal(t, "old-id", plan.ByIdentifier[0].Identifier)
+	assert.True(t, plan.ByIdentifier[0].InferredOriginKept, "the Dashboard writes the origin the PersesDashboard fell back to")
+}
+
+// A PersesDashboard without an identifier that becomes a Dashboard with only
+// an id writes the same inferred origin when the id is not found.
+func TestDiff_PersesDashboardWithoutIdentifierSwitchedToDashboardWithAnIDKeepsItsInferredOrigin(t *testing.T) {
+	before := newSnapshot()
+	require.NoError(t, ingestDocuments(&before, "dashboard.yaml", []byte(
+		"apiVersion: perses.dev/v1alpha1\nkind: PersesDashboard\nmetadata:\n  name: orders\nspec:\n  display:\n    name: Orders\n"), nil))
+	after := newSnapshot()
+	require.NoError(t, ingestDocuments(&after, "dashboard.yaml", []byte(
+		"kind: Dashboard\nmetadata:\n  name: orders\n  labels:\n    dash0.com/id: new-id\nspec:\n  display:\n    name: Orders\n"), nil))
+
+	plan := Diff(before, after)
+
+	assert.True(t, plan.IsEmpty(), "got %+v", plan)
+}
+
+// When the id was not found, apply wrote the alert by the CRD's origin or its
+// inferred origin, so the deletion of the abandoned id carries that fallback.
+func TestDiff_PrometheusAlertThresholdCrossingDeletesAtTheID(t *testing.T) {
+	alerts := func(names ...string) []byte {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: rules\n  labels:\n    dash0.com/id: crd-1\n%s\nspec:\n  groups:\n    - name: g\n      rules:\n"
+		for _, name := range names {
+			doc += "        - alert: " + name + "\n          expr: up == 0\n"
+		}
+		return []byte(doc)
+	}
+	for _, tc := range []struct {
+		name        string
+		originLabel string
+	}{
+		{name: "explicit origin", originLabel: "    dash0.com/origin: crd-origin"},
+		{name: "inferred origin"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before, after := newSnapshot(), newSnapshot()
+			require.NoError(t, ingestDocuments(&before, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A")), tc.originLabel)), nil))
+			require.NoError(t, ingestDocuments(&after, "rules.yaml", []byte(fmt.Sprintf(string(alerts("A", "B")), tc.originLabel)), nil))
+
+			plan := Diff(before, after)
+
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, "crd-1", plan.ByIdentifier[0].Identifier)
+			// apply writes an alert at its id whether or not it was found.
+			assert.Empty(t, plan.ByIdentifier[0].Alias)
+			assert.False(t, plan.ByIdentifier[0].InferredOriginKept)
+		})
+	}
+}
+
+// A document without an id or an origin is written at its inferred origin, so
+// --since deletes it there instead of failing the run.
+func TestDiff_DocumentWithoutIdentifierIsDeletedAtItsInferredOrigin(t *testing.T) {
+	dataset := "prod"
+	doc := func(kind, name, labels string) string {
+		return "kind: " + kind + "\nmetadata:\n  name: " + name + "\n" + labels
+	}
+	snapshot := func(t *testing.T, docs ...string) Snapshot {
+		snap := newSnapshot()
+		for index, document := range docs {
+			require.NoError(t, ingestDocuments(&snap, fmt.Sprintf("doc-%d.yaml", index), []byte(document), &dataset))
+		}
+		return snap
+	}
+	for _, kind := range []string{"View", "Dashboard", "SyntheticCheck", "Dash0Team", "Dash0NotificationChannel", "Dash0Skill"} {
+		normalized := asset.NormalizeKind(kind)
+		original := doc(kind, "checkout", "")
+		origin := asset.InferKindOrigin(normalized, "checkout", &dataset)
+
+		t.Run(kind+"/removed", func(t *testing.T) {
+			plan := Diff(snapshot(t, original), snapshot(t))
+			assert.Empty(t, plan.NoIdentifier)
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, normalized, plan.ByIdentifier[0].Kind)
+			assert.Equal(t, origin, plan.ByIdentifier[0].Identifier)
+		})
+		t.Run(kind+"/unchanged", func(t *testing.T) {
+			assert.True(t, Diff(snapshot(t, original), snapshot(t, original)).IsEmpty())
+		})
+		t.Run(kind+"/renamed", func(t *testing.T) {
+			plan := Diff(snapshot(t, original), snapshot(t, doc(kind, "payments", "")))
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, origin, plan.ByIdentifier[0].Identifier)
+		})
+		t.Run(kind+"/gained an origin", func(t *testing.T) {
+			plan := Diff(snapshot(t, original), snapshot(t, doc(kind, "checkout", "  labels:\n    dash0.com/origin: o\n")))
+			require.Len(t, plan.ByIdentifier, 1)
+			assert.Equal(t, origin, plan.ByIdentifier[0].Identifier)
+		})
+		t.Run(kind+"/gained only an id", func(t *testing.T) {
+			// apply writes the inferred origin again when the id is not found.
+			plan := Diff(snapshot(t, original), snapshot(t, doc(kind, "checkout", "  labels:\n    dash0.com/id: i\n")))
+			assert.True(t, plan.IsEmpty(), "got %+v", plan)
+		})
+	}
+}
+
+func TestDiff_InferredOriginUsesTheRunDataset(t *testing.T) {
+	staging := "staging"
+	snap := newSnapshot()
+	require.NoError(t, ingestDocuments(&snap, "a.yaml", []byte("kind: View\nmetadata:\n  name: checkout\n"), &staging))
+	require.NoError(t, ingestDocuments(&snap, "b.yaml", []byte("kind: Dash0Team\nmetadata:\n  name: backend\n"), &staging))
+
+	assert.Contains(t, snap.Identifiers, IdentifierKey{Kind: "view", Identifier: asset.InferOrigin("view", "checkout", "staging")})
+	// Teams are organization-level, so their inferred origin has no dataset.
+	assert.Contains(t, snap.Identifiers, IdentifierKey{Kind: "team", Identifier: asset.InferOrigin("team", "backend", "")})
+}
+
+// A dataset without a slug and an AWS metric scrape config without an id have
+// no inferred origin, so --since still cannot tell which asset they were.
+func TestDiff_KindsWithoutAnInferredOriginStillFailWithoutAnIdentifier(t *testing.T) {
+	for _, document := range []string{
+		"apiVersion: dash0.com/v1alpha1\nkind: Dash0Dataset\nmetadata:\n  name: Staging\n",
+		"apiVersion: dash0.com/v1alpha1\nkind: Dash0AwsMetricScrapeConfig\nmetadata:\n  name: prod\nspec:\n  namespaces: []\n",
+	} {
+		before := newSnapshot()
+		require.NoError(t, ingestDocuments(&before, "a.yaml", []byte(document), nil))
+		plan := Diff(before, newSnapshot())
+		assert.Equal(t, []string{"a.yaml"}, plan.NoIdentifier)
+		assert.Empty(t, plan.ByIdentifier)
+	}
+}
+
+// A PrometheusRule without an id or an origin writes each alert and its
+// recording rules at their own inferred origins, so --since deletes each one
+// there.
+func TestDiff_PrometheusRuleWithoutIdentifierIsDeletedAtEachInferredOrigin(t *testing.T) {
+	crd := func(record bool, alerts ...string) []byte {
+		doc := "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: rules\nspec:\n  groups:\n    - name: g\n      rules:\n"
+		for _, alert := range alerts {
+			doc += "        - alert: " + alert + "\n          expr: up == 0\n"
+		}
+		if record {
+			doc += "        - record: r\n          expr: up\n"
+		}
+		return []byte(doc)
+	}
+	snapshot := func(t *testing.T, data []byte) Snapshot {
+		snap := newSnapshot()
+		if data != nil {
+			require.NoError(t, ingestDocuments(&snap, "rules.yaml", data, nil))
+		}
+		return snap
+	}
+	alertOrigin := func(alert string) string {
+		return asset.InferKindOrigin("prometheusrule", "rules\x00g - "+alert, nil)
+	}
+	recordingOrigin := asset.InferKindOrigin("recordingrule", "rules", nil)
+
+	t.Run("removed", func(t *testing.T) {
+		plan := Diff(snapshot(t, crd(true, "A", "B")), snapshot(t, nil))
+		assert.Empty(t, plan.NoIdentifier)
+		assert.Empty(t, plan.AlertsByName)
+		assert.ElementsMatch(t, []Deletion{
+			{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A", AtInferredOrigin: true},
+			{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B", AtInferredOrigin: true},
+			{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules", AtInferredOrigin: true},
+		}, plan.ByIdentifier)
+	})
+	t.Run("one alert removed", func(t *testing.T) {
+		plan := Diff(snapshot(t, crd(false, "A", "B")), snapshot(t, crd(false, "A")))
+		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("B"), Path: "rules.yaml", Name: "g - B", AtInferredOrigin: true}}, plan.ByIdentifier)
+		assert.Empty(t, plan.AlertsByName)
+	})
+	t.Run("an alert added keeps the others where they are", func(t *testing.T) {
+		assert.True(t, Diff(snapshot(t, crd(false, "A")), snapshot(t, crd(false, "A", "B"))).IsEmpty())
+	})
+	t.Run("recording rules removed", func(t *testing.T) {
+		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, crd(false, "A")))
+		assert.Equal(t, []Deletion{{Kind: "recordingrule", Identifier: recordingOrigin, Path: "rules.yaml", Name: "rules", AtInferredOrigin: true}}, plan.ByIdentifier)
+	})
+	t.Run("gained only an id", func(t *testing.T) {
+		// apply creates an alert at its id when the id is not found, so the
+		// alert at the inferred origin is abandoned. The recording rules still
+		// fall back to their inferred origin.
+		withID := []byte(strings.Replace(string(crd(true, "A")), "  name: rules\n", "  name: rules\n  labels:\n    dash0.com/id: crd-1\n", 1))
+		plan := Diff(snapshot(t, crd(true, "A")), snapshot(t, withID))
+		assert.Equal(t, []Deletion{{Kind: "checkrule", Identifier: alertOrigin("A"), Path: "rules.yaml", Name: "g - A", AtInferredOrigin: true}}, plan.ByIdentifier)
+	})
 }

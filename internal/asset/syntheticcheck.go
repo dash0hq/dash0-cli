@@ -7,55 +7,70 @@ import (
 	dash0api "github.com/dash0hq/dash0-api-client-go"
 )
 
-// ImportSyntheticCheck creates or updates a synthetic check via the standard CRUD APIs.
-// When the input has a user-defined ID, UPDATE is always used — PUT has
-// create-or-replace semantics, so this is idempotent regardless of whether the
-// check already exists.
-// When the input has no ID, CREATE is used and the server assigns an ID.
-// A PUT to the ID of a deleted synthetic check brings it back, which is
+// ImportSyntheticCheck creates or updates a synthetic check through
+// RouteDocument. A PUT to a deleted synthetic check brings it back, which is
 // reported as ActionRestored.
 func ImportSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportResult, error) {
-	// A failed preflight does not block the write: the PUT reports the same error.
-	plan, _ := PlanSyntheticCheck(ctx, apiClient, check, dataset)
-	id := plan.Key
-
-	var (
-		result *dash0api.SyntheticCheckDefinition
-		err    error
-	)
-	if id != "" {
-		result, err = apiClient.UpdateSyntheticCheck(ctx, id, check, dataset)
-	} else {
-		result, err = apiClient.CreateSyntheticCheck(ctx, check, dataset)
+	plan, err := PlanSyntheticCheck(ctx, apiClient, check, dataset)
+	// A failed origin read does not block the write: the PUT reports the same error.
+	if plan.Key == "" {
+		return ImportResult{}, err
 	}
+	if plan.Action != ActionCreated {
+		SetSyntheticCheckOrigin(check, UpdateOrigin(check.GetOrigin(), plan.Key))
+	}
+	result, err := apiClient.UpdateSyntheticCheck(ctx, plan.Key, check, dataset)
 	if err != nil {
 		return ImportResult{}, err
 	}
-
-	if result.Metadata.Labels != nil && result.Metadata.Labels.Dash0Comid != nil {
-		id = *result.Metadata.Labels.Dash0Comid
-	}
+	id := dash0api.GetSyntheticCheckID(result)
 	if err := RequireNotDeleted("Synthetic check", dash0api.GetSyntheticCheckName(result), id, SyntheticCheckDeletedAt(result)); err != nil {
 		return ImportResult{}, err
 	}
 	return ImportResult{Name: dash0api.GetSyntheticCheckName(result), ID: id, Action: plan.Action, Before: plan.Before, After: result}, nil
 }
 
-// PlanSyntheticCheck reads the stored synthetic check that ImportSyntheticCheck
-// would write. It returns any preflight error other than "not found".
+// PlanSyntheticCheck routes the synthetic check with RouteDocument and reads
+// the stored check that ImportSyntheticCheck would write. It returns any
+// preflight error other than "not found"; Key is empty when the id read
+// failed, because the write has no target.
 func PlanSyntheticCheck(ctx context.Context, apiClient dash0api.Client, check *dash0api.SyntheticCheckDefinition, dataset *string) (ImportPlan, error) {
+	// StripSyntheticCheckServerFields clears the origin, so read the identity first.
+	identity := SyntheticCheckIdentity(check, dataset)
 	dash0api.StripSyntheticCheckServerFields(check)
-	plan := ImportPlan{Action: ActionCreated, Proposed: check}
-	if check.Metadata.Labels == nil || check.Metadata.Labels.Dash0Comid == nil || *check.Metadata.Labels.Dash0Comid == "" {
-		return plan, nil
+	get := func(ctx context.Context, key string) (*dash0api.SyntheticCheckDefinition, error) {
+		return apiClient.GetSyntheticCheck(ctx, key, dataset)
 	}
-	plan.Key = *check.Metadata.Labels.Dash0Comid
-	existing, err := apiClient.GetSyntheticCheck(ctx, plan.Key, dataset)
-	if err != nil {
-		return plan, ignoreNotFound(err)
+	route, err := RouteDocument(ctx, identity, get, (*dash0api.SyntheticCheckDefinition).GetOrigin)
+	plan := ImportPlan{Key: route.Key, Action: ActionCreated, Proposed: check}
+	// An id in the body that is not the path's key can only disagree with it.
+	if route.Key != identity.ID {
+		dash0api.ClearSyntheticCheckID(check)
 	}
-	plan.Action, plan.Before = actionForExisting(SyntheticCheckDeletedAt(existing)), existing
+	if route.Key == "" || route.Create {
+		SetSyntheticCheckOrigin(check, route.Key)
+		return plan, err
+	}
+	// The stored origin keeps the diff to what changes; the import clears it
+	// before a write at the id.
+	SetSyntheticCheckOrigin(check, route.Stored.GetOrigin())
+	plan.Action, plan.Before = actionForExisting(SyntheticCheckDeletedAt(route.Stored)), route.Stored
 	return plan, nil
+}
+
+// SyntheticCheckIdentity returns what RouteDocument routes a synthetic check by.
+func SyntheticCheckIdentity(check *dash0api.SyntheticCheckDefinition, dataset *string) Identity {
+	return identityOf("syntheticcheck", check.Metadata.Name, dataset, check)
+}
+
+func SetSyntheticCheckOrigin(check *dash0api.SyntheticCheckDefinition, origin string) {
+	if check.Metadata.Labels == nil {
+		if origin == "" {
+			return
+		}
+		check.Metadata.Labels = &dash0api.SyntheticCheckLabels{}
+	}
+	check.Metadata.Labels.Dash0Comorigin = optionalString(origin)
 }
 
 // SyntheticCheckDeletedAt returns when the synthetic check was deleted, or nil

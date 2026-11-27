@@ -1,7 +1,11 @@
 package asset
 
 import (
+	"context"
+	"net/http"
 	"testing"
+
+	dash0api "github.com/dash0hq/dash0-api-client-go"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,11 +166,89 @@ func TestResolveUpdateKey(t *testing.T) {
 			got, err := ResolveUpdateKey(tt.args, tt.key)
 			if tt.wantErr != "" {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantErr)
+				if tt.wantErr == "not found" {
+					assert.True(t, dash0api.IsNotFound(err))
+				} else {
+					assert.Contains(t, err.Error(), tt.wantErr)
+				}
 				return
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantKey, got)
 		})
 	}
+}
+
+// RouteUpdate must address the asset apply writes, or `update -f` and `apply`
+// of the same file change different assets.
+func TestRouteUpdate(t *testing.T) {
+	key := UpdateKey{Noun: "team", Upsert: fakeKeys{"doc-origin", "the-id", true, true}}
+	identity := Identity{ID: "the-id", Origin: "doc-origin"}
+	notFound := &dash0api.APIError{StatusCode: http.StatusNotFound}
+
+	tests := []struct {
+		name    string
+		args    []string
+		idOnly  bool
+		assets  map[string]storedOrigin
+		wantKey string
+		wantErr string
+	}{
+		{name: "id found wins over origin", assets: map[string]storedOrigin{"the-id": {"doc-origin"}, "doc-origin": {"doc-origin"}}, wantKey: "the-id"},
+		{name: "id found without stored origin", assets: map[string]storedOrigin{"the-id": {""}}, wantKey: "the-id"},
+		{name: "id not found falls back to origin", assets: map[string]storedOrigin{"doc-origin": {"doc-origin"}}, wantKey: "doc-origin"},
+		{name: "neither found is not found", assets: map[string]storedOrigin{}, wantKey: "doc-origin", wantErr: "not found"},
+		{name: "stored origin differs", assets: map[string]storedOrigin{"the-id": {"other"}}, wantKey: "the-id", wantErr: "the CLI never changes a stored origin"},
+		{name: "id only, not found", idOnly: true, assets: map[string]storedOrigin{}, wantKey: "the-id", wantErr: "not found"},
+		{name: "argument is the id and stored origin differs", args: []string{"the-id"}, assets: map[string]storedOrigin{"the-id": {"other"}}, wantKey: "the-id", wantErr: "the CLI never changes a stored origin"},
+		{name: "argument is the origin, id's stored origin is not read", args: []string{"doc-origin"}, assets: map[string]storedOrigin{"the-id": {"other"}, "doc-origin": {"doc-origin"}}, wantKey: "doc-origin"},
+		{name: "argument is used as given", args: []string{"doc-origin"}, assets: map[string]storedOrigin{"the-id": {"doc-origin"}, "doc-origin": {"doc-origin"}}, wantKey: "doc-origin"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			get := func(_ context.Context, k string) (storedOrigin, error) {
+				if a, ok := tt.assets[k]; ok {
+					return a, nil
+				}
+				return storedOrigin{}, notFound
+			}
+			id := identity
+			if tt.idOnly {
+				id.Origin = ""
+			}
+			gotKey, _, err := RouteUpdate(context.Background(), tt.args, key, id, get)
+			assert.Equal(t, tt.wantKey, gotKey)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				if tt.wantErr == "not found" {
+					assert.True(t, dash0api.IsNotFound(err))
+				} else {
+					assert.Contains(t, err.Error(), tt.wantErr)
+				}
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+type storedOrigin struct{ origin string }
+
+func (s storedOrigin) GetOrigin() string { return s.origin }
+
+func TestCheckStoredOrigin(t *testing.T) {
+	identity := Identity{ID: "i", Origin: "o"}
+
+	assert.NoError(t, CheckStoredOrigin("i", identity, fakeKeys{origin: "o"}))
+	assert.Error(t, CheckStoredOrigin("i", identity, fakeKeys{origin: "other"}))
+	assert.NoError(t, CheckStoredOrigin("o", identity, fakeKeys{origin: "other"}), "a write by origin is not checked")
+	assert.ErrorContains(t, CheckStoredOrigin("i", identity, struct{}{}), "cannot read the stored origin")
+}
+
+func TestCheckStoredOrigin_CheckRuleOriginIsItsID(t *testing.T) {
+	id := "i"
+	stored := &dash0api.PrometheusAlertRule{Id: &id}
+	assert.NoError(t, CheckStoredOrigin(id, Identity{ID: id, Origin: id}, stored))
+	var mismatch *OriginMismatchError
+	assert.ErrorAs(t, CheckStoredOrigin(id, Identity{ID: id, Origin: "o"}, stored), &mismatch)
 }

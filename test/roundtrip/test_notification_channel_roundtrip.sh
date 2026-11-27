@@ -4,11 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASH0="${SCRIPT_DIR}/../../build/dash0"
 FIXTURES="${SCRIPT_DIR}/fixtures"
-FIXTURE="${FIXTURES}/notification-channel.yaml"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-ASSET_NAME=$(yq '.metadata.name' "$FIXTURE")
+# Every CI run shares one Dash0 organization, and the inferred origin hashes
+# metadata.name, so a unique name keeps concurrent runs off each other's asset.
+FIXTURE="${TMPDIR}/notification-channel.yaml"
+ASSET_NAME="$(yq '.metadata.name' "${FIXTURES}/notification-channel.yaml") $(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
+ASSET_NAME="$ASSET_NAME" yq '.metadata.name = env(ASSET_NAME)' "${FIXTURES}/notification-channel.yaml" > "$FIXTURE"
 
 echo "=== Notification channel round-trip test ==="
 echo "Asset name: $ASSET_NAME"

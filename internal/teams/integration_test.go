@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -350,27 +351,16 @@ spec:
 	assertPUTPath(t, server.Requests(), "/api/teams/"+teamID, "expected PUT-by-id, got POST — the id label should route to upsert")
 }
 
-// TestCreateTeamFromFile_UpsertByID_FallsBackToPOSTWhenNotFound asserts that
-// when the id in the input YAML does not exist in the target environment
-// (cross-environment apply — the classic "download from org A, apply to
-// org B" case), the CLI falls back to POST instead of returning a 404 from
-// PUT. Without this, `dash0 apply` is not idempotent across environments
-// and users see a scary "Forbidden" error on what should be a fresh create.
-func TestCreateTeamFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) {
+// An id from another organization is not found, so the team is created by its
+// inferred origin, never by POST: a second apply then updates the same team.
+func TestCreateTeamFromFile_IDNotFoundCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
-	teamsIDPattern := regexp.MustCompile(`^/api/teams/team_[^/]+$`)
+	inferredPath := apiPathTeams + "/" + asset.InferOrigin("team", "some-new-team", "")
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	// Pre-check GET returns 404 — the id belongs to a different org.
-	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusNotFound,
-		BodyFile:   testutil.FixtureTeamsNotFound,
-		Validator:  testutil.RequireHeaders,
-	})
-	// POST fallback returns the freshly-created team.
-	server.On(http.MethodPost, apiPathTeams, testutil.MockResponse{
+	server.On(http.MethodPut, inferredPath, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureTeamsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -401,13 +391,12 @@ spec:
 	testutil.CaptureStdout(t, func() {
 		err = cmd.Execute()
 	})
-	require.NoError(t, err, "cross-env apply must not fail — the id from a different org should trigger POST fallback")
+	require.NoError(t, err)
 
-	// No PUT should have been attempted.
 	for _, req := range server.Requests() {
-		assert.NotEqual(t, http.MethodPut, req.Method, "PUT to unknown id would 404; expected POST fallback instead")
+		assert.NotEqual(t, http.MethodPost, req.Method, "apply never creates a team by POST")
 	}
-	assertPOSTPath(t, server.Requests(), apiPathTeams, "expected POST fallback after GET 404")
+	assertPUTPath(t, server.Requests(), inferredPath, "expected a PUT by the inferred origin after the id read 404")
 }
 
 // TestCreateTeamFromFile_UpsertByID_PropagatesPreflightServerError asserts
@@ -512,22 +501,15 @@ spec:
 	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "expected PUT to /api/teams/{origin}")
 }
 
-// TestCreateTeamFromFile_OriginWinsOverID asserts that when both origin and
-// id labels are present, origin is the upsert key.
-func TestCreateTeamFromFile_OriginWinsOverID(t *testing.T) {
+// The id is read first; when it is not found, the document's origin is the key.
+func TestCreateTeamFromFile_IDNotFoundCreatesByOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	const origin = "my-team-origin"
 	const teamID = "team_01k5vpx97efdnrkqan15b41k84"
-	teamsIDPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
 
 	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.OnPattern(http.MethodGet, teamsIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   testutil.FixtureTeamsGetSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.OnPattern(http.MethodPut, teamsIDPattern, testutil.MockResponse{
+	server.On(http.MethodPut, apiPathTeams+"/"+origin, testutil.MockResponse{
 		StatusCode: http.StatusOK,
 		BodyFile:   testutil.FixtureTeamsCreateSuccess,
 		Validator:  testutil.RequireHeaders,
@@ -560,7 +542,14 @@ spec:
 	})
 	require.NoError(t, err)
 
-	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "origin must win over id when both are present")
+	var reads []string
+	for _, req := range server.Requests() {
+		if req.Method == http.MethodGet {
+			reads = append(reads, req.Path)
+		}
+	}
+	assert.Equal(t, []string{apiPathTeams + "/" + teamID, apiPathTeams + "/" + origin}, reads)
+	assertPUTPath(t, server.Requests(), apiPathTeams+"/"+origin, "the origin is the key when the id is not found")
 }
 
 func TestDeleteTeam_Success(t *testing.T) {
@@ -1048,12 +1037,13 @@ spec:
 }
 
 // TestUpdateTeamFromFile_IDFromFile omits the positional argument and lets
-// the CLI derive the addressor from the file. Origin wins over id, matching
-// asset.ImportTeam.
+// the CLI derive the addressor from the file. The id wins over the origin,
+// as in apply, so update and apply of the same file change the same team.
 func TestUpdateTeamFromFile_IDFromFile(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	const origin = "backend-team-origin"
+	// The fixture stores the team with this origin, so the id route accepts it.
+	const origin = "dash0-cli"
 	const teamID = "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 	teamsPattern := regexp.MustCompile(`^/api/teams/[^/]+$`)
 
@@ -1096,7 +1086,7 @@ spec:
 	})
 	require.NoError(t, err)
 
-	assertPUTPath(t, server.Requests(), "/api/teams/"+origin, "origin must win over id when both are present in the file")
+	assertPUTPath(t, server.Requests(), "/api/teams/"+teamID, "id must win over origin when both are present in the file, as in apply")
 }
 
 // TestUpdateTeamFromFile_ArgFileMismatch pins the safety check that stops

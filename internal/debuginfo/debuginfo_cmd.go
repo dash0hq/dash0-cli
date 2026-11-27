@@ -36,7 +36,7 @@ func NewDebuginfoCmd() *cobra.Command {
 		Use:   "debuginfo",
 		Short: "[experimental] Upload debug information so Dash0 can symbolize profiles",
 		Long: `Upload debug information to Dash0.
-Dash0 uses it to resolve the frames of profiles to function names, files, and lines when you read them.`,
+Dash0 uses it to resolve the frames of profiles and browser errors to function names, files, and lines when you read them.`,
 	}
 	cmd.AddCommand(newUploadCmd())
 	return cmd
@@ -72,11 +72,12 @@ The source map is the file named by the //# sourceMappingURL= comment of the scr
 when it has none.
 
 Dash0 finds the source map of a frame in one of two ways:
-  - Node.js profiles: by a debug ID that the profiler reads from the end of the script. This is the
-    default. Scripts without a debug ID get one: the command writes it into the script and its source
-    map, so run it after the build and before you package or deploy the build output.
-  - Browser profiles: by the URL the script is served from. Pass --base-url with the public URL of the
-    directory, or --script-url with the full URL of a single script. No file is changed.
+  - By a debug ID read from the end of the script. This is the default, and works for Node.js profiles
+    and browser errors. Scripts without a debug ID get one: the command writes it into the script and
+    its source map, so run it after the build and before you package or deploy the build output.
+  - By the URL the script is served from. This works for browser profiles and browser errors. Pass
+    --base-url with the public URL of the directory, or --script-url with the full URL of a single
+    script. No file is changed.
 Files that Dash0 already has are skipped; pass --force to replace them.` + internal.CONFIG_HINT,
 		Example: `  # Add debug IDs to a Node.js build and upload its source maps
   dash0 -X debuginfo upload --type source-map dist
@@ -303,7 +304,7 @@ func resolveSourceMaps(inputPath string, flags *uploadFlags) ([]sourceMapArtifac
 		}
 		if flags.BaseURL == "" {
 			if _, err := os.Stat(filepath.Join(inputPath, "index.html")); err == nil {
-				fmt.Fprintf(os.Stderr, "Warning: %s has an index.html, so it looks like a browser build. Browser profiles find source maps by URL, so pass --base-url; without it, debug IDs are written into the scripts for Node.js profiles.\n", inputPath)
+				fmt.Fprintf(os.Stderr, "Warning: %s has an index.html, so it looks like a browser build. Without --base-url, debug IDs are written into the scripts, which resolves browser errors but not browser profiles; pass --base-url to cover both.\n", inputPath)
 			}
 		}
 		artifacts, skipped, err := discoverSourceMaps(inputPath, flags.BaseURL)

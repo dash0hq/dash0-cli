@@ -4,6 +4,7 @@ package slos
 
 import (
 	"encoding/json"
+	"github.com/dash0hq/dash0-cli/internal/asset"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -389,12 +390,7 @@ func TestGetSLO_Deleted(t *testing.T) {
 func TestCreateSLO_DatasetQueryParam(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.On(http.MethodPost, apiPathSLOs, testutil.MockResponse{
-		StatusCode: http.StatusCreated,
-		BodyFile:   fixtureCreateSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
+	server := newInferredOriginSLOServer(t)
 
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "slo.yaml")
@@ -412,7 +408,9 @@ func TestCreateSLO_DatasetQueryParam(t *testing.T) {
 
 	req := server.LastRequest()
 	require.NotNil(t, req)
-	assert.Equal(t, http.MethodPost, req.Method)
+	assert.Equal(t, http.MethodPut, req.Method)
+	assert.Equal(t, apiPathSLOs+"/"+asset.InferKindOrigin("slo", "checkout-availability", strPtr("my-dataset")), req.Path)
+	assertNoMethod(t, server.Requests(), http.MethodPost, "an SLO is never created by POST")
 	assert.Contains(t, req.Query, "dataset=my-dataset")
 	assert.True(t, strings.HasPrefix(req.Header.Get("Authorization"), "Bearer "))
 }
@@ -497,6 +495,36 @@ func TestUpdateSLO_PositionalOriginMatchesFileCarryingBothLabels(t *testing.T) {
 
 	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+origin,
 		"the positional origin must address the SLO, not be rejected as mismatching the file's id")
+}
+
+func TestUpdateSLO_PositionalIDFailsWhenStoredOriginDiffers(t *testing.T) {
+	testutil.SetupTestEnv(t)
+
+	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureGetSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+
+	yamlFile := filepath.Join(t.TempDir(), "slo.yaml")
+	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels(
+		"    dash0.com/origin: another-origin\n    dash0.com/id: "+sloID+"\n")), 0644))
+
+	cmd := NewSlosCmd()
+	cmd.SetArgs([]string{"update", sloID, "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+
+	var err error
+	testutil.CaptureStdout(t, func() {
+		err = cmd.Execute()
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the CLI never changes a stored origin")
+	for _, req := range server.Requests() {
+		assert.NotEqual(t, http.MethodPut, req.Method)
+	}
 }
 
 func TestDeleteSLO_Success(t *testing.T) {
@@ -793,12 +821,7 @@ func TestCreateSLOFromFile_ServiceIdentityIsSentVerbatim(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.SetupTestEnv(t)
 
-			server := testutil.NewMockServer(t, testutil.FixturesDir())
-			server.On(http.MethodPost, apiPathSLOs, testutil.MockResponse{
-				StatusCode: http.StatusCreated,
-				BodyFile:   fixtureCreateSuccess,
-				Validator:  testutil.RequireHeaders,
-			})
+			server := newInferredOriginSLOServer(t)
 
 			tmpDir := t.TempDir()
 			yamlFile := filepath.Join(tmpDir, "slo.yaml")
@@ -813,11 +836,12 @@ func TestCreateSLOFromFile_ServiceIdentityIsSentVerbatim(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			post := findRecordedRequest(server.Requests(), http.MethodPost, apiPathSLOs)
-			require.NotNil(t, post, "expected a recorded POST to %s", apiPathSLOs)
+			putPath := apiPathSLOs + "/" + asset.InferKindOrigin("slo", "checkout-availability", nil)
+			put := findRecordedRequest(server.Requests(), http.MethodPut, putPath)
+			require.NotNil(t, put, "expected a recorded PUT to %s", putPath)
 
 			var sent dash0api.SloDefinition
-			require.NoError(t, json.Unmarshal(post.Body, &sent))
+			require.NoError(t, json.Unmarshal(put.Body, &sent))
 			require.NotNil(t, sent.Spec.Service, "spec.service must survive to the wire")
 			assert.Equal(t, tt.service, *sent.Spec.Service,
 				"spec.service must reach the API byte-for-byte; the namespace/name split is server-side")
@@ -990,24 +1014,15 @@ func TestCreateSLOFromFile_UpsertByID_SurfacesNon404PreflightError(t *testing.T)
 // (cross-environment apply — download from org A, apply to org B), the CLI
 // falls back to POST instead of PUT-ing to an unknown id and getting a 404.
 // Without this, `dash0 apply` is not idempotent across environments.
-func TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) {
+func TestCreateSLOFromFile_UpsertByID_UnknownIDCreatesByInferredOrigin(t *testing.T) {
 	testutil.SetupTestEnv(t)
 
 	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
+	inferredPath := apiPathSLOs + "/" + asset.InferKindOrigin("slo", "checkout-availability", nil)
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	// Preflight GET returns 404 — the id belongs to a different org.
-	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusNotFound,
-		BodyFile:   fixtureNotFound,
-		Validator:  testutil.RequireHeaders,
-	})
-	// POST fallback returns the freshly-created SLO.
-	server.On(http.MethodPost, apiPathSLOs, testutil.MockResponse{
-		StatusCode: http.StatusCreated,
-		BodyFile:   fixtureCreateSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
+	// Every read 404s: the id belongs to a different org, and nothing has the
+	// inferred origin yet.
+	server := newInferredOriginSLOServer(t)
 
 	tmpDir := t.TempDir()
 	yamlFile := filepath.Join(tmpDir, "slo.yaml")
@@ -1020,28 +1035,43 @@ func TestCreateSLOFromFile_UpsertByID_FallsBackToPOSTWhenNotFound(t *testing.T) 
 	testutil.CaptureStdout(t, func() {
 		err = cmd.Execute()
 	})
-	require.NoError(t, err, "cross-env apply must not fail — an id from a different org should trigger POST fallback")
+	require.NoError(t, err, "an id from a different org must not fail the create")
 
-	assertNoMethod(t, server.Requests(), http.MethodPut, "PUT to an unknown id would 404; expected POST fallback instead")
-	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "the 404 that triggers the POST fallback must come from a preflight against the document's own id")
-	assertPOSTPath(t, server.Requests(), apiPathSLOs, "expected POST fallback after GET 404")
+	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "the id is read first")
+	assertPUTPath(t, server.Requests(), inferredPath, "an unknown id is created by the inferred origin, so the next apply updates the same SLO")
+	assertNoMethod(t, server.Requests(), http.MethodPost, "an SLO is never created by POST")
 
-	// The POST body must not carry the source organization's id. SLO ids are
-	// assigned by the server on create, and StripSLOServerFields clears
-	// dash0.com/id along with version, origin, dataset, source, and the
-	// timestamps — so the cross-environment fallback cannot leak a foreign
-	// identifier. This assertion pins that guarantee at the wire level.
-	post := findRecordedRequest(server.Requests(), http.MethodPost, apiPathSLOs)
-	require.NotNil(t, post, "expected a recorded POST to %s", apiPathSLOs)
+	put := findRecordedRequest(server.Requests(), http.MethodPut, inferredPath)
+	require.NotNil(t, put)
 	var body struct {
 		Metadata struct {
 			Labels map[string]string `json:"labels"`
 		} `json:"metadata"`
 	}
-	require.NoError(t, json.Unmarshal(post.Body, &body))
+	require.NoError(t, json.Unmarshal(put.Body, &body))
 	assert.NotContains(t, body.Metadata.Labels, "dash0.com/id",
-		"the POST fallback must not send the source organization's dash0.com/id — the server assigns it")
+		"the PUT must not send the source organization's dash0.com/id")
 }
+
+// newInferredOriginSLOServer answers every SLO read with 404 and every PUT with
+// the created SLO, which is what a create by inferred origin sees.
+func newInferredOriginSLOServer(t *testing.T) *testutil.MockServer {
+	t.Helper()
+	server := testutil.NewMockServer(t, testutil.FixturesDir())
+	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusNotFound,
+		BodyFile:   fixtureNotFound,
+		Validator:  testutil.RequireHeaders,
+	})
+	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+		StatusCode: http.StatusOK,
+		BodyFile:   fixtureCreateSuccess,
+		Validator:  testutil.RequireHeaders,
+	})
+	return server
+}
+
+func strPtr(s string) *string { return &s }
 
 // findRecordedRequest returns the first recorded request matching method and
 // path, or nil when there is none.
@@ -1138,40 +1168,58 @@ func findRecordedRequest(requests []testutil.RecordedRequest, method, path strin
 
 // TestCreateSLOFromFile_OriginWinsOverID asserts that when both origin and id
 // labels are present, origin is the upsert key.
-func TestCreateSLOFromFile_OriginWinsOverID(t *testing.T) {
-	testutil.SetupTestEnv(t)
-
-	const origin = "my-slo-origin"
+func TestCreateSLOFromFile_IDWinsOverOrigin(t *testing.T) {
 	const sloID = "slo_01k5vpx97efdnrkqan15b41k84"
 
-	server := testutil.NewMockServer(t, testutil.FixturesDir())
-	server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   fixtureGetSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
-	server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
-		StatusCode: http.StatusOK,
-		BodyFile:   fixtureUpdateSuccess,
-		Validator:  testutil.RequireHeaders,
-	})
+	tests := []struct {
+		name    string
+		origin  string
+		wantErr string
+	}{
+		// get_success.json stores the origin checkout-origin.
+		{name: "same origin updates at the id", origin: "checkout-origin"},
+		{name: "other origin fails before the write", origin: "my-slo-origin", wantErr: "never changes a stored origin"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.SetupTestEnv(t)
 
-	tmpDir := t.TempDir()
-	yamlFile := filepath.Join(tmpDir, "slo.yaml")
-	require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels(
-		"    dash0.com/origin: "+origin+"\n    dash0.com/id: "+sloID+"\n")), 0644))
+			server := testutil.NewMockServer(t, testutil.FixturesDir())
+			server.OnPattern(http.MethodGet, sloIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureGetSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
+			server.OnPattern(http.MethodPut, sloIDPattern, testutil.MockResponse{
+				StatusCode: http.StatusOK,
+				BodyFile:   fixtureUpdateSuccess,
+				Validator:  testutil.RequireHeaders,
+			})
 
-	cmd := NewSlosCmd()
-	cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
+			tmpDir := t.TempDir()
+			yamlFile := filepath.Join(tmpDir, "slo.yaml")
+			require.NoError(t, os.WriteFile(yamlFile, []byte(sloWithLabels(
+				"    dash0.com/origin: "+tt.origin+"\n    dash0.com/id: "+sloID+"\n")), 0644))
 
-	var err error
-	testutil.CaptureStdout(t, func() {
-		err = cmd.Execute()
-	})
-	require.NoError(t, err)
+			cmd := NewSlosCmd()
+			cmd.SetArgs([]string{"create", "-f", yamlFile, "--api-url", server.URL, "--auth-token", testAuthToken})
 
-	assertGETPath(t, server.Requests(), apiPathSLOs+"/"+origin, "origin must win over id for the preflight too, not just the write")
-	assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+origin, "origin must win over id when both are present")
+			var err error
+			testutil.CaptureStdout(t, func() {
+				err = cmd.Execute()
+			})
+
+			assertGETPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "the id is read before the origin")
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assertNoMethod(t, server.Requests(), http.MethodPut, "a mismatched origin must stop the write")
+				return
+			}
+			require.NoError(t, err)
+			assertPUTPath(t, server.Requests(), apiPathSLOs+"/"+sloID, "a found id is updated at the id")
+		})
+	}
 }
 
 const sloCreateYAML = `apiVersion: openslo.com/v1
@@ -1258,7 +1306,7 @@ metadata:
     dash0.com/id: 00000000-0000-0000-0000-000000000001
     dash0.com/version: "1"
     dash0.com/dataset: default
-    dash0.com/origin: tf_6f2a1c8e-3b47-4d90-a1e5-9c73b0d84f21
+    dash0.com/origin: checkout-origin
   annotations:
     dash0.com/display-name: Checkout availability
     dash0.com/enabled: "true"

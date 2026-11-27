@@ -7,8 +7,9 @@ set -euo pipefail
 # Each integration has exactly one scrape config, so the test cannot create its
 # own. It borrows the integration named by DASH0_AWS_INTEGRATION_ID, snapshots
 # its config first, and restores it on exit. A failed restore fails the test.
-# The restore puts back the spec only: the CLI never sends dash0.com/origin, so
-# a config the test had to clear gets a new origin from the server.
+# The restore sends the snapshot's dash0.com/origin, and the test leaves the
+# config cleared, so the restore is a first write and the original origin is
+# stored again.
 
 export DASH0_AGENT_MODE=0
 
@@ -101,5 +102,17 @@ if [ "$(spec_of | jq -c '.namespaces')" != "[]" ]; then
   echo "FAIL: config still has namespaces after delete"
   exit 1
 fi
+
+echo "--- Step 5: The first config after a clear stores the inferred origin ---"
+"$DASH0" -X aws-metric-scrape-configs update -f "$FIXTURE" > /dev/null
+ORIGIN=$("$DASH0" -X aws-metric-scrape-configs get "$ID" -o json | jq -r '.metadata.labels["dash0.com/origin"]')
+case "$ORIGIN" in
+  dash0-cli_*) echo "Origin: $ORIGIN" ;;
+  *)
+    echo "FAIL: expected an inferred dash0-cli_ origin, got $ORIGIN"
+    exit 1
+    ;;
+esac
+"$DASH0" -X aws-metric-scrape-configs delete "$ID" --force > /dev/null
 
 echo "=== AWS metric scrape config round-trip test passed ==="

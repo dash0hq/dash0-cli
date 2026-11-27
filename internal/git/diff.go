@@ -17,11 +17,18 @@ type Deletion struct {
 	// kept for diagnostic/logging purposes only — deletion is dispatched by
 	// (Kind, Identifier), never by path.
 	Path string
-	// Alias is the dash0.com/id label of a dashboard keyed by its origin (see
-	// asset.DashboardAlias). The API ignores the origin on an update, so a
-	// dashboard that apply updated at this id has no origin, and the delete
-	// must fall back to the id.
+	// Alias is the origin of a routed document whose Identifier is its id
+	// (see asset.ExtractDeleteFallbacks). apply writes at the id when it
+	// exists, else at the origin, so the delete falls back to the origin.
 	Alias string
+	// InferredOriginName is the metadata.name of a routed document that named
+	// only a dash0.com/id. apply created it by its inferred origin when the id was
+	// not found, so the delete falls back to that origin.
+	InferredOriginName string
+	// InferredOriginKept reports that the current input has a document of the
+	// same kind and name without an origin. apply can write that document at
+	// the same inferred origin, so the delete must not fall back to it.
+	InferredOriginKept bool
 	// IdentifiedByIDOnly reports that the deleted document carried only
 	// dash0.com/id, for a kind where that needs a warning; see
 	// asset.IdentifiedByIDOnly.
@@ -39,6 +46,14 @@ type Deletion struct {
 	// the "before" snapshot, when Kind is "prometheusrule". The preview needs
 	// it to list that deletion once it lists a multi-alert CRD per alert.
 	PrometheusHadRecordingRule bool
+	// Name is the display name of an alert or the recording rules of a
+	// PrometheusRule without an identifier, which share one Path. "" means
+	// SincePlan.Names has it.
+	Name string
+	// AtInferredOrigin reports that Identifier is the inferred origin of a
+	// document without an identifier. An asset that an earlier dash0 version
+	// created, or that was applied with another dataset, is not there.
+	AtInferredOrigin bool
 }
 
 // AlertDeletion is a single PrometheusRule alerting rule that disappeared
@@ -80,12 +95,17 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if survives(before, after, key) {
 			continue
 		}
+		_, atInferredOrigin := before.Inferred[key]
 		deletion := Deletion{
 			Kind:               key.Kind,
 			Identifier:         key.Identifier,
 			Path:               path,
 			Alias:              before.Aliases[key],
+			InferredOriginName: before.InferredOriginNames[key],
+			InferredOriginKept: after.InferredOriginDocuments[IdentifierKey{Kind: asset.InferredOriginKind(key.Kind), Identifier: before.InferredOriginNames[key]}],
 			IdentifiedByIDOnly: before.IdentifiedByIDOnly[key],
+			Name:               before.Inferred[key],
+			AtInferredOrigin:   atInferredOrigin,
 		}
 		if key.Kind == "prometheusrule" {
 			deletion.PrometheusAlerts = before.PrometheusAlertsByIdentifier[key.Identifier]
@@ -113,10 +133,13 @@ func Diff(before, after Snapshot) DeletionPlan {
 		if !crdSurvives || hasRecordingRuleNow {
 			continue
 		}
+		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
 		plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-			Kind:       "recordingrule",
-			Identifier: identifier,
-			Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
+			Kind:               "recordingrule",
+			Identifier:         identifier,
+			Path:               before.Identifiers[crd],
+			Alias:              before.Aliases[crd],
+			InferredOriginName: before.InferredOriginNames[crd],
 		})
 	}
 
@@ -136,6 +159,7 @@ func Diff(before, after Snapshot) DeletionPlan {
 		// address and leaves the old one live.
 		occupiedNow := asset.CheckRuleIDsOccupiedByCRD(identifier, afterAlerts)
 		occupiedBefore := asset.CheckRuleIDsOccupiedByCRD(identifier, beforeAlerts)
+		crd := IdentifierKey{Kind: "prometheusrule", Identifier: identifier}
 		for i, name := range beforeAlerts {
 			if !afterSet[name] {
 				plan.AlertsByName = append(plan.AlertsByName, AlertDeletion{
@@ -145,11 +169,8 @@ func Diff(before, after Snapshot) DeletionPlan {
 				continue
 			}
 			if id := occupiedBefore[i]; !slices.Contains(occupiedNow, id) {
-				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{
-					Kind:       "checkrule",
-					Identifier: id,
-					Path:       before.Identifiers[IdentifierKey{Kind: "prometheusrule", Identifier: identifier}],
-				})
+				// apply wrote the alert at its id, found or not.
+				plan.ByIdentifier = append(plan.ByIdentifier, Deletion{Kind: "checkrule", Identifier: id, Path: before.Identifiers[crd]})
 			}
 		}
 	}
@@ -222,11 +243,14 @@ func survives(before, after Snapshot, key IdentifierKey) bool {
 	if alias := before.Aliases[key]; alias != "" {
 		names = append(names, alias)
 	}
-	kinds := []string{key.Kind}
-	if slices.Contains(dashboardKinds, key.Kind) {
-		kinds = dashboardKinds
-	}
-	for _, kind := range kinds {
+	for _, kind := range sameAssetKinds(key.Kind) {
+		// An id-only document in after is written at its inferred origin when
+		// its id is not found.
+		// ponytail: when the id is found, the asset at the inferred origin is left
+		// behind; reading the id would need the API, which --since's plan never calls.
+		if _, ok := after.Inferred[IdentifierKey{Kind: kind, Identifier: key.Identifier}]; ok {
+			return true
+		}
 		for _, name := range names {
 			if declares(after, IdentifierKey{Kind: kind, Identifier: name}) {
 				return true
@@ -251,3 +275,12 @@ func declares(snapshot Snapshot, key IdentifierKey) bool {
 }
 
 var dashboardKinds = []string{"dashboard", "ephemeraldashboard", "persesdashboard"}
+
+// sameAssetKinds returns the kinds whose documents write the same asset as a
+// document of kind.
+func sameAssetKinds(kind string) []string {
+	if slices.Contains(dashboardKinds, kind) {
+		return dashboardKinds
+	}
+	return []string{kind}
+}
