@@ -74,8 +74,18 @@ var kindUpsertsByOrigin = map[string]bool{
 
 // changedKindDocument is kindDocument with a different name, or for a scrape
 // config, which has none, different namespaces, so applying it over
-// kindDocument is an update.
+// kindDocument is an update. The kinds routed by id keep their name and change
+// another field, because a new name gives a new inferred origin, and the
+// second apply would then create instead of update.
 func changedKindDocument(kind string) string {
+	switch kind {
+	case "syntheticcheck", "view":
+		return strings.Replace(kindDocument(kind), "  labels:\n", "  annotations:\n    dash0.com/folder-path: /changed\n  labels:\n", 1)
+	case "persesdashboard":
+		return strings.Replace(kindDocument(kind), "    name: checkout\n", "    name: changed\n", 1)
+	case "prometheusrule":
+		return strings.Replace(kindDocument(kind), "expr: up\n", "expr: up + 1\n", 1)
+	}
 	document := strings.ReplaceAll(kindDocument(kind), "name: checkout\n", "name: changed\n")
 	return strings.Replace(document, "namespaces: []\n", "namespaces:\n    - namespace: AWS/Lambda\n      metrics: [Errors]\n", 1)
 }
@@ -1544,11 +1554,19 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				},
 			},
 			diffUpdate: cliRun{
-				stdout: "Create Synthetic check \"changed\" (dash0-cli_7e713b04dcf6adaf5b182c232147a957)\n",
-				err:    "1 difference pending",
+				stdout: "--- Synthetic check (before)\n" +
+					"+++ Synthetic check (after)\n" +
+					"@@ -1,4 +1,6 @@\n" +
+					" metadata:\n" +
+					"+  annotations:\n" +
+					"+    dash0.com/folder-path: /changed\n" +
+					"   name: checkout\n" +
+					" spec:\n" +
+					"   enabled: false\n",
+				err: "1 difference pending",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1557,10 +1575,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"create\",\n" +
+					"        \"op\": \"update\",\n" +
 					"        \"kind\": \"Synthetic check\",\n" +
-					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"dash0-cli_7e713b04dcf6adaf5b182c232147a957\"\n" +
+					"        \"name\": \"checkout\",\n" +
+					"        \"originOrId\": \"dash0-cli_f2debf26c52f473e7a4b1816c6f299ca\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1568,15 +1586,23 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
-				stdout: "Synthetic check \"changed\" created\n",
+				stdout: "--- Synthetic check (before)\n" +
+					"+++ Synthetic check (after)\n" +
+					"@@ -1,4 +1,6 @@\n" +
+					" metadata:\n" +
+					"+  annotations:\n" +
+					"+    dash0.com/folder-path: /changed\n" +
+					"   name: checkout\n" +
+					" spec:\n" +
+					"   enabled: false\n",
 				requests: []string{
 					"GET /api/synthetic-checks/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
-					"PUT /api/synthetic-checks/dash0-cli_7e713b04dcf6adaf5b182c232147a957?dataset=ds",
+					"GET /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
+					"PUT /api/synthetic-checks/dash0-cli_f2debf26c52f473e7a4b1816c6f299ca?dataset=ds",
 				},
 			},
 		},
@@ -1734,11 +1760,17 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				},
 			},
 			diffUpdate: cliRun{
-				stdout: "Create View \"changed\" (dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b)\n",
-				err:    "1 difference pending",
+				stdout: "--- View (before)\n" +
+					"+++ View (after)\n" +
+					"@@ -1,2 +1,4 @@\n" +
+					" metadata:\n" +
+					"+  annotations:\n" +
+					"+    dash0.com/folder-path: /changed\n" +
+					"   name: checkout\n",
+				err: "1 difference pending",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
+					"GET /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1747,10 +1779,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"create\",\n" +
+					"        \"op\": \"update\",\n" +
 					"        \"kind\": \"View\",\n" +
-					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b\"\n" +
+					"        \"name\": \"checkout\",\n" +
+					"        \"originOrId\": \"dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1758,15 +1790,21 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
+					"GET /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
-				stdout: "View \"changed\" created\n",
+				stdout: "--- View (before)\n" +
+					"+++ View (after)\n" +
+					"@@ -1,2 +1,4 @@\n" +
+					" metadata:\n" +
+					"+  annotations:\n" +
+					"+    dash0.com/folder-path: /changed\n" +
+					"   name: checkout\n",
 				requests: []string{
 					"GET /api/views/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
-					"PUT /api/views/dash0-cli_9d4aa7878d5e59c395d08ea224b08c5b?dataset=ds",
+					"GET /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
+					"PUT /api/views/dash0-cli_7440a9a04e8812130e9c4dcbc5a3c870?dataset=ds",
 				},
 			},
 		},
@@ -1840,12 +1878,20 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 			},
 			diffUpdate: cliRun{
 				stdout: "Check rule \"g - a\": no changes\n" +
-					"Create Recording rule \"changed\" (dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226)\n",
+					"--- Recording rule (before)\n" +
+					"+++ Recording rule (after)\n" +
+					"@@ -4,5 +4,5 @@\n" +
+					"   groups:\n" +
+					"   - name: g\n" +
+					"     rules:\n" +
+					"-    - expr: up\n" +
+					"+    - expr: up + 1\n" +
+					"       record: r\n",
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1854,10 +1900,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"create\",\n" +
+					"        \"op\": \"update\",\n" +
 					"        \"kind\": \"Recording rule\",\n" +
-					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226\"\n" +
+					"        \"name\": \"checkout\",\n" +
+					"        \"originOrId\": \"dash0-cli_dd2229d9c437266800ab5a5d1a8dd019\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1866,18 +1912,26 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
 				stdout: "Check rule \"g - a\": no changes\n" +
-					"Recording rule \"changed\" created\n",
+					"--- Recording rule (before)\n" +
+					"+++ Recording rule (after)\n" +
+					"@@ -4,5 +4,5 @@\n" +
+					"   groups:\n" +
+					"   - name: g\n" +
+					"     rules:\n" +
+					"-    - expr: up\n" +
+					"+    - expr: up + 1\n" +
+					"       record: r\n",
 				requests: []string{
 					"GET /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"PUT /api/alerting/check-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
 					"GET /api/recording-rules/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
-					"PUT /api/recording-rules/dash0-cli_b1efe9aa12ad303de0a22e0d23a5a226?dataset=ds",
+					"GET /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
+					"PUT /api/recording-rules/dash0-cli_dd2229d9c437266800ab5a5d1a8dd019?dataset=ds",
 				},
 			},
 		},
@@ -1938,11 +1992,23 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				},
 			},
 			diffUpdate: cliRun{
-				stdout: "Create Dashboard \"changed\" (dash0-cli_af4e084e9ed9269c89119b966223e9d8)\n",
-				err:    "1 difference pending",
+				stdout: "--- Dashboard (before)\n" +
+					"+++ Dashboard (after)\n" +
+					"@@ -1,8 +1,8 @@\n" +
+					" metadata:\n" +
+					"   labels:\n" +
+					"     dash0.com/origin: dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23\n" +
+					"-  name: checkout\n" +
+					"+  name: changed\n" +
+					" spec:\n" +
+					"   display:\n" +
+					"-    name: checkout\n" +
+					"+    name: changed\n" +
+					"   duration: 5m\n",
+				err: "1 difference pending",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
+					"GET /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 			diffUpdateJSON: cliRun{
@@ -1951,10 +2017,10 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 					"    \"path\": \"$DIR/asset.yaml\",\n" +
 					"    \"changes\": [\n" +
 					"      {\n" +
-					"        \"op\": \"create\",\n" +
+					"        \"op\": \"update\",\n" +
 					"        \"kind\": \"PersesDashboard\",\n" +
 					"        \"name\": \"changed\",\n" +
-					"        \"originOrId\": \"dash0-cli_af4e084e9ed9269c89119b966223e9d8\"\n" +
+					"        \"originOrId\": \"dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23\"\n" +
 					"      }\n" +
 					"    ]\n" +
 					"  }\n" +
@@ -1962,15 +2028,25 @@ func TestApplyAndDiffOutput_KindCharacterization(t *testing.T) {
 				err: "1 difference pending",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
+					"GET /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 			applyUpdate: cliRun{
-				stdout: "Dashboard \"changed\" (dash0-cli_af4e084e9ed9269c89119b966223e9d8) created\n",
+				stdout: "--- Dashboard (before)\n" +
+					"+++ Dashboard (after)\n" +
+					"@@ -1,6 +1,6 @@\n" +
+					" metadata:\n" +
+					"-  name: checkout\n" +
+					"+  name: changed\n" +
+					" spec:\n" +
+					"   display:\n" +
+					"-    name: checkout\n" +
+					"+    name: changed\n" +
+					"   duration: 5m\n",
 				requests: []string{
 					"GET /api/dashboards/11111111-1111-4111-8111-111111111111?dataset=ds",
-					"GET /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
-					"PUT /api/dashboards/dash0-cli_af4e084e9ed9269c89119b966223e9d8?dataset=ds",
+					"GET /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
+					"PUT /api/dashboards/dash0-cli_dc6fd4345ef58576eb19431fc1ccfa23?dataset=ds",
 				},
 			},
 		},
