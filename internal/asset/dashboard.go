@@ -164,19 +164,21 @@ func CheckDashboardKind(id string, stored, proposed *dash0api.DashboardDefinitio
 	if DashboardDeletedAt(stored) != nil || IsEphemeralDashboard(stored) == IsEphemeralDashboard(proposed) {
 		return nil
 	}
-	return &DashboardKindMismatchError{ID: id, Stored: DashboardDisplayKind(stored), Proposed: DashboardDisplayKind(proposed)}
+	return &DashboardKindMismatchError{ID: id, Stored: dashboardKind(stored), Proposed: dashboardKind(proposed)}
 }
 
 // DashboardKindMismatchError reports a write that would change a dashboard
 // between ephemeral and permanent, which the API rejects.
 type DashboardKindMismatchError struct {
-	ID       string
+	ID string
+	// Stored and Proposed are normalized kinds. Error reads their display
+	// names, so the kinds table can name dashboards without a cycle.
 	Stored   string
 	Proposed string
 }
 
 func (e *DashboardKindMismatchError) Error() string {
-	return fmt.Sprintf("dashboard %q is stored as %s, and the API does not change the kind of an existing dashboard to %s; use another identifier, or delete the stored dashboard first", e.ID, strings.ToLower(e.Stored), strings.ToLower(e.Proposed))
+	return fmt.Sprintf("dashboard %q is stored as %s, and the API does not change the kind of an existing dashboard to %s; use another identifier, or delete the stored dashboard first", e.ID, strings.ToLower(KindDisplayName(e.Stored)), strings.ToLower(KindDisplayName(e.Proposed)))
 }
 
 // IsEphemeralDashboard reports whether dashboard is an EphemeralDashboard.
@@ -187,10 +189,16 @@ func IsEphemeralDashboard(dashboard *dash0api.DashboardDefinition) bool {
 // DashboardDisplayKind returns "Ephemeral dashboard" for an
 // EphemeralDashboard and "Dashboard" for any other dashboard.
 func DashboardDisplayKind(dashboard *dash0api.DashboardDefinition) string {
+	return KindDisplayName(dashboardKind(dashboard))
+}
+
+// dashboardKind returns "ephemeraldashboard" for an EphemeralDashboard and
+// "dashboard" for any other dashboard.
+func dashboardKind(dashboard *dash0api.DashboardDefinition) string {
 	if IsEphemeralDashboard(dashboard) {
-		return KindDisplayName("ephemeraldashboard")
+		return "ephemeraldashboard"
 	}
-	return KindDisplayName("dashboard")
+	return "dashboard"
 }
 
 // ValidateEphemeralDashboard rejects an EphemeralDashboard without spec.ttl

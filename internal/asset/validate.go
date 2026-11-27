@@ -43,7 +43,7 @@ func ValidateDocuments(documents []Document) (validationErrors, validationWarnin
 			// Catch CRDs that contain no usable rules at all up front, before
 			// any API call. ParseAsPrometheusAlertRules already rejects
 			// alert-only-empty CRDs, but a CRD with zero rules of either kind
-			// would otherwise slip through to applyDocument.
+			// would otherwise slip through to asset.ApplyDocument.
 			if err := ValidatePrometheusRule(doc.Raw); err != nil {
 				validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", doc.Location(), err.Error()))
 			}

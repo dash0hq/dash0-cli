@@ -24,58 +24,17 @@ func IsValidKind(kind string) bool {
 	return slices.Contains(ValidKinds, NormalizeKind(kind))
 }
 
-// ValidKinds lists every normalized kind apply accepts. Tests check that
-// ParseDocumentHeader, applyDocument, and diff's planDocument each handle every
-// one, so a kind missing from any of them fails a test.
+// ValidKinds lists every normalized kind apply accepts. A test checks that
+// kinds holds every behavior for each one, and that diff's planDocument
+// handles each one.
 var ValidKinds = []string{"dashboard", "ephemeraldashboard", "checkrule", "syntheticcheck", "slo", "view", "prometheusrule", "persesdashboard", "spamfilter", "notificationchannel", "team", "timeseriesaggregation", "dataset", "skill", "awsmetricscrapeconfig", "generativeaievaluation", "signaltometrics", "sampling"}
 
 // KindDisplayName returns the human-readable name for an asset kind.
 // Multi-word kinds like "CheckRule" become "Check rule" and "SyntheticCheck"
 // becomes "Synthetic check".
 func KindDisplayName(kind string) string {
-	k := NormalizeKind(kind)
-	switch k {
-	case "dashboard":
-		return "Dashboard"
-	case "ephemeraldashboard":
-		return "Ephemeral dashboard"
-	case "checkrule":
-		return "Check rule"
-	case "syntheticcheck":
-		return "Synthetic check"
-	case "slo":
-		return "SLO"
-	case "view":
-		return "View"
-	case "prometheusrule":
-		return "PrometheusRule"
-	case "persesdashboard":
-		return "PersesDashboard"
-	case "recordingrule":
-		return "Recording rule"
-	case "notificationchannel":
-		return "Notification channel"
-	case "spamfilter":
-		return "Spam filter"
-	case "team":
-		return "Team"
-	case "timeseriesaggregation":
-		return "Time series aggregation"
-	case "dataset":
-		return "Dataset"
-	case "authtoken":
-		return "Auth token"
-	case "awsmetricscrapeconfig":
-		return "AWS metric scrape config"
-	case "skill":
-		return "Agent0 skill"
-	case "generativeaievaluation":
-		return GenerativeAiEvaluationDisplayName
-	case "signaltometrics":
-		return SignalToMetricsRuleDisplayKind
-	case "sampling":
-		return SamplingRuleDisplayKind
-	default:
-		return kind
+	if behavior, ok := kinds[NormalizeKind(kind)]; ok {
+		return behavior.displayName
 	}
+	return kind
 }

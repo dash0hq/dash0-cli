@@ -441,7 +441,7 @@ func runRouterCase(t *testing.T, kind string, spec routedKind, tc routerCase) {
 
 	apiClient, err := dash0api.NewClient(dash0api.WithApiUrl(server.URL), dash0api.WithAuthToken("auth_test-token-12345"), dash0api.WithMaxRetries(0))
 	require.NoError(t, err)
-	_, err = applyDocument(context.Background(), apiClient, asset.Document{Kind: docKind, Name: name, ID: id, Raw: raw}, nil)
+	_, err = asset.ApplyDocument(context.Background(), apiClient, asset.Document{Kind: docKind, Name: name, ID: id, Raw: raw}, nil)
 
 	if tc.wantErr != "" {
 		require.Error(t, err)

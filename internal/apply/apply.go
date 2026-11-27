@@ -7,8 +7,6 @@ import (
 	"os"
 	"strings"
 
-	dash0api "github.com/dash0hq/dash0-api-client-go"
-	dash0yaml "github.com/dash0hq/dash0-api-client-go/yaml"
 	"github.com/dash0hq/dash0-cli/internal"
 	"github.com/dash0hq/dash0-cli/internal/asset"
 	"github.com/dash0hq/dash0-cli/internal/client"
@@ -138,24 +136,6 @@ If an asset exists, it will be updated. If it doesn't exist, it will be created.
 	return cmd
 }
 
-// applyAction indicates whether an asset was created or updated
-type applyAction string
-
-const (
-	actionCreated applyAction = "created"
-	actionUpdated applyAction = "updated"
-)
-
-// applyResult holds the outcome of applying a single asset.
-type applyResult struct {
-	kind   string
-	name   string
-	id     string
-	action applyAction
-	before any // asset state before update (nil for creates)
-	after  any // asset state after update/create
-}
-
 func runApply(ctx context.Context, flags *applyFlags) error {
 	// When the target vanished, fromDirectory is only a guess; computeDeletionPlan
 	// answers it from git history at the --since ref below, so a vanished
@@ -229,25 +209,25 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	var applied []string
 	writes := asset.InferredOriginWrites{}
 	for _, doc := range datasetsFirst(documents) {
-		results, applyErr := applyDocument(asset.WithInferredOriginWrites(ctx, writes, doc.Location()), apiClient, doc, dataset)
+		results, applyErr := asset.ApplyDocument(asset.WithInferredOriginWrites(ctx, writes, doc.Location()), apiClient, doc, dataset)
 		for _, r := range results {
-			displayKind := asset.KindDisplayName(r.kind)
-			label := asset.FormatNameAndID(r.name, r.id)
+			displayKind := asset.KindDisplayName(r.Kind)
+			label := asset.FormatNameAndID(r.Name, r.ID)
 			applied = append(applied, fmt.Sprintf("%s %s", displayKind, label))
 
-			if r.action == actionUpdated && r.before != nil {
-				if err := asset.PrintDiff(os.Stdout, displayKind, r.name, r.before, r.after); err != nil {
+			if r.Action == asset.ActionUpdated && r.Before != nil {
+				if err := asset.PrintDiff(os.Stdout, displayKind, r.Name, r.Before, r.After); err != nil {
 					return err
 				}
 				continue
 			}
 			if fromDirectory {
-				fmt.Printf("%s: %s %s %s\n", doc.FilePath, displayKind, label, r.action)
+				fmt.Printf("%s: %s %s %s\n", doc.FilePath, displayKind, label, r.Action)
 			} else {
-				fmt.Printf("%s %s %s\n", displayKind, label, r.action)
+				fmt.Printf("%s %s %s\n", displayKind, label, r.Action)
 			}
-			if asset.ImportAction(r.action) == asset.ActionRestored {
-				if err := asset.PrintChanges(os.Stdout, displayKind, r.before, r.after); err != nil {
+			if r.Action == asset.ActionRestored {
+				if err := asset.PrintChanges(os.Stdout, displayKind, r.Before, r.After); err != nil {
 					return err
 				}
 			}
@@ -299,339 +279,6 @@ func runApply(ctx context.Context, flags *applyFlags) error {
 	}
 
 	return nil
-}
-
-func applyDocument(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	switch asset.NormalizeKind(doc.Kind) {
-	case "dashboard", "ephemeraldashboard", "persesdashboard":
-		dashboard, inferredName, err := asset.ParseDashboard(doc.Raw)
-		if err != nil {
-			return nil, err
-		}
-		result, err := asset.ImportDashboard(ctx, apiClient, dashboard, inferredName, dataset)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "dashboard",
-				AssetName: dash0api.GetDashboardName(dashboard),
-			})
-		}
-		return []applyResult{{kind: asset.DashboardDisplayKind(dashboard), name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "checkrule":
-		return applyCheckRule(ctx, apiClient, doc, dataset)
-
-	case "prometheusrule":
-		return applyPrometheusRule(ctx, apiClient, doc, dataset)
-
-	case "syntheticcheck":
-		var check dash0api.SyntheticCheckDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &check); err != nil {
-			return nil, fmt.Errorf("failed to parse SyntheticCheck: %w", err)
-		}
-		result, err := asset.ImportSyntheticCheck(ctx, apiClient, &check, dataset)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "synthetic check",
-				AssetName: check.Metadata.Name,
-			})
-		}
-		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "slo":
-		var slo dash0api.SloDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &slo); err != nil {
-			return nil, fmt.Errorf("failed to parse SLO: %w", err)
-		}
-		result, err := asset.ImportSLO(ctx, apiClient, &slo, dataset)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "SLO",
-				AssetName: dash0api.GetSLOName(&slo),
-			})
-		}
-		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "view":
-		var view dash0api.ViewDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &view); err != nil {
-			return nil, fmt.Errorf("failed to parse View: %w", err)
-		}
-		result, err := asset.ImportView(ctx, apiClient, &view, dataset)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "view",
-				AssetName: view.Metadata.Name,
-			})
-		}
-		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "spamfilter":
-		return applySpamFilter(ctx, apiClient, doc, dataset)
-
-	case "notificationchannel":
-		var channel dash0api.NotificationChannelDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &channel); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0NotificationChannel: %w", err)
-		}
-		result, err := asset.ImportNotificationChannel(ctx, apiClient, &channel)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "notification channel",
-				AssetName: dash0api.GetNotificationChannelName(&channel),
-			})
-		}
-		return []applyResult{{kind: "Dash0NotificationChannel", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "timeseriesaggregation":
-		var aggregation dash0api.TimeSeriesAggregationDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &aggregation); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0TimeSeriesAggregation: %w", err)
-		}
-		result, err := asset.ImportTimeSeriesAggregation(ctx, apiClient, &aggregation, dataset)
-		if err != nil {
-			// The cross-dataset collision already carries its own explanation
-			// and would only be flattened into "invalid request" here.
-			if asset.IsTimeSeriesAggregationWrongDataset(err) {
-				return nil, err
-			}
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "time series aggregation",
-				AssetName: dash0api.GetTimeSeriesAggregationName(&aggregation),
-			})
-		}
-		return []applyResult{{kind: "Dash0TimeSeriesAggregation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "signaltometrics":
-		var rule dash0api.SignalToMetricsDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &rule); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0SignalToMetrics: %w", err)
-		}
-		result, err := asset.ImportSignalToMetricsRule(ctx, apiClient, &rule, dataset)
-		if err != nil {
-			// The cross-dataset collision already carries its own explanation
-			// and would only be flattened into "invalid request" here.
-			if asset.IsSignalToMetricsRuleWrongDataset(err) {
-				return nil, err
-			}
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "signal-to-metrics rule",
-				AssetName: dash0api.GetSignalToMetricsName(&rule),
-			})
-		}
-		return []applyResult{{kind: "Dash0SignalToMetrics", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "sampling":
-		rule, err := asset.ParseSamplingRule(doc.Raw)
-		if err != nil {
-			return nil, err
-		}
-		result, err := asset.ImportSamplingRule(ctx, apiClient, rule, dataset)
-		if err != nil {
-			// The cross-dataset collision already carries its own explanation
-			// and would only be flattened into "invalid request" here.
-			if asset.IsSamplingRuleWrongDataset(err) {
-				return nil, err
-			}
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "sampling rule",
-				AssetName: dash0api.GetSamplingRuleName(rule),
-			})
-		}
-		for _, warning := range result.Warnings {
-			fmt.Fprintf(os.Stderr, "warning: %s\n", warning)
-		}
-		return []applyResult{{kind: "Dash0Sampling", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "team":
-		var team dash0api.TeamDefinitionV1Alpha1
-		if err := dash0yaml.Unmarshal(doc.Raw, &team); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0Team: %w", err)
-		}
-		result, err := asset.ImportTeam(ctx, apiClient, &team)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "team",
-				AssetName: dash0api.GetTeamDisplayName(&team),
-			})
-		}
-		return []applyResult{{kind: "Dash0Team", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "dataset":
-		var dataset dash0api.DatasetDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &dataset); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0Dataset: %w", err)
-		}
-		result, err := asset.ImportDataset(ctx, apiClient, &dataset)
-		if err != nil {
-			err = client.HandleAPIError(err, client.ErrorContext{
-				AssetType: "dataset",
-				AssetID:   dash0api.GetDatasetID(&dataset),
-				AssetName: dash0api.GetDatasetName(&dataset),
-			})
-			return nil, err
-		}
-		return []applyResult{{kind: "Dash0Dataset", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "skill":
-		var skill dash0api.SkillDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &skill); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0Skill: %w", err)
-		}
-		name := asset.CustomSkillName(&skill)
-		result, err := asset.ImportCustomSkill(ctx, apiClient, &skill)
-		if err != nil {
-			if explained := asset.ExplainCustomSkillError(err, name); explained != nil {
-				return nil, explained
-			}
-			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "Agent0 skill", AssetName: name})
-		}
-		return []applyResult{{kind: "Dash0Skill", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	case "awsmetricscrapeconfig":
-		// Organization-level: the integration id decides the dataset, so the
-		// CLI's --dataset is not passed.
-		cfg, _, err := asset.ParseAwsMetricScrapeConfig(doc.Raw)
-		if err != nil {
-			return nil, err
-		}
-		result, err := asset.ImportAwsMetricScrapeConfig(ctx, apiClient, cfg, doc.ID)
-		if err != nil {
-			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "AWS integration", AssetID: doc.ID})
-		}
-		return []applyResult{{kind: asset.AwsMetricScrapeConfigKind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-	case "generativeaievaluation":
-		var evaluation dash0api.GenerativeAiEvaluationDefinition
-		if err := dash0yaml.Unmarshal(doc.Raw, &evaluation); err != nil {
-			return nil, fmt.Errorf("failed to parse Dash0GenerativeAiEvaluation: %w", err)
-		}
-		name := dash0api.GetGenerativeAiEvaluationName(&evaluation)
-		result, err := asset.ImportGenerativeAiEvaluation(ctx, apiClient, &evaluation, dataset)
-		if err != nil {
-			if explained := asset.ExplainGenerativeAiEvaluationError(err, name); explained != nil {
-				return nil, explained
-			}
-			return nil, client.HandleAPIError(err, client.ErrorContext{AssetType: "eval", AssetName: name})
-		}
-		return []applyResult{{kind: "Dash0GenerativeAiEvaluation", name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported kind: %s", doc.Kind)
-	}
-}
-
-// applyCheckRule handles a single CheckRule (native, non-CRD) document.
-// PrometheusRule CRD documents go through applyPrometheusRule, which inspects
-// the rule kinds and dispatches to the check-rule or recording-rule endpoint
-// (or both, when the CRD is mixed).
-func applyCheckRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	rules, err := asset.ParseCheckRules(doc.Raw)
-	if err != nil {
-		return nil, err
-	}
-	var results []applyResult
-	for _, rule := range rules {
-		result, importErr := asset.ImportCheckRule(ctx, apiClient, rule, dataset)
-		if importErr != nil {
-			return results, client.HandleAPIError(importErr, client.ErrorContext{
-				AssetType: "check rule",
-				AssetName: rule.Name,
-			})
-		}
-		results = append(results, applyResult{
-			kind:   "CheckRule",
-			name:   result.Name,
-			id:     result.ID,
-			action: applyAction(result.Action),
-			before: result.Before,
-			after:  result.After,
-		})
-	}
-	return results, nil
-}
-
-// applyPrometheusRule handles a PrometheusRule CRD that may contain alerting
-// rules, recording rules, or both. Alerting rules are dispatched to the
-// check-rule endpoint via the existing ParseAsPrometheusAlertRules path;
-// recording rules are dispatched to the recording-rule endpoint via a
-// recording-only copy of the CRD.
-func applyPrometheusRule(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	crd, err := asset.ParsePrometheusRuleCRD(doc.Raw)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []applyResult
-
-	if asset.PrometheusRuleHasAlerts(crd) {
-		alertResults, err := applyCheckRule(ctx, apiClient, doc, dataset)
-		results = append(results, alertResults...)
-		if err != nil {
-			return results, err
-		}
-	}
-
-	recordingOnly := asset.RecordingOnlyPrometheusRule(crd)
-	if recordingOnly != nil {
-		result, importErr := asset.ImportRecordingRule(ctx, apiClient, recordingOnly, dataset)
-		if importErr != nil {
-			return results, client.HandleAPIError(importErr, client.ErrorContext{
-				AssetType: "recording rule",
-				AssetName: dash0api.GetRecordingRuleName(recordingOnly),
-			})
-		}
-		results = append(results, applyResult{
-			kind:   "RecordingRule",
-			name:   result.Name,
-			id:     result.ID,
-			action: applyAction(result.Action),
-			before: result.Before,
-			after:  result.After,
-		})
-	}
-
-	return results, nil
-}
-
-// applySpamFilter handles both v1alpha1 and v1alpha2 spam filter documents.
-// The apiVersion field on the document selects the schema; an unknown value
-// is rejected with the list of supported versions before any API call.
-func applySpamFilter(ctx context.Context, apiClient dash0api.Client, doc asset.Document, dataset *string) ([]applyResult, error) {
-	apiVersion, err := asset.DetectSpamFilterAPIVersion(doc.Raw)
-	if err != nil {
-		return nil, err
-	}
-
-	switch apiVersion {
-	case string(dash0api.SpamFilterApiVersionV1Alpha1V1alpha1):
-		var filter dash0api.SpamFilter
-		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
-			return nil, fmt.Errorf("failed to parse v1alpha1 SpamFilter: %w", err)
-		}
-		result, importErr := asset.ImportSpamFilter(ctx, apiClient, &filter, dataset)
-		if importErr != nil {
-			return nil, client.HandleAPIError(importErr, client.ErrorContext{
-				AssetType: "spam filter",
-				AssetName: dash0api.GetSpamFilterName(&filter),
-			})
-		}
-		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-	case string(dash0api.SpamFilterApiVersionV1Alpha2V1alpha2):
-		var filter dash0api.SpamFilterV1Alpha2
-		if err := dash0yaml.Unmarshal(doc.Raw, &filter); err != nil {
-			return nil, fmt.Errorf("failed to parse v1alpha2 SpamFilter: %w", err)
-		}
-		result, importErr := asset.ImportSpamFilterV1Alpha2(ctx, apiClient, &filter, dataset)
-		if importErr != nil {
-			return nil, client.HandleAPIError(importErr, client.ErrorContext{
-				AssetType: "spam filter",
-				AssetName: filter.Metadata.Name,
-			})
-		}
-		return []applyResult{{kind: doc.Kind, name: result.Name, id: result.ID, action: applyAction(result.Action), before: result.Before, after: result.After}}, nil
-	default:
-		// Unreachable: DetectSpamFilterAPIVersion only returns supported values or an error.
-		return nil, fmt.Errorf("unsupported spam filter apiVersion %q", apiVersion)
-	}
 }
 
 // datasetsFirst returns documents with every Dash0Dataset document moved to the front, keeping
