@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "kind": "DarkplaneRepository",
+      "metadata": {
+        "name": "acme/api-gateway",
+        "labels": {
+          "dash0.com/id": "7f1c2e04-0d55-4f5e-9a51-2b7c1c1d9e11"
+        },
+        "annotations": {}
+      },
+      "spec": {
+        "provider": "github",
+        "account": "acme",
+        "name": "api-gateway",
+        "botMode": "auto_approve",
+        "openPullRequests": 0,
+        "timeToMergeP50Seconds": null,
+        "autoApprovalRate": null
+      }
+    },
+    {
+      "kind": "DarkplaneRepository",
+      "metadata": {
+        "name": "acme/api",
+        "labels": {
+          "dash0.com/id": "0b7f1c2e-4a5d-4e8f-9c61-2d3a4b5c6d7e"
+        },
+        "annotations": {}
+      },
+      "spec": {
+        "provider": "github",
+        "account": "acme",
+        "name": "api",
+        "botMode": "auto_approve",
+        "openPullRequests": 0,
+        "timeToMergeP50Seconds": null,
+        "autoApprovalRate": null
+      }
+    }
+  ],
+  "cursors": {}
+}

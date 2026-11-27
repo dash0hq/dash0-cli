@@ -59,6 +59,10 @@ var topics = []topicSpec{
 		},
 	},
 	{
+		name:     "automerge",
+		sections: []string{"automerge settings get", "automerge settings update"},
+	},
+	{
 		name:            "aws-metric-scrape-configs",
 		includeQuickRef: true,
 		sections: []string{

@@ -1,0 +1,68 @@
+{
+  "apiVersion": "dash0.com/v1alpha1",
+  "kind": "DarkplaneRepositorySettings",
+  "metadata": {
+    "annotations": {
+      "dash0.com/created-at": "2026-01-05T09:00:00Z",
+      "dash0.com/updated-at": "2026-01-12T10:30:00Z"
+    },
+    "labels": {
+      "dash0.com/id": "0b7f1c2e-4a5d-4e8f-9c61-2d3a4b5c6d7e",
+      "dash0.com/version": "2"
+    },
+    "name": "acme/api"
+  },
+  "spec": {
+    "botMode": "auto_approve",
+    "triggerMode": "auto",
+    "waitForChecks": true,
+    "softThreshold": 75,
+    "softRiskCriteria": [
+      {
+        "multiplier": 0.5,
+        "name": "Blast radius",
+        "prompt": "Score containment of this change's impact.",
+        "threshold": 40,
+        "tools": [
+          "read_file",
+          "git_diff_base"
+        ]
+      },
+      {
+        "multiplier": 0.5,
+        "name": "Evidence quality",
+        "prompt": "Score how strong the evidence is.",
+        "tools": [
+          "pr_checks"
+        ]
+      }
+    ],
+    "protectedPaths": [
+      "deploy/**"
+    ],
+    "fastTrackReverts": false,
+    "pathRules": [
+      {
+        "level": "protected",
+        "paths": [
+          "deploy/**"
+        ]
+      },
+      {
+        "level": "auto_merge",
+        "name": "Docs",
+        "paths": [
+          "docs/**"
+        ],
+        "authors": [
+          "1234"
+        ]
+      }
+    ],
+    "reviewer": {
+      "enabled": false,
+      "requireForAutomerge": false
+    }
+  },
+  "usesDefaultCriteria": false
+}

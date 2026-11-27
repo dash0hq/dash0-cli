@@ -18,7 +18,7 @@ Each category has distinct patterns for flags, output, and behavior.
 | [Send](#send-commands) | `logs send`, `spans send`, `debuginfo upload` | `logs send` and `spans send` are OTLP-based, with repeatable attribute flags; `debuginfo upload` is experimental and uploads to the Dash0 debuginfo gRPC service |
 | [Daemon](#daemon-commands) | `otlp proxy` | Long-running, signal-driven shutdown, experimental |
 | [Interactive](#interactive-commands) | `k8s pods watch`, `k8s deployments watch`, `k8s statefulsets watch`, `k8s daemonsets watch`, `k8s replicasets watch`, `k8s jobs watch`, `k8s cronjobs watch` | Full-screen terminal page, refreshes on a timer, experimental |
-| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
+| [Organizational](#organizational-commands) | `teams`, `members`, `notification-channels`, `datasets`, `auth-tokens`, `agent0 skills`, `automerge settings`, `aws-metric-scrape-configs` | Flag-based input, no dataset, experimental |
 | [Raw HTTP](#raw-http-command) | `api` | Passthrough to any Dash0 API endpoint, experimental |
 | [Agent tooling](#agent-tooling-commands) | `skill install`, `skill show` | No API calls; local filesystem only; not gated by `--experimental`; no `-o`/JSON output — content is always plain markdown |
 
@@ -814,6 +814,7 @@ Aliases: `remove`
 | Signal-to-metrics rules | `dash0 signal-to-metrics-rules <subcommand>` (alias `s2m`) | Dataset-scoped. `kind: Dash0SignalToMetrics`; `dash0.com/id` is read first, then `dash0.com/origin`, as for the [routing rule](#routing-rule). Also has `test`, which counts the signals a rule matches without creating it; see [Signal-to-metrics rules](#signal-to-metrics-rules) |
 | Sampling rules | `dash0 sampling-rules <subcommand>` | Dataset-scoped. `kind: Dash0Sampling`; `dash0.com/id` is read first, then `dash0.com/origin`, as for the [routing rule](#routing-rule). Writes require the organization admin role. The first enabled rule in a dataset turns sampling on; see [Sampling rules](#sampling-rules) |
 | Datasets | `dash0 --experimental datasets <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` and `apply` need a slug in `metadata.labels["dash0.com/id"]` or `spec.slug`. Deleting a dataset keeps its dashboards, check rules, synthetic checks, and views for 30 days; see [`datasets delete`](#datasets-delete-experimental) |
+| AutoMerge settings | `dash0 --experimental automerge settings <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get` and `update`: each repository AutoMerge observes has exactly one settings document, addressed by its `owner/repo` slug or id, so there is no `list`, `create`, or `delete`. Not accepted by `apply` |
 | AWS metric scrape configs | `dash0 --experimental aws-metric-scrape-configs <subcommand>` | Organization-level (no `--dataset`). Experimental. Only `get`, `update`, and `delete`: each AWS integration has exactly one config, addressed by the integration id, so there is no `list` or `create`. `delete` clears the config and keeps the integration |
 | Agent0 skills | `dash0 --experimental agent0 skills <subcommand>` | Organization-level (no `--dataset`). Experimental. `kind: Dash0Skill`; `dash0.com/id` is read first, then `dash0.com/origin`, as for the [routing rule](#routing-rule), and the skill name comes from the `SKILL.md` frontmatter |
 | Teams | `dash0 --experimental teams <subcommand>` | Organization-level (no `--dataset`). Experimental. `create` accepts `-f <file>` for a declarative `TeamDefinitionV1Alpha1` document, or a positional `<name>` for the imperative form. `spec.members` and `--member` accept either an email address or an internal member id; the server resolves emails. |
@@ -4599,6 +4600,99 @@ Auth token "<id>" deleted
 
 Aliases: `remove`
 
+### `automerge settings get` (experimental)
+
+Show the AutoMerge settings of a repository: the bot mode, the trigger, the scoring criteria and their thresholds, the path rules, and the reviewer.
+
+```bash
+dash0 -X automerge settings get <owner/repo | repository-id> [-o <format>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | `table` | Output format: `table`, `json`, or `yaml` |
+
+The repository is named by its `owner/repo` slug, matched case-insensitively, or by the id in its `dash0.com/id` label.
+A repository that was never configured shows the defaults instead of an error.
+A slug AutoMerge does not observe fails with `repository "<owner/repo>" not found`.
+
+```bash
+$ dash0 -X automerge settings get acme/api
+Repository: acme/api
+Repository ID: 0b7f1c2e-4a5d-4e8f-9c61-2d3a4b5c6d7e
+Version: 2
+Bot mode: auto_approve
+Trigger: auto
+Wait for checks: true
+Score threshold: 75
+Criteria (defaults):
+  Blast radius (weight 0.34, no floor)
+  Evidence quality (weight 0.33, no floor)
+  Change footprint (weight 0.33, no floor)
+Path rules: none
+Reviewer: disabled
+Updated: 2026-01-12 10:30:00
+```
+
+`Score threshold` is `spec.softThreshold`, the overall score a pull request needs. Each criterion's `threshold` is its floor and `multiplier` its weight.
+The coloured score bands in the AutoMerge UI are display only and cannot be configured.
+
+Use `-o yaml` to get a definition that `automerge settings update -f` accepts unchanged:
+
+```bash
+dash0 -X automerge settings get acme/api -o yaml > automerge.yaml
+```
+
+### `automerge settings update` (experimental)
+
+Replace the AutoMerge settings of a repository with the settings in a YAML or JSON file.
+The whole spec is replaced, so start from `get -o yaml`: `botMode`, `triggerMode`, `waitForChecks`, `softThreshold`, and `softRiskCriteria` are required, and an unknown field under `spec` is rejected before any API call.
+Changing settings needs an organization admin, or an API token whose actions include `*`.
+
+If the repository argument is omitted, it is taken from the document's `dash0.com/id` label, or else from `metadata.name`.
+When both an argument and the label are given, they must name the same repository.
+
+The exported `metadata.labels["dash0.com/version"]` makes the write conditional: if someone changed the settings since that version, the update fails and asks you to export them again.
+Remove the label to overwrite the settings regardless.
+
+`spec.protectedPaths` is deprecated in favour of `protected` path rules, and is written to mirror the `protected` rules that name no authors.
+A pattern in it that no `protected` rule covers is added as a new `protected` rule, with a warning, so a path is never un-protected by accident.
+To stop protecting a path, remove it from both the rule and `spec.protectedPaths`.
+
+The output is a unified diff of the spec before and after.
+
+```bash
+dash0 -X automerge settings update [owner/repo | repository-id] -f <file> [--dry-run]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Path to YAML or JSON definition file (use `-` for stdin) |
+| `--dry-run` | Show the diff without applying it |
+
+Raise the score a pull request needs from 75 to 80:
+
+```bash
+$ dash0 -X automerge settings update -f automerge.yaml
+--- AutoMerge settings (before)
++++ AutoMerge settings (after)
+@@ -46,6 +46,6 @@
+   tools:
+   - pr_files
+   - git_diff_base
+-softThreshold: 75
++softThreshold: 80
+ triggerMode: auto
+ waitForChecks: true
+AutoMerge settings "acme/api" updated (version 3)
+```
+
+Preview the change without applying it:
+
+```bash
+dash0 -X automerge settings update -f automerge.yaml --dry-run
+```
+
 ### `aws-metric-scrape-configs get` (experimental)
 
 Show the CloudWatch metric scrape config of an AWS integration.
@@ -5242,7 +5336,7 @@ An unknown topic fails with an error listing the valid topic names, so an agent 
 ```bash
 $ dash0 skill show bogus-topic
 Error: unknown skill topic "bogus-topic"
-Hint: valid topics are: agent0, apply, api, auth-tokens, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, debuginfo, diff, evals, failed-checks, k8s, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
+Hint: valid topics are: agent0, apply, api, auth-tokens, automerge, aws-metric-scrape-configs, check-rules, config, dashboards, datasets, debuginfo, diff, evals, failed-checks, k8s, login, logs, members, metrics, notification-channels, otlp, recording-rules, sampling-rules, signal-to-metrics-rules, slos, spam-filters, spans, synthetic-checks, teams, time-series-aggregations, traces, views
 ```
 
 ## Common workflows for AI agents
